@@ -1,0 +1,4 @@
+# Consistent text line endings across teammates' operating systems.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf

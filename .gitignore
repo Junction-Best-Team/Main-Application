@@ -1,0 +1,38 @@
+# Local credentials; keep documented examples tracked.
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Dependencies and generated output.
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.next/
+.nuxt/
+.turbo/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Local deployment metadata and logs.
+.vercel/
+.netlify/
+.wrangler/
+*.log
+
+# Machine-specific files.
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Personal agent settings; shared instructions and skills stay tracked.
+.claude/settings.local.json
+CLAUDE.local.md
