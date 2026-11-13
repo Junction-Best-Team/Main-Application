@@ -2,7 +2,7 @@
 
 Four-person team repository for [Junction 2026](https://2026.hackjunction.com/), November 13–15 in Espoo, Finland.
 
-Preparation files only. The challenge, stack, application, and deployment target are still to be selected.
+Challenge: **Trusted Trade Agents (Valio Aimo)** — the Aimo-side interface for external purchasing agents. The stack, application, and deployment target are still to be selected.
 
 ## Get started
 
@@ -45,6 +45,12 @@ Document required variable names and safe placeholders in [.env.example](.env.ex
 
 - [AGENTS.md](AGENTS.md): short instructions shared by coding agents. [CLAUDE.md](CLAUDE.md) imports the same file for Claude Code.
 - [Project brief](docs/brief.md): the user, three essential features, demo, and agreed interfaces.
+- [Architecture and tracks](docs/architecture.md): the four tracks, the contracts between them, and who raises issues against whom.
+- [Findings](docs/findings.md): verified facts, traps and owner decisions, with evidence. Add to it as you learn.
+- [Cross-track issues](docs/issues.md): what one track needs from another.
+- [History](docs/history/): one dated log per track per day.
 - [Pre-existing work](docs/pre-existing-work.md): preparation and reused material to disclose in the submission.
+
+Challenge datasets are in `data/` and the raw brief in `local/`; both are gitignored (large files, credentials). See the Data and secrets section of [AGENTS.md](AGENTS.md).
 
 Check the current event and challenge rules before preparing application code. Junction's [general terms](https://www.hackjunction.com/terms-of-service) require projects to be built primarily during the event and pre-existing material to be identified in the submission. Confirm the required project licence before submitting.

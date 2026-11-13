@@ -36,3 +36,7 @@ Thumbs.db
 # Personal agent settings; shared instructions and skills stay tracked.
 .claude/settings.local.json
 CLAUDE.local.md
+
+# Challenge data and raw material that must not be committed (large files, secrets, personal details).
+data/
+local/
