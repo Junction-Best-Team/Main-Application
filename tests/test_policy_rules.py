@@ -476,8 +476,10 @@ def test_service_requires_approval_substitution_still_needs_a_decision(
 @pytest.mark.xfail(
     strict=True,
     raises=TypeError,
-    reason="POL-008 is not enforceable yet: no per-constraint provenance exists (issues #75, #92). "
-    "evaluate_purchase has no trusted `constraints` input; see evidence/ws-c/pol-008-design.md.",
+    reason="POL-008 is not enforceable yet: no per-constraint provenance exists. Constraint sources "
+    "will be stored as a JSON field on the request record (owner Q-53, no migration); person 2's "
+    "#92 and person 1's extraction/persistence are still pending. evaluate_purchase has no "
+    "trusted `constraints` input; see evidence/ws-c/pol-008-design.md.",
 )
 def test_unconfirmed_assumption_never_loosens_hard_limits():
     """Target behaviour. `constraints` is a SERVER-supplied record (never a model argument) of what
