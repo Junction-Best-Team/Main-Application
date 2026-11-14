@@ -50,7 +50,7 @@ Owner decisions use `D-<nnn>` and quote the owner's words verbatim.
 
 ### F-INFRA-003: Independent application containers and durable worker queue
 - Date: 2026-11-14   Track: all   Status: verified locally; live cutover pending
-- Finding: The owner requested “separete all into their apps, worker is a pod api fe etc” and “new pr new worktree”. The frontend, API and worker now have independent build targets, Kubernetes Deployments/Services, probes and credentials. PostgreSQL stores queued turns; workers claim with bounded leases and attempt fencing. Migration 004 preserves business history and makes historical interrupted turns explicitly retryable.
+- Finding: The owner requested “separete all into their apps, worker is a pod api fe etc” and “new pr new worktree”. The frontend, API and worker now have independent build targets, Kubernetes Deployments/Services, probes and credentials. PostgreSQL stores queued turns; workers claim with bounded leases and attempt fencing. Migration 005 preserves business history and makes historical interrupted turns explicitly retryable.
 - Evidence: 144 PostgreSQL-backed backend tests; Python lint; three successful Docker target builds; 8 mocked portable Terraform plans; 28 infrastructure helper tests (including the merged OpenRouter sync); rendered Traefik chart. A three-container smoke with fixture embeddings/provider returned a queued message in 0.02 seconds with the worker stopped, retained it across API restart, processed it after worker startup, and delivered SSE through the frontend proxy. No live supplier calls or production changes were made by these checks.
 - Impact: The API no longer loads ML weights or runs agent turns inline. The static frontend receives no secrets. Apply migration 004 and the reviewed separate-app Terraform cutover before enabling the new three-image release pipeline; see `docs/separate-apps.md`.
 
@@ -286,6 +286,24 @@ Owner decisions use `D-<nnn>` and quote the owner's words verbatim.
 - Evidence: `local/project-brief.raw.txt` (gitignored).
 - Impact: Confirm the official deadline on the event platform before planning scope.
 
+## Track sections
+
+Add new findings below, under your track heading.
+
+### Track 1: Catalog and Discovery
+
+#### F-SEARCH-001: Hosted Qwen search verified on the complete catalog
+- Date: 2026-11-14   Track: 1   Status: verified (local PostgreSQL and live OpenRouter); deployed cutover unverified
+- Finding: The supplied SHA-256-verified snapshot imported all 17,546 products into a separate local evaluation database with 4,096-dimensional Qwen3 Embedding 8B vectors. An interrupted run resumed with 192 cached embeddings and generated the remaining 17,354. All normalized products validated against the product schema; the evaluation database including its embedding cache occupies approximately 698 MB. No production database or Kubernetes configuration changed.
+- Evidence: `docs/search-evaluation-openrouter.json`, `docs/search-reranker-comparison.json`, and `scripts/evaluate_search.py`. Hybrid search with Qwen3 Reranker 8B found a labeled top-five result in 20/21 descriptive cases, versus 17/21 in the saved E5 baseline and 19/21 with Reranker 0.6B. Two 8B reranker runs had 12–14/21 labeled top-one results (baseline 12/21) and 2.1–2.9 second descriptive median latency. Both passed all six identifier and three exclusion cases, with zero supported dietary-filter violations or reranker outages. The remaining top-five miss was `Snellman naudan kuve`. These are curated, incompletely labeled regression cases, not a held-out benchmark; the baseline also used different document text, and hosted rankings/timings varied between runs.
+- Impact: Select the 8B embedding/reranker profile as an opt-in candidate-retrieval upgrade, without claiming first-result correctness or a universally best model. Migration 005, resumable batch caching, staged imports, exact filtered ranking and explicit profile-matched cutover/rollback preserve existing catalogs and purchasing history. Readiness does not spend API tokens. `165` backend tests, Python lint and the frontend production build passed locally. Cloud latency/capacity and operator rollout remain separate from this PR.
+
+### Track 2: Quote and Order
+
+### Track 3: Mandates, Policy and Approvals
+
+### Track 4: Interface, Audit and Demo
+
 ## MVP implementation verification
 
 ### F-MVP-001: Explicit implementation handoff resolves the draft seams
@@ -355,3 +373,9 @@ Owner decisions use `D-<nnn>` and quote the owner's words verbatim.
 - Finding: The HTTP sweep does not query the supplier and now labels only the configured mode. `tests/ci.sh --live` first queries both Valio price and availability through the live connector and existing evidence validator; missing keys, upstream errors and unresolved evidence fail before the HTTP server starts. The standalone sweep tests message CSRF rejection without sending an authenticated chat turn.
 - Evidence: `tests/test_sweep.py` (8 regression cases); full local run: 325 pytest tests, strict sweep 10/10, combined coverage 96.47%. Supplier success/error responses were mocked; no real supplier or paid LLM was called during this verification.
 - Impact: A live pass requires validated supplier evidence. Running the standalone sweep against an LLM-configured app does not trigger a valid chat request or store an assistant response.
+
+### F-SEARCH-002: Hosted search follows the separate worker deployment
+- Date: 2026-11-14   Track: 1   Status: verified (local integration); deployed cutover unverified
+- Finding: After integration with the frontend/API/worker split, only the worker/importer receives `SEARCH_API_KEY`. Both API and worker check the active embedding profile/dimension, while the worker also checks credential presence without provider calls. The hosted migration is `005_hosted_search.sql`, after `004_worker_queue.sql`.
+- Evidence: All 217 backend tests passed against a fresh isolated PostgreSQL/pgvector database; frontend build and Python lint passed. All three architecture diagrams rendered. Terraform validation, eight mocked plans and 28 infrastructure helper tests passed, including profile/credential separation.
+- Impact: The staged import and coordinated API/worker cutover remain explicit operator steps. No production configuration, database or deployment was changed.

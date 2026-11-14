@@ -216,7 +216,8 @@ def test_main_ingest_passes_options_and_skips_download_by_default(monkeypatch, c
     monkeypatch.setattr(
         ingestion,
         "ingest_file",
-        lambda path, count, sha: calls.append(("ingest", path, count, sha)) or {"ok": True},
+        lambda path, count, sha, activate: calls.append(("ingest", path, count, sha, activate))
+        or {"ok": True},
     )
     run_main(
         monkeypatch,
@@ -228,8 +229,44 @@ def test_main_ingest_passes_options_and_skips_download_by_default(monkeypatch, c
         "--expected-sha256",
         "abc",
     )
-    assert calls == [("ingest", Path("snap.json"), 7, "abc")]
+    assert calls == [("ingest", Path("snap.json"), 7, "abc", True)]  # activates by default
     assert json.loads(capsys.readouterr().out) == {"ok": True}
+
+
+def test_main_ingest_stage_imports_without_activating(monkeypatch):
+    import aimo.ingest as ingestion
+
+    seen = []
+    monkeypatch.setattr(
+        ingestion,
+        "ingest_file",
+        lambda path, count, sha, activate: seen.append(activate) or {},
+    )
+    run_main(monkeypatch, "ingest", "--file", "snap.json", "--stage")
+    assert seen == [False]  # staged: the active catalog is not replaced
+
+
+def test_main_activate_catalog_cuts_over_to_the_named_generation(monkeypatch, capsys):
+    import aimo.ingest as ingestion
+
+    monkeypatch.setattr(ingestion, "activate_catalog", lambda generation: {"active": generation})
+    run_main(monkeypatch, "activate-catalog", "--generation", "g-123")
+    assert json.loads(capsys.readouterr().out) == {"active": "g-123"}
+
+
+def test_main_activate_catalog_requires_a_generation(monkeypatch):
+    with pytest.raises(SystemExit) as stop:
+        run_main(monkeypatch, "activate-catalog")
+    assert stop.value.code == 2
+
+
+def test_main_worker_starts_the_worker(monkeypatch):
+    import aimo.worker as worker
+
+    started = []
+    monkeypatch.setattr(worker, "main", lambda: started.append(True))
+    run_main(monkeypatch, "worker")
+    assert started == [True]
 
 
 def test_main_ingest_download_flag_downloads_first_with_default_expectations(monkeypatch):
@@ -240,7 +277,7 @@ def test_main_ingest_download_flag_downloads_first_with_default_expectations(mon
     monkeypatch.setattr(
         ingestion,
         "ingest_file",
-        lambda path, count, sha: calls.append(("ingest", count, sha)) or {},
+        lambda path, count, sha, activate: calls.append(("ingest", count, sha)) or {},
     )
     run_main(monkeypatch, "ingest", "--file", "snap.json", "--download")
     assert calls == [

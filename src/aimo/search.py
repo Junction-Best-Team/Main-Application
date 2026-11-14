@@ -3,7 +3,7 @@ import math
 import re
 from functools import lru_cache
 
-from aimo.catalog import requirement_reasons
+from aimo.catalog import requirement_reasons, rich_search_text, search_text
 from aimo.config import settings
 from aimo.db import Problem, connection
 from aimo.model_spec import EMBEDDING_REVISION
@@ -12,9 +12,27 @@ from aimo.schemas import SearchRequest
 
 def model_key():
     cfg = settings()
+    if cfg.embedding_backend == "openrouter":
+        from aimo.search_provider import DIMENSIONS, EMBEDDING_MODEL, PROFILE
+
+        return f"openrouter:{EMBEDDING_MODEL}:{DIMENSIONS}:{PROFILE}"
     if cfg.embedding_backend == "fixture":
         return "fixture-hash-v1:384"
     return f"{cfg.embedding_model}@{cfg.embedding_model_revision or EMBEDDING_REVISION}"
+
+
+def dimensions():
+    from aimo.search_provider import DIMENSIONS
+
+    return DIMENSIONS if settings().embedding_backend == "openrouter" else 384
+
+
+def document_text(facts):
+    return (
+        rich_search_text(facts)
+        if settings().embedding_backend == "openrouter"
+        else search_text(facts)
+    )
 
 
 @lru_cache(maxsize=1)
@@ -33,6 +51,10 @@ def model():
 
 
 def embed(texts: list[str], query=False):
+    if settings().embedding_backend == "openrouter":
+        from aimo.search_provider import embeddings
+
+        return embeddings(texts, query=query)
     if settings().embedding_backend == "fixture":
         rows = []
         for text in texts:
@@ -83,7 +105,7 @@ def search_products(identity, request: SearchRequest, strategy="hybrid"):
         ).fetchone()
         if not active:
             raise Problem("INDEX_NOT_READY", "Run ingestion before searching.", 503)
-        if active["model_key"] != model_key():
+        if active["model_key"] != model_key() or active["embedding_dimensions"] != dimensions():
             raise Problem(
                 "MODEL_MISMATCH", "Serving model differs from the active catalog generation.", 503
             )
@@ -106,63 +128,90 @@ def search_products(identity, request: SearchRequest, strategy="hybrid"):
                 "note": "Exact identifier absent or excluded by mandatory requirements.",
             }
         keyword, semantic = [], []
-        if strategy in ("keyword", "hybrid"):
+        if not exact and strategy in ("keyword", "hybrid"):
             keyword = c.execute(
                 f"""SELECT id,facts,ts_rank_cd(search_document,q) AS rank FROM products,
                 (SELECT plainto_tsquery('simple',%s) || plainto_tsquery('finnish',%s) || plainto_tsquery('english',%s) q) query
                 WHERE {where} AND search_document @@ q ORDER BY rank DESC,id LIMIT 80""",
                 (request.query, request.query, request.query, *params),
             ).fetchall()
-        if strategy in ("semantic", "hybrid"):
+        if not exact and strategy in ("semantic", "hybrid"):
             v = vector(embed([request.query], query=True)[0])
             semantic = c.execute(
-                # At the 17.5k-product MVP scale, rank the filtered generation exactly.
-                # A materialized candidate set prevents old HNSW entries/scan limits
-                # from reducing recall. Measure before enabling ANN at a larger scale.
-                f"""WITH candidates AS MATERIALIZED (SELECT id,facts,embedding FROM products WHERE {where})
-                SELECT id,facts,1-(embedding <=> %s::vector) AS similarity FROM candidates
-                ORDER BY embedding <=> %s::vector,id LIMIT 80""",
-                (*params, v, v),
+                # Materialize only IDs/distances, not 17.5k large vectors and JSON
+                # documents. CASE protects mixed-dimension generations regardless
+                # of planner expression ordering. Fetch facts for the shortlist.
+                f"""WITH candidates AS MATERIALIZED (
+                    SELECT id,CASE WHEN generation=%s THEN embedding <=> %s::vector END AS distance
+                    FROM products WHERE {where}
+                ), ranked AS (SELECT id,distance FROM candidates ORDER BY distance,id LIMIT 80)
+                SELECT p.id,p.facts,1-r.distance AS similarity FROM ranked r
+                JOIN products p ON p.generation=%s AND p.id=r.id ORDER BY r.distance,r.id""",
+                (active["id"], v, *params, active["id"]),
             ).fetchall()
-        scores, facts = {}, {}
-        for ranking in (keyword, semantic):
-            for rank, row in enumerate(ranking, 1):
-                facts[row["id"]] = row["facts"]
-                scores[row["id"]] = scores.get(row["id"], 0) + 1 / (60 + rank)
-        for row in exact:
+    scores, facts = {}, {}
+    for ranking in (keyword, semantic):
+        for rank, row in enumerate(ranking, 1):
             facts[row["id"]] = row["facts"]
-            scores[row["id"]] = 1.0
-        results = []
-        for pid in sorted(scores, key=lambda x: (-scores[x], x)):
-            p = facts[pid]
-            if requirement_reasons(p, request.requirements):
-                continue
-            results.append(
-                {
-                    k: p[k]
-                    for k in (
-                        "id",
-                        "name",
-                        "names",
-                        "sales_unit",
-                        "base_unit",
-                        "units",
-                        "order_step",
-                        "measures",
-                        "claims",
-                        "allergens",
-                        "free_from",
-                        "provenance",
-                    )
-                }
-                | {"score": scores[pid], "match_is_suitability_proof": False}
-            )
-            if len(results) == request.limit:
-                break
-        return {
-            "products": results,
-            "generation": str(active["id"]),
-            "model": active["model_key"],
-            "strategy": strategy,
-            "note": "Discovery candidates only. Inspect requirements and current price/availability before purchase.",
-        }
+            scores[row["id"]] = scores.get(row["id"], 0) + 1 / (60 + rank)
+    for row in exact:
+        facts[row["id"]] = row["facts"]
+        scores[row["id"]] = 1.0
+    ordered = sorted(scores, key=lambda x: (-scores[x], x))
+    # Provider ranking never supplies product facts or overrides structured exclusions.
+    ordered = [pid for pid in ordered if not requirement_reasons(facts[pid], request.requirements)]
+    rerank_status = "disabled"
+    cfg = settings()
+    if (
+        not exact
+        and strategy == "hybrid"
+        and cfg.embedding_backend == "openrouter"
+        and cfg.rerank_enabled
+        and ordered
+    ):
+        from aimo.search_provider import rerank
+
+        candidates = ordered[: cfg.rerank_candidates]
+        try:
+            ranked = rerank(request.query, [document_text(facts[pid]) for pid in candidates])
+            ordered = [candidates[index] for index, _ in ranked]
+            scores.update({candidates[index]: score for index, score in ranked})
+            rerank_status = "applied"
+        except Problem:
+            # Retrieval remains usable on a reranker outage; report the degradation.
+            rerank_status = "unavailable"
+    results = []
+    for pid in ordered:
+        p = facts[pid]
+        if requirement_reasons(p, request.requirements):
+            continue
+        results.append(
+            {
+                k: p[k]
+                for k in (
+                    "id",
+                    "name",
+                    "names",
+                    "sales_unit",
+                    "base_unit",
+                    "units",
+                    "order_step",
+                    "measures",
+                    "claims",
+                    "allergens",
+                    "free_from",
+                    "provenance",
+                )
+            }
+            | {"score": scores[pid], "match_is_suitability_proof": False}
+        )
+        if len(results) == request.limit:
+            break
+    return {
+        "products": results,
+        "generation": str(active["id"]),
+        "model": active["model_key"],
+        "strategy": strategy,
+        "rerank_status": rerank_status,
+        "note": "Discovery candidates only. Inspect requirements and current price/availability before purchase.",
+    }

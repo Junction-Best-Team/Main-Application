@@ -51,6 +51,10 @@ run "restricted_setup_plan" {
     condition     = kubernetes_job_v1.bootstrap[0].spec[0].template[0].spec[0].security_context[0].run_as_non_root && kubernetes_job_v1.bootstrap[0].spec[0].template[0].spec[0].container[0].security_context[0].run_as_non_root
     error_message = "The setup container must satisfy the namespace's restricted non-root admission policy."
   }
+  assert {
+    condition     = contains([for source in kubernetes_job_v1.bootstrap[0].spec[0].template[0].spec[0].container[0].env_from : try(source.secret_ref[0].name, "")], "aimo-worker-runtime")
+    error_message = "The explicit setup/import Job must receive the worker's embedding profile and search credentials."
+  }
 }
 
 run "existing_cluster_ingress" {
@@ -106,6 +110,13 @@ run "reject_import_with_serving_app" {
 
 run "separate_apps" {
   command = plan
+  variables {
+    runtime_secrets = {
+      FORWARDED_ALLOW_IPS = "10.23.0.0/24"
+      SEARCH_API_KEY      = "synthetic-search-key"
+      EMBEDDING_BACKEND   = "openrouter"
+    }
+  }
   assert {
     condition     = length(kubernetes_deployment_v1.apps) == 3 && length(kubernetes_service_v1.apps) == 3
     error_message = "Frontend, API and worker must be independent deployments and services."
@@ -117,5 +128,13 @@ run "separate_apps" {
   assert {
     condition     = !contains(keys(kubernetes_secret_v1.worker.data), "APPROVAL_SESSION_SECRET") && !contains(keys(kubernetes_secret_v1.runtime.data), "LLM_API_KEY")
     error_message = "Worker must not receive session signing keys; API must not receive provider keys."
+  }
+  assert {
+    condition     = !contains(keys(kubernetes_secret_v1.runtime.data), "SEARCH_API_KEY") && kubernetes_secret_v1.worker.data.SEARCH_API_KEY == "synthetic-search-key"
+    error_message = "Only the worker/importer may receive the hosted search credential."
+  }
+  assert {
+    condition     = kubernetes_secret_v1.runtime.data.EMBEDDING_BACKEND == "openrouter" && kubernetes_secret_v1.worker.data.EMBEDDING_BACKEND == "openrouter"
+    error_message = "API readiness and worker search must use the same catalog profile."
   }
 }

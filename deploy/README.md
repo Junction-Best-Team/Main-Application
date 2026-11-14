@@ -39,3 +39,5 @@ Terraform ignores release-managed changes to those three worker Secret fields;
 it continues to own database/supplier configuration. Same-image provider changes
 restart only the worker. Builds/PR checks never use these credentials. Image
 rollback does not restore provider configuration; restore that separately if needed.
+
+For hosted search, apply `005_hosted_search.sql`, then follow the [staged import and coordinated API/worker cutover](../docs/hosted-search.md). Only the worker/importer receives `SEARCH_API_KEY`; both API and worker use the matching embedding profile.

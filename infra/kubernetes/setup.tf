@@ -63,6 +63,9 @@ resource "kubernetes_job_v1" "bootstrap" {
             secret_ref { name = kubernetes_secret_v1.runtime.metadata[0].name }
           }
           env_from {
+            secret_ref { name = kubernetes_secret_v1.worker.metadata[0].name }
+          }
+          env_from {
             secret_ref { name = kubernetes_secret_v1.bootstrap[0].metadata[0].name }
           }
           resources {

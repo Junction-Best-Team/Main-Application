@@ -39,7 +39,7 @@ resource "kubernetes_secret_v1" "runtime" {
     name      = "aimo-runtime"
     namespace = kubernetes_namespace_v1.aimo.metadata[0].name
   }
-  data = merge({ for key, value in var.runtime_secrets : key => value if key != "LLM_API_KEY" }, {
+  data = merge({ for key, value in var.runtime_secrets : key => value if !contains(["LLM_API_KEY", "SEARCH_API_KEY"], key) }, {
     DATABASE_URL            = var.database_url
     APPROVAL_SESSION_SECRET = var.session_secret
   })
@@ -79,7 +79,12 @@ resource "kubernetes_secret_v1" "worker" {
     name      = "aimo-worker-runtime"
     namespace = kubernetes_namespace_v1.aimo.metadata[0].name
   }
-  data = merge({ for key, value in var.runtime_secrets : key => value if contains(["LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL", "VALIO_AIMO_API_KEY"], key) }, {
+  data = merge({ for key, value in var.runtime_secrets : key => value if contains([
+    "LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL", "VALIO_AIMO_API_KEY",
+    "SEARCH_API_KEY", "EMBEDDING_BACKEND", "EMBEDDING_MODEL", "EMBEDDING_MODEL_REVISION",
+    "SEARCH_TIMEOUT_SECONDS", "SEARCH_MAX_ATTEMPTS", "EMBEDDING_BATCH_SIZE",
+    "EMBEDDING_WORKERS", "RERANK_ENABLED", "RERANK_CANDIDATES"
+    ], key) }, {
     DATABASE_URL = var.database_url
   })
   # Releases own only these fields; Terraform retains all other Secret settings.

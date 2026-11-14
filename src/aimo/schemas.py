@@ -240,6 +240,7 @@ class SearchResponse(Model):
     generation: str
     model: str
     strategy: Literal["keyword", "semantic", "hybrid"]
+    rerank_status: Literal["disabled", "applied", "unavailable"] = "disabled"
     note: str
 
 
@@ -256,6 +257,9 @@ class ProductResponse(ProductSummary):
     country_of_origin: JsonValue
     deleted: bool
     packaging: list[JsonValue] = Field(description="Original supplier packaging evidence.")
+    brand: str | None = None
+    vendor_name: str | None = None
+    descriptions: list[JsonValue] = Field(default_factory=list)
 
 
 class PolicyResponse(Model):

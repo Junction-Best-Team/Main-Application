@@ -197,40 +197,33 @@ def test_ready_fails_when_the_serving_model_differs_from_the_catalog(monkeypatch
     assert r.status_code == 503 and r.json()["error"]["code"] == "INDEX_NOT_READY"
 
 
-def test_ready_loads_the_real_embedding_model_for_that_backend(monkeypatch):
-    loaded = []
+def test_ready_checks_the_catalog_model_but_does_not_load_the_embedding_model(monkeypatch):
+    """Readiness compares model keys and vector sizes; loading weights is the worker's job."""
     cfg = Settings(_env_file=None, embedding_backend="sentence_transformers")
     monkeypatch.setattr(api, "settings", lambda: cfg)
     monkeypatch.setattr(search, "model_key", lambda: "fixture-hash-v1:384")  # matches the catalog
-    monkeypatch.setattr(search, "model", lambda: loaded.append(True))
+
+    def forbidden():
+        raise AssertionError("the API process must not load the embedding model")
+
+    monkeypatch.setattr(search, "model", forbidden)
     with TestClient(api.create_app(Service())) as http:
         assert http.get("/health/ready").status_code == 200
-    assert loaded == [True]
 
 
-def static_app(monkeypatch, dist):
-    cfg = Settings(_env_file=None, frontend_dist=str(dist))
-    monkeypatch.setattr(api, "settings", lambda: cfg)
-    return TestClient(api.create_app(Service()))
+def test_ready_fails_when_the_vector_size_differs_from_the_catalog(monkeypatch):
+    monkeypatch.setattr(search, "dimensions", lambda: 1536)
+    with TestClient(api.create_app(Service())) as http:
+        r = http.get("/health/ready")
+    assert r.status_code == 503 and r.json()["error"]["code"] == "INDEX_NOT_READY"
 
 
-def test_built_frontend_is_served_for_spa_routes_and_assets(monkeypatch, tmp_path):
-    (tmp_path / "assets").mkdir()
-    (tmp_path / "assets" / "app.js").write_text("console.log('x')")
-    (tmp_path / "index.html").write_text("<!doctype html><title>inbox</title>")
-    with static_app(monkeypatch, tmp_path) as http:
-        for path in ("/", "/login", "/approvals", "/approvals/abc", "/purchases/abc"):
-            r = http.get(path)
-            assert r.status_code == 200 and "<title>inbox</title>" in r.text, path
-            assert r.headers["cache-control"] == "no-cache"
-        asset = http.get("/assets/app.js")
-        assert asset.status_code == 200 and "console.log" in asset.text
-
-
-def test_missing_frontend_build_is_a_clear_503(monkeypatch, tmp_path):
-    with static_app(monkeypatch, tmp_path / "absent") as http:
-        r = http.get("/approvals")
-    assert r.status_code == 503 and "Build the frontend" in r.json()["error"]
+def test_the_api_app_does_not_serve_the_frontend():
+    """The frontend is a separate app since the runtime split; the API only answers /api and health."""
+    with TestClient(api.create_app(Service())) as http:
+        for path in ("/", "/login", "/approvals", "/purchases/abc", "/assets/app.js"):
+            assert http.get(path).status_code == 404, path
+        assert http.get("/health/live").status_code == 200
 
 
 # --- search --------------------------------------------------------------------------------------

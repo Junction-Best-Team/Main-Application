@@ -90,6 +90,15 @@ def normalize(raw: dict, source: str) -> dict:
         "deleted": raw.get("deleted", False),
         "provenance": {"source": source, "product_id": raw["id"]},
         "packaging": s.get("unitConversions", []),
+        "brand": s.get("brand"),
+        "vendor_name": raw.get("vendorName"),
+        # Discovery-only source descriptions; never used to establish dietary safety.
+        "descriptions": [
+            {"language": item["language"], "value": item["value"][:600]}
+            for field in ("materialAdditionalDescriptions", "marketingTexts")
+            for item in (s.get(field) or [])
+            if item.get("language") in ("fi", "en", "sv") and item.get("value")
+        ][:6],
     }
 
 
@@ -175,3 +184,14 @@ def search_text(facts: dict) -> str:
     return " ".join(
         [facts["id"], facts.get("gtin") or "", *facts["names"].values(), *facts["claims"]]
     )
+
+
+def rich_search_text(facts: dict) -> str:
+    """Bounded source-backed discovery text; opaque codes are not translated/guessed."""
+    lines = [search_text(facts)]
+    for field in ("brand", "vendor_name", "sales_unit", "base_unit", "country_of_origin"):
+        if facts.get(field):
+            lines.append(f"{field}: {facts[field]}")
+    for item in facts.get("descriptions", []):
+        lines.append(f"Description ({item['language']}): {item['value']}")
+    return "\n".join(lines)[:8000]
