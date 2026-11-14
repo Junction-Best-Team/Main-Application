@@ -54,7 +54,7 @@ class ConversationCreate(Model):
 
 class ChatMessage(Model):
     id: int
-    role: Literal["user", "assistant"]
+    role: Literal["user", "assistant", "system"]  # system: written by the scheduler, not a person
     text: str
     created_at: datetime
     meal_plan: MealPlan | None = None

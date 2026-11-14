@@ -485,8 +485,141 @@ def disrupt(c, run, auth, code, reason, now):
     start_customer_chat(c, run, auth, code, reason, now)
 
 
+EXPLANATION = {
+    "PRODUCT_UNAVAILABLE": "a product is not available for this delivery",
+    "PRODUCT_WITHDRAWN": "a product has been withdrawn from the catalog",
+    "PRICE_OUTSIDE_RANGE": "a price is outside the range you agreed",
+    "CEILING_EXCEEDED": "the total is above your price ceiling",
+    "RUN_TERMS_CHANGED": "the products or terms of the order changed",
+    "POLICY_NOT_READY": "the purchasing policy does not allow it to be placed without a decision",
+    "RUN_MISSED": "the date passed before the order could be placed",
+    "AUTHORIZATION_WITHDRAWN": "the customer who set up the standing order is no longer active",
+    "SCHEDULER_NOT_CONFIGURED": "the standing-order service is not set up for this account",
+    "UPSTREAM_UNAVAILABLE": "the supplier could not be reached",
+    "UPSTREAM_RATE_LIMITED": "the supplier is limiting requests",
+}
+NOTICE_PREFIX = "Standing-order notice (written by the system, not typed by the customer)\n"
+
+
+def provider_message(role, text):
+    """A stored message as the model provider sees it: the system notice arrives as a user turn."""
+    if role == "system":
+        return {"role": "user", "content": NOTICE_PREFIX + text}
+    return {"role": role, "content": text}
+
+
+def line_summary(auth, reason):
+    seen = {line["product_id"]: line for line in (reason or {}).get("lines", [])}
+    out = []
+    for agreed in auth["agreed_lines"]:
+        line = seen.get(agreed["product_id"], {})
+        status = line.get("status", "not_checked")
+        parts = [
+            f"- {agreed['product_id']} {agreed['name']}, {agreed['amount']} {agreed['unit']}: "
+            f"{status}; agreed unit price {agreed['unit_gross']}"
+        ]
+        if line.get("current_gross"):
+            parts.append(f", now {line['current_gross']}")
+        if line.get("substitute_product_id"):
+            parts.append(f", substitute {line['substitute_product_id']}")
+        out.append("".join(parts))
+    return out
+
+
+def disruption_text(run, auth, code, reason):
+    lines = "\n".join(line_summary(auth, reason))
+    return (
+        f"Your standing order for {run['scheduled_date']} (delivery {run['delivery_date']}) was not "
+        f"placed and the schedule has stopped: {EXPLANATION.get(code, code)} ({code}).\n"
+        f"Lines of the standing order (unit prices are gross, per sales unit):\n{lines}\n"
+        "Instructions for the assistant: every line marked available_same_price or "
+        "price_within_range is a confirmed, valid ingredient; keep it. For each other line find "
+        "alternatives (substitution candidates, product search), explain the price differences "
+        "against the agreed unit price and ask which replacement the customer wants. Then prepare "
+        "the revised order so the customer can confirm it in the product; nothing is ordered "
+        "until the customer confirms. All orders are mocks."
+    )
+
+
+def fallback_text(run, auth, code, reason):
+    lines = "\n".join(line_summary(auth, reason))
+    return (
+        f"The standing order for {run['scheduled_date']} could not be placed and the schedule has "
+        f"stopped: {EXPLANATION.get(code, code)}. I could not look up alternatives just now.\n"
+        f"{lines}\nTell me which replacements you want and I will prepare the order for you to "
+        "confirm. Nothing has been ordered."
+    )
+
+
 def start_customer_chat(c, run, auth, code, reason, now):
-    """The system-authored first message of the revision chat (CNF-028). Added with the chat."""
+    """CNF-028/033: open the revision chat with a system-authored first message. The ordinary
+    worker path then wakes the agent. One conversation per run, however often this is called."""
+    current = c.execute(
+        "SELECT conversation_id FROM scheduled_runs WHERE id=%s", (run["id"],)
+    ).fetchone()
+    if current and current["conversation_id"]:
+        return
+    approver = c.execute(
+        """SELECT id FROM identities WHERE buyer_id=%s AND active AND role='approver'
+        ORDER BY (id = %s) DESC,id LIMIT 1""",
+        (run["buyer_id"], auth["created_by"]),
+    ).fetchone()
+    if not approver:
+        return run_event(c, run["id"], "scheduler", "chat_not_started", {"code": code})
+    key = f"sched-run-{run['id']}"
+    cid, tid = uuid4(), uuid4()
+    c.execute(
+        """INSERT INTO conversations(id,buyer_id,title,create_key,create_hash)
+        VALUES(%s,%s,%s,%s,%s)""",
+        (
+            cid,
+            run["buyer_id"],
+            f"Standing order {run['scheduled_date']}: needs your attention",
+            key,
+            fingerprint({"run": str(run["id"])}),
+        ),
+    )
+    c.execute(
+        """INSERT INTO conversation_turns(id,conversation_id,key,payload_hash,state,lease_until,
+        attempt,requested_by,worker_attempts,submitted_by) VALUES(%s,%s,%s,%s,'queued',%s,%s,%s,0,NULL)""",
+        (tid, cid, key, fingerprint({"run": str(run["id"])}), now, uuid4(), approver["id"]),
+    )
+    c.execute(
+        "INSERT INTO conversation_messages(conversation_id,turn_id,role,text) VALUES(%s,%s,'system',%s)",
+        (cid, tid, disruption_text(run, auth, code, reason)),
+    )
+    c.execute("UPDATE scheduled_runs SET conversation_id=%s WHERE id=%s", (cid, run["id"]))
+    run_event(c, run["id"], "scheduler", "chat_started", {"conversation_id": str(cid)})
+
+
+def settle_failed_system_turn(c, turn_id, conversation_id):
+    """Trap T1: a failed system-authored turn has no customer message to retry, so the chat would
+    refuse new messages for good. Answer it with a deterministic message and close the turn."""
+    system = c.execute(
+        """SELECT 1 FROM conversation_messages WHERE turn_id=%s AND role='system'
+        AND NOT EXISTS (SELECT 1 FROM conversation_messages WHERE turn_id=%s AND role='user')""",
+        (turn_id, turn_id),
+    ).fetchone()
+    if not system:
+        return False
+    row = c.execute(
+        """SELECT r.*,a.agreed_lines FROM scheduled_runs r
+        JOIN scheduled_authorizations a ON a.id=r.authorization_id WHERE r.conversation_id=%s""",
+        (conversation_id,),
+    ).fetchone()
+    text = (
+        fallback_text(row, row, row["reason_code"], row["reason"])
+        if row
+        else "This notice could not be completed. Tell me what you would like to order."
+    )
+    c.execute(
+        """INSERT INTO conversation_messages(conversation_id,turn_id,role,text)
+        VALUES(%s,%s,'assistant',%s) ON CONFLICT(turn_id,role) DO NOTHING""",
+        (conversation_id, turn_id, text),
+    )
+    c.execute("UPDATE conversation_turns SET state='complete' WHERE id=%s", (turn_id,))
+    c.execute("UPDATE conversations SET updated_at=now() WHERE id=%s", (conversation_id,))
+    return True
 
 
 def skip(c, run, code, now, cancel_reason=None):
