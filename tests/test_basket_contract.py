@@ -402,12 +402,6 @@ class ThirdDeposit(FixtureClient):
         return raw
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="BAS-005 gap: deposit pricing divides Decimals (purchases.py), so 1/3 of a unit "
-    "at 0.165 EUR is 0.05 instead of the exact half-up 0.06",
-)
 def test_deposit_charge_for_a_third_of_a_unit_equals_the_exact_rational_result(
     monkeypatch, agent, request_data
 ):
@@ -431,3 +425,54 @@ def test_deposit_charge_for_a_third_of_a_unit_equals_the_exact_rational_result(
     expected = Decimal(math.floor(exact * 100 + Fraction(1, 2))) / 100  # half up
     assert expected == Decimal("0.06")
     assert line["deposit_lines"][0]["gross"] == str(expected), line["deposit_lines"][0]
+
+
+# --- BAS-005 / PRP-006: exact deposit pricing must not disturb exact cases or retries --------
+
+
+def test_exact_deposit_lines_are_identical_to_the_legacy_decimal_calculation(
+    service, agent, request_data
+):
+    """Whole-number ratios give the same net, gross and text as before the rational pricing.
+
+    The text of `priced_sales_quantity` is hashed into the material fingerprint, so an exact
+    case must not change it (a proposal prepared earlier must still match on commit).
+    """
+    lines = [{"product_id": "460123", "amount": "10", "unit": "KI"}]
+    line = prepare(service, agent, request_data, lines)["snapshot"]["lines"][0]
+    deposit = line["deposit_lines"][0]
+    units = Decimal(line["quantity"]["sales_quantity"]) * Decimal("12")
+    legacy_priced = units * Decimal("1") / Decimal("1")  # the old Decimal formula
+    evidence = deposit["evidence"]
+    assert deposit["quantity"] == str(units)
+    assert deposit["priced_sales_quantity"] == str(legacy_priced)
+    assert deposit["net"] == str(money(legacy_priced * Decimal(evidence["net"])))
+    assert deposit["gross"] == str(money(legacy_priced * Decimal(evidence["gross"])))
+
+
+def test_same_prepare_key_returns_the_stored_proposal_without_pricing_again(
+    monkeypatch, agent, request_data
+):
+    """A retry is resolved by key from the saved revision, so a pricing change cannot alter it."""
+    from aimo import purchases
+
+    class SupplierMustNotBeCalled:
+        def lookup(self, *args):
+            raise AssertionError("a completed preparation retry must not call the supplier")
+
+    request_data.update(
+        idempotency_key="deposit-retry-key-0001",
+        requirements={},
+        lines=[{"product_id": "460123", "amount": "10", "unit": "KI"}],
+    )
+    request = PrepareRequest(**request_data)
+    first = Service(FixtureClient()).prepare_order(agent, request)
+
+    def forbidden(value):
+        raise AssertionError("retry recomputed deposit money")
+
+    monkeypatch.setattr(purchases, "exact_money", forbidden)
+    again = Service(SupplierMustNotBeCalled()).prepare_order(agent, request)
+    assert again["proposal_id"] == first["proposal_id"] and again["revision"] == first["revision"]
+    assert again["snapshot"]["gross_total"] == first["snapshot"]["gross_total"]
+    assert again["snapshot"]["deposits_gross"] == first["snapshot"]["deposits_gross"]

@@ -1,5 +1,7 @@
 from datetime import timedelta
 from decimal import ROUND_HALF_UP
+from fractions import Fraction
+from math import floor
 
 from pydantic import ValidationError
 
@@ -7,12 +9,17 @@ from aimo import upstream
 from aimo.catalog import quantity, requirement_reasons
 from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, now
-from aimo.numeric import D
+from aimo.numeric import D, fraction_text
 from aimo.schemas import AgentAuthority, ApproverAuthority, PolicyRules, PurchaseRequest
 
 
 def money(value):
     return value.quantize(D(".01"), rounding=ROUND_HALF_UP)
+
+
+def exact_money(value: Fraction):
+    """Half-up cents of an exact rational amount (no intermediate Decimal rounding)."""
+    return D(floor(value * 100 + Fraction(1, 2))).scaleb(-2)
 
 
 def context(c, identity, lock=False):
@@ -182,7 +189,10 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
                         sales_factor = D(factors[deposit_product["sales_unit"]])
                         if source_factor <= 0 or sales_factor <= 0:
                             raise ValueError()
-                        priced_units = units * source_factor / sales_factor
+                        # Exact rational quantity; Decimal division would round 1/3 at 28 digits.
+                        priced_exact = (
+                            Fraction(units) * Fraction(source_factor) / Fraction(sales_factor)
+                        )
                         if (
                             not units.is_finite()
                             or units <= 0
@@ -193,8 +203,16 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
                         ):
                             raise ValueError()
                         dn, dg = (
-                            money(priced_units * D(de["net"])),
-                            money(priced_units * D(de["gross"])),
+                            exact_money(priced_exact * Fraction(de["net"])),
+                            exact_money(priced_exact * Fraction(de["gross"])),
+                        )
+                        # Keep the legacy text for exact quantities so stored fingerprints of
+                        # earlier proposals stay valid; only non-terminating ratios differ.
+                        legacy = units * source_factor / sales_factor
+                        priced_units = (
+                            legacy
+                            if Fraction(legacy) == priced_exact
+                            else fraction_text(priced_exact)
                         )
                         dep_net += dn
                         dep_gross += dg
