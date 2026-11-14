@@ -1,0 +1,25 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17@sha256:b513c48566e4777cd3370451400000c78eda6a08131d68f4c31d4a76f27bd8fd
+    environment:
+      POSTGRES_USER: aimo
+      POSTGRES_PASSWORD: aimo
+      POSTGRES_DB: aimo
+    ports: ["127.0.0.1:55432:5432"]
+    volumes: ["postgres:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aimo"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  app:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://aimo:aimo@db:5432/aimo
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      db: {condition: service_healthy}
+    profiles: [app]
+volumes:
+  postgres:

@@ -247,3 +247,29 @@ Add new findings below, under your track heading.
 ### Track 3: Mandates, Policy and Approvals
 
 ### Track 4: Interface, Audit and Demo
+
+## MVP implementation verification
+
+### F-MVP-001: Explicit implementation handoff resolves the draft seams
+- Date: 2026-11-14   Track: all   Status: verified
+- Finding: The implementation request explicitly selected PR #2's final brief: PostgreSQL-seeded versioned buyer policy, eight tools, four outcomes, independent React inbox, ordinary audit history, persistent mock orders, and no live deployment. PR #2 was closed without merge; PR #3 is on main. The implementation branch starts at main `76296c1` and preserves the alternate draft and prior findings as reference.
+- Evidence: User-provided implementation handoff; `gh pr view 2 --json state,mergedAt`, `gh pr view 3 --json mergeCommit`; `docs/brief.md` restored from `b0d1ee3` with its implementation-status note updated.
+- Impact: For this implementation, the handoff supersedes conflicting draft recommendations about policy storage, notifier, hash chaining, tool names and whether approval repairs unresolved facts. It does not rewrite or misattribute the historical owner quotes above.
+
+### F-MVP-002: Seven golden cases reverified; lettuce also has variable weight
+- Date: 2026-11-14   Track: 1, 2   Status: verified
+- Finding: The identified 17,546-product snapshot supports 1,000 L → 1,000 ST for `464306`; `465039` has five ST per KI but no structured base volume; ten KI of `460123` entails 120 bottles/deposit units; `460675` rounds 12 KG to 20 KG. `460035` rounds 4 KG to 6 KG **and also has `variableUnit=true`**, so it cannot be committed by the fixed-quantity MVP. The two reported allergen conflicts retain their distinct CONTAINS and MAY_CONTAIN relationships.
+- Evidence: `uv run python scripts/verify_catalog.py /absolute/private/valio_aimo_junction26_product_data.json`, SHA-256 `50651aae31ca842112afdc16fcce92f9858d7f5d05e9928a3748aef16b22ea02`. No raw records exported. Unit/deposit meaning checked against the local supplied schema.
+- Impact: Names are corroboration only, not a missing physical-volume source. Quantity rounding can be explained for variable-weight products, but commercial settlement remains unresolved. Deposit pricing also requires a known conversion from the declared deposit unit to the material's priced sales unit; missing deposit material facts are not assumed.
+
+### F-MVP-003: Full indexing and limited retrieval evaluation completed
+- Date: 2026-11-14   Track: 1   Status: verified
+- Finding: Full ingestion published 17,546 products and pinned multilingual E5 embeddings. An unchanged rerun generated zero new embeddings and reused 17,546. The 30-case curated evaluation found a labeled top-five result (or correct exact-ID exclusion) in 21/30 keyword, 26/30 semantic and 26/30 hybrid cases, with zero supported dietary-filter violations. Hybrid top-one was 21/30. Warm median latency on this machine was about 77 ms; first model load was about 4.5 s.
+- Evidence: `scripts/evaluate_search.py`, `docs/search-evaluation.json`, explicit full-snapshot ingestion/rerun. Six identifier cases, 21 descriptive cases, three exact-ID dietary exclusion cases; this is not a held-out benchmark. HNSW iterative scanning is enabled to preserve recall with generation/dietary filters.
+- Impact: Keep the multilingual model pinned as the MVP candidate, not a proven best model. Broad English milk queries still rank adjacent flavored/sweet categories too highly. Agents must inspect candidates, choose explicit requirements and obtain commercial evidence. Retrieval similarity never proves suitability.
+
+### F-MVP-004: Application checks use fixture commerce, not freshly verified live stock
+- Date: 2026-11-14   Track: all   Status: verified
+- Finding: Autonomous purchase, independent buyer inbox/approval/resume, rejection, denied versus unresolved requests, concurrent decisions/commits, changes, expiry, revocation and retries were exercised against real PostgreSQL and explicitly invented commercial fixtures. The official MCP SDK was exercised over stateless HTTP. Browser tests include two-tab conflict and paused polling. Raw source data and credentials are excluded from Git and images.
+- Evidence: `tests/`, `frontend/e2e/`, `scripts/mcp_smoke.py`, `scripts/demo.py`, and `docs/validation.md`.
+- Impact: There was no configured live Valio API key in the available project environment, so this session does not independently reproduce F-API-002 through F-API-010. `scripts/probe_upstream.py` is the bounded read-only probe for when access is supplied. Upstream lookups are read-only; every receipt is explicitly mock acceptance with no reservation or supplier order.

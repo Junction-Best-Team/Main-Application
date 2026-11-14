@@ -36,3 +36,11 @@ Thumbs.db
 # Personal agent settings; shared instructions and skills stay tracked.
 .claude/settings.local.json
 CLAUDE.local.md
+
+# Restricted source data, model cache, and test artifacts.
+data/
+.cache/
+frontend/test-results/
+frontend/playwright-report/
+*.onnx
+*.safetensors

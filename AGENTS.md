@@ -1,6 +1,6 @@
 # Shared agent instructions
 
-Four-person Junction hackathon repository. Preparation files only; challenge and stack are undecided.
+Four-person Junction hackathon repository. The implemented Valio Aimo MVP is described in `README.md`; its authoritative agreed behavior is in `docs/brief.md`.
 
 - Use `README.md` for the stack, run/build commands, and Git conventions; use `docs/brief.md` for the agreed product behavior and interfaces. TBD means undecided.
 - Keep changes small and focused on the assigned feature. Coordinate shared API, schema, dependency, and deployment changes with teammates.
@@ -21,3 +21,7 @@ The longer-term design (MVP and full product, two-part purchasing contract, norm
 - The live-API probe is not committed or reproduced; `closingTime` behaviour and several variable meanings need a mentor.
 - Reconciling this plan with PR #2 (stack, tool names, decision vocabulary) and confirming cluster access.
 
+
+## Implementation scope precedence
+
+The explicit implementation handoff selects the PR #2 brief for this MVP. PR #2 was closed unmerged; implementation starts on current main and preserves the post-MVP draft as reference. For this implementation use database-seeded versioned policy, eight named tools, four outcomes, independent buyer inbox, ordinary persistent audit and no live deployment. The draft open issues above are resolved for this scope by `docs/brief.md`; do not reintroduce a notifier, policy editor or hash chaining. New verification is appended to `docs/findings.md`.
