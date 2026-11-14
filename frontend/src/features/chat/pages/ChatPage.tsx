@@ -175,11 +175,6 @@ export function ChatPage() {
             onSubmit={send}
           />
         </div>
-
-        <p className="shrink-0 text-label-sm text-secondary">
-          Messages never authorize a purchase. You confirm the exact basket
-          separately.
-        </p>
       </div>
       {/* Overview: right-hand column on desktop, fixed bottom drawer on mobile. */}
       <StagedOverview
