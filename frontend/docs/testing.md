@@ -39,7 +39,8 @@ BASE_URL=http://localhost:5174 npm run test:ui
 Supplying `BASE_URL` disables automatic Vite startup. Never point fixture-based
 checks at a production customer session.
 
-Current UI regressions cover conversation creation/refresh, lost-response retry
+UI regressions cover Home, desktop/mobile navigation, SKU cards, Overview
+confirmation/drawer, blocked states and sparse accepted-order pagination, plus conversation creation/refresh, lost-response retry
 keys, sign-in/deep links, explicit confirmation, revised terms requiring another
 click, historical closed approvals, purchase history/refresh failures and
 server-side unfinished-turn recovery (including an interrupted SSE snapshot),

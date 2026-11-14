@@ -10,11 +10,13 @@ Do not rename applied migrations or delete their ledger rows.
 | 005_hosted_search | Merged catalog embedding upgrade |
 | 005_recipe_planning | PR #38 recipe storage; retained because prior application is unknown |
 | 006–007 | PR #38 recipe/proposal link and refresh retry keys |
-| **008–010** | **Person 3**: `008_orders_immutable` (orders become history: no update or delete), `009_product_withdrawn_since` (when a catalog product became withdrawn; nullable column, partial index, backfill from retained generations), `010_meal_authorization_withdrawals` (append-only record of a withdrawn per-meal authorization). Policy edit history is deferred |
+| **008–010** | **Person 3**: `008_orders_immutable` (orders become history: no update or delete), `009_product_withdrawn_since` (when a catalog product became withdrawn; nullable column, partial index, backfill from retained generations), `010_meal_authorization_withdrawals` (append-only record of a withdrawn per-meal authorization). Policy edit history is added in 014 |
 | **011** | **PR #38** proposal revision ordering |
 | 012_buyer_user_memory | Buyer and user memory (`docs/memory.md`) |
 | 012_catalog_import_profile | Catalog sync: `catalog_generations.import_profile` (additive, nullable) |
 | 013_catalog_sync_withdrawals | Release integration: source snapshot count and product-ID-only cleanup protection view |
+| 014_policy_settings | Buyer policy managers, append-only change attribution and restricted policy save function |
+| 015_recipe_images | Optional chat illustrations, durable generation/upload recovery |
 
 Before allocating another number, check remote branch tips and open PRs and update
 this table with the agreed allocation. Reservations do not create migration files.

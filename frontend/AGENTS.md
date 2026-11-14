@@ -40,9 +40,8 @@ explains extension patterns; `docs/testing.md` describes checks and fixtures.
 
 ## Styling and validation
 
-- Follow `../ui/DESIGN.md` and its desktop/mobile references. Tokens live in
-  `src/styles/theme.css`; old rules live in the components cascade layer in
-  `src/styles/legacy.css`. Import global CSS only through the entry point.
+- Follow `../ui/DESIGN.md` and its desktop/mobile references. Tokens, preflight and base rules live in
+  `src/styles/theme.css`; legacy CSS is removed. Import global CSS only through the entry point.
 - Use `npm run check` and the relevant browser tests from this directory.
   `npm test` starts Vite automatically for credential-free UI fixtures;
   `npm run test:integration` explicitly requires the fixture backend/database.

@@ -1,4 +1,4 @@
-"""/health/ready fails (503) when a database object the code needs from migrations 008 to 013 is
+"""/health/ready fails (503) when a database object the code needs from migrations 008 to 014 is
 missing, and it does so for the restricted runtime role the deployed API really uses.
 
 The first version read schema_migrations, but configure_runtime_role REVOKEs ALL on that table from
@@ -47,6 +47,12 @@ DROPS = [
         "013_catalog_sync_withdrawals.sql",
     ),
     ("DROP VIEW catalog_protected_products", "013_catalog_sync_withdrawals.sql"),
+    ("DROP TABLE policy_managers", "014_policy_settings.sql"),
+    ("DROP TABLE policy_changes", "014_policy_settings.sql"),
+    ("DROP TRIGGER immutable_policy_changes ON policy_changes", "014_policy_settings.sql"),
+    ("DROP FUNCTION save_buyer_policy(text,integer,jsonb)", "014_policy_settings.sql"),
+    ("ALTER TABLE conversation_messages DROP COLUMN image", "015_recipe_images.sql"),
+    ("DROP TABLE recipe_image_jobs", "015_recipe_images.sql"),
 ]
 
 

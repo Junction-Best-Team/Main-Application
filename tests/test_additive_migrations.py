@@ -242,9 +242,18 @@ REVIEWED = {
         "Only fills the NEW column updated_at (guarded so it runs once, inside the block that "
         "adds the column). No existing column of proposals changes."
     ),
+    ("014_policy_settings.sql", "UPDATE", "buyers", "current_policy"): (
+        "Inside the new save_buyer_policy function, not executed by the migration. The owner "
+        "requested browser policy settings: runtime saves append an immutable policy, then "
+        "move only the current-version pointer under the buyer lock and record actor/time. "
+        "No historical policy row is rewritten; test_policy_settings covers the operation."
+    ),
 }
-# INSERT targets that migrations may use (new reference rows only).
-ALLOWED_INSERT_TABLES = {"identities", "internal_agents"}
+# The scanner descends into callable function bodies as well as migration statements.
+ALLOWED_INSERTS = {
+    "003_chat_purchasing.sql": {"identities", "internal_agents"},
+    "014_policy_settings.sql": {"policy_managers", "policies", "policy_changes"},
+}
 
 
 def key(finding):
@@ -348,8 +357,8 @@ def test_no_migration_touches_the_four_immutable_tables_except_to_create_them():
 def test_inserts_only_add_reference_rows_to_known_tables():
     _, inserts = scan_all()
     assert inserts, "003_chat_purchasing.sql inserts the internal agents"
-    assert {table for _, _, table in inserts} <= ALLOWED_INSERT_TABLES, inserts
-    assert {file for file, _, _ in inserts} == {"003_chat_purchasing.sql"}
+    assert all(table in ALLOWED_INSERTS.get(file, set()) for file, _, table in inserts), inserts
+    assert {file for file, _, _ in inserts} == set(ALLOWED_INSERTS)
 
 
 def test_immutable_trigger_definitions_cover_the_four_tables_and_never_replace_the_function():

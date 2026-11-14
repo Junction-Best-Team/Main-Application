@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
-from aimo.agent_provider import ChatProvider, check_deadline, encode
+from aimo.agent_provider import chat_provider, check_deadline, encode
 from aimo.agent_tools import ToolSession
 from aimo.chat_schemas import AgentTurn
 from aimo.config import settings
@@ -105,6 +105,17 @@ only for their owner, but chat history is visible to everyone in the buyer accou
 do not repeat personal memory contents unless needed.
 """
 
+IMAGE_PROMPT = """Use generate_recipe_image for an optional illustration of a discussed dish,
+especially when the customer asks to see it. Keep normal answers in text; do not
+generate images for routine product, policy or purchase-status requests. Send only
+a short dish name and food appearance, never the conversation or personal details.
+One image per customer message. A successful image is attached by the server;
+do not embed Markdown images or invent image URLs. If image generation or hosting
+fails, explain briefly and continue helping in text; do not retry the tool in the
+same turn. Images are AI illustrations, never allergen, ingredient, stock, portion
+or purchasing evidence. They cannot change the recipe or authorize a purchase.
+"""
+
 
 def system_prompt():
     return "\n\n".join(
@@ -114,6 +125,7 @@ def system_prompt():
             RECIPE_PROMPT,
             SAFETY_PROMPT,
             MEMORY_PROMPT,
+            IMAGE_PROMPT,
         ]
     )
 
@@ -252,7 +264,7 @@ def run_turn(
 
     try:
         with httpx.Client(follow_redirects=False) as client:
-            provider = ChatProvider(cfg, client)
+            provider = chat_provider(cfg, client)
             guard = Guardrails(identity["_turn_id"], messages, client, deadline)
             session.guard = guard
             # User -> LLM: enforcement can answer with a server-authored reply and no model call.
@@ -338,7 +350,7 @@ def run_turn(
             return result
     except Problem as exc:
         progress.emit("error", error_code=exc.code)
-        if session.proposal or session.receipt:
+        if session.proposal or session.receipt or session.image:
             result = finish()
             progress.emit("complete", error_code=exc.code)
             return result
@@ -346,7 +358,7 @@ def run_turn(
     except Exception as exc:
         log_failure("agent.turn.unexpected", exc)
         progress.emit("error", error_code="AGENT_FAILED")
-        if session.proposal or session.receipt:
+        if session.proposal or session.receipt or session.image:
             result = finish()
             progress.emit("complete", error_code="AGENT_FAILED")
             return result
