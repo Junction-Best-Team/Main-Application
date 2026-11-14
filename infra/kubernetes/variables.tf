@@ -164,7 +164,7 @@ variable "bootstrap_generation" {
 variable "llm_model" {
   description = "Conversational LLM model; separate from local embedding model."
   type        = string
-  default     = "openai/gpt-4.1-mini"
+  default     = "anthropic/claude-sonnet-5.5"
 }
 
 variable "llm_base_url" {

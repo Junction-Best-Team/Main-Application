@@ -18,7 +18,7 @@ def sync(environ=None):
         print("No LLM credential supplied; preserving existing runtime settings.")
         return False
     base_url = env.get("LLM_BASE_URL", "https://openrouter.ai/api/v1")
-    model = env.get("LLM_MODEL", "openai/gpt-4.1-mini")
+    model = env.get("LLM_MODEL", "anthropic/claude-sonnet-5.5")
     try:
         url = urlsplit(base_url)
         valid_url = url.scheme == "https" and url.hostname and not (

@@ -28,8 +28,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from aimo.config import settings
 from aimo.db import Problem, fingerprint
-
-log = logging.getLogger(__name__)
+from aimo.observability import event, operation
 
 POLICY_VERSION = "guard-2026-11-14.3"
 # Fixed OpenRouter Decisions endpoint and Jev model; the key is the chat LLM_API_KEY.
@@ -589,6 +588,7 @@ class DecisionsClient:
         if not self.key:
             raise GuardError("not_configured")
 
+    @operation("guardrail.request")
     def decide(self, state, questions, deadline):
         if len(encode(state).encode()) > MAX_STATE_BYTES:
             raise GuardError("too_large")
@@ -860,21 +860,20 @@ class Guardrails:
         if result.verdict == Verdict.SKIPPED:
             return result
         level = logging.WARNING if result.verdict == Verdict.UNAVAILABLE else logging.INFO
-        log.log(
-            level,
-            "guardrail turn=%s boundary=%s mode=%s verdict=%s policy=%s model=%s "
-            "latency_ms=%d error=%s failed=%s uncertain=%s probabilities=%s",
-            self.turn_id,
-            result.boundary,
-            result.mode,
-            result.verdict.value,
-            result.policy_version,
-            result.model,
-            result.latency_ms,
-            result.error,
-            ",".join(result.failed) or "-",
-            ",".join(result.uncertain) or "-",
-            encode(result.probabilities),
+        event(
+            "guardrail.decision",
+            level=level,
+            turn_id=self.turn_id,
+            boundary=result.boundary,
+            mode=result.mode,
+            verdict=result.verdict.value,
+            policy=result.policy_version,
+            model=result.model,
+            duration_ms=result.latency_ms,
+            error_code=result.error,
+            failed=list(result.failed),
+            uncertain=list(result.uncertain),
+            probabilities=result.probabilities,
         )
         return result
 

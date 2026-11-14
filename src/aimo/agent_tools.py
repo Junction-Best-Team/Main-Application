@@ -13,6 +13,7 @@ from aimo import memory
 from aimo.chat_schemas import AgentTurn, MealPlan
 from aimo.db import Problem, fingerprint
 from aimo.memory_schemas import MemoryChange, MemoryToolSearch
+from aimo.observability import event, operation
 from aimo.recipe_batch import MatchIngredients
 from aimo.recipe_schemas import (
     MatchIngredient,
@@ -483,6 +484,7 @@ class ToolSession:
                 502,
             ) from None
 
+    @operation("tool.call")
     def invoke(self, name, arguments):
         tool = self.registry.get(name)
         if tool is None:
@@ -494,9 +496,25 @@ class ToolSession:
             )
         try:
             request = tool.request.model_validate_json(arguments)
-        except ValidationError as error:
-            raise Problem("INVALID_TOOL_ARGUMENTS", invalid_arguments_message(error), 422) from None
+        except ValidationError as exc:
+            event(
+                "tool.arguments_invalid",
+                tool=name,
+                error_types=dict(Counter(e["type"] for e in exc.errors())),
+                invalid_fields=sorted(
+                    {
+                        str(e["loc"][0])
+                        if e["loc"] and e["loc"][0] in tool.request.model_fields
+                        else "<unknown>"
+                        for e in exc.errors()
+                    }
+                ),
+            )
+            raise Problem("INVALID_TOOL_ARGUMENTS", invalid_arguments_message(exc), 422) from None
         if contains_nul(request.model_dump()):
+            event(
+                "tool.arguments_invalid", tool=name, error_types={"nul_byte": 1}, invalid_fields=[]
+            )
             raise Problem(
                 "INVALID_TOOL_ARGUMENTS",
                 "Remove the NUL (\\u0000) control character from the arguments and call again.",

@@ -392,6 +392,46 @@
         }
       }
     },
+    "/api/purchases/{proposal_id}/receipt": {
+      "get": {
+        "summary": "Purchase Receipt",
+        "operationId": "purchase_receipt_api_purchases__proposal_id__receipt_get",
+        "parameters": [
+          {
+            "name": "proposal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Proposal Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/memories": {
       "get": {
         "summary": "Memory List",
@@ -2063,6 +2103,11 @@
             "type": "integer",
             "title": "Revision"
           },
+          "fingerprint": {
+            "type": "string",
+            "title": "Fingerprint",
+            "description": "Fingerprint of this revision's material terms (request, lines, prices, deposits, product facts, currency, mode, charges, policy version and blockers). A customer confirmation is bound to this revision and fingerprint; it excludes lookup time and stock that stays sufficient."
+          },
           "current_revision": {
             "type": "integer",
             "title": "Current Revision"
@@ -2194,6 +2239,7 @@
         "required": [
           "proposal_id",
           "revision",
+          "fingerprint",
           "current_revision",
           "committed_revision",
           "current_proposal_url",
@@ -2602,6 +2648,11 @@
             "type": "integer",
             "title": "Revision"
           },
+          "fingerprint": {
+            "type": "string",
+            "title": "Fingerprint",
+            "description": "Fingerprint of this revision's material terms (request, lines, prices, deposits, product facts, currency, mode, charges, policy version and blockers). A customer confirmation is bound to this revision and fingerprint; it excludes lookup time and stock that stays sufficient."
+          },
           "current_revision": {
             "type": "integer",
             "title": "Current Revision"
@@ -2738,6 +2789,7 @@
         "required": [
           "proposal_id",
           "revision",
+          "fingerprint",
           "current_revision",
           "committed_revision",
           "current_proposal_url",

@@ -191,6 +191,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/purchases/{proposal_id}/receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Purchase Receipt */
+        get: operations["purchase_receipt_api_purchases__proposal_id__receipt_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/memories": {
         parameters: {
             query?: never;
@@ -742,6 +759,11 @@ export interface components {
             proposal_id: string;
             /** Revision */
             revision: number;
+            /**
+             * Fingerprint
+             * @description Fingerprint of this revision's material terms (request, lines, prices, deposits, product facts, currency, mode, charges, policy version and blockers). A customer confirmation is bound to this revision and fingerprint; it excludes lookup time and stock that stays sufficient.
+             */
+            fingerprint: string;
             /** Current Revision */
             current_revision: number;
             /** Committed Revision */
@@ -924,6 +946,11 @@ export interface components {
             proposal_id: string;
             /** Revision */
             revision: number;
+            /**
+             * Fingerprint
+             * @description Fingerprint of this revision's material terms (request, lines, prices, deposits, product facts, currency, mode, charges, policy version and blockers). A customer confirmation is bound to this revision and fingerprint; it excludes lookup time and stock that stays sufficient.
+             */
+            fingerprint: string;
             /** Current Revision */
             current_revision: number;
             /** Committed Revision */
@@ -1341,6 +1368,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CommitResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    purchase_receipt_api_purchases__proposal_id__receipt_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderResponse"];
                 };
             };
             /** @description Validation Error */

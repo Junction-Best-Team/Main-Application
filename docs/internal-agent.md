@@ -21,8 +21,10 @@ earlier customer constraints.
   associations. Person 3 owns deterministic domain arithmetic and authorization.
 
 Use existing server settings `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`,
-`LLM_TIMEOUT_SECONDS`, `LLM_MAX_TOOL_ROUNDS`. No new dependencies or settings;
-embeddings stay independent. Missing credentials, configuration errors and invalid
+`LLM_TIMEOUT_SECONDS`, `LLM_MAX_TOOL_ROUNDS`, `LLM_REASONING_EFFORT` and
+`LLM_MAX_COMPLETION_TOKENS`. The main model defaults to Sonnet 5.5 through
+OpenRouter; [operational logging](logging.md) describes compatibility, overrides
+and diagnostic events. Embeddings stay independent. Missing credentials, configuration errors and invalid
 provider responses produce safe errors. Protocol references:
 [function calling](https://developers.openai.com/api/docs/guides/function-calling),
 [Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create).
