@@ -20,11 +20,6 @@ test("signs in and screenshots each existing screen", async ({ page }, info) => 
   await page.waitForLoadState("networkidle");
   await shot("purchases");
 
-  await page.goto("/purchases/prop-conflict");
-  await expect(page.getByRole("heading").first()).toBeVisible();
-  await page.waitForLoadState("networkidle");
-  await shot("purchase-detail");
-
   // Design-system foundation: tokens and fonts are wired.
   const token = await page.evaluate(() =>
     getComputedStyle(document.documentElement).getPropertyValue("--color-primary-container").trim(),

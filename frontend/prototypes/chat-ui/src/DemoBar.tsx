@@ -7,6 +7,7 @@ const SCENARIOS: { id: Scenario; label: string }[] = [
   { id: "reconnecting", label: "SSE reconnecting" },
   { id: "send-error", label: "Next send fails (then retries)" },
   { id: "empty-purchases", label: "Empty purchase list" },
+  { id: "many-orders", label: "Many past orders (paged)" },
   { id: "slow-network", label: "Slow network" },
 ];
 
