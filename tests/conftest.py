@@ -19,7 +19,6 @@ os.environ["PUBLIC_BASE_URL"] = "http://testserver"
 os.environ["DEMO_BUYER_PASSWORD"] = "test-buyer-password-only"
 # Tests never reach the semantic classifier; guardrail tests inject explicit fakes.
 os.environ["GUARDRAIL_MODE"] = "off"
-os.environ["GUARDRAIL_API_KEY"] = ""
 
 from aimo.cli import migrate, seed
 from aimo.config import settings

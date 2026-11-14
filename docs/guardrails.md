@@ -12,7 +12,7 @@ Code: `src/aimo/guardrails.py` (policy `guard-2026-11-14.2`), wired in
 
 | Boundary | Control |
 | --- | --- |
-| User → LLM | Session cookie, exact Origin and CSRF on writes, buyer-scoped conversations; 4,000-character messages; one unfinished turn per conversation; **new:** at most `CHAT_MAX_ACTIVE_TURNS` queued/running turns per buyer and `CHAT_MAX_MESSAGES_PER_HOUR` new messages per buyer (HTTP 429). The model only ever sees user/assistant roles; identity comes from the server. |
+| User → LLM | Session cookie, exact Origin and CSRF on writes, buyer-scoped conversations; 4,000-character messages; one unfinished turn per conversation; **new:** at most 3 queued/running turns and 60 new messages per hour per buyer (HTTP 429; constants in `conversations.py`). The model only ever sees user/assistant roles; identity comes from the server. |
 | LLM → tool | Eight typed tools, no approve/confirm/commit/policy tool; `extra="forbid"` arguments (identity, authority or retry keys are rejected); products must be loaded with `get_product`; the basket must equal the published plan; server-generated idempotency key; Service enforces buyer scope, policy, commercial evidence and state transitions. |
 | Tool → LLM | **New:** tool results are reduced to what the assistant needs. Proposals lose buyer/agent IDs, audit history and raw evidence; price lookups lose raw supplier payloads (normalised values, mode and timestamps stay); free text is length-bounded. External records are wrapped in `{"result": …, "data_handling": …}` and the prompt says that text is data. The saved purchase history added to each new turn uses the same projection **without product names**, because it is not screened in that turn; `get_proposal` returns screened names when needed. |
 | LLM → user | Proposal links and status notices come from saved, buyer-scoped records (`ToolSession.result`); a runner-supplied proposal ID is re-read as the buyer before it is linked. Plain-text rendering in React (no raw HTML). |
@@ -34,10 +34,10 @@ redefine the guard policy. A response from a different model is rejected.
 
 Read-only tools other than catalog text are not sent to Jev. A typical turn makes
 2 calls (input and output); a basket turn adds about one per batch of tool calls
-plus one for preparation. Bounds: `GUARDRAIL_TIMEOUT_SECONDS` per call, one
-transient retry (none after 429 or `Retry-After`), `GUARDRAIL_MAX_CALLS_PER_TURN`,
-28 KB of state per request (below TypeSafe's long-context mode), and the turn's
-own deadline.
+plus one for preparation. Bounds: 5 seconds per call, one transient retry (none
+after 429 or `Retry-After`), 16 calls per turn, 28 KB of state per request (below
+TypeSafe's long-context mode), and the turn's own deadline. The endpoint, model
+(`typesafe/jev-1.14`) and bounds are constants in `guardrails.py`.
 
 Jev cannot check arithmetic or prove an allergen claim. It only flags narrative
 that the supplied records do not support.
@@ -46,19 +46,21 @@ that the supplied records do not support.
 
 | `GUARDRAIL_MODE` | Behaviour |
 | --- | --- |
-| `off` (code default) | No classifier calls. Deterministic controls only. |
+| `enforce` (default) | A failed, uncertain, malformed or unavailable required check never becomes "allowed". New baskets are blocked; reading purchases and the confirmation API keep working. |
 | `shadow` | Every check runs and is logged; nothing is blocked or withheld. Use it to collect labelled evidence. It provides **no** protection. |
-| `enforce` | A failed, uncertain, malformed or unavailable required check never becomes "allowed". New baskets are blocked; reading purchases and the confirmation API keep working. |
+| `off` | No classifier calls. Deterministic controls only. |
 
-`GUARDRAIL_API_KEY` is used if set. Otherwise `LLM_API_KEY` is reused only when
-both `LLM_BASE_URL` and `GUARDRAIL_BASE_URL` are on `openrouter.ai`. Without a
-key, every check is `unavailable` and no request is sent. Shadow and enforce send
+`GUARDRAIL_MODE` is the only guardrail setting. Jev uses the chat model's
+`LLM_API_KEY`, and only while `LLM_BASE_URL` is on `openrouter.ai`; the key is never
+sent anywhere else. Without that key every check is `unavailable` and no request is
+sent, so in `enforce` mode chat turns fail with a retryable `GUARDRAIL_UNAVAILABLE`.
+Set `GUARDRAIL_MODE=off` for a local chat model that is not on OpenRouter. Shadow and enforce send
 customer messages, catalog text and the assistant's reply to TypeSafe through
 OpenRouter. No buyer IDs, cookies, CSRF tokens or credentials are sent.
 
 Thresholds are on the risk probability: ≤ 0.2 passes, ≥ 0.8 fails, and anything
-between is uncertain. They are **provisional**: re-select them from the labelled
-live evaluation before enforcing.
+between is uncertain. They are **provisional** and enforced by default: re-select
+them from the labelled live evaluation, and switch to `shadow` if false blocks appear.
 
 Each check logs one line on `aimo.guardrails`: turn ID, boundary, mode, verdict,
 policy version, served model, latency, error category, failed/uncertain question
@@ -79,7 +81,7 @@ names and probabilities. Conversation text and keys are never logged.
   missed attacks, false blocks, uncertain cases and latency. It is a small
   synthetic sample, not a guarantee.
 
-Not covered: jailbreak-proof detection; semantic screening of imported recipe text from the recipe tools (`RECIPE_PLANNING_ENABLED`; results are wrapped as data, and the displayed meal-plan fields are reviewed at output, but summaries, instructions and notes are not screened before the model reads them); recipe arithmetic and deterministic
+Not covered: jailbreak-proof detection; semantic screening of imported recipe text from the recipe tools (results are wrapped as data, and the displayed meal-plan fields are reviewed at output, but summaries, instructions and notes are not screened before the model reads them); recipe arithmetic and deterministic
 per-portion bounds (see `internal-agent.md`); trusted constraint provenance
 (budgets and diets are inferred from customer text, so the earliest constraints
 can fall outside a long prepare-check window); and non-English/Finnish coverage

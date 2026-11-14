@@ -9,7 +9,6 @@ from uuid import UUID
 from pydantic import Field, TypeAdapter, ValidationError
 
 from aimo.chat_schemas import AgentTurn, MealPlan
-from aimo.config import settings
 from aimo.db import Problem, fingerprint
 from aimo.recipe_schemas import (
     MatchIngredient,
@@ -117,41 +116,39 @@ class ToolSession:
             "get_order": ToolSpec(OrderRequest, "Read an existing saved mock receipt.", self.order),
         }
 
-        self.recipe_mode = settings().recipe_planning_enabled
-        if self.recipe_mode:
-            self.registry.update(
-                {
-                    "search_recipes": ToolSpec(
-                        RecipeSearch,
-                        "Discover recipe ideas; not dietary or purchasing proof.",
-                        lambda r: self.checked(
-                            RecipeSearchResult, self.service.search_recipes(self.identity, r)
-                        ),
+        self.registry.update(
+            {
+                "search_recipes": ToolSpec(
+                    RecipeSearch,
+                    "Discover recipe ideas; not dietary or purchasing proof.",
+                    lambda r: self.checked(
+                        RecipeSearchResult, self.service.search_recipes(self.identity, r)
                     ),
-                    "get_recipe": ToolSpec(
-                        RecipeReference,
-                        "Read the exact recipe basis and instructions.",
-                        lambda r: self.checked(
-                            RecipeDetail, self.service.get_recipe(self.identity, r)
-                        ),
+                ),
+                "get_recipe": ToolSpec(
+                    RecipeReference,
+                    "Read the exact recipe basis and instructions.",
+                    lambda r: self.checked(
+                        RecipeDetail, self.service.get_recipe(self.identity, r)
                     ),
-                    "scale_recipe": ToolSpec(
-                        ScaleRecipe,
-                        "Save every ingredient scaled by the server. No model arithmetic.",
-                        self.scale_recipe,
-                    ),
-                    "get_recipe_plan": ToolSpec(
-                        PlanReference,
-                        "Reload a saved scoped recipe plan and its current revision.",
-                        self.get_recipe_plan,
-                    ),
-                    "match_ingredient": ToolSpec(
-                        MatchIngredient,
-                        "Check a catalog product against one required ingredient; retain unresolved items.",
-                        self.match_ingredient,
-                    ),
-                }
-            )
+                ),
+                "scale_recipe": ToolSpec(
+                    ScaleRecipe,
+                    "Save every ingredient scaled by the server. No model arithmetic.",
+                    self.scale_recipe,
+                ),
+                "get_recipe_plan": ToolSpec(
+                    PlanReference,
+                    "Reload a saved scoped recipe plan and its current revision.",
+                    self.get_recipe_plan,
+                ),
+                "match_ingredient": ToolSpec(
+                    MatchIngredient,
+                    "Check a catalog product against one required ingredient; retain unresolved items.",
+                    self.match_ingredient,
+                ),
+            }
+        )
 
     def save_recipe_result(self, value, *, read_only=False):
         if self.prepared_digest is not None and not read_only:

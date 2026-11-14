@@ -379,7 +379,6 @@ def test_unreviewed_form_and_count_block_preparation(tmp_path, actor, service, m
 def test_tools_use_persisted_plan_and_cannot_publish_edited_totals(
     tmp_path, actor, service, meal_products, monkeypatch
 ):
-    monkeypatch.setattr(settings(), "recipe_planning_enabled", True)
     try:
         *_, versions = import_fixture(tmp_path)
         session = ToolSession(actor, service)
@@ -756,10 +755,9 @@ def test_recipe_proposal_and_plan_lock_roll_back_together(
     assert service.prepare_order(actor, request)["proposal_id"]
 
 
-def test_recipe_flag_keeps_direct_product_purchases_available(
+def test_recipe_tools_keep_direct_product_purchases_available(
     actor, service, request_data, monkeypatch
 ):
-    monkeypatch.setattr(settings(), "recipe_planning_enabled", True)
     session = ToolSession(actor, service)
     session.invoke("get_product", json.dumps({"product_id": "464306"}))
     session.invoke(
@@ -1006,7 +1004,6 @@ def test_concurrent_recipe_refreshes_cannot_both_append_a_revision(
 def test_new_turn_free_form_basket_is_labeled_without_recipe_completeness_claim(
     tmp_path, actor, service, meal_products, monkeypatch
 ):
-    monkeypatch.setattr(settings(), "recipe_planning_enabled", True)
     *_, versions = import_fixture(tmp_path, review=False)
     unresolved = scale_recipe(actor, ref(versions))
     assert all(i["status"] == "unresolved" for i in unresolved["ingredients"])
@@ -1129,13 +1126,7 @@ def test_recipe_creation_requires_turn_known_version_and_supported_size(tmp_path
     assert error.value.code == "RECIPE_TOO_LARGE"
 
 
-def test_disabled_recipe_service_and_partial_reference_fail_closed(
-    actor, service, request_data, monkeypatch
-):
-    monkeypatch.setattr(settings(), "recipe_planning_enabled", False)
-    with pytest.raises(Problem) as error:
-        service.search_recipes(actor, RecipeSearch(query="carbonara"))
-    assert error.value.code == "RECIPES_DISABLED"
+def test_partial_recipe_reference_fails_closed(actor, service, request_data):
     with pytest.raises(Problem) as error:
         service.prepare_order(actor, PrepareRequest(**request_data, recipe_plan_revision=1))
     assert error.value.code == "RECIPE_PLAN_REQUIRED"
