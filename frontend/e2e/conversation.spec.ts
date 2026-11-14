@@ -39,9 +39,7 @@ async function mockBuyerSession(page: Page) {
     route.fulfill({ status: 200, json: session }),
   );
   await page.route("**/api/login", (route) => route.fulfill({ json: session }));
-  await page.route("**/api/logout", (route) =>
-    route.fulfill({ status: 204 }),
-  );
+  await page.route("**/api/logout", (route) => route.fulfill({ status: 204 }));
   await page.route("**/api/purchases?*", (route) =>
     route.fulfill({ json: { items: [], next_offset: null } }),
   );
@@ -113,7 +111,9 @@ test("buyer can list, create, and open conversations from Home and Request", asy
     async (route) => {
       const body = route.request().postDataJSON();
       messageBodies.push(body);
-      expect(route.request().headers()["x-csrf-token"]).toBe(session.csrf_token);
+      expect(route.request().headers()["x-csrf-token"]).toBe(
+        session.csrf_token,
+      );
       created.messages = [
         {
           id: 1,
@@ -132,7 +132,7 @@ test("buyer can list, create, and open conversations from Home and Request", asy
 
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Welcome, demo-hotel" }),
+    page.getByRole("heading", { name: "What are we cooking?" }),
   ).toBeVisible();
   const nav = page.getByRole("complementary", { name: "Sidebar" });
   await expect(nav.getByRole("list", { name: "Conversations" })).toBeVisible();
@@ -142,9 +142,7 @@ test("buyer can list, create, and open conversations from Home and Request", asy
 
   await nav.getByRole("link", { name: "Lunch for Monday" }).click();
   await expect(page).toHaveURL(new RegExp(`/conversations/${otherId}$`));
-  await expect(
-    page.getByText("What are you cooking on Monday?"),
-  ).toBeVisible();
+  await expect(page.getByText("What are you cooking on Monday?")).toBeVisible();
 
   await page.goto("/request");
   await expect(page).toHaveURL(/\/request$/);
@@ -155,9 +153,7 @@ test("buyer can list, create, and open conversations from Home and Request", asy
     .getByLabel("Your meal or purchasing request")
     .fill("Carbonara for 200 portions");
   await page.getByRole("button", { name: "Send Order Request" }).click();
-  await expect(page).toHaveURL(
-    new RegExp(`/conversations/${conversationId}$`),
-  );
+  await expect(page).toHaveURL(new RegExp(`/conversations/${conversationId}$`));
   await expect(
     page
       .getByLabel("Conversation messages")
@@ -234,9 +230,7 @@ test("message send includes CSRF and an idempotency key", async ({ page }) => {
     .getByLabel("Continue the conversation")
     .fill("Need eggs and pancetta");
   await page.getByRole("button", { name: "Send Order Request" }).click();
-  await expect(
-    page.getByText("Noted. Any dietary constraints?"),
-  ).toBeVisible();
+  await expect(page.getByText("Noted. Any dietary constraints?")).toBeVisible();
   expect(headersSeen).toEqual([session.csrf_token]);
   expect(keys).toHaveLength(1);
   expect(keys[0].length).toBeGreaterThanOrEqual(8);
@@ -353,7 +347,10 @@ test("busy affordance shows while a turn is in flight", async ({ page }) => {
     }),
   ).toBeVisible();
   await expect(page.getByLabel("Continue the conversation")).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Working…" })).toBeDisabled();
+  // The composer's buttons are disabled while a turn runs (the send button only shows with text).
+  await expect(
+    page.getByRole("button", { name: "Attach file" }),
+  ).toBeDisabled();
 });
 
 test("API failure shows error chrome", async ({ page }) => {

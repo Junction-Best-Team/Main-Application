@@ -15,7 +15,6 @@ type NavItem = {
   isActive: (path: string) => boolean;
 };
 
-// Schedule is intentionally absent until its screens exist (spec #81).
 const NAV_ITEMS: NavItem[] = [
   { label: "New request", to: "/", icon: "add", isActive: (p) => p === "/" },
   {
@@ -23,6 +22,12 @@ const NAV_ITEMS: NavItem[] = [
     to: "/request",
     icon: "chat_bubble",
     isActive: (p) => p === "/request" || p.startsWith("/conversations/"),
+  },
+  {
+    label: "Schedule",
+    to: "/schedules",
+    icon: "calendar_month",
+    isActive: (p) => p.startsWith("/schedules"),
   },
   {
     label: "Orders",

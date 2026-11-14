@@ -6,6 +6,7 @@ import { RecipeIllustration } from "./RecipeIllustration";
 import { SkuCards } from "./SkuCards";
 import { MessageMarkdown } from "./MessageMarkdown";
 import { AttachmentCards } from "./AttachmentCards";
+import { SystemMessage } from "./SystemMessage";
 export function ConversationTranscript({
   conversation,
   busy,
@@ -22,7 +23,9 @@ export function ConversationTranscript({
       className="flex flex-col gap-space-lg"
     >
       {conversation?.messages.map((message) =>
-        message.role === "user" ? (
+        message.role === "system" ? (
+          <SystemMessage key={message.id} message={message} />
+        ) : message.role === "user" ? (
           <article
             key={message.id}
             className="ml-auto flex max-w-2xl flex-row-reverse items-start gap-space-sm"

@@ -1,7 +1,6 @@
 import { ChatComposer } from "../../chat/components/ChatComposer";
 import { useChat } from "../../chat/hooks/useChat";
-import { DESIGN_PLACEHOLDERS } from "../../../shared/lib/designPlaceholders";
-import { InertButton } from "../../../shared/components/DesignPrimitives";
+import { StandingOrdersCard } from "../components/StandingOrdersCard";
 import { ErrorMessage } from "../../../shared/components/ErrorMessage";
 
 export function HomePage() {
@@ -25,24 +24,7 @@ export function HomePage() {
           onSubmit={send}
         />
         <ErrorMessage message={error} />
-        <section
-          className="home-schedule"
-          aria-labelledby="home-schedule"
-          aria-describedby="home-demo-note"
-        >
-          <div className="home-schedule-heading">
-            <h2 id="home-schedule">Scheduled deliveries</h2>
-            <InertButton label="View all schedules">View all</InertButton>
-          </div>
-          <ul>
-            {DESIGN_PLACEHOLDERS.home.schedules.map((schedule) => (
-              <li key={schedule.title}>
-                <time dateTime={schedule.date}>{schedule.next}</time>
-                <span>{schedule.title}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <StandingOrdersCard />
       </div>
       <p id="home-demo-note" className="home-demo-note">
         Demo schedule · No supplier orders are placed.

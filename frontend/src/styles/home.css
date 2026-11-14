@@ -108,7 +108,8 @@
   font-weight: 600;
 }
 
-.home-schedule-heading button {
+.home-schedule-heading button,
+.home-schedule-heading a {
   color: var(--color-secondary);
 }
 
@@ -132,7 +133,8 @@
   font-size: 0.875rem;
 }
 
-.home-schedule li span {
+.home-schedule li span,
+.home-schedule li a {
   font-weight: 600;
 }
 
