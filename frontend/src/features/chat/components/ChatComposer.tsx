@@ -44,7 +44,7 @@ export function ChatComposer({
         maxLength={4000}
         placeholder={MOCK.request.composerPlaceholder}
         disabled={disabled}
-        className="h-11 min-w-0 flex-1 rounded-lg bg-transparent p-space-sm font-body text-body-md text-on-surface placeholder:text-outline focus-visible:outline-2 focus-visible:outline-primary-container"
+        className="h-11 min-w-0 flex-1 rounded-lg bg-transparent p-space-sm font-body text-body-md text-on-surface placeholder:text-outline focus:outline-none focus-visible:outline-none"
       />
       {/* One action at a time: send while there is a draft, otherwise voice mode. */}
       {hasDraft ? (
@@ -53,7 +53,7 @@ export function ChatComposer({
           aria-label={sendLabel}
           title={sendLabel}
           disabled={disabled}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary-container text-on-primary disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Icon name="arrow_forward" className="text-[22px]" />
         </button>

@@ -449,6 +449,7 @@ for (const [width, height] of [
     await composer.fill("Please continue");
     await expect(voice).toHaveCount(0);
     await expectBesideComposer("Send Order Request");
+    await expect(send).toHaveCSS("border-radius", "9999px");
     await send.click();
     await expect(
       page.getByText("Latest reply", { exact: true }),
