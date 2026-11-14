@@ -15,6 +15,11 @@ class Service:
     def get_product(self, identity, product_id):
         return search.get_product(identity, product_id)
 
+    def list_substitution_candidates(self, identity, product_id, delivery_date=None):
+        from aimo import substitutions
+
+        return substitutions.list_substitution_candidates(identity, product_id, delivery_date)
+
     def get_purchase_policy(self, identity):
         with connection() as c:
             buyer, policy, actor, _ = context(c, identity)
