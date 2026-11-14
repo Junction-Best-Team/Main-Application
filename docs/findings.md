@@ -94,6 +94,26 @@ Owner decisions use `D-<nnn>` and quote the owner's words verbatim.
 - Decision: "Add the no api key as a fall back, but add notes that it does exist and members of the team will have it. Also lets note in the future build that the api key method needs to be added, either via a UI that the distributor can add, or it is hard coded, but we need to resolve this."
 - Impact: `UPSTREAM_MODE=auto` (default) uses the live API when `VALIO_AIMO_API_KEY` is set and labelled fixtures otherwise. The key's provisioning method for the full product is an open decision (admin UI versus deployment configuration), recorded in `docs/brief.md` section 12.
 
+### D-008: Missing scope always blocks (POL-004 / POL-006)
+- Date: 2026-11-14
+- "Missing scope always blocks; 'allowed' counts as a permitted exception (Recommended)"
+
+### D-009: Remove the agent's spend authority (Q-35)
+- Date: 2026-11-14
+- "Remove the agent's authority and the autonomous limit; keep each approver's maximum amount and the request's hard budget" and "Remove the spend authority".
+
+### D-010: Guard inside evaluate_purchase (Q-30)
+- Date: 2026-11-14
+- "Add a guard inside evaluate_purchase"
+
+### D-011: Approver check unconditional (Q-37)
+- Date: 2026-11-14
+- "Make the check unconditional"
+
+### D-012: Empty approved list means configured (Q-16)
+- Date: 2026-11-14
+- An empty approved-product list means "configured: every product is outside scope" (relayed by the coordinator; the owner's exact words are in `Assistant/projects/junction/design/2026-11-14-person3-review-log.md`).
+
 ## Data (static files in `data/`)
 
 ### F-DATA-001: Catalog size
@@ -445,3 +465,281 @@ Add new findings below, under your track heading.
 - Finding: Recipes are a standard app feature, so `RECIPE_PLANNING_ENABLED` (settings, Compose, `.env.example`, Terraform variable/ConfigMap and the session response field) is removed. The agent always registers the recipe tools and uses the recipe prompt; chat and purchase review always show saved-recipe versus free-form labels. Without an import or with a different embedding profile, the tools still report `RECIPES_NOT_READY` or `RECIPE_MODEL_MISMATCH`.
 - Evidence: Ruff, 548 backend tests, all 10 API sweep checks, frontend types/build, Terraform validate/fmt and the three recipe browser checks pass. One backend test (`test_another_authorized_customer_can_resume_after_original_authority_revoked`) and one browser test (unfinished server turns) fail identically on unmodified develop locally; CI on develop passes the backend test.
 - Impact: Supersedes the feature-flag gating in F-RECIPE-002 and F-RECIPE-004. Purchasing through a recipe still requires reviewed forms/quantities and product evidence.
+
+## Catalog and supplier evidence (person 3)
+
+### F-CAT-001: A product missing from a newer snapshot used to vanish
+- Date: 2026-11-14   Track: 3   Status: verified (fixed by DIS-008)
+- Finding: `ingest_file` published only the products of the new snapshot, so a product the supplier dropped disappeared: `get_product` returned `NOT_FOUND` and `prepare_order` reported `PRODUCT_UNKNOWN`, not a withdrawal. Only products the source flagged `deleted: true` were kept as withdrawn. The real snapshot (17,546 products) has none flagged. Now `ingest_file` carries absent products into the new generation with `deleted: true` and the first withdrawal date (`products.withdrawn_since`, migration `009_product_withdrawn_since.sql`).
+- Evidence: `tests/test_withdrawn_absent.py` (7 passed; red first, all failed with NOT_FOUND / PRODUCT_UNKNOWN), `src/aimo/ingest.py` `_absent_as_withdrawn`.
+- Impact: Exact lookup of a dropped product returns it as withdrawn; purchases are denied with `PRODUCT_DELETED`. `ingest_file(..., carry_withdrawn=False)` opts out (also turns off the DIS-012 trim); existing exact-count ingest tests use it.
+
+### F-CAT-002: Rerunning an unchanged ingest could discard the only different rollback catalog
+- Date: 2026-11-14   Track: 3   Status: verified (fixed by Option B)
+- Finding: With `CATALOG_GENERATIONS_TO_KEEP=2`, each ingest keeps the new generation and the previous one. Rerunning an unchanged snapshot made the previous (identical) generation the retained rollback target and pruned the last different catalog; `aimo activate-catalog` on it then failed with "has been pruned". `_activate` now skips older generations with the same `source_hash` and `model_key`.
+- Evidence: `tests/test_ingest_rerun.py::test_rerunning_the_same_snapshot_keeps_the_last_different_catalog_for_rollback` (was a strict xfail failing with the ValueError at `ingest.py`, now passes).
+- Impact: An operator can rerun an ingest without losing the rollback. If no different generation exists, nothing is kept for rollback (an identical copy is no rollback).
+
+### F-CAT-003: A supplier product name can block a quantity (status of SUP-003)
+- Date: 2026-11-14   Track: 3   Status: verified (read); owner pinned it, not changed
+- Finding: `catalog.normalize` extracts a volume hint from the product name and can set `measures.L.status` to `conflicting`, which makes `quantity()` return no sales quantity and the line `QUANTITY_UNRESOLVED`. The hint can only block, never permit, a purchase. Owner Q-29 keeps SUP-003 pinned: do not touch the name hint.
+- Evidence: `src/aimo/catalog.py` `normalize` (name hint) and `quantity`; `tests/test_catalog.py::test_name_with_a_different_size_marks_volume_conflicting_but_never_creates_it`.
+- Impact: Supplier text reaches policy only as a blocking status; supplier descriptions and marketing text are embedded for discovery only.
+
+### F-CAT-004: Supplier mode default is `auto`; deployment must be live and fail without a key (owner Q-01)
+- Date: 2026-11-14   Track: 3   Status: verified; open for person 1
+- Finding: On develop `config.py` defaults `upstream_mode` to `auto` (live when `VALIO_AIMO_API_KEY` is set, else a labelled fixture client with a warning). Owner answer: auto locally; a deployment must have a key and fail without one; infra defaults live. Still true on this branch: `infra/kubernetes/variables.tf` defaults to an explicit `fixture`, and a hosted deployment (marker `SECURE_COOKIES=true`, an assumption) without a key does not fail at startup. `mode` is recorded on every lookup result, in the stored proposal snapshot and line evidence and in the receipt `evidence_mode`.
+- Evidence: `tests/test_upstream_default.py` (strict xfails for the infra default and hosted startup), `tests/test_supplier_mode.py` (5 passed).
+- Impact: Person 1 changes the infra default and adds a startup check; remove the two xfail markers in the same PR.
+
+### F-CAT-005: Catalog records are validated one by one
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: `ingest_file` now rejects a malformed record with a `ValueError` naming its index and id (missing field, wrong type, non-numeric value, `allowedLotSize` not a finite number of at least 0, non-finite unit size) before anything is published; before, a bad record raised `KeyError` or stored an unusable number. The real snapshot (SHA matches the pinned hash) has 0 rejected records of 17,546.
+- Evidence: `tests/test_ingest_malformed.py` (19 passed; red first 18 failed); counts-only script over the private snapshot.
+- Impact: A stricter check cannot silently reject the real data; a new snapshot with defects is refused with a precise message.
+
+### F-CAT-006: Removing a product breaks no stored history, except one crash in recipes
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: Nothing references `products` by foreign key; proposals, orders, receipts and recipe plans hold self-contained jsonb. After a product is removed from the active catalog `get_order`, `get_proposal` and replaying a commit key still work. A pending saved-recipe proposal whose product is absent crashes at commit with an unhandled `KeyError` (`src/aimo/recipes.py:384`, `products[pid]`, ISS-JCT-002, person 2's file); a product flagged withdrawn gives a clean `RECIPE_PRODUCT_EVIDENCE_CHANGED`.
+- Evidence: throwaway runs `evidence/ws-a/scratch-product-removal-check.py` and `scratch-recipe-removal-check.py`; `evidence/ws-a/04-withdrawn-removal-impact.md`.
+- Impact: DIS-011 and DIS-012 protect products named by a pending or refreshable proposal; keeping absent products as withdrawn (F-CAT-001) avoids the crash for those ids.
+
+### F-CAT-007: Supplier lookups are batched within 1,000 ids; the batch size is not yet a setting
+- Date: 2026-11-14   Track: 3   Status: verified; setting open for person 1
+- Finding: The supplier accepts 1 to 1,000 product ids per price or availability request; rate limits are undisclosed. `ValioClient.lookup` sends batches of at most min(batch size, 1000) ids, sequentially, price first then availability, and refuses to merge batches that disagree on customer, currency or date. The size is read from `supplier_lookup_batch_size` if `Settings` has it, else a module default of 100 (matches `build_snapshot`'s separate 100-material cap).
+- Evidence: `tests/test_lookup_batching.py`, `tests/test_lookup_units.py` (23 passed, 6 strict xfails waiting for the setting); request `evidence/ws-a/05-request-to-person-1-sup-007-batch-setting.md`.
+- Impact: Person 1 adds `supplier_lookup_batch_size: int = Field(default=100, ge=1, le=1000)`.
+
+### F-CAT-008: A lookup delivery date of 0001-01-01 crashed the supplier path
+- Date: 2026-11-14   Track: 3   Status: verified (engineering guard, not an owner rule)
+- Finding: `0001-01-01` is valid ISO but was reported to the agent as `TOOL_RESULT_INVALID` "Retry later". `LookupRequest.delivery_date` now must be between 2000-01-01 and 2100-12-31 (fixed window, not today-relative, because fixtures use fixed dates), and the error names the field and the limit.
+- Evidence: `tests/test_lookup_delivery_date.py` (8 tests), `tests/test_tool_surface.py::test_tct003_out_of_range_delivery_date_is_not_reported_as_retry_later` (strict xfail removed).
+- Impact: The tool layer still shows one fixed `INVALID_TOOL_ARGUMENTS` text; naming the field there is person 2's gap (issue #96).
+
+### F-CAT-009: Real-data shape for the new search filters and substitutions
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: In the 17,546-product snapshot 17,537 products have a two-letter lowercase `countryOfOrigin` and 9 have none; 40 distinct `free_from` codes exist, one containing a digit (`X99`), so allergen codes are validated as 1 to 4 letters or digits; 189 products carry `substitutions` (as F-DATA-004); no product is flagged `deleted`.
+- Evidence: counts-only script over the private snapshot (`python -I`, output counts only), 2026-11-14.
+- Impact: `Requirements.free_from` accepts `^[A-Za-z][A-Za-z0-9]{0,3}$`; `country_of_origin` accepts two-letter codes; products with no country are excluded when a country is requested.
+
+### F-CAT-010: Shared test database contention (suspected)
+- Date: 2026-11-14   Track: 3   Status: unverified
+- Finding: One of three agents saw 62 failures, mostly in `tests/test_tool_surface.py`, in a first full run that could not be reproduced in two reruns. Suspected cause: two pytest processes sharing one test database name (the conftest truncates tables); the coordinator also found the shared Postgres on port 55432 saturated by checkpoint waits when databases are created or dropped.
+- Evidence: not reproduced; suite runs with a private database name were clean (955 and 964 passed).
+- Impact: Give each parallel run its own database name, never run two full suites on one name, use the tuned container on port 55433 for person 3.
+
+## Meal and basket arithmetic (person 3, WS-B)
+
+### F-BASKET-001: Deposit pricing divided Decimals and mispriced non-terminating ratios
+- Date: 2026-11-14   Track: 3   Status: verified (fixed on p3/ws-b, commit 52f4435)
+- Finding: build_snapshot priced a deposit as units * source_factor / sales_factor in Decimal (28 digits). One third of a unit at 0.165 EUR came out 0.05 instead of the exact half-up 0.06. The shipped fixtures use ratio 1 (12 per box), so the demo was unaffected; real data with such ratios is unverified (data/ not read). Pricing now uses Fraction with one half-up rounding to cents; the stored text of priced_sales_quantity is unchanged for exact quantities, so fingerprints of earlier proposals stay valid.
+- Evidence: tests/test_basket_contract.py::test_deposit_charge_for_a_third_of_a_unit_equals_the_exact_rational_result (failed before the fix), ::test_exact_deposit_lines_are_identical_to_the_legacy_decimal_calculation, ::test_same_prepare_key_returns_the_stored_proposal_without_pricing_again; BAS-005-final.txt.
+- Impact: Money for exact ratios is byte-identical; only previously inexact ratios change. A retry with the same prepare key is resolved from the saved revision and never reprices.
+
+### F-BASKET-002: An unpriced deposit left the line showing the price without it
+- Date: 2026-11-14   Track: 3   Status: verified (fixed, commit ef0422d)
+- Finding: With a deposit that had no price the proposal total was withheld, but the line still showed gross 17.00 and deposits_gross 0.00 (the price without the deposit, and a deposit of zero). Now the line net, gross, tax and deposits_gross are None, the totals stay withheld and DEPOSIT_UNRESOLVED still blocks. The frontend already renders a null amount as "Unresolved" (frontend/src/main.tsx:59-65).
+- Evidence: tests/test_draft_contract.py::test_line_gross_and_deposits_are_unknown_when_the_deposit_has_no_price; PRP-006-final.txt.
+- Impact: Only blocked (needs_resolution) proposals change; no order or confirmation is affected.
+
+### F-BASKET-003: Recipe scaling refuses anything that needs more than four decimals
+- Date: 2026-11-14   Track: 3   Status: verified (probe and test); round-up patch pending
+- Finding: recipes.scaled_plan scales exactly with Fraction but returns amount None when the exact result has more than four decimals (Amount is a 4-decimal string). At base 6 servings and 200 portions, 200 g, 100 g and 500 g become unresolved while 150 g gives 5 KG; roughly two thirds of gram quantities are lost whenever the portion count does not divide evenly. Owner decision MEA-012: round scaled quantities UP to four decimals. The patch is in person 2's recipes.py (MEA-012-013-requests.md), verified on a scratch copy.
+- Evidence: tests/test_draft_contract.py::test_scaled_quantity_is_rounded_up_to_four_decimals (strict xfail), tests/test_recipe_arithmetic.py (nonterminating cases); a throwaway probe of scaled_plan (outputs in the audit file section "Merged develop 17579d8").
+- Impact: Until the patch lands a carbonara for a non-dividing portion count has unresolved ingredients that cannot be matched.
+
+### F-BASKET-004: No upper bound on scaled quantity per portion
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: scaled_plan accepts 9,999,999 kg per serving at 10,000 portions (99,999,990,000 KG). Only Amount (14 digits) and portions (1..10000) limit it. MEA-011 (maximum per portion) is deferred and belongs to person 2 (owner decision); the guardrails added in #56 are an optional model-judged check, off by default, not a numeric bound.
+- Evidence: tests/test_draft_contract.py::test_absurd_quantity_per_portion_is_rejected (strict xfail).
+- Impact: A wrong recipe quantity reaches the product match unchecked; the budget limit catches price, not quantity.
+
+### F-BASKET-005: Variable-weight products block in two places (known gap, owner: warn only)
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: purchases.py:117-119 adds VARIABLE_WEIGHT_UNRESOLVED (severity unresolved, so needs_resolution) and recipes.py:272 leaves the ingredient unresolved. A missing variableUnit counts as variable weight (catalog.py:80). By F-DATA numbers about 21% of the catalog (632 true plus 3,068 without the field, of 17,546) cannot be committed. Owner decided BAS-007 is warn only; implementation deferred (ISS-JCT-001). A non-blocking warning also needs a severity that does not block (Reason.severity allows denied, unresolved, exception only).
+- Evidence: tests/test_arithmetic_contract.py::test_variable_weight_line_is_flagged_but_does_not_block (strict xfail), BAS-007.md.
+- Impact: The demo avoids variable-weight products; real orders with them are blocked.
+
+### F-BASKET-006: One product in two units could never be prepared
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: A plan that needs the same product in two units (for example KG and piece) has two basket keys (product_id, unit) while PurchaseRequest allows one line per product, so every prepare ended in MEAL_BASKET_MISMATCH. Owner decisions: BAS-009 unit priority KG, then L, then pieces; the agent must always request with the plan's units (Q-44), and the refusal must say exactly what to send. Backend built: catalog.combine_in_priority_unit (exact, never rounded) and basket_errors (structured details). The call sites in agent_tools.py and recipes.py are person 2's (patch text in BAS-009-requests.md).
+- Evidence: tests/test_basket_contract.py::test_one_product_in_two_units_can_be_prepared (strict xfail), tests/test_unit_priority.py, tests/test_basket_errors.py.
+- Impact: Mixed-unit recipes stay unpreparable until person 2 applies the patch.
+
+### F-BASKET-007: Per-ingredient conversion is computed alone, so shared packs overstate
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: recipes.match_ingredient converts each ingredient on its own: two ingredients on one product showed 7 + 4 = 11 packs (33 KG) while the basket bought 10 packs (30 KG). purchase_amount is a copy of amount, not the rounded purchase (recipes.py:296). Owner decisions (Q-45): each snapshot line names its ingredients and per-ingredient purchased amounts add up to the line. Built: SnapshotLine.contributions with exact shares (basket.allocate_line); a non-terminating share is written as numerator/denominator, never rounded.
+- Evidence: tests/test_contributions_contract.py, tests/test_recipe_arithmetic.py::test_ingredient_purchased_amounts_add_up_to_the_basket_line; MEA-005-009-red-check.txt (the tests fail without the change).
+- Impact: The proposal shows consistent per-ingredient amounts; the saved plan still shows stand-alone estimates until person 2 changes match_ingredient.
+
+### F-BASKET-008: Supplier lookups allow 1000 products, our client does not batch
+- Date: 2026-11-14   Track: 3   Status: verified (spec and code read)
+- Finding: /api/price and /api/availability accept 1..1000 product codes per request (docs/reference/aimo-api.openapi.json). ValioClient.lookup sends all ids in one POST per endpoint (class name is ValioClient, not HttpClient). Our caps were 30 lines, 50 lookup ids and 100 materials; they are now 1000 (MEA-013, schemas.py MAX_BASKET_LINES, MAX_LOOKUP_IDS, purchases.py MAX_MATERIALS), equal to the supplier limit so no batching is needed yet. SUP-007 (batching) is WS-A's.
+- Evidence: tests/test_draft_contract.py MEA-013 and SUP-007 tests; MEA-012-013-requests.md (cap table).
+- Impact: MealPlan (30), Recipe (100) and scaled_plan (30) are still capped in persons 1 and 2's files.
+
+### F-BASKET-009: The agent loop, not the schemas, limits ingredients per turn
+- Date: 2026-11-14   Track: 3   Status: unverified (read from code, not run)
+- Finding: llm_max_tool_rounds is at most 24 (config.py:43) and a reply carries at most 12 tool calls (agent_provider.py:32), so about 240 to 288 single match_ingredient calls fit in a turn; four cumulative tool errors stop the turn (agent.py:262). With guardrails on, MAX_STATE_BYTES = 28,000 (guardrails.py:37) rejects larger states. MEA-014 (batch matching, Service.match_ingredients) removes the per-ingredient call; the agent tool is person 2's.
+- Evidence: source lines above; owner question Q-39.
+- Impact: 1000 ingredients cannot be matched in one turn until the batch tool exists.
+
+### F-BASKET-010: A free-form basket can repeat a dish whose saved plan is unresolved
+- Date: 2026-11-14   Track: 3   Status: verified (backend built; call site pending)
+- Finding: docs/recipes.md acknowledges that a later free-form plan naming the same dish is prepared and only labelled free_form. Owner decision Q-45: refuse it. Built: recipe_guard.ensure_no_unresolved_saved_plan (RECIPE_PLAN_UNRESOLVED) matching the title (NFKC, whitespace, case folded) within the buyer's own unlocked, unprepared plans of the same conversation, else the last 24 hours; Service.ensure_saved_plan_resolved. The call in ToolSession.prepare is person 2's (MEA-008-requests.md). A different title for the same dish still passes.
+- Evidence: tests/test_recipe_guard.py (11 tests); the agent-layer strict xfail in tests/test_recipe_arithmetic.py.
+- Impact: The hole is closed only when the agent_tools patch lands.
+
+### F-BASKET-011: Test environment traps
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: uv is not installed on the development machine (tests/test_sweep.py runs tests/ci.sh and fails with "uv: command not found"; the rest of the suite runs with another checkout's venv and PYTHONPATH=src). The shared Postgres on port 55432 saturated under parallel suites (checkpoint waits, a DROP DATABASE waited over nine minutes); person 3 uses a tuned container on port 55433. conftest creates the database named in TEST_DATABASE_URL; the name must end in _test. A patch checked on a scratch copy of src must also copy migrations/ (ROOT is relative to the package).
+- Evidence: full-suite-ws-b-final.txt (771 passed, 18 xfailed on port 55433 after merging develop 837dfdf, test_sweep.py ignored).
+- Impact: CI, not the local run, is the authority for test_sweep.py.
+
+### F-BASKET-012: Migration numbering
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: develop has two migrations with prefix 005 (005_hosted_search, 005_recipe_planning); the runner orders by full filename (migrations/README.md). 008-010 are reserved for person 3 (008 is WS-D's orders_immutable); 011 is PR #38's proposal revision ordering; 012 and 013 are not reserved yet (owner has not posted the issue). PER-004 (append-only recipe plan revisions and recipe versions) is therefore a strict-xfail test plus a migration draft as text; the draft passes on a scratch database and no code updates or deletes those tables.
+- Evidence: PER-004-migration-draft.md, tests/test_persistence_contract.py::test_per_004_*.
+- Impact: PER-004 stays unmet until a number is reserved. TRUNCATE is not blocked by row triggers (noted in the draft).
+
+## Policy, identity and isolation (person 3, WS-C)
+
+### F-POLICY-001: Missing approved product list did not block a purchase when substitution was "allowed"
+- Date: 2026-11-14   Track: 3   Status: verified (fixed in `p3/ws-c`)
+- Finding: `evaluate_purchase` raised `PRODUCT_SCOPE_UNCONFIGURED` only when the scope was missing **and** substitution was restricted. With no scope and `substitution="allowed"` it returned `ready_to_commit` with no reasons, and an outside-scope product with that rule also passed silently. Owner decision D-008 made the block unconditional and made "allowed" a permitted exception that records `SUBSTITUTION_ALLOWED_BY_POLICY` per line. An empty list `[]` is a configured list (every product outside scope).
+- Evidence: pure-function probe before the fix (scope `None` + `allowed` gave `ready_to_commit`); `tests/test_policy_rules.py` (81 passed with the evidence set) fails 9 tests against the unmodified `approval_policy.py` (`ws-c/pol-004-006-red-before-fix.txt`); mutation M6 (`ws-c/mutation-checks.txt`).
+- Impact: Policy seeded with `substitution="requires_approval"` was already safe; any buyer configured with `allowed` and no list was exposed. Seed data is unchanged.
+
+### F-POLICY-002: `evaluate_purchase` relied on its caller to report an unknown total
+- Date: 2026-11-14   Track: 3   Status: verified (fixed)
+- Finding: With `gross_total=None` and no snapshot reason the function returned `ready_to_commit`. It was unreachable through `build_snapshot` (which always adds `TOTAL_UNRESOLVED`) but not defended. The function now adds `TOTAL_UNRESOLVED` itself, once.
+- Evidence: `tests/test_policy_rules.py::test_unknown_total_never_reaches_ready_to_commit` (was a strict xfail, now passes), mutation M7.
+- Impact: POL-009 holds inside the policy function, not only by convention.
+
+### F-POLICY-003: The agent's spend authority is removed; legacy rows are tolerated, not migrated
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: Q-35 removed the autonomous limit, `AgentAuthority` and the `spend` exception. Stored `policies.rules` (immutable) still carry `autonomous_limit` and stored identities carry `autonomous_limit` / `"spend"`; every model has `extra="forbid"`, so removing the field alone would have made `context()` answer `INVALID_POLICY_CONFIGURATION` for every existing buyer. `PolicyRules` and `ApproverAuthority` have before-validators that drop the legacy key and the legacy `spend` value; agent authority is not validated at all. Other unknown keys are still rejected.
+- Evidence: `tests/test_spend_authority.py` (64 tests incl. tolerance), `tests/test_provisioning.py` (13), mutation M4; `ws-c/POL-013.md`, `ws-c/IDN-002.md`.
+- Impact: No data migration. Pending approvals created before the change read as `authority_changed` and are re-evaluated lazily at commit. `seed()` uses `ON CONFLICT DO NOTHING`, so existing databases keep their old rows.
+
+### F-POLICY-004: `NO_ELIGIBLE_APPROVER` was only raised when an exception was in play
+- Date: 2026-11-14   Track: 3   Status: verified (fixed, owner Q-37)
+- Finding: A total above every approver's `max_gross` with no exception used to be `ready_to_commit`; the maximum only bit at `conversations.confirm` (`APPROVAL_SCOPE` 403), after the basket was shown as ready. The check is now unconditional (POL-014): a known total with no active approver able to cover it, or no active approver, is `needs_resolution`.
+- Evidence: `tests/test_spend_authority.py -k approver_coverage` (16 passed), `tests/test_edges.py::test_total_above_every_approvers_maximum_needs_resolution`, mutation M5.
+- Impact: A buyer with no active approver cannot buy. Announced to the owner as a behaviour change.
+
+### F-POLICY-005: The runtime database role cannot write policies, which blocks an in-process policy edit
+- Date: 2026-11-14   Track: 3   Status: verified (by reading and `tests/test_runtime_permissions.py`)
+- Finding: `permissions.py` revokes INSERT/UPDATE/DELETE on `buyers`, `identities`, `policies`, `internal_agents` from the runtime role and installs an update guard on `buyers`/`identities`; the `policies` table has no actor column and `audit_events.proposal_id` is NOT NULL, so a recorded policy edit needs new storage and a narrow grant (a SECURITY DEFINER function or second role). POL-007 (policy edit) and POL-012 are deferred by the owner; this is the design constraint for when they return.
+- Evidence: `src/aimo/permissions.py`, `001_initial.sql` L6-8 and L67, `2026-11-14-audit-ws-c.md` (POL-007 row).
+- Impact: Do not build `update_purchase_policy` before the grant mechanism is agreed with person 1.
+
+### F-POLICY-006: Per-meal authorization is derived; only its withdrawal is stored
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: The authorization is the customer's approval of one proposal revision (an approved `approvals` row or a `customer_confirmations` row); the agent can create neither. `meal_authorization_withdrawals` (migration 010, append-only, `immutable_record` guarded) records a withdrawal, which is terminal for the proposal, supersedes open approvals, blocks `commit_order` (`AUTHORIZATION_WITHDRAWN`) and reads as `authorization_withdrawn`. It never writes the standing list. Nothing calls it automatically on a recipe edit yet.
+- Evidence: `tests/test_meal_authorization.py` (19 passed), mutations M1 and M8, `ws-c/POL-010.md`.
+- Impact: Server-side Service call only, no browser route (owner Q-54); something server-side (the runner or the turn handling) still has to call it when a recipe is edited or un-confirmed; nothing does yet.
+
+### F-POLICY-007: Unsupported dietary requirements are now a named reason
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: A stated requirement the catalog cannot verify (for example gluten-free) was a 422 for an unknown key (fail-closed but invisible to the buyer). `Requirements.unsupported` (list of short texts) turns each entry into an unresolved `REQUIREMENT_UNSUPPORTED` reason, so the basket is `needs_resolution` and cannot commit. Raw unknown keys are still rejected. This changes the generated `ProposalResponse.request.requirements` schema (frontend types must be regenerated by person 1). The agent has to be told to use it (person 2's prompt).
+- Evidence: `tests/test_unsupported_requirements.py` (9 passed).
+- Impact: Closes the unsupported half of POL-009. The assumption half (POL-008) waits on constraint provenance (issues #75, #92); its target is pinned by a strict xfail and designed in `ws-c/pol-008-design.md`.
+
+### F-ISOLATION-001: Revocation and cross-buyer access are enforced in every entry point
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: `context()` validates the (id, buyer_id, role, active) tuple against the database on every Service, workflow and conversation function, so a forged `buyer_id` or a revoked identity is refused (403, or 404 where the proposal is looked up first, with no data returned). The second-buyer walkthrough and 21 revocation cases pass; mutations M2 and M3 are detected.
+- Evidence: `tests/test_isolation.py`, `tests/test_revoked_identity.py`, `ws-c/SEC-001.md`..`SEC-003.md`.
+- Impact: `workflow.get_proposal` looks up the proposal before validating the identity; informational (404 instead of 403).
+
+### F-PERSIST-001: The `immutable_record` trigger does not fire on TRUNCATE; the runtime role cannot truncate
+- Date: 2026-11-14   Track: 3   Status: verified (test database); production role ownership unverified
+- Finding: The history tables are protected against UPDATE and DELETE by row triggers; PostgreSQL does not fire row triggers on TRUNCATE, so the schema owner, a superuser or any role later granted TRUNCATE could erase history (4 strict xfails). The restricted runtime role built by `configure_runtime_role` holds only SELECT/INSERT/UPDATE/DELETE and **does not hold TRUNCATE** on any history table (no default ACL, PUBLIC grant, ownership or role membership gives it), so application code cannot do it: this is a missing guard against an operator or a leaked schema-owner credential, not an application exposure. A statement-level BEFORE TRUNCATE guard is designed (session-setting escape hatch for the test fixture's `TRUNCATE ... CASCADE`) but not built: no migration number is reserved. `004_worker_queue.sql:8` is the one migration that rewrites historical rows (`conversation_turns` state).
+- Evidence: `tests/test_runtime_truncate.py` (10 passed, live NOLOGIN role with a positive control), `tests/test_additive_migrations.py` (4 strict xfails), `ws-c/per-002-truncate-design.md`, `ws-c/PER-002.md`.
+- Impact: Add the guard and `REVOKE TRUNCATE, REFERENCES, TRIGGER` in `permissions.py` in one PR with the fixture's `SET LOCAL aimo.allow_history_truncate='on'` once 012/013 is reserved.
+
+### F-AGENT-005: The agent can reach no purchasing verb
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: The tool registry (recipe tools on or off) holds only read, plan and prepare tools; approve, confirm, commit, policy edit and withdrawal are refused by name with zero Service calls; no agent module references a purchasing function. `Service` is still handed whole to the runner, so safety rests on the registry.
+- Evidence: `tests/test_agent_cannot_purchase.py`, `tests/test_agent_tool_verbs.py` (127 passed), `ws-c/TCT-007.md`.
+- Impact: A new tool must be added to the allow-lists in those tests on purpose.
+
+### F-SEC-001: `/mcp` ingress paths remain after the MCP removal
+- Date: 2026-11-14   Track: 3   Status: verified (by reading)
+- Finding: `deploy/kubernetes.yaml` (path `/mcp`) and `infra/kubernetes/ingress.tf` still route `/mcp` to the API, which answers 404. No MCP import, dependency or route exists in `src/`.
+- Evidence: `tests/test_no_mcp.py` (7 passed); `grep -rniE mcp src scripts pyproject.toml uv.lock` prints nothing.
+- Impact: Harmless; person 1 can remove the paths.
+
+## Proposal, confirmation and receipt (person 3)
+
+### F-CONFIRM-001: Only the internal agent needed a customer confirmation to commit
+- Date: 2026-11-14   Track: 3   Status: verified (fixed, CNF-003/004)
+- Finding: `commit_order` required a recorded customer confirmation only for identities listed in `internal_agents`. The retained `demo-agent` (and any other `agent` role) could commit a `ready_to_commit` proposal with no human. It was not reachable over HTTP (no login, no commit tool), so it was a defence-in-depth gap. The gate now covers every identity with role `agent`.
+- Evidence: red first: `tests/test_confirmation_contract.py::test_any_agent_identity_needs_a_recorded_confirmation_to_commit` failed with "DID NOT RAISE" and `APPROVAL_REQUIRED`; green after commit `c6f91ba`. A human approval decision alone is not a confirmation (the test asserts it). `tests/test_lock_order_and_login_contract.py` shows agent ids cannot log in and a forged agent session authenticates nothing.
+- Impact: Any test or caller that commits as an agent must record a confirmation first (`confirm_terms` fixture in `tests/conftest.py`, or `conversations.confirm`).
+
+### F-CONFIRM-002: The confirmation gate must not turn a blocked outcome into a different error
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: The gate is applied only to `ready_to_commit` and `approval_required`. A `denied` or `needs_resolution` proposal skips it and is refused as `COMMIT_BLOCKED` by `authorize_commit` (CNF-015). Without that condition 25 existing tests failed on the first attempt (code changes from `COMMIT_BLOCKED`), and a needs_resolution proposal with a recorded confirmation would reach `Decimal(None)` in the gate (read in the code, not run).
+- Evidence: `tests/test_workflow.py::test_four_outcomes_and_hard_requirements` (8 cases) and `tests/test_receipt_and_expiry_contract.py::test_blocked_outcomes_cannot_be_confirmed_or_committed`.
+- Impact: Keep the outcome condition if the gate is moved into a `workflow.confirm_purchase` (T3).
+
+### F-CONFIRM-003: The fingerprint ignores authority, so the revision number must bind a confirmation
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: `material_fingerprint` covers request, lines, prices, deposits, product facts, cutoff, currency, mode, charges, policy version and blockers. It excludes lookup time, stock fluctuations that stay sufficient and the authority evaluation. Three revisions caused only by authority changes have the same fingerprint, so a confirmation lookup on `(proposal, fingerprint)` alone would carry a revision-1 confirmation to revision 3.
+- Evidence: `tests/test_confirmation_contract.py::test_confirmation_does_not_carry_to_a_revision_with_identical_terms` (three revisions, one fingerprint, commit of revision 3 gives `CUSTOMER_CONFIRMATION_REQUIRED`). Mutation check on a scratch copy: removing `revision=%s` from the query at `approval_workflow.py` is caught by this test and by `tests/test_refresh_contract.py::test_a_proposal_that_really_expires_refreshes_without_its_old_confirmation`, not by a price-change test; removing the fingerprint condition is not observable because revisions are immutable.
+- Impact: Never relax the revision condition; the fingerprint is defence in depth.
+
+### F-CONFIRM-004: The internal agent has a zero autonomous limit, so tests reach `ready_to_commit` only with the retained agent
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: Migration 003 creates internal agents with `autonomous_limit "0"`, so every basket they prepare is `approval_required`. A `ready_to_commit` fixture needs the retained `demo-agent`. WS-C removes the agent's spend authority afterwards, which changes this.
+- Evidence: `migrations/003_chat_purchasing.sql`; `tests/test_confirmation_contract.py::test_policy_outcome_and_customer_confirmation_are_separate_fields` (two cases, comment explains which agent).
+- Impact: Re-check those two cases after WS-C merges.
+
+### F-CONFIRM-005: Orders are immutable (migration 008); what the trigger does not cover
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: `008_orders_immutable.sql` adds `immutable_orders` (BEFORE UPDATE OR DELETE, FOR EACH ROW, reusing `immutable_record()`). It does nothing on an empty table, does not fire on TRUNCATE (the test fixtures truncate), and `proposals.order_id` stays mutable on purpose (it is set once at commit). Nothing in `src/` updates or deletes `orders`.
+- Evidence: `tests/test_orders_immutable.py` (4 passed; red before the migration); upgrade scenarios A, B and C below.
+- Impact: Someone with table ownership can still drop the trigger; the guarantee is against the application and the runtime role.
+
+### F-CONFIRM-006: A repeated confirmation with a different key is refused today
+- Date: 2026-11-14   Track: 3   Status: verified (workflow half); route half pending
+- Finding: Same key returns the saved receipt before any supplier call. A different key on an already ordered proposal gets `DECISION_CLOSED` from `conversations.confirm`. Approved wording (CNF-011): any key returns the saved receipt. `workflow.prior_result(..., any_key=True)` now finds the order of the same revision (and still raises `IDEMPOTENCY_CONFLICT` for a key used for other terms); `commit_order` keeps `ALREADY_COMMITTED` for a new key on purpose (existing tests assert it).
+- Evidence: `tests/test_confirmation_contract.py::test_prior_result_any_key_finds_the_saved_receipt_of_the_ordered_revision` (passes); `...::test_repeated_confirmation_with_another_key_returns_the_saved_receipt` (strict xfail, fails with `DECISION_CLOSED` at `conversations.py:343/348`). With the one-line change `old = workflow.prior_result(c, identity, body, any_key=True)` on a scratch copy, 43 tests pass including the former xfail. Patch text: `Assistant/projects/junction/evidence/ws-d/cnf-011-conversations-confirm.patch.txt`.
+- Impact: Person 1 applies the line (their file) and the xfail mark is removed in the same change. The browser key is deterministic per proposal, revision and user, so two tabs already share a key.
+
+### F-CONFIRM-007: PR #38's in-place refresh never reuses an old decision
+- Date: 2026-11-14   Track: 3   Status: verified on the merged code
+- Finding: A refresh appends revision N+1 to the same proposal only when it has no order and is expired, rejected, policy/authority-changed, denied or needs_resolution. The revision-N confirmation and approval do not apply to N+1 (approval `superseded`, new pending approval), the saved receipt is untouched, a refresh after an order is `RECIPE_PLAN_LOCKED`, and migration 007 keeps the `(buyer, agent, key)` primary key so each key stays idempotent. A retry of the first key after a refresh returns the proposal at its current revision. Neither validation call holds a lock across the supplier call.
+- Evidence: `tests/test_refresh_contract.py` (5 passed, including a real 2.3 s expiry without a patched clock); PR #38's `tests/test_recipes.py::test_concurrent_preparations_release_connections_and_plan_locks_during_supplier_io`.
+- Impact: A recipe plan can buy once; a repeat purchase needs a new plan. A recipe basket with a pending approval cannot be refreshed until it is rejected or expires (owner Q-31: intended).
+
+### F-CONFIRM-008: The proposal fingerprint is stored but not returned (PRP-002)
+- Date: 2026-11-14   Track: 3   Status: verified (gap open)
+- Finding: `render()` and `ProposalResponse` return id, revision, totals, outcome and expiry, not the fingerprint, although `IF-P3-P1-001` promises it to the frontend.
+- Evidence: `tests/test_receipt_and_expiry_contract.py::test_proposal_response_carries_every_required_field` (strict xfail on the missing fingerprint).
+- Impact: Adding it changes the shared schema and the generated frontend types; waits for person 1's agreement (T2).
+
+### F-CONFIRM-009: One condition, two expiry codes
+- Date: 2026-11-14   Track: 3   Status: verified (left as is)
+- Finding: An expired proposal is `DECISION_CLOSED` (409) on the confirm route and `PROPOSAL_EXPIRED` on `commit_order`. Person 1's closed code list for the route has `DECISION_CLOSED`, so the route code stays. `DECISION_CLOSED` also covers finalized and older-policy proposals.
+- Evidence: `tests/test_receipt_and_expiry_contract.py::test_confirmation_after_expiry_is_refused_without_side_effects` and `test_commit_after_expiry_is_refused_before_any_supplier_call`.
+- Impact: Clients must treat both as "prepare a fresh proposal".
+
+### F-CONFIRM-010: Migrations 008 to 011 upgrade cleanly from three real starting states, but the app needs 009 and 010 first
+- Date: 2026-11-14   Track: 3   Status: verified (scratch schemas, not a real cluster)
+- Finding: With all four branches merged (008 orders_immutable, 009 product_withdrawn_since, 010 meal_authorization_withdrawals, 011 proposal_revision_ordering) a full upgrade applies cleanly and a second run skips all 12 from: (A) production state 001 to 003 only; (B) main state 001 to 007 plus 011, with 008 to 010 landing later out of ledger order; (C) a database that already ran the old PR #38 `008_proposal_revision_ordering.sql` (011 does not replay its backfill; the old ledger row stays). Orders placed before the upgrade are unchanged and protected. The new application code reads `products.withdrawn_since` (`ingest.publish`) and `meal_authorization_withdrawals` (`render`), so it cannot run before 009 and 010 are applied.
+- Evidence: `Assistant/projects/junction/evidence/ws-d/integration-dry-run-2.md`; script `scratchpad/mig3/mig3.py` (scenarios A, B, C), run by a subagent on the previous tree and re-run by me on the final tree.
+- Impact: Release note: the migration Job must run before the new images start (the release pipeline does that); there is no app-before-migrate compatibility, so a rollback of the image does not undo the migrations and an image from before this release should not be started against it without review. `DELETE FROM orders` is rejected only when an order row exists.
+
+### F-CONFIRM-011: Removing unfinished proposals (CNF-021) is blocked by immutable triggers and foreign keys
+- Date: 2026-11-14   Track: 3   Status: verified (analysis); implementation not started
+- Finding: Tables referencing `proposals` or `proposal_revisions`: `proposal_revisions`, `approvals`, `audit_events`, `customer_confirmations`, `prepare_requests`, `recipe_plans`, `conversation_messages`, `meal_authorization_withdrawals`, `orders`. Four of them have `immutable_record` triggers that reject DELETE and none has `ON DELETE CASCADE`. A cleanup needs a reviewed trigger change that still protects ordered proposals, a deletion order (children first) and unlinking `recipe_plans` and `conversation_messages`.
+- Evidence: design `Assistant/projects/junction/evidence/ws-d/cnf-021-design.md`; `tests/test_unfinished_cleanup_contract.py` on `p3/ws-d-2` (`81d9bcb`): a passing guard that fails when a new table starts referencing proposals, and a strict xfail for the proposed `purge_unfinished_proposals`.
+- Impact: Owner decided a 30-day default period counted from the current revision's expiry (Q-56) and an append-only `purged_proposals` table (Q-57). Needs migration 012 (not reserved) and a setting for the period (person 1's `config.py`). Not built.
+
+### F-CONFIRM-012: Test environment traps seen while building WS-D
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: (1) `python -I` ignores `PYTHONPATH`, so a run can silently import another worktree's code; check `aimo.__file__`. (2) `uv` is not installed on this machine, so `tests/test_sweep.py::test_live_ci_without_key_exits_before_starting_server` fails here only (it runs `tests/ci.sh`). (3) On the shared Postgres (port 55432) `CREATE/DROP DATABASE` forces a cluster-wide checkpoint and hung for over nine minutes when other sessions ran suites; use schema isolation or a tuned throwaway container. (4) `mission` and `request_data` share one dict, so a test that requests both gets the mission for both. (5) Row-level immutability triggers do nothing on an empty table, so a test must create a row before asserting a rejected DELETE.
+- Evidence: the runs recorded in `Assistant/projects/junction/evidence/2026-11-14-audit-ws-d.md` and `evidence/ws-d/`.
+- Impact: Avoids repeating these detours.
