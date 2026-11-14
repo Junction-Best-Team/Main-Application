@@ -2,40 +2,58 @@
 set -euo pipefail
 
 : "${NAMESPACE:?Set NAMESPACE}"
-: "${IMAGE:?Set IMAGE to the published image digest}"
-[[ "$IMAGE" =~ ^ghcr.io/[a-z0-9._/-]+@sha256:[a-f0-9]{64}$ ]] || {
-  echo 'Deploy an immutable GHCR image digest.' >&2
-  exit 1
-}
-
-# Firewall updates can take a little time to propagate.
+: "${IMAGE:?Set IMAGE to the API digest}"
+: "${WORKER_IMAGE:?Set WORKER_IMAGE}"
+: "${FRONTEND_IMAGE:?Set FRONTEND_IMAGE}"
+components=(worker api frontend)
+images=("$WORKER_IMAGE" "$IMAGE" "$FRONTEND_IMAGE")
+previous=()
+changed=()
+for image in "${images[@]}"; do
+  [[ "$image" =~ ^ghcr.io/[a-z0-9._/-]+@sha256:[a-f0-9]{64}$ ]] || {
+    echo 'Deploy immutable GHCR image digests.' >&2
+    exit 1
+  }
+done
 for attempt in {1..12}; do
-  if kubectl -n "$NAMESPACE" get deployment aimo --request-timeout=10s >/dev/null; then
-    break
-  fi
+  if kubectl -n "$NAMESPACE" get deployment aimo-api --request-timeout=10s >/dev/null; then break; fi
   if [[ "$attempt" == 12 ]]; then
-    echo 'Cluster/deployment unavailable. Complete the one-time Terraform setup first.' >&2
+    echo 'Complete the one-time separate-app Terraform cutover first.' >&2
     exit 1
   fi
   sleep 5
 done
-replicas=$(kubectl -n "$NAMESPACE" get deployment aimo -o jsonpath='{.spec.replicas}')
-if [[ "$replicas" != 1 ]]; then
-  echo 'Finish database bootstrap/import and set app_replicas=1 before enabling deployment.' >&2
+# Refuse a partial/unbootstrapped installation before changing any component.
+for component in "${components[@]}"; do
+  replicas=$(kubectl -n "$NAMESPACE" get deployment "aimo-$component" -o jsonpath='{.spec.replicas}')
+  [[ "$replicas" == 1 ]] || { echo "aimo-$component is not enabled." >&2; exit 1; }
+  old=$(kubectl -n "$NAMESPACE" get deployment "aimo-$component" -o "jsonpath={.spec.template.spec.containers[?(@.name==\"$component\")].image}")
+  test -n "$old"
+  previous+=("$old")
+done
+rollback() {
+  trap - ERR
+  echo 'Release failed; restoring all changed components.' >&2
+  for index in "${changed[@]}"; do
+    component=${components[$index]}
+    kubectl -n "$NAMESPACE" set image "deployment/aimo-$component" "$component=${previous[$index]}" || true
+  done
+  for index in "${changed[@]}"; do
+    kubectl -n "$NAMESPACE" rollout status "deployment/aimo-${components[$index]}" --timeout=5m || true
+  done
   exit 1
-fi
-
-previous_image=$(kubectl -n "$NAMESPACE" get deployment aimo -o 'jsonpath={.spec.template.spec.containers[?(@.name=="aimo")].image}')
-test -n "$previous_image"
-if [[ "$previous_image" != "$IMAGE" ]]; then
-  kubectl -n "$NAMESPACE" set image deployment/aimo "aimo=$IMAGE"
-fi
-if ! kubectl -n "$NAMESPACE" rollout status deployment/aimo --timeout=5m; then
-  if [[ "$previous_image" != "$IMAGE" ]]; then
-    echo 'New image did not become ready; restoring the previous image.' >&2
-    kubectl -n "$NAMESPACE" set image deployment/aimo "aimo=$previous_image"
-    kubectl -n "$NAMESPACE" rollout status deployment/aimo --timeout=5m
+}
+trap rollback ERR
+for index in "${!components[@]}"; do
+  component=${components[$index]}
+  if [[ "${previous[$index]}" != "${images[$index]}" ]]; then
+    # Track before mutation so an ambiguous API timeout still triggers restoration.
+    changed+=("$index")
+    kubectl -n "$NAMESPACE" set image "deployment/aimo-$component" "$component=${images[$index]}"
+  elif [[ "$component" == worker && "${LLM_REFRESHED:-false}" == true ]]; then
+    kubectl -n "$NAMESPACE" rollout restart deployment/aimo-worker
   fi
-  exit 1
-fi
-printf 'Deployed %s\n' "$IMAGE"
+  kubectl -n "$NAMESPACE" rollout status "deployment/aimo-$component" --timeout=5m
+done
+trap - ERR
+printf 'Deployed frontend, API and worker.\n'

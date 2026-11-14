@@ -18,6 +18,21 @@ Add any starter code or earlier prototypes separately. Describe which parts exis
 
 ## Reused code, data, models, and assets
 
+On 2026-11-14, at the owner's request, Codex rebuilt Person 2's runner, provider
+client and direct-tool adapter on `develop` `f13b75b`. The prior agent
+implementation was replaced; existing shared models, product/purchasing code and
+fixtures were retained as contracts. Agent tests were rewritten; the existing
+purchasing integration scenario now exercises the HTTP provider protocol with
+scripted responses. No new framework, dependency, model weights or visual asset.
+Live-provider validation was skipped without configured credentials. See
+[internal agent](internal-agent.md) and [validation](validation.md).
+
+The owner then selected OpenRouter and supplied a private key. Codex configured
+ignored local settings and GitHub secret/variables, verified two live completions
+with an authored read-only policy result, and added future-release Secret wiring
+with helper tests. No credentials, live customer data, supplier purchase or
+deployment artifact was copied into source control.
+
 During the event on 2026-11-14, Codex prepared Terraform infrastructure at the owner's request: a DigitalOcean adapter, portable Kubernetes/Helm deployment, explicit database/catalog setup Job, plan-only tests and a runbook. It builds on PR #2's design and targets PR #4's image/CLI contract; it does not copy the application implementation. No cloud infrastructure was applied. The ingress reuses the upstream Traefik Helm chart 42.4.0 (MIT); Terraform providers are locked in each stack. See [infra/README.md](../infra/README.md).
 
 | Material/version | Source URL | Licence or usage restrictions | Role in the project | Attribution/disclosure needed |
@@ -61,3 +76,10 @@ The submission team still owns the final event disclosure and repository licence
 ## Chat purchasing migration — 2026-11-14
 
 Reused the existing application, purchasing/approval controls and frontend review components from latest develop `19bfda4`. Added internal typed LLM tools over existing HTTPX, persisted conversations and exact customer confirmation, converted the existing React entry point, and removed external HTTP/MCP adapters and the MCP dependency. No supplier checkout was added. Historical validation above refers to the prior gateway implementation; current verification is in `chat-purchasing.md`.
+
+
+Person 2 review follow-up: preserved shared develop changes, added failure/HTTPS
+regressions and server-authored recipe notices, and split the previously prepared
+OpenRouter release code into PR #32 for runtime-owner review. The acceptance
+handoff in `internal-agent.md` records unresolved shared work; it is not a claim
+that recipe templates, deterministic scaling or trusted constraints were built.

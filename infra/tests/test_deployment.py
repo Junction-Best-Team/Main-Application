@@ -92,7 +92,8 @@ class ClusterAccessTest(unittest.TestCase):
 
 
 class AppDeploymentTest(unittest.TestCase):
-    def run_deploy(self, replicas="1", fail_rollout=False, image=None, previous_image=None):
+    def run_deploy(self, replicas="1", fail_rollout=False, image=None, previous_image=None,
+                   llm_refreshed=False):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             kubectl = root / "kubectl"
@@ -102,9 +103,9 @@ case "$*" in
   *spec.replicas*) echo "$REPLICAS" ;;
   *jsonpath*) echo "$PREVIOUS_IMAGE" ;;
   *"set image"*)
-    if [[ "$*" == *"aimo=$PREVIOUS_IMAGE" ]]; then touch "$UNDONE"; fi ;;
+    if [[ "$*" == *"=$PREVIOUS_IMAGE" ]]; then touch "$UNDONE"; fi ;;
   *"rollout status"*)
-    if [[ "$FAIL_ROLLOUT" == 1 && ! -f "$UNDONE" ]]; then exit 1; fi ;;
+    if [[ "$FAIL_ROLLOUT" == 1 && "$*" == *"aimo-frontend"* && ! -f "$UNDONE" ]]; then exit 1; fi ;;
 esac
 ''')
             kubectl.chmod(0o700)
@@ -112,7 +113,10 @@ esac
             result = subprocess.run(["bash", str(ROOT / "scripts/deploy-app.sh")],
                 env={**os.environ, "PATH": str(root) + os.pathsep + os.environ["PATH"],
                      "NAMESPACE": "junction", "IMAGE": image or "ghcr.io/team/app@sha256:" + "a" * 64,
+                     "WORKER_IMAGE": "ghcr.io/team/app@sha256:" + "a" * 64,
+                     "FRONTEND_IMAGE": "ghcr.io/team/app@sha256:" + "a" * 64,
                      "REPLICAS": replicas, "FAIL_ROLLOUT": "1" if fail_rollout else "0",
+                     "LLM_REFRESHED": "true" if llm_refreshed else "false",
                      "PREVIOUS_IMAGE": previous_image or "ghcr.io/team/app@sha256:" + "b" * 64,
                      "CALL_LOG": str(log), "UNDONE": str(root / "undone")},
                 capture_output=True, text=True)
@@ -121,7 +125,7 @@ esac
     def test_deploys_published_digest_and_waits_for_readiness(self):
         result, calls = self.run_deploy()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("set image deployment/aimo aimo=ghcr.io/team/app@sha256:", calls)
+        self.assertIn("set image deployment/aimo-api api=ghcr.io/team/app@sha256:", calls)
         self.assertIn("rollout status", calls)
         self.assertNotIn("rollout undo", calls)
 
@@ -133,7 +137,8 @@ esac
     def test_failed_rollout_restores_previous_image_and_fails(self):
         result, calls = self.run_deploy(fail_rollout=True)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("aimo=ghcr.io/team/app@sha256:" + "b" * 64, calls)
+        for component in ("api", "worker", "frontend"):
+            self.assertIn(component + "=ghcr.io/team/app@sha256:" + "b" * 64, calls)
 
     def test_same_image_failure_does_not_roll_back_an_unrelated_revision(self):
         image = "ghcr.io/team/app@sha256:" + "a" * 64
@@ -145,6 +150,22 @@ esac
         result, calls = self.run_deploy(image="ghcr.io/team/app:latest")
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(calls, "")
+
+    def test_same_image_restarts_only_when_provider_settings_were_refreshed(self):
+        image = "ghcr.io/team/app@sha256:" + "a" * 64
+        result, calls = self.run_deploy(image=image, previous_image=image, llm_refreshed=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("rollout restart deployment/aimo-worker", calls)
+        self.assertNotIn("rollout restart deployment/aimo-api", calls)
+        self.assertNotIn("rollout restart deployment/aimo-frontend", calls)
+        self.assertNotIn("set image", calls)
+
+    def test_unchanged_provider_and_same_image_do_not_restart(self):
+        image = "ghcr.io/team/app@sha256:" + "a" * 64
+        result, calls = self.run_deploy(image=image, previous_image=image)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("rollout restart", calls)
+        self.assertNotIn("set image", calls)
 
 
 if __name__ == "__main__":

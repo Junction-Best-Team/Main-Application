@@ -60,13 +60,16 @@ resource "kubernetes_ingress_v1" "aimo" {
     rule {
       host = var.hostname
       http {
-        path {
-          path      = "/"
-          path_type = "Prefix"
-          backend {
-            service {
-              name = kubernetes_service_v1.aimo.metadata[0].name
-              port { name = "http" }
+        dynamic "path" {
+          for_each = { "/" = "frontend", "/api" = "api", "/health" = "api", "/docs" = "api", "/openapi.json" = "api", "/mcp" = "api" }
+          content {
+            path      = path.key
+            path_type = "Prefix"
+            backend {
+              service {
+                name = kubernetes_service_v1.apps[path.value].metadata[0].name
+                port { name = "http" }
+              }
             }
           }
         }

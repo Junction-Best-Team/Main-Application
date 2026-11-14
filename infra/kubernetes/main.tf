@@ -39,7 +39,7 @@ resource "kubernetes_secret_v1" "runtime" {
     name      = "aimo-runtime"
     namespace = kubernetes_namespace_v1.aimo.metadata[0].name
   }
-  data = merge(var.runtime_secrets, {
+  data = merge({ for key, value in var.runtime_secrets : key => value if key != "LLM_API_KEY" }, {
     DATABASE_URL            = var.database_url
     APPROVAL_SESSION_SECRET = var.session_secret
   })
@@ -74,59 +74,101 @@ resource "kubernetes_config_map_v1" "runtime" {
   }
 }
 
-resource "kubernetes_deployment_v1" "aimo" {
+resource "kubernetes_secret_v1" "worker" {
   metadata {
-    name      = "aimo"
+    name      = "aimo-worker-runtime"
     namespace = kubernetes_namespace_v1.aimo.metadata[0].name
+  }
+  data = merge({ for key, value in var.runtime_secrets : key => value if contains(["LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL", "VALIO_AIMO_API_KEY"], key) }, {
+    DATABASE_URL = var.database_url
+  })
+  # Releases own only these fields; Terraform retains all other Secret settings.
+  lifecycle {
+    ignore_changes = [data["LLM_API_KEY"], data["LLM_BASE_URL"], data["LLM_MODEL"]]
+  }
+}
+
+locals {
+  apps = {
+    api = {
+      image = var.image, command = ["serve"], port = 8000, uid = 10001
+      cpu   = "100m", memory = "192Mi", memory_limit = "512Mi"
+    }
+    worker = {
+      image = var.worker_image, command = ["worker"], port = 8001, uid = 10001
+      cpu   = "500m", memory = "1Gi", memory_limit = "2Gi"
+    }
+    frontend = {
+      image = var.frontend_image, command = [], port = 8080, uid = 101
+      cpu   = "50m", memory = "32Mi", memory_limit = "128Mi"
+    }
+  }
+}
+
+resource "kubernetes_deployment_v1" "apps" {
+  for_each = local.apps
+  metadata {
+    name      = "aimo-${each.key}"
+    namespace = kubernetes_namespace_v1.aimo.metadata[0].name
+    labels    = { "app.kubernetes.io/part-of" = "aimo", "app.kubernetes.io/component" = each.key }
   }
   spec {
     replicas = var.app_replicas
-    # One small worker: avoid requiring two model-serving pods during a rollout.
     strategy { type = "Recreate" }
-    selector { match_labels = { app = "aimo" } }
+    selector { match_labels = { app = "aimo-${each.key}" } }
     template {
       metadata {
-        labels = { app = "aimo" }
+        labels = { app = "aimo-${each.key}", "app.kubernetes.io/part-of" = "aimo", "app.kubernetes.io/component" = each.key }
         annotations = {
           "configuration-hash" = sha256(jsonencode({
-            config = kubernetes_config_map_v1.runtime.data
-            secret = kubernetes_secret_v1.runtime.data
-            ca     = kubernetes_secret_v1.database_ca.data
+            config = each.key == "frontend" ? {} : kubernetes_config_map_v1.runtime.data
+            secret = each.key == "frontend" ? {} : each.key == "worker" ? kubernetes_secret_v1.worker.data : kubernetes_secret_v1.runtime.data
+            ca     = each.key == "frontend" ? {} : kubernetes_secret_v1.database_ca.data
           }))
         }
       }
       spec {
-        automount_service_account_token = false
+        automount_service_account_token  = false
+        termination_grace_period_seconds = each.key == "worker" ? 120 : 30
         security_context {
           run_as_non_root = true
-          run_as_user     = 10001
-          run_as_group    = 10001
-          fs_group        = 10001
+          run_as_user     = each.value.uid
+          run_as_group    = each.value.uid
+          fs_group        = each.value.uid
           seccomp_profile { type = "RuntimeDefault" }
         }
         dynamic "image_pull_secrets" {
           for_each = var.image_pull_secret_names
-          content { name = image_pull_secrets.value }
+          content {
+            name = image_pull_secrets.value
+          }
         }
         container {
-          name  = "aimo"
-          image = var.image
-          args  = ["serve"]
+          name  = each.key
+          image = each.value.image
+          args  = each.value.command
           port {
             name           = "http"
-            container_port = 8000
+            container_port = each.value.port
           }
-          env_from {
-            config_map_ref { name = kubernetes_config_map_v1.runtime.metadata[0].name }
+          dynamic "env_from" {
+            for_each = each.key == "frontend" ? [] : [1]
+            content {
+              config_map_ref { name = kubernetes_config_map_v1.runtime.metadata[0].name }
+            }
           }
-          env_from {
-            secret_ref { name = kubernetes_secret_v1.runtime.metadata[0].name }
+          dynamic "env_from" {
+            for_each = each.key == "frontend" ? [] : [1]
+            content {
+              secret_ref { name = each.key == "worker" ? kubernetes_secret_v1.worker.metadata[0].name : kubernetes_secret_v1.runtime.metadata[0].name }
+            }
           }
           resources {
-            requests = { cpu = "500m", memory = "1Gi" }
-            limits   = { cpu = "2", memory = "3Gi" }
+            requests = { cpu = each.value.cpu, memory = each.value.memory }
+            limits   = { cpu = "2", memory = each.value.memory_limit }
           }
           security_context {
+            run_as_non_root            = true
             allow_privilege_escalation = false
             read_only_root_filesystem  = true
             capabilities { drop = ["ALL"] }
@@ -135,10 +177,13 @@ resource "kubernetes_deployment_v1" "aimo" {
             name       = "tmp"
             mount_path = "/tmp"
           }
-          volume_mount {
-            name       = "database-ca"
-            mount_path = "/etc/aimo-db"
-            read_only  = true
+          dynamic "volume_mount" {
+            for_each = each.key == "frontend" ? [] : [1]
+            content {
+              name       = "database-ca"
+              mount_path = "/etc/aimo-db"
+              read_only  = true
+            }
           }
           startup_probe {
             http_get {
@@ -167,9 +212,12 @@ resource "kubernetes_deployment_v1" "aimo" {
           name = "tmp"
           empty_dir {}
         }
-        volume {
-          name = "database-ca"
-          secret { secret_name = kubernetes_secret_v1.database_ca.metadata[0].name }
+        dynamic "volume" {
+          for_each = each.key == "frontend" ? [] : [1]
+          content {
+            name = "database-ca"
+            secret { secret_name = kubernetes_secret_v1.database_ca.metadata[0].name }
+          }
         }
       }
     }
@@ -181,25 +229,35 @@ resource "kubernetes_deployment_v1" "aimo" {
         trimspace(lookup(var.runtime_secrets, "FORWARDED_ALLOW_IPS", "")) != "" &&
         !strcontains(lookup(var.runtime_secrets, "FORWARDED_ALLOW_IPS", ""), "*")
       )
-      error_message = "Before serving behind ingress, set runtime_secrets.FORWARDED_ALLOW_IPS to the actual trusted proxy IPs/CIDRs, never *."
+      error_message = "Set runtime_secrets.FORWARDED_ALLOW_IPS to actual trusted ingress IPs/CIDRs before serving."
     }
-    # Terraform supplies the first image; release CI owns subsequent image updates.
     ignore_changes = [spec[0].template[0].spec[0].container[0].image]
   }
 }
 
-resource "kubernetes_service_v1" "aimo" {
+resource "kubernetes_service_v1" "apps" {
+  for_each = local.apps
   metadata {
-    name      = "aimo"
+    name      = "aimo-${each.key}"
     namespace = kubernetes_namespace_v1.aimo.metadata[0].name
   }
   spec {
     type     = "ClusterIP"
-    selector = { app = "aimo" }
+    selector = { app = "aimo-${each.key}" }
     port {
       name        = "http"
       port        = 80
       target_port = "http"
     }
   }
+}
+
+# Preserve Terraform ownership during the one-time monolith -> API rename.
+moved {
+  from = kubernetes_deployment_v1.aimo
+  to   = kubernetes_deployment_v1.apps["api"]
+}
+moved {
+  from = kubernetes_service_v1.aimo
+  to   = kubernetes_service_v1.apps["api"]
 }

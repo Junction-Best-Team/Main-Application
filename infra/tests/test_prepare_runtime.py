@@ -26,6 +26,8 @@ class PrivateRuntimeInputsTest(unittest.TestCase):
         self.helper.__file__ = str(self.root / "infra/scripts/prepare-runtime.py")
         self.argv = [
             str(SCRIPT), "--cloud-directory", str(self.root / "cloud"),
+            "--worker-image", "ghcr.io/team/app:worker-test",
+            "--frontend-image", "ghcr.io/team/app:frontend-test",
             "--image", "ghcr.io/team/app:test", "--hostname", "aimo.example.com",
             "--acme-email", "demo@example.com",
         ]

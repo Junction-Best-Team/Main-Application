@@ -1,7 +1,6 @@
-"""Actual purchasing functions with PostgreSQL and authored meal/supplier fixtures.
+"""Real provider protocol and purchasing functions with authored fixtures.
 
-The standalone agent workstream predates the backend route migration, so this
-module runs after that dependency is integrated. The provider alone is scripted.
+Only provider HTTP responses, catalog/embeddings and supplier facts are mocked.
 """
 
 import json
@@ -11,10 +10,9 @@ from datetime import date, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
-
-pytest.importorskip("aimo.conversations", reason="requires the chat backend integration")
 
 from aimo import agent as internal
 from aimo import auth, fixtures
@@ -24,6 +22,7 @@ from aimo.ingest import publish
 from aimo.schemas import CommitRequest
 from aimo.service import Service
 from aimo.upstream import FixtureClient
+from aimo.worker import run_once
 
 INGREDIENTS = [("pasta", "20"), ("eggs", "12"), ("pork", "6"), ("cheese", "4"), ("pepper", "0.2")]
 
@@ -82,11 +81,16 @@ def test_carbonara_actual_catalog_policy_customer_confirmation_and_persisted_rec
     ])
     seen = []
 
-    def provider(client, cfg, messages, definitions, deadline):
-        seen.append(deepcopy(messages))
-        return next(sequence)
+    def provider(request):
+        payload = json.loads(request.content)
+        seen.append(deepcopy(payload["messages"]))
+        assert "unused-scripted-provider" not in str(payload)
+        return httpx.Response(200, json={"choices": [{"message": next(sequence)}]})
 
-    monkeypatch.setattr(internal, "_completion", provider)
+    real_client = httpx.Client
+    monkeypatch.setattr(internal.httpx, "Client", lambda **kwargs: real_client(
+        transport=httpx.MockTransport(provider), **kwargs
+    ))
     connector = FixtureClient()
     service = Service(connector)
     with TestClient(create_app(service)) as client:
@@ -102,6 +106,9 @@ def test_carbonara_actual_catalog_policy_customer_confirmation_and_persisted_rec
         first = client.post(message_url, headers=headers, json={
             "text": "I need ingredients for 200 portions of carbonara.", "idempotency_key": str(uuid4())})
         assert first.status_code == 200, first.text
+        assert first.json()["busy"] is True
+        assert run_once(service)
+        first = client.get(f"/api/conversations/{cid}")
         assert "delivery date" in first.json()["messages"][-1]["text"]
         assert first.json()["purchases"] == []
         second_body = {"text": f"{delivery}, hotel-helsinki, no dietary restrictions, 1000 EUR. "
@@ -109,6 +116,9 @@ def test_carbonara_actual_catalog_policy_customer_confirmation_and_persisted_rec
                        "idempotency_key": str(uuid4())}
         second = client.post(message_url, headers=headers, json=second_body)
         assert second.status_code == 200, second.text
+        assert second.json()["busy"] is True
+        assert run_once(service)
+        second = client.get(f"/api/conversations/{cid}")
         data = second.json()
         assert data["messages"][-1]["meal_plan"]["portions"] == 200
         basket = data["purchases"][0]
@@ -158,6 +168,9 @@ def test_carbonara_actual_catalog_policy_customer_confirmation_and_persisted_rec
         resumed = client.post(message_url, headers=headers, json={
             "text": "Was my confirmed basket recorded?", "idempotency_key": str(uuid4())})
         assert resumed.status_code == 200, resumed.text
+        assert resumed.json()["busy"] is True
+        assert run_once(service)
+        resumed = client.get(f"/api/conversations/{cid}")
         assert "accepted_mock" in str(seen[-2])
         assert "No supplier order" in resumed.json()["messages"][-1]["text"]
         with connection() as c:

@@ -1,3 +1,5 @@
+> Deployment update: [separate apps](separate-apps.md) supersedes this document’s single-container packaging and synchronous turn execution. Product authorization remains unchanged.
+
 # Chat purchasing migration — 2026-11-14
 
 This product scope supersedes the original external-agent/MCP entry points in `brief.md`. One existing React app → authenticated FastAPI → internal typed agent/Service → existing PostgreSQL/supplier connectors. Order placement is a persistent mock, never supplier checkout or stock reservation.
