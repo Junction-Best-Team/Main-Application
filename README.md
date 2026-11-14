@@ -4,7 +4,7 @@ Three independently deployed apps serve chat purchasing: a React/Nginx frontend,
 
 The current [product migration](docs/chat-purchasing.md) overrides the external-agent entry points in the [original brief](docs/brief.md). The underlying purchasing controls remain. [Infrastructure](infra/README.md) is optional and operator-managed; this migration does not apply Terraform, deploy or enable releases.
 
-See the [architecture diagrams](docs/architecture.md) for the system overview, purchase confirmation flow and code map. [Agent guardrails](docs/guardrails.md) separates deterministic controls from the TypeSafe Jev checks, which enforce by default using the OpenRouter `LLM_API_KEY` (`GUARDRAIL_MODE=enforce|shadow|off`).
+See the [architecture diagrams](docs/architecture.md) for the system overview, purchase confirmation flow and code map. The assistant keeps explicitly saved buyer-shared and personal preferences across conversations; see [buyer and user memory](docs/memory.md) (`/api/memories`, migration 012). Memory never grants purchasing authority. [Agent guardrails](docs/guardrails.md) separates deterministic controls from the TypeSafe Jev checks, which enforce by default using the OpenRouter `LLM_API_KEY` (`GUARDRAIL_MODE=enforce|shadow|off`).
 
 ## Working in parallel
 

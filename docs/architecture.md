@@ -169,6 +169,7 @@ constraints prevent duplicate acceptance; persisted conversations and receipts s
 | Conversation recovery and customer confirmation | [conversations.py](../src/aimo/conversations.py) |
 | Provider loop and allowed typed tools | [agent.py](../src/aimo/agent.py), [chat_schemas.py](../src/aimo/chat_schemas.py) |
 | Shared purchasing entry points | [service.py](../src/aimo/service.py) |
+| Explicit buyer/personal memory ([memory.md](memory.md)) | [memory.py](../src/aimo/memory.py), [memory_schemas.py](../src/aimo/memory_schemas.py) |
 | Catalog normalization, ingestion and hybrid search | [catalog.py](../src/aimo/catalog.py), [ingest.py](../src/aimo/ingest.py), [search.py](../src/aimo/search.py) |
 | OpenRouter embeddings, reranking and response validation | [search_provider.py](../src/aimo/search_provider.py) |
 | Commercial evidence and quantity snapshots | [upstream.py](../src/aimo/upstream.py), [purchases.py](../src/aimo/purchases.py) |

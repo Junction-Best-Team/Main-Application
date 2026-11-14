@@ -86,10 +86,11 @@ class Sweep:
             "/api/purchases",
             "/api/approvals",
             f"/api/purchases/{uuid4()}",
+            "/api/memories",
         ):
             r = anonymous.get(path)
             need(r.status_code == 401, f"GET {path} without a session gave {r.status_code}")
-        return "5 endpoints refuse an anonymous caller"
+        return "6 endpoints refuse an anonymous caller"
 
     def login_controls(self):
         bad = httpx.post(
@@ -174,6 +175,31 @@ class Sweep:
             need(r.status_code == 404, f"GET {path} gave {r.status_code}")
         return "lists open; unknown proposal and approval are 404"
 
+    def memory_management(self):
+        # Personal, uniquely keyed and forgotten at the end: safe on a --live database.
+        body = {
+            "scope": "self",
+            "key": "instruction.sweep_" + uuid4().hex[:12],
+            "value": {"text": "Sweep check: keep replies short."},
+            "idempotency_key": "sweep-memory-" + str(uuid4()),
+        }
+        refused = self.http.post("/api/memories", json=body, headers={"Origin": self.base})
+        need(refused.status_code == 403, f"memory create without CSRF gave {refused.status_code}")
+        created = self.http.post("/api/memories", json=body, headers=self.headers())
+        need(created.status_code == 200, f"memory create gave {created.status_code}")
+        retry = self.http.post("/api/memories", json=body, headers=self.headers()).json()
+        mid = created.json()["memory_id"]
+        need(retry["replayed"] and retry["memory_id"] == mid, "memory retry was not replayed")
+        stale = {"expected_revision": 9, "value": body["value"], "idempotency_key": str(uuid4())}
+        conflict = self.http.put(f"/api/memories/{mid}", json=stale, headers=self.headers())
+        need(conflict.status_code == 409, f"stale memory update gave {conflict.status_code}")
+        listed = self.http.get("/api/memories", params={"scope": "self", "limit": 50}).json()
+        need(any(i["id"] == mid for i in listed["items"]), "saved memory missing from the list")
+        forget = {"expected_revision": 1, "idempotency_key": "sweep-forget-" + str(uuid4())}
+        gone = self.http.post(f"/api/memories/{mid}/delete", json=forget, headers=self.headers())
+        need(gone.status_code == 200 and gone.json()["status"] == "deleted", "forget failed")
+        return "memory create/retry/revision conflict/list/forget; CSRF required"
+
     def confirmation_and_decision_controls(self):
         proposal = str(uuid4())
         confirm = f"/api/purchases/{proposal}/confirm"
@@ -212,6 +238,7 @@ class Sweep:
             ("list and get conversation", self.conversation_list_and_get),
             ("message CSRF enforced", self.message_csrf_enforced),
             ("purchases and approvals", self.purchases_and_approvals),
+            ("memory management", self.memory_management),
             ("confirm and decide controls", self.confirmation_and_decision_controls),
             ("logout", self.logout_closes_the_session),
         ]:

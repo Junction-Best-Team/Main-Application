@@ -235,7 +235,14 @@ def execute_turn(turn, service, runner=None):
             ).fetchone()
         if not identity:
             raise Problem("UNAUTHENTICATED", "The requesting customer is no longer active.", 401)
-        actor = auth.internal_agent(identity) | {"_turn_id": str(tid)}
+        # Purchasing tools keep the internal agent identity. Memory tools act for the
+        # persisted requesting human, fenced to this claimed attempt (memory.chat_actor).
+        actor = auth.internal_agent(identity) | {
+            "_turn_id": str(tid),
+            "_requested_by": identity["id"],
+            "_attempt": str(attempt),
+            "_conversation_id": str(cid),
+        }
         data = detail(identity, cid)
         history = [{"role": m["role"], "content": m["text"]} for m in data["messages"]]
         # Structured persisted plans and status survive refresh, restarts and a provider context reset.

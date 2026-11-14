@@ -93,3 +93,25 @@ class Service:
 
     def get_order(self, identity, order_id):
         return workflow.get_order(identity, order_id)
+
+    # Memory: the same functions back the browser API. ``actor`` is a server-built
+    # memory.Actor for the requesting human, never the shared internal agent.
+    def memory_context(self, actor, latest_message):
+        from aimo import memory
+
+        return memory.context(actor, latest_message)
+
+    def search_memory(self, actor, request):
+        from aimo import memory
+
+        return memory.search(actor, request)
+
+    def get_memory(self, actor, memory_id):
+        from aimo import memory
+
+        return memory.get(actor, memory_id)
+
+    def manage_memory(self, actor, change):
+        from aimo import memory
+
+        return memory.mutate(actor, change)
