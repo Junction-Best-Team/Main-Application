@@ -9,6 +9,7 @@ from uuid import uuid4
 from psycopg import sql
 
 from aimo import cancellations
+from aimo import clock as demo_clock
 from aimo import meal_authorization as meals
 from aimo.approval_policy import can_approve, evaluate_purchase
 from aimo.config import settings
@@ -128,6 +129,17 @@ def render(
         else None
     )
     committed = order is not None and order["revision"] == r["revision"]
+    fulfilment = None
+    if order:  # simulated and derived on read; the order itself is never updated
+        placed = c.execute(
+            """SELECT o.created_at, (q.request->>'delivery_date')::date AS delivery_date
+            FROM orders o JOIN proposal_revisions q ON q.proposal_id=o.proposal_id AND q.revision=o.revision
+            WHERE o.id=%s""",
+            (order["id"],),
+        ).fetchone()
+        fulfilment = demo_clock.fulfilment_view(c, p["buyer_id"])(
+            placed["delivery_date"], placed["created_at"]
+        )
     if historical:
         status = "superseded"
     elif not committed and (
@@ -221,6 +233,7 @@ def render(
         "recipe_basis": recipe_basis,
         "approval_status": status,
         "order_status": "accepted_mock" if committed else "not_placed",
+        "fulfilment": fulfilment,
         "reasons": r["reasons"],
         "expires_at": r["expires_at"],
         "next_action": action,
@@ -698,13 +711,32 @@ def commit_order(identity, request: CommitRequest, connector):
 
 
 def get_receipt(identity, proposal_id):
-    """The stored receipt of a proposal the identity may see (the buyer's own), via get_order."""
+    """The stored receipt of a proposal the identity may see (the buyer's own), via get_order, plus
+    the delivery date, destination and simulated fulfilment, derived on read (JNP3-FUL)."""
     with connection() as c:
         context(c, identity)
         p, _, _ = proposal(c, proposal_id, identity)
-    if not p["order_id"]:
-        raise Problem("NO_RECEIPT", "This purchase has no order yet, so there is no receipt.", 404)
-    return get_order(identity, p["order_id"])
+        if not p["order_id"]:
+            raise Problem(
+                "NO_RECEIPT", "This purchase has no order yet, so there is no receipt.", 404
+            )
+        row = c.execute(
+            """SELECT o.receipt, o.created_at, (q.request->>'delivery_date')::date AS delivery_date,
+            q.request->>'destination' AS destination
+            FROM orders o JOIN proposal_revisions q ON q.proposal_id=o.proposal_id AND q.revision=o.revision
+            WHERE o.id=%s AND o.buyer_id=%s""",
+            (p["order_id"], identity["buyer_id"]),
+        ).fetchone()
+        if not row:
+            raise Problem("NOT_FOUND", "Order not found.", 404)
+        return {
+            **row["receipt"],
+            "delivery_date": row["delivery_date"],
+            "destination": row["destination"],
+            "fulfilment": demo_clock.fulfilment_view(c, identity["buyer_id"])(
+                row["delivery_date"], row["created_at"]
+            ),
+        }
 
 
 def get_order(identity, oid):

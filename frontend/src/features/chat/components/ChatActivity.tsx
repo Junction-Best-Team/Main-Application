@@ -50,11 +50,15 @@ export function ChatActivity({
       ? "Waiting to start…"
       : last?.kind === "tool_started"
         ? `${last.label}…`
-        : last?.kind === "complete"
-          ? "Finishing the response…"
-          : current
-            ? "Thinking…"
-            : "Sending your request…"
+        : last?.kind === "tool_completed"
+          ? `${last.label} · Done`
+          : last?.kind === "tool_failed"
+            ? `${last.label} · Couldn't finish`
+            : last
+              ? `${last.label}…`
+              : current
+                ? "Preparing your response…"
+                : "Sending your request…"
     : current?.state === "failed"
       ? "Response interrupted"
       : "Finished";

@@ -72,7 +72,7 @@ def has(conn, role, table, privilege):
 
 
 def test_the_history_table_list_names_exactly_the_append_only_tables_and_purged_proposals():
-    assert set(HISTORY_TABLES) == set(APPEND_ONLY) | {"purged_proposals"}
+    assert set(HISTORY_TABLES) == set(APPEND_ONLY) | {"purged_proposals", "demo_clock_events"}
 
 
 @pytest.mark.parametrize("table", APPEND_ONLY + ("purged_proposals", "policies", "policy_changes"))

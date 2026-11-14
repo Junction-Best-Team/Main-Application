@@ -25,6 +25,7 @@ Do not rename applied migrations or delete their ledger rows.
 | 022_buyer_settings | Narrow signed-in buyer settings save; preserve hidden scope and personal authority |
 | **023_scheduled_orders** | **Person 3 (WS-E)**: role `scheduler` and one scheduler identity per buyer, `scheduled_authorizations` (terms immutable, pause and resume allowed), `scheduled_runs` (unique per authorization and date), append-only event logs, `order_request_cancellations`, message role `system`. applies after 018 and 019 (WS-D) |
 | 024_message_notice | `conversation_messages.notice`: marks the plain assistant notice stored when a chat turn fails because the model provider fails (owner Q-108). One nullable `text` column; additive |
+| 025_demo_clock | The per-buyer demo clock (JNP3-CLK): `demo_clock` (one offset per buyer) and append-only `demo_clock_events` (idempotent jumps and resets). Additive; inert unless `DEMO_CLOCK_ENABLED` is on |
 
 Before allocating another number, check remote branch tips and open PRs and update
 this table with the agreed allocation. Reservations do not create migration files.
