@@ -53,7 +53,48 @@ class Service:
         }
 
     def prepare_order(self, identity, request: PrepareRequest):
+        from aimo.config import settings
+        from aimo.db import Problem
+        from aimo.recipes import validate_basket
+
+        if request.recipe_plan_id:
+            with connection() as c:
+                context(c, identity)
+                row = validate_basket(c, identity, request)
+                result = workflow.prepare_order(identity, request, self.connector)
+                c.execute("UPDATE recipe_plans SET locked=true WHERE id=%s", (row["id"],))
+                return result
+        if request.recipe_plan_revision or (
+            settings().recipe_planning_enabled and identity["role"] == "agent"
+        ):
+            raise Problem(
+                "RECIPE_PLAN_REQUIRED", "Prepare a complete saved recipe plan first.", 422
+            )
         return workflow.prepare_order(identity, request, self.connector)
+
+    def recipe_operation(self, name, identity, request):
+        from aimo import recipes
+        from aimo.config import settings
+        from aimo.db import Problem
+
+        if not settings().recipe_planning_enabled:
+            raise Problem("RECIPES_DISABLED", "Recipe planning has not been enabled.", 503)
+        return getattr(recipes, name)(identity, request)
+
+    def search_recipes(self, identity, request):
+        return self.recipe_operation("search_recipes", identity, request)
+
+    def get_recipe(self, identity, request):
+        return self.recipe_operation("get_recipe", identity, request)
+
+    def scale_recipe(self, identity, request):
+        return self.recipe_operation("scale_recipe", identity, request)
+
+    def get_recipe_plan(self, identity, request):
+        return self.recipe_operation("get_plan", identity, request)
+
+    def match_ingredient(self, identity, request):
+        return self.recipe_operation("match_ingredient", identity, request)
 
     def get_proposal(self, identity, proposal_id):
         return workflow.get_proposal(identity, proposal_id)

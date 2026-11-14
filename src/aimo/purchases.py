@@ -79,6 +79,9 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
     with connection() as c:
         buyer, policy, _, _ = context(c, identity)
         products = load_products(c, [item.product_id for item in request.lines])
+        from aimo.recipes import purchase_count_evidence
+
+        count_evidence = purchase_count_evidence(c, identity, request, products)
     reasons, lines = [], []
     expires = current + timedelta(seconds=settings().proposal_ttl_seconds)
 
@@ -117,7 +120,13 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
                 "Actual-weight settlement is outside this fixed-quantity MVP.",
                 pid,
             )
-        q = quantity(p, line.amount, line.unit, policy["rules"].get("whole_sales_units", True))
+        q = quantity(
+            p,
+            line.amount,
+            line.unit,
+            policy["rules"].get("whole_sales_units", True),
+            count_evidence=count_evidence.get(pid),
+        )
         e = evidence[pid]
         reasons.extend(e["reasons"])
         expires = min(expires, upstream.timestamp(e["expires_at"]))

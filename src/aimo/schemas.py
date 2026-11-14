@@ -41,6 +41,8 @@ class LineRequest(Model):
 
 
 class PurchaseRequest(Model):
+    recipe_plan_id: UUID | None = None
+    recipe_plan_revision: int | None = Field(default=None, ge=1)
     request_id: str = Field(min_length=1, max_length=100)
     lines: list[LineRequest] = Field(min_length=1, max_length=30)
     destination: str = Field(min_length=1, max_length=120)

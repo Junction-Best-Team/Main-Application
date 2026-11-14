@@ -509,11 +509,31 @@ function ChatPage() {
                       <li key={i}>
                         <span>{ingredient.name}</span>
                         <strong>
-                          {ingredient.amount} {ingredient.unit}
+                          {ingredient.amount ?? "Quantity unresolved"}{" "}
+                          {ingredient.unit}
                         </strong>
+                        {ingredient.status === "unresolved" && (
+                          <p>{ingredient.reason}</p>
+                        )}
+                        {ingredient.product_id && (
+                          <p>Product: {ingredient.product_id}</p>
+                        )}
+                        {ingredient.conversion?.sales_quantity && (
+                          <p>
+                            Buy {String(ingredient.conversion.sales_quantity)}{" "}
+                            {String(ingredient.conversion.sales_unit)}
+                            {ingredient.conversion.excess &&
+                              ` · Excess: ${ingredient.conversion.excess} ${ingredient.unit}`}
+                          </p>
+                        )}
                       </li>
                     ))}
                   </ul>
+                  {message.meal_plan.attribution && (
+                    <p className="muted small">
+                      {message.meal_plan.attribution}
+                    </p>
+                  )}
                   {(message.meal_plan.notes ?? []).map((note, i) => (
                     <p className="muted small" key={i}>
                       {note}

@@ -146,6 +146,14 @@ def main():
     )
     scope.add_argument("--buyer", required=True)
     scope.add_argument("--product-id", action="append", required=True)
+    recipes = sub.add_parser("ingest-recipes", help="Explicit versioned UniTools recipe import")
+    recipes.add_argument("--file", type=Path, required=True)
+    recipes.add_argument("--expected-sha256", required=True)
+    recipes.add_argument("--review-file", type=Path)
+    evidence = sub.add_parser(
+        "import-recipe-product-evidence", help="Privileged reviewed product annotations"
+    )
+    evidence.add_argument("--file", type=Path, required=True)
     ing = sub.add_parser("ingest")
     ing.add_argument("--file", type=Path, required=True)
     ing.add_argument("--download", action="store_true")
@@ -204,6 +212,14 @@ def main():
 
         data = fixture_facts()
         print(json.dumps(publish(data, "authored-fixtures-v1", fingerprint(data))))
+    elif args.command == "ingest-recipes":
+        from aimo.recipe_import import ingest_recipes
+
+        print(json.dumps(ingest_recipes(args.file, args.expected_sha256, args.review_file)))
+    elif args.command == "import-recipe-product-evidence":
+        from aimo.recipe_import import import_product_evidence
+
+        print(json.dumps(import_product_evidence(args.file)))
     elif args.command == "ingest":
         from aimo.ingest import download, ingest_file
 

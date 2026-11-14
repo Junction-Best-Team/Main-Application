@@ -457,3 +457,30 @@ test("unfinished server turns restore the request and retry key on another brows
   await expect(page.getByText("Your saved request resumed.")).toBeVisible();
   expect(payload).toEqual(retry);
 });
+
+test("recipe plan keeps unresolved ingredients visible beside matched packs", async ({ page }) => {
+  await mockSession(page);
+  await page.route(`**/api/conversations/${conversationId}`, (route) => route.fulfill({ json: {
+    ...blankConversation,
+    messages: [{ id: 1, role: "assistant", text: "The recipe needs more product evidence.", created_at: timestamp,
+      meal_plan: {
+        title: "Carbonara", portions: 200, attribution: "UniTools — theunitools.com / CC BY-SA 4.0",
+        ingredients: [
+          { name: "Dry spaghetti", amount: "20", unit: "KG", status: "matched", product_id: "465236",
+            conversion: { sales_quantity: "7", sales_unit: "ST", excess: "1" } },
+          { name: "Salt", amount: null, unit: "toTaste", status: "unresolved",
+            reason: "Recipe quantity is unspecified; provide a reviewed numeric quantity." }
+        ], notes: ["Recipe quantities are estimates for customer review."]
+      }
+    }]
+  }}));
+  await page.goto(`/conversations/${conversationId}`);
+  const plan = page.getByRole("region", { name: "Proposed meal plan" });
+  await expect(plan.getByText("Salt", { exact: true })).toBeVisible();
+  await expect(plan.getByText("Quantity unresolved", { exact: false })).toBeVisible();
+  await expect(plan.getByText("Recipe quantity is unspecified", { exact: false })).toBeVisible();
+  await expect(plan.getByText("Buy 7 ST", { exact: false })).toBeVisible();
+  await expect(plan.getByText("Excess: 1 KG", { exact: false })).toBeVisible();
+  await expect(plan.getByText("UniTools", { exact: false })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Review basket and purchasing checks" })).toHaveCount(0);
+});

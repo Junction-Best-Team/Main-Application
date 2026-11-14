@@ -124,7 +124,9 @@ def requirement_reasons(p: dict, requirements: Requirements) -> list[dict]:
     return reasons
 
 
-def quantity(p: dict, amount: Decimal, unit: str, whole_packs: bool) -> dict:
+def quantity(
+    p: dict, amount: Decimal, unit: str, whole_packs: bool, *, count_evidence=None
+) -> dict:
     result = {
         "requested_amount": str(amount),
         "requested_unit": unit,
@@ -141,7 +143,10 @@ def quantity(p: dict, amount: Decimal, unit: str, whole_packs: bool) -> dict:
     if not sales or sales <= 0 or p["conflicts"]:
         return result
     per_sales = None
-    if unit == p["sales_unit"]:
+    if unit == "piece" and count_evidence:
+        per_sales = Fraction(count_evidence["piece_per_sales"])
+        result["basis"] = [count_evidence["source"], "reviewed_ingredient_count_per_sales_unit"]
+    elif unit == p["sales_unit"]:
         per_sales = Fraction(1)
         result["basis"] = ["salesUnit"]
     elif unit in factors and factors[unit] > 0:
