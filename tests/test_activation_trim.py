@@ -97,3 +97,34 @@ def test_activation_without_withdrawn_products_trims_nothing_and_a_retry_is_safe
     second = activate_catalog(staged["generation"])  # idempotent
     assert first["trimmed_withdrawn"] == second["trimmed_withdrawn"] == 0
     assert first["products"] == second["products"] == 30
+
+
+def heavy_snapshot_active(tmp_path):
+    """An ACTIVE generation that is 25.7 percent withdrawn (publish without the trim)."""
+    path, sha, count = snapshot(tmp_path, [f"wd-{i:02d}" for i in range(18)])
+    from aimo.ingest import read_snapshot
+
+    facts, source, actual = read_snapshot(path, count, sha)
+    return publish(facts, source, actual)  # activates; trim_withdrawn defaults to False
+
+
+def test_a_rollback_to_an_older_generation_deletes_nothing(tmp_path):
+    """Activating an OLDER generation (the incident rollback path) must never delete data."""
+    old = heavy_snapshot_active(tmp_path)
+    clean_path, clean_sha, clean_count = snapshot(tmp_path / ".", [], live=40)
+    staged = ingest_file(clean_path, clean_count, clean_sha, activate=False, carry_withdrawn=False)
+    activate_catalog(staged["generation"])  # forward cutover; `old` is now the retained previous
+    before, count_before = rows(old["generation"])
+    assert len(before) == 70 and sum(before.values()) == 18
+    result = activate_catalog(old["generation"])  # rollback
+    after, count_after = rows(old["generation"])
+    assert result["trimmed_withdrawn"] == 0 and result["products"] == 70
+    assert after == before and count_after == count_before == 70
+
+
+def test_reactivating_the_active_generation_is_a_no_op(tmp_path):
+    active = heavy_snapshot_active(tmp_path)  # over the limit, but already active
+    before, _ = rows(active["generation"])
+    result = activate_catalog(active["generation"])
+    after, count = rows(active["generation"])
+    assert result["trimmed_withdrawn"] == 0 and after == before and count == 70
