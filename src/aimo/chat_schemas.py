@@ -21,6 +21,7 @@ class Ingredient(Model):
     purchase_unit: str | None = None
     product_fingerprint: str | None = None
     conversion: QuantityCalculation | None = None
+    rejected: list[dict[str, str]] = Field(default_factory=list, max_length=100)
 
 
 class MealPlan(Model):

@@ -634,11 +634,6 @@ def test_snapshot_line_names_the_ingredients_it_serves(tmp_path, actor, service,
     ]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="MEA-005 'selections' (plural): a product tried and rejected for an ingredient is not "
-    "recorded anywhere; the revision keeps only product_id=None and a reason.",
-)
 def test_gap_rejected_product_selection_is_recorded(tmp_path, actor, meal_products):
     versions = import_fixture(tmp_path)
     plan = scale_recipe(actor, ref(versions))

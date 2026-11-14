@@ -202,10 +202,6 @@ class RecordingService:
         raise CapturedPrepare
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="BAS-009 Draft: the same product in two units is rejected, not combined into one KG line",
-)
 def test_product_requested_in_two_units_becomes_one_line_in_the_priority_unit():
     # Layer chosen: ToolSession.prepare with a recording fake service (pattern of test_agent.py).
     # It is the simplest layer without network that sees both the plan keyed on (product, unit)

@@ -6,7 +6,7 @@ from math import ceil
 from uuid import uuid4
 
 from aimo import recipe_search
-from aimo.catalog import quantity
+from aimo.catalog import combine_in_priority_unit, quantity
 from aimo.chat_schemas import MealPlan
 from aimo.db import Problem, connection, fingerprint, js
 from aimo.numeric import fraction_text
@@ -301,6 +301,11 @@ def match_ingredient(identity, request):
                 item["reason"] = (
                     "Structured product data cannot convert the ingredient quantity into sales units."
                 )
+        if item["status"] == "unresolved" and item["amount"] and item.get("reason"):
+            # MEA-005: keep a refused product choice (appended, never removed) with its reason.
+            item.setdefault("rejected", []).append(
+                {"product_id": request.product_id, "reason": item["reason"]}
+            )
         plan["recipe_plan_revision"] = row["revision"] + 1
         c.execute(
             "INSERT INTO recipe_plan_revisions VALUES(%s,%s,%s,now())",
@@ -311,6 +316,35 @@ def match_ingredient(identity, request):
             (plan["recipe_plan_revision"], row["id"]),
         )
     return plan
+
+
+def combine_by_product(contributions, products):
+    """{product_id: [(amount, unit), ...]} -> {product_id: (amount, unit)}, one line per product.
+
+    One unit is a plain sum. Several units are converted with catalog evidence and combined in
+    the configured priority unit (KG, then L, then pieces); no evidence means no basket (BAS-009).
+    """
+    combined = {}
+    for product_id, items in contributions.items():
+        units = {unit for _, unit in items}
+        if len(units) == 1:
+            combined[product_id] = (sum(amount for amount, _ in items), items[0][1])
+            continue
+        product = products.get(product_id)
+        result = (
+            combine_in_priority_unit(product, items)
+            if product
+            else {"status": "unknown", "reason": "The product facts are not loaded."}
+        )
+        if result["status"] != "derived":
+            raise Problem(
+                "UNIT_CONVERSION_UNKNOWN",
+                f"Product {product_id} is needed in {', '.join(sorted(units))}: "
+                f"{result['reason']} Order it in one unit.",
+                422,
+            )
+        combined[product_id] = (Decimal(result["amount"]), result["unit"])
+    return combined
 
 
 def validate_basket(c, identity, request):
@@ -350,13 +384,17 @@ def validate_basket(c, identity, request):
             422,
         )
     products = load_products(c, [i["product_id"] for i in plan["ingredients"]])
-    required = {}
+    contributions, offered = {}, {}
     for item in plan["ingredients"]:
         if fingerprint(products.get(item["product_id"])) != item["product_fingerprint"]:
             raise Problem("RECIPE_PRODUCT_CHANGED", "Catalog facts changed; rematch ingredients.")
-        key = (item["product_id"], item["purchase_unit"])
-        required[key] = required.get(key, Decimal(0)) + Decimal(item["purchase_amount"])
-    actual = {(line.product_id, line.unit): line.amount for line in request.lines}
+        contributions.setdefault(item["product_id"], []).append(
+            (Decimal(item["purchase_amount"]), item["purchase_unit"])
+        )
+    for line in request.lines:
+        offered.setdefault(line.product_id, []).append((line.amount, line.unit))
+    required = combine_by_product(contributions, products)
+    actual = combine_by_product(offered, products)
     if required != actual:
         raise Problem(
             "MEAL_BASKET_MISMATCH",

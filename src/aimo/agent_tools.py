@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import Callable
 from uuid import UUID
 
-from pydantic import Field, TypeAdapter, ValidationError
+from pydantic import Field, TypeAdapter, ValidationError, model_validator
 
 from aimo import memory
 from aimo.chat_schemas import AgentTurn, MealPlan
@@ -22,8 +22,10 @@ from aimo.recipe_schemas import (
     RecipeSearchResult,
     ScaleRecipe,
 )
+from aimo.recipes import combine_by_product
 from aimo.schemas import (
     Amount,
+    Contribution,
     LookupRequest,
     LookupResponse,
     Model,
@@ -44,6 +46,17 @@ class EmptyRequest(Model):
 
 class ProductRequest(Model):
     product_id: str = Field(min_length=1, max_length=40)
+
+
+class PrepareOrderInput(PurchaseRequest):
+    """Tool input: one product may appear once per unit; prepare() merges them to one line."""
+
+    @model_validator(mode="after")
+    def unique_lines(self):  # replaces PurchaseRequest.unique_lines for the tool input only
+        keys = [(line.product_id, line.unit) for line in self.lines]
+        if len(keys) != len(set(keys)):
+            raise ValueError("Combine quantities for duplicate product IDs before preparing")
+        return self
 
 
 class ProposalRequest(Model):
@@ -109,7 +122,7 @@ class ToolSession:
                 self.publish,
             ),
             "prepare_order": ToolSpec(
-                PurchaseRequest,
+                PrepareOrderInput,
                 "Prepare the complete published plan through purchasing validation. "
                 "Server assigns the retry key. Does not authorize or commit a purchase.",
                 self.prepare,
@@ -378,16 +391,19 @@ class ToolSession:
                 "Match every ingredient before preparing a meal basket.",
                 422,
             )
-        required = {}
+        contributions, offered = {}, {}
         for item in self.plan.ingredients:
             if self.plan.recipe_plan_id and item.status != "matched":
                 raise Problem(
                     "INCOMPLETE_MEAL_PLAN", "Resolve every recipe ingredient before preparing.", 422
                 )
-            key = (item.product_id, item.purchase_unit if self.plan.recipe_plan_id else item.unit)
+            unit = item.purchase_unit if self.plan.recipe_plan_id else item.unit
             amount = item.purchase_amount if self.plan.recipe_plan_id else item.amount
-            required[key] = required.get(key, Decimal(0)) + Decimal(amount)
-        actual = {(line.product_id, line.unit): line.amount for line in request.lines}
+            contributions.setdefault(item.product_id, []).append((Decimal(amount), unit))
+        for line in request.lines:
+            offered.setdefault(line.product_id, []).append((line.amount, line.unit))
+        required = combine_by_product(contributions, self.products)
+        actual = combine_by_product(offered, self.products)
         if required != actual:
             raise Problem(
                 "MEAL_BASKET_MISMATCH",
@@ -395,6 +411,11 @@ class ToolSession:
                 "Combine duplicate SKUs; purchasing tools perform pack rounding.",
                 422,
             )
+        merged = []
+        for product_id, (amount, unit) in actual.items():
+            first = next(line for line in request.lines if line.product_id == product_id)
+            merged.append(first.model_copy(update={"amount": amount, "unit": unit}))
+        request = request.model_copy(update={"lines": merged})
         if self.plan.recipe_plan_id:
             if request.recipe_plan_id and str(request.recipe_plan_id) != self.plan.recipe_plan_id:
                 raise Problem("MEAL_BASKET_MISMATCH", "Use the current saved recipe plan.", 422)
@@ -412,6 +433,21 @@ class ToolSession:
         elif request.recipe_plan_id or request.recipe_plan_revision:
             raise Problem(
                 "RECIPE_PLAN_REQUIRED", "Load the saved recipe plan before preparing it.", 422
+            )
+        if not self.plan.recipe_plan_id:
+            # BAS-002: the line names the ingredients it combines (server-made, never client input).
+            parts = {}
+            for item in self.plan.ingredients:
+                parts.setdefault(item.product_id, []).append(
+                    Contribution(ingredient=item.name, amount=item.amount, unit=item.unit)
+                )
+            request = request.model_copy(
+                update={
+                    "lines": [
+                        line.model_copy(update={"contributions": parts[line.product_id]})
+                        for line in request.lines
+                    ]
+                }
             )
         digest = fingerprint(request.model_dump(mode="json"))
         if self.prepared_digest is not None and self.prepared_digest != digest:

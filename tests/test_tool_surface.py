@@ -48,6 +48,7 @@ RECIPE_TOOLS = [
     "get_recipe",
     "get_recipe_plan",
     "match_ingredient",
+    "match_ingredients",
     "scale_recipe",
     "search_recipes",
 ]
@@ -98,7 +99,7 @@ def assert_agent_safe(problem):
 def test_the_full_tool_list_is_always_exposed():
     """Purchasing, recipe and explicit memory tools are always registered."""
     memory_tools = {"search_memory", "manage_memory"}
-    assert len(ALL_TOOLS) == 15, ALL_TOOLS
+    assert len(ALL_TOOLS) == 16, ALL_TOOLS
     assert set(RECIPE_TOOLS) | memory_tools <= set(ALL_TOOLS)
     assert len(set(ALL_TOOLS) - set(RECIPE_TOOLS) - memory_tools) == 8
 
@@ -221,6 +222,7 @@ def test_tct003_missing_required_fields_and_range_violations_are_rejected():
         ("scale_recipe", {"recipe_id": "r", "version": "v", "portions": 0}),
         ("get_recipe_plan", {"plan_id": "zz"}),
         ("match_ingredient", {"plan_id": str(uuid4()), "revision": 0, "ingredient_id": "i"}),
+        ("match_ingredients", {"plan_id": str(uuid4()), "revision": 1, "matches": []}),
     ]
     assert {name for name, _ in cases} <= set(ALL_TOOLS)
     for name, arguments in cases:
@@ -291,6 +293,16 @@ def test_tct003_workflow_precondition_errors_say_which_tool_to_use_first(session
         session,
         "match_ingredient",
         {"plan_id": str(uuid4()), "revision": 1, "ingredient_id": "i", "product_id": "464306"},
+    )
+    assert problem.code == "PRODUCT_NOT_VERIFIED" and "get_product" in problem.message
+    problem = rejected(
+        session,
+        "match_ingredients",
+        {
+            "plan_id": str(uuid4()),
+            "revision": 1,
+            "matches": [{"ingredient_id": "i", "product_id": "464306"}],
+        },
     )
     assert problem.code == "PRODUCT_NOT_VERIFIED" and "get_product" in problem.message
 
@@ -643,5 +655,6 @@ def test_tct005_every_registered_tool_is_covered_by_a_result_check_here():
         "scale_recipe": "test_tct005_recipe_tool_results_carry_units_basis_and_attribution",
         "get_recipe_plan": "test_tct005_recipe_tool_results_carry_units_basis_and_attribution",
         "match_ingredient": "test_tct005_recipe_tool_results_carry_units_basis_and_attribution",
+        "match_ingredients": "same plan result as match_ingredient; test_batch_match_tool_matches_every_ingredient_in_one_revision",
     }
     assert set(covered) == set(ALL_TOOLS), set(covered) ^ set(ALL_TOOLS)

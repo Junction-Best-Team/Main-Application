@@ -961,6 +961,47 @@
           }
         }
       },
+      "Contribution": {
+        "properties": {
+          "ingredient": {
+            "type": "string",
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Ingredient"
+          },
+          "ingredient_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingredient Id"
+          },
+          "amount": {
+            "type": "string",
+            "title": "Amount"
+          },
+          "unit": {
+            "type": "string",
+            "maxLength": 12,
+            "minLength": 1,
+            "title": "Unit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "ingredient",
+          "amount",
+          "unit"
+        ],
+        "title": "Contribution",
+        "description": "One ingredient's required quantity inside a basket line (BAS-002, MEA-005)."
+      },
       "ConversationCreate": {
         "properties": {
           "title": {
@@ -1293,6 +1334,17 @@
                 "type": "null"
               }
             ]
+          },
+          "rejected": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Rejected"
           }
         },
         "additionalProperties": false,
@@ -1334,6 +1386,23 @@
               }
             ],
             "title": "Substitutes For"
+          },
+          "contributions": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/Contribution"
+                },
+                "type": "array",
+                "maxItems": 30,
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contributions",
+            "description": "Free-form baskets: the ingredients this line serves; amounts add up to it."
           }
         },
         "additionalProperties": false,
@@ -1387,7 +1456,7 @@
               "$ref": "#/components/schemas/Ingredient"
             },
             "type": "array",
-            "maxItems": 30,
+            "maxItems": 1000,
             "minItems": 1,
             "title": "Ingredients"
           },
@@ -2177,7 +2246,7 @@
               "$ref": "#/components/schemas/LineRequest"
             },
             "type": "array",
-            "maxItems": 30,
+            "maxItems": 1000,
             "minItems": 1,
             "title": "Lines"
           },
@@ -2404,6 +2473,17 @@
               }
             ],
             "title": "Effective Step"
+          },
+          "shortfall": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shortfall"
           }
         },
         "additionalProperties": false,
@@ -2472,6 +2552,37 @@
             "type": "boolean",
             "title": "Milk Free",
             "default": false
+          },
+          "free_from": {
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9]{0,3}$"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Free From",
+            "description": "Allergen codes (for example AM milk, AE, AW) the product must explicitly declare free from. A product with no declaration is excluded, not assumed safe."
+          },
+          "country_of_origin": {
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z]{2}$"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Country Of Origin",
+            "description": "Two-letter origin codes (for example fi, se); the product must match one. A product with no recorded origin is excluded."
+          },
+          "unsupported": {
+            "items": {
+              "type": "string",
+              "maxLength": 80,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Unsupported",
+            "description": "Customer requirements the catalog cannot verify (for example gluten-free). Each entry blocks readiness: the basket needs the customer's decision (POL-009)."
           }
         },
         "additionalProperties": false,
@@ -2751,6 +2862,21 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Commercial Evidence"
+          },
+          "contributions": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contributions"
           }
         },
         "additionalProperties": false,
