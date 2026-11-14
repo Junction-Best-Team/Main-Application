@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     public_base_url: str = "http://localhost:8000"
     approval_session_secret: str = ""
     secure_cookies: bool = True
+    # The interactive docs and the OpenAPI document are for local development only (Q-72).
+    api_docs_enabled: bool = False
     upstream_mode: Literal["auto", "fixture", "live"] = "auto"
     valio_aimo_base_url: str = "https://junction26.valioaimo.fi"
     valio_aimo_api_key: str = ""
