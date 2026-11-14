@@ -4,6 +4,8 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Query, Request, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
@@ -90,6 +92,16 @@ def create_app(service=None):
             status_code=exc.status,
             headers={"Retry-After": str(exc.retry_after)} if exc.retry_after is not None else None,
         )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_handler(request, exc):
+        # Same {"detail": [...]} shape and type/loc/msg as FastAPI's default, but never the
+        # submitted `input` (a password, or the whole body for a missing field) or `ctx`.
+        errors = [
+            {key: value for key, value in error.items() if key not in ("input", "ctx")}
+            for error in exc.errors()
+        ]
+        return JSONResponse({"detail": jsonable_encoder(errors)}, status_code=422)
 
     @app.middleware("http")
     async def security_headers(request, call_next):
