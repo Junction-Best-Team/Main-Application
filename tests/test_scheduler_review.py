@@ -107,7 +107,10 @@ def test_a_cancel_between_prepare_and_commit_skips_the_run(
     monkeypatch.setattr(service, "commit_order", cancelled_in_between)
     drive(service, at())
     run = run_of(s)
-    assert run["status"] == "skipped" and run["reason_code"] == "AUTHORIZATION_CANCELLED"
+    assert run["status"] == "skipped" and run["reason_code"] in (
+        "AUTHORIZATION_CANCELLED",
+        "REQUEST_CANCELLED",  # a cancel now also cancels the open proposal (R-15)
+    )
     assert schedule_row(s)["status"] == "cancelled"
 
 
