@@ -21,6 +21,7 @@ Do not rename applied migrations or delete their ledger rows.
 | 015_recipe_images | Optional chat illustrations, durable generation/upload recovery |
 | 021_turn_constraints | The customer's structured limits (budget, dietary toggles) stored with the chat turn that carries them (POL-008 producer, owner Q-97). One nullable `jsonb` column on `conversation_turns`; additive |
 | 022_buyer_settings | Narrow signed-in buyer settings save; preserve hidden scope and personal authority |
+| 024_message_notice | `conversation_messages.notice`: marks the plain assistant notice stored when a chat turn fails because the model provider fails (owner Q-108). One nullable `text` column; additive |
 
 Before allocating another number, check remote branch tips and open PRs and update
 this table with the agreed allocation. Reservations do not create migration files.

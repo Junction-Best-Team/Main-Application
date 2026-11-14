@@ -442,6 +442,11 @@ export interface components {
             image?: components["schemas"]["RecipeImage"] | null;
             /** Attachments */
             attachments?: components["schemas"]["AttachmentInfo"][];
+            /**
+             * Notice
+             * @description Set on a plain assistant notice stored when the model provider failed; show it as a notice, not as an answer. The unfinished message keeps its retry offer.
+             */
+            notice?: "provider_unavailable" | null;
         };
         /** CommitRequest */
         CommitRequest: {

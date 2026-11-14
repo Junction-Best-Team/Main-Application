@@ -1719,6 +1719,19 @@
             },
             "type": "array",
             "title": "Attachments"
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "provider_unavailable"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice",
+            "description": "Set on a plain assistant notice stored when the model provider failed; show it as a notice, not as an answer. The unfinished message keeps its retry offer."
           }
         },
         "additionalProperties": false,

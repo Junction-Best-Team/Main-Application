@@ -12,6 +12,7 @@ from aimo.db import Problem, connection, fingerprint, js, now
 from aimo.guardrails import encode, proposal_view
 from aimo.observability import event, operation
 from aimo.purchases import context
+from aimo.turn_notice import NOTICE_KIND, failure_notice
 
 
 def owned(c, identity, cid, lock=False):
@@ -81,7 +82,7 @@ def detail(identity, cid, *, internal=False):
         context(c, identity)
         row = owned(c, identity, cid)
         messages = c.execute(
-            """SELECT id,role,text,created_at,meal_plan,proposal_id,image,attachments FROM conversation_messages
+            """SELECT id,role,text,created_at,meal_plan,proposal_id,image,attachments,notice FROM conversation_messages
             WHERE conversation_id=%s ORDER BY id""",
             (cid,),
         ).fetchall()
@@ -171,6 +172,12 @@ def enqueue(identity, cid, body):
             limit_turns(c, identity, new=old is None)
             files = [attachments.prepare(a) for a in body.attachments] if not old else []
             tid = old["id"] if old else uuid4()
+            if old:
+                # A retry replaces the provider-failure notice of the earlier attempt (Q-108).
+                c.execute(
+                    "DELETE FROM conversation_messages WHERE turn_id=%s AND role='assistant' AND notice IS NOT NULL",
+                    (tid,),
+                )
             c.execute(
                 """INSERT INTO conversation_turns
                 (id,conversation_id,key,payload_hash,state,lease_until,attempt,requested_by,
@@ -276,6 +283,32 @@ def claim_turn(cid=None):
         ).fetchone()
 
 
+def provider_failure(error):
+    """The model provider failed (every LLM_* code of the provider layer). Guardrail, policy,
+    fence and programming errors are not provider failures and store no notice."""
+    return isinstance(error, Problem) and error.code.startswith("LLM_")
+
+
+def store_failure_notice(cid, tid):
+    """Owner Q-108: one fixed, plain assistant notice for the failed turn, in the language of the
+    customer's message; no model call and no error detail. Best effort: a failure here never
+    hides the original error. The turn's single assistant slot holds it until a retry replaces it."""
+    try:
+        with connection() as c:
+            user = c.execute(
+                "SELECT text FROM conversation_messages WHERE turn_id=%s AND role='user'", (tid,)
+            ).fetchone()
+            if user:
+                c.execute(
+                    """INSERT INTO conversation_messages(conversation_id,turn_id,role,text,notice)
+                    VALUES(%s,%s,'assistant',%s,%s) ON CONFLICT(turn_id,role) DO NOTHING""",
+                    (cid, tid, failure_notice(user["text"]), NOTICE_KIND),
+                )
+                c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
+    except Exception:
+        event("chat.failure_notice_failed", conversation_id=str(cid), turn_id=str(tid))
+
+
 def customer_constraints(c, cid, tid):
     """The limits in force for one turn (POL-008): what the customer set on this message and
     on earlier ones in this conversation, the latest value per name. A toggle set to false
@@ -335,12 +368,14 @@ def execute_turn(turn, service, runner=None):
         data = detail(identity, cid, internal=True)
         with connection() as c:
             limits = customer_constraints(c, cid, tid)
+        # A stored failure notice is for the customer, not the model: it is left out of the history.
+        shown = [m for m in data["messages"] if not m["notice"]]
         history = [
             {"role": m["role"], "content": m["text"], "attachments": m["attachments"]}
-            for m in data["messages"]
+            for m in shown
         ]
         # Structured persisted plans and status survive refresh, restarts and a provider context reset.
-        for index, msg in enumerate(data["messages"]):
+        for index, msg in enumerate(shown):
             if msg["meal_plan"]:
                 history[index]["content"] += "\nStored meal plan: " + str(msg["meal_plan"])
             if msg["image"]:
@@ -419,12 +454,14 @@ def execute_turn(turn, service, runner=None):
             )
             c.execute("UPDATE conversation_turns SET state='complete' WHERE id=%s", (tid,))
             c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
-    except Exception:
+    except Exception as exc:
         with connection() as c:
-            c.execute(
-                "UPDATE conversation_turns SET state='failed' WHERE id=%s AND attempt=%s AND state='running'",
+            failed = c.execute(
+                "UPDATE conversation_turns SET state='failed' WHERE id=%s AND attempt=%s AND state='running' RETURNING id",
                 (tid, attempt),
-            )
+            ).fetchone()
+        if failed and provider_failure(exc):
+            store_failure_notice(cid, tid)
         raise
     return detail(identity, cid)
 
