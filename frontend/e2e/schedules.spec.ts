@@ -242,7 +242,8 @@ test.describe("schedule detail", () => {
       hasText: "Whole milk 10 L",
     });
     await expect(milkLine).toContainText("8 L");
-    await expect(milkLine).toContainText("€13.68");
+    await expect(milkLine).toContainText("€13.68 per BIB incl. tax");
+    await expect(milkLine).not.toContainText("per L");
     await expect(milkLine).toContainText("€109.44");
     await expect(milkLine).toContainText("Organic whole milk 10 L");
     await expect(milkLine).toContainText("7.50 %");
@@ -499,6 +500,46 @@ test.describe("schedule detail", () => {
           .getByText("Order placed"),
       ).toBeVisible({ timeout: 15_000 });
       expect(csrf).toBe("test-csrf");
+    });
+
+    test("the button is busy until the run result shows, then is usable again at once", async ({
+      page,
+    }) => {
+      await mockSignedIn(page, true);
+      let started = false;
+      await page.route(detailUrl(ids.schedule), (route) =>
+        json(
+          route,
+          started
+            ? detail({ ...schedule, last_run: committedRun }, [committedRun])
+            : detail(schedule),
+        ),
+      );
+      await page.route(runNowUrl(ids.schedule), (route) => {
+        started = true;
+        return json(route, {
+          ...schedule,
+          last_run: { ...committedRun, status: "due", order_id: null },
+        });
+      });
+      await page.goto(`/schedules/${ids.schedule}`);
+      await page.getByRole("button", { name: "Run now (demo)" }).click();
+      // While the run is not finished the button is protected against a second click.
+      await expect(
+        page.getByRole("button", { name: "Running…" }),
+      ).toBeDisabled();
+      await expect(
+        page
+          .getByRole("region", { name: "Run history" })
+          .getByText("Order placed"),
+      ).toBeVisible({ timeout: 15_000 });
+      // Once the result is shown the button is back, with its normal label, within 2 s.
+      await expect(
+        page.getByRole("button", { name: "Run now (demo)" }),
+      ).toBeEnabled({ timeout: 2_000 });
+      await expect(
+        page.getByRole("button", { name: "Pause", exact: true }),
+      ).toBeEnabled({ timeout: 2_000 });
     });
 
     test("a refused run says why", async ({ page }) => {

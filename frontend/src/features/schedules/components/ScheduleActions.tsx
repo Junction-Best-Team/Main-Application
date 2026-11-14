@@ -26,6 +26,13 @@ const ACTION: Record<Kind, typeof pauseSchedule> = {
 };
 const demoButton =
   "inline-flex cursor-pointer items-center justify-center gap-1 rounded-lg border-2 border-dashed border-amber-500 bg-amber-100 px-space-md py-2 font-mono text-label-md text-amber-900 disabled:cursor-not-allowed disabled:opacity-50";
+// What a reload may hand back: the fresh schedule, so a Run now poll can stop once the run settled.
+type Reloaded = { last_run?: { status: string } | null } | void;
+const runPending = (r: Reloaded) =>
+  !r ||
+  !r.last_run ||
+  r.last_run.status === "due" ||
+  r.last_run.status === "prepared";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const button =
@@ -44,7 +51,7 @@ export function ScheduleActions({
 }: {
   schedule: Pick<Schedule, "id" | "status">;
   onChanged: (next: Schedule) => void;
-  onStale?: () => Promise<void> | void;
+  onStale?: () => Promise<Reloaded> | Reloaded;
   compact?: boolean;
 }) {
   const { session, setSession } = useAuth();
@@ -73,10 +80,11 @@ export function ScheduleActions({
       setConfirming(false);
       onChanged(next);
       if (kind === "runNow") {
-        // The worker prepares and commits the run within a few seconds: reload a few times.
+        // The worker prepares and commits the run within a few seconds: reload a few times,
+        // and stop (ending the busy state) as soon as the run has a result.
         for (let i = 0; i < 5; i++) {
           await sleep(2000);
-          await onStale?.();
+          if (!runPending(await onStale?.())) break;
         }
       }
     } catch (e) {
