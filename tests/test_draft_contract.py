@@ -221,9 +221,6 @@ class RecordingService:
         result["provenance"]["product_id"] = product_id
         return result
 
-    def ensure_saved_plan_resolved(self, identity, title):
-        return None  # MEA-008 guard: this stand-in has no saved plans
-
     def prepare_order(self, identity, request):
         self.prepared = request
         raise CapturedPrepare
