@@ -51,6 +51,11 @@ navigation and mobile). They
 prove UI behavior against authored responses, not live provider, database or
 supplier integration.
 
+`e2e/chat-activity.spec.ts` exercises real EventSource consumption with authored
+activity snapshots: each tool call, failed/unfinished steps, active-to-complete
+updates, refresh recovery, reduced motion and desktop/phone layouts. Backend
+activity persistence and attempt fencing are covered by `tests/test_chat_activity.py`.
+
 ## Live fixture integration
 
 ```sh

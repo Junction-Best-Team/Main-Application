@@ -208,3 +208,12 @@ The owner clarified the product scope and refusal style: accept food, products a
 nearby topics; decline clearly unrelated requests in simple language. Extended the
 same synthetic evaluation with workout, food-before-exercise, storage, kitchen-supply
 and community-serving cases. No new external material was used.
+
+
+## Streamed chat tool activity — 2026-11-14
+
+Reused the runner's existing `AgentProgress` observer, durable worker attempt/lease
+fencing, authenticated conversation SSE snapshots, and Nordic UI tokens/icons.
+Added server-authored display labels and fixture-backed activity scenarios; no
+external assets, provider calls or new dependencies. The owner's screenshot
+identified the static busy line to replace.

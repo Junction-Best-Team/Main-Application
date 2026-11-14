@@ -132,10 +132,23 @@ class ConversationSummary(Model):
     updated_at: datetime
 
 
+class ChatActivityEvent(Model):
+    sequence: int = Field(ge=1, le=600)
+    kind: Literal["started", "tool_started", "tool_completed", "tool_failed", "complete", "error"]
+    label: str = Field(min_length=1, max_length=80)
+
+
+class ChatActivity(Model):
+    turn_id: str
+    state: Literal["queued", "running", "complete", "failed"]
+    events: list[ChatActivityEvent] = Field(default_factory=list, max_length=600)
+
+
 class ConversationResponse(ConversationSummary):
     messages: list[ChatMessage]
     purchases: list[ProposalResponse]
     busy: bool = False
+    activity: ChatActivity | None = None
     retry_message: RetryMessage | None = None
 
 

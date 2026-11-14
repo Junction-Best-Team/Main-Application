@@ -383,6 +383,30 @@ export interface components {
             /** Exceptions */
             exceptions: ("substitution" | "overbuy")[];
         };
+        /** ChatActivity */
+        ChatActivity: {
+            /** Turn Id */
+            turn_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "complete" | "failed";
+            /** Events */
+            events?: components["schemas"]["ChatActivityEvent"][];
+        };
+        /** ChatActivityEvent */
+        ChatActivityEvent: {
+            /** Sequence */
+            sequence: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "started" | "tool_started" | "tool_completed" | "tool_failed" | "complete" | "error";
+            /** Label */
+            label: string;
+        };
         /** ChatMessage */
         ChatMessage: {
             /** Id */
@@ -474,6 +498,7 @@ export interface components {
              * @default false
              */
             busy: boolean;
+            activity?: components["schemas"]["ChatActivity"] | null;
             retry_message?: components["schemas"]["RetryMessage"] | null;
         };
         /** ConversationSummary */

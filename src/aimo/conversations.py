@@ -2,11 +2,13 @@
 
 from datetime import timedelta
 from decimal import Decimal
+from functools import partial
 from uuid import uuid4
 
 from aimo import approval_workflow as workflow
 from aimo import auth
 from aimo.approval_policy import can_approve
+from aimo.chat_activity import record_progress
 from aimo.chat_schemas import AgentTurn
 from aimo.db import Problem, connection, fingerprint, js, now
 from aimo.guardrails import encode, proposal_view
@@ -72,13 +74,15 @@ def detail(identity, cid):
             WHERE conversation_id=%s ORDER BY id""",
             (cid,),
         ).fetchall()
-        busy = (
-            c.execute(
-                "SELECT 1 FROM conversation_turns WHERE conversation_id=%s AND (state='queued' OR (state='running' AND lease_until>%s))",
-                (cid, now()),
-            ).fetchone()
-            is not None
-        )
+        turn = c.execute(
+            """SELECT id,state,lease_until,progress FROM conversation_turns
+            WHERE conversation_id=%s ORDER BY created_at DESC,id DESC LIMIT 1""",
+            (cid,),
+        ).fetchone()
+        state = turn["state"] if turn else None
+        if state == "running" and turn["lease_until"] <= now():
+            state = "failed"
+        busy = state in ("queued", "running")
         retry = c.execute(
             """SELECT t.key,t.constraints,m.text FROM conversation_turns t JOIN conversation_messages m
             ON m.turn_id=t.id AND m.role='user' WHERE t.conversation_id=%s AND t.state!='complete'
@@ -98,6 +102,9 @@ def detail(identity, cid):
         ],
         "purchases": purchases,
         "busy": busy,
+        "activity": {"turn_id": str(turn["id"]), "state": state, "events": turn["progress"]}
+        if turn
+        else None,
         "retry_message": {"text": retry["text"], "idempotency_key": retry["key"]}
         | ({"constraints": {r["name"]: r["value"] for r in retry["constraints"]}} if retry["constraints"] else {})
         if retry
@@ -140,7 +147,7 @@ def enqueue(identity, cid, body):
                 (id,conversation_id,key,payload_hash,state,lease_until,attempt,requested_by,
                 worker_attempts,submitted_by,constraints)
                 VALUES(%s,%s,%s,%s,'queued',%s,%s,%s,0,%s,%s) ON CONFLICT(conversation_id,key)
-                DO UPDATE SET state='queued',requested_by=EXCLUDED.requested_by,worker_attempts=0""",
+                DO UPDATE SET state='queued',requested_by=EXCLUDED.requested_by,worker_attempts=0,progress='[]'::jsonb""",
                 # A retry changes the executor (requested_by) but never the author.
                 (
                     tid,
@@ -235,7 +242,7 @@ def claim_turn(cid=None):
             return None
         return c.execute(
             """UPDATE conversation_turns SET state='running',attempt=%s,lease_until=%s,
-            worker_attempts=worker_attempts+1 WHERE id=%s RETURNING *""",
+            worker_attempts=worker_attempts+1,progress='[]'::jsonb WHERE id=%s RETURNING *""",
             (uuid4(), now() + timedelta(seconds=240), turn["id"]),
         ).fetchone()
 
@@ -264,7 +271,7 @@ def execute_turn(turn, service, runner=None):
     if runner is None:
         from aimo.agent import run_turn
 
-        runner = run_turn
+        runner = partial(run_turn, on_progress=partial(record_progress, turn))
     cid, tid, attempt = turn["conversation_id"], turn["id"], turn["attempt"]
     try:
         with connection() as c:

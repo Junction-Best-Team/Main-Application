@@ -93,6 +93,18 @@ already committed before a crash, recovery returns that saved basket using the t
 preparation key instead of preparing again. The API reads saved updates and sends them to the
 browser over SSE; this is persisted conversation state, not a stream of model tokens.
 
+The worker connects the runner's existing `AgentProgress` observer to
+`chat_activity.record_progress`. Migration `022_chat_activity.sql` adds a bounded
+JSONB event list to each turn. Each update checks the live attempt and lease;
+reclaim/explicit retry starts a fresh list. Fixed display labels omit tool arguments,
+results, provider errors and private reasoning. The latest turn's `activity` is
+included in authenticated conversation snapshots at the existing two-second SSE
+cadence, retaining fast calls between snapshots. Expired leases display interrupted
+activity. Progress writes are best effort and cannot change purchase outcomes.
+The frontend's expandable activity section animates only while the turn is busy,
+honors reduced motion, and retains completed/failed steps after the reply.
+
+
 ## Agent harness inside the worker
 
 The worker supplies the recorded customer's current identity, a server-scoped internal agent,

@@ -30,6 +30,7 @@ PACKAGED = sorted(
 
 # (drop statement, the migration whose object it removes)
 DROPS = [
+    ("ALTER TABLE conversation_turns DROP COLUMN progress", "022_chat_activity.sql"),
     ("DROP TRIGGER immutable_orders ON orders", "008_orders_immutable.sql"),
     ("ALTER TABLE products DROP COLUMN withdrawn_since", "009_product_withdrawn_since.sql"),
     ("DROP TABLE meal_authorization_withdrawals", "010_meal_authorization_withdrawals.sql"),

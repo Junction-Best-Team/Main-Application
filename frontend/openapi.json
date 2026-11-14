@@ -1045,6 +1045,75 @@
         "title": "ApproverAuthority",
         "description": "A human approver's limits: the maximum gross amount and the exceptions they may approve."
       },
+      "ChatActivity": {
+        "properties": {
+          "turn_id": {
+            "type": "string",
+            "title": "Turn Id"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "complete",
+              "failed"
+            ],
+            "title": "State"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/ChatActivityEvent"
+            },
+            "type": "array",
+            "maxItems": 600,
+            "title": "Events"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "turn_id",
+          "state"
+        ],
+        "title": "ChatActivity"
+      },
+      "ChatActivityEvent": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "maximum": 600.0,
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "started",
+              "tool_started",
+              "tool_completed",
+              "tool_failed",
+              "complete",
+              "error"
+            ],
+            "title": "Kind"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "kind",
+          "label"
+        ],
+        "title": "ChatActivityEvent"
+      },
       "ChatMessage": {
         "properties": {
           "id": {
@@ -1287,6 +1356,16 @@
             "type": "boolean",
             "title": "Busy",
             "default": false
+          },
+          "activity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatActivity"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "retry_message": {
             "anyOf": [

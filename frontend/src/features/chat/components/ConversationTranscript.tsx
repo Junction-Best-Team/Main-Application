@@ -1,6 +1,7 @@
 import type { Conversation } from "../../../shared/api/types";
 import { Icon } from "../../../shared/components/DesignPrimitives";
 import { dateTime } from "../../../shared/lib/format";
+import { ChatActivity } from "./ChatActivity";
 import { MealPlanCard } from "./MealPlanCard";
 import { RecipeIllustration } from "./RecipeIllustration";
 import { SkuCards } from "./SkuCards";
@@ -68,11 +69,7 @@ export function ConversationTranscript({
           </article>
         ),
       )}
-      {busy && (
-        <p className="text-body-sm text-secondary" role="status">
-          Aimo is checking your request… You can return to this conversation.
-        </p>
-      )}
+      <ChatActivity activity={conversation?.activity} busy={busy} />
     </div>
   );
 }

@@ -63,6 +63,7 @@ MANIFEST: dict[str, list[tuple[str, ...]]] = {
         ("trigger", "recipe_versions", "immutable_recipe_versions"),
         ("trigger", "orders", "immutable_truncate"),
     ],
+    "022_chat_activity.sql": [("column", "conversation_turns", "progress")],
     "021_turn_constraints.sql": [("column", "conversation_turns", "constraints")],
 }
 
