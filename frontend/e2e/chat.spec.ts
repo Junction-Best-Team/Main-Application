@@ -468,7 +468,9 @@ test("recipe plan keeps unresolved ingredients visible beside matched packs", as
         ingredients: [
           { name: "Dry spaghetti", amount: "20", unit: "KG", status: "matched", product_id: "465236",
             conversion: { sales_quantity: "7", sales_unit: "ST", excess: "1" } },
-          { name: "Salt", amount: null, unit: "toTaste", status: "unresolved",
+          { name: "Whole eggs", amount: "120", unit: "piece", status: "matched", product_id: "egg-tray",
+            conversion: { sales_quantity: "4", sales_unit: "ST", excess: "0" } },
+          { name: "Salt", amount: null, unit: "tsp", status: "unresolved",
             reason: "Recipe quantity is unspecified; provide a reviewed numeric quantity." }
         ], notes: ["Recipe quantities are estimates for customer review."]
       }
@@ -477,10 +479,13 @@ test("recipe plan keeps unresolved ingredients visible beside matched packs", as
   await page.goto(`/conversations/${conversationId}`);
   const plan = page.getByRole("region", { name: "Proposed meal plan" });
   await expect(plan.getByText("Salt", { exact: true })).toBeVisible();
-  await expect(plan.getByText("Quantity unresolved", { exact: false })).toBeVisible();
+  await expect(plan.getByText("Quantity unresolved", { exact: true })).toBeVisible();
+  await expect(plan.getByText("Quantity unresolved tsp", { exact: true })).toHaveCount(0);
   await expect(plan.getByText("Recipe quantity is unspecified", { exact: false })).toBeVisible();
   await expect(plan.getByText("Buy 7 ST", { exact: false })).toBeVisible();
   await expect(plan.getByText("Excess: 1 KG", { exact: false })).toBeVisible();
+  await expect(plan.getByText("Buy 4 ST", { exact: true })).toBeVisible();
+  await expect(plan.getByText("Excess: 0", { exact: false })).toHaveCount(0);
   await expect(plan.getByText("UniTools", { exact: false })).toBeVisible();
   await expect(page.getByRole("link", { name: "Review basket and purchasing checks" })).toHaveCount(0);
 });

@@ -4,7 +4,6 @@ import hashlib
 import json
 from copy import deepcopy
 from datetime import date, timedelta
-from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -418,6 +417,16 @@ def test_tools_use_persisted_plan_and_cannot_publish_edited_totals(
         request.pop("idempotency_key")
         prepared = invoke("prepare_order", request)
         assert prepared["proposal_id"]
+        # Reading after preparation is allowed and cannot replace the prepared plan.
+        assert invoke("get_recipe_plan", {"plan_id": plan["recipe_plan_id"]})["meal_plan"] == plan
+        other_actor = actor | {"_turn_id": str(uuid4())}
+        other_plan = scale_recipe(other_actor, ref(versions, portions=100))
+        assert (
+            invoke("get_recipe_plan", {"plan_id": other_plan["recipe_plan_id"]})["meal_plan"]
+            == other_plan
+        )
+        assert session.plan.model_dump(mode="json") == plan
+        assert invoke("prepare_order", request)["proposal_id"] == prepared["proposal_id"]
         restarted = ToolSession(actor, service)
         assert (
             restarted.invoke("get_recipe_plan", json.dumps({"plan_id": plan["recipe_plan_id"]}))[
@@ -430,14 +439,15 @@ def test_tools_use_persisted_plan_and_cannot_publish_edited_totals(
 
 
 def test_recipe_profile_uses_recipe_instruction_and_no_product_query_prefix(monkeypatch):
-    import sys
+    from aimo import search_provider
 
     seen = []
-    provider = SimpleNamespace(
-        embeddings=lambda texts, query=False: seen.append((texts, query)) or [[1.0] + [0.0] * 4095]
+    monkeypatch.setattr(
+        search_provider,
+        "embeddings",
+        lambda texts, query=False: seen.append((texts, query)) or [[1.0] + [0.0] * 4095],
     )
-    monkeypatch.setitem(sys.modules, "aimo.search_provider", provider)
-    monkeypatch.setattr(recipe_search, "hosted", lambda: True)
+    monkeypatch.setattr(settings(), "embedding_backend", "openrouter")
     recipe_search.embeddings(["vegetarian lunch"], query=True)
     assert "cooking recipes" in seen[0][0][0]
     assert "wholesale" not in seen[0][0][0] and seen[0][1] is False
@@ -529,9 +539,9 @@ def test_empty_index_wrong_profile_and_revoked_identity(tmp_path, actor, monkeyp
 
 @pytest.mark.parametrize("outage", [False, True])
 def test_hosted_recipe_search_reranks_only_its_shortlist(tmp_path, actor, monkeypatch, outage):
-    import sys
+    from aimo import search_provider
 
-    monkeypatch.setattr(recipe_search, "hosted", lambda: True)
+    monkeypatch.setattr(settings(), "embedding_backend", "openrouter")
     monkeypatch.setattr(
         recipe_search,
         "embeddings",
@@ -548,11 +558,7 @@ def test_hosted_recipe_search_reranks_only_its_shortlist(tmp_path, actor, monkey
             raise Problem("SEARCH_PROVIDER_UNAVAILABLE", "Authored reranker outage")
         return [(1, 0.9), (0, 0.1)]
 
-    monkeypatch.setitem(sys.modules, "aimo.search_provider", SimpleNamespace(rerank=rerank))
-    monkeypatch.setattr(
-        "aimo.config.settings",
-        lambda: SimpleNamespace(rerank_enabled=True, rerank_candidates=30),
-    )
+    monkeypatch.setattr(search_provider, "rerank", rerank)
     result = search_recipes(actor, RecipeSearch(query="carbonara"))
     assert result["rerank_status"] == ("unavailable" if outage else "applied")
     assert len(result["recipes"]) == 2 and len(seen[0][1]) == 2
@@ -577,3 +583,164 @@ def test_commit_rechecks_suitability_for_mass_ingredients(tmp_path, actor, servi
             ),
         )
     assert error.value.code == "RECIPE_PRODUCT_EVIDENCE_CHANGED"
+
+
+@pytest.mark.parametrize("pool_size", [1, 2])
+def test_concurrent_preparations_release_connections_and_plan_locks_during_supplier_io(
+    tmp_path, actor, service, meal_products, monkeypatch, pool_size
+):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    *_, versions = import_fixture(tmp_path)
+    plans = [
+        match_all(actor, scale_recipe(actor | {"_turn_id": str(uuid4())}, ref(versions)))
+        for _ in range(2)
+    ]
+    monkeypatch.setattr(settings(), "db_pool_max_size", pool_size)
+    monkeypatch.setattr(settings(), "db_pool_timeout_seconds", 1)
+    barrier = Barrier(2)
+    lookup = service.connector.lookup
+
+    def supplier_lookup(*args):
+        # Both callers have reached supplier I/O; neither can retain a checkout
+        # or plan lock. This must also work with just one pool connection.
+        leader = barrier.wait(timeout=5)
+        if leader == 0:
+            with connection() as c:
+                c.execute("SELECT id FROM recipe_plans ORDER BY id FOR UPDATE NOWAIT").fetchall()
+        barrier.wait(timeout=5)
+        return lookup(*args)
+
+    monkeypatch.setattr(service.connector, "lookup", supplier_lookup)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda p: service.prepare_order(actor, request_for(p)), plans))
+    assert len({r["proposal_id"] for r in results}) == 2
+    with connection() as c:
+        assert c.execute("SELECT bool_and(locked) AS locked FROM recipe_plans").fetchone()["locked"]
+
+
+def test_one_recipe_plan_cannot_create_two_proposals_but_retry_returns_existing(
+    tmp_path, actor, service, meal_products, monkeypatch
+):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    *_, versions = import_fixture(tmp_path)
+    plan = match_all(actor, scale_recipe(actor, ref(versions)))
+    requests = [request_for(plan), request_for(plan)]
+    barrier = Barrier(2)
+    lookup = service.connector.lookup
+
+    def supplier_lookup(*args):
+        barrier.wait(timeout=5)
+        return lookup(*args)
+
+    def prepare(request):
+        try:
+            return service.prepare_order(actor, request)
+        except Problem as exc:
+            return exc.code
+
+    monkeypatch.setattr(service.connector, "lookup", supplier_lookup)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(prepare, requests))
+    winner = next(i for i, result in enumerate(results) if isinstance(result, dict))
+    assert results[1 - winner] == "RECIPE_PLAN_LOCKED"
+    with connection() as c:
+        assert c.execute("SELECT count(*) AS n FROM proposals").fetchone()["n"] == 1
+
+    def no_supplier_call(*args):
+        pytest.fail("A retry or locked plan must not perform supplier I/O")
+
+    monkeypatch.setattr(service.connector, "lookup", no_supplier_call)
+    close_pools()
+    assert (
+        service.prepare_order(actor, requests[winner])["proposal_id"]
+        == results[winner]["proposal_id"]
+    )
+    later_actor = actor | {"_turn_id": str(uuid4())}
+    get_plan(later_actor, PlanReference(plan_id=plan["recipe_plan_id"]))
+    with pytest.raises(Problem) as error:
+        service.prepare_order(later_actor, request_for(plan))
+    assert error.value.code == "RECIPE_PLAN_LOCKED"
+
+
+def test_recipe_preparation_rechecks_revision_after_supplier_io(
+    tmp_path, actor, service, meal_products, monkeypatch
+):
+    *_, versions = import_fixture(tmp_path)
+    plan = match_all(actor, scale_recipe(actor, ref(versions)))
+    lookup = service.connector.lookup
+
+    def supplier_lookup(*args):
+        # An edit can commit while the supplier responds, so final persistence
+        # must validate the plan again instead of saving the earlier snapshot.
+        match_ingredient(
+            actor,
+            MatchIngredient(
+                plan_id=plan["recipe_plan_id"],
+                revision=plan["recipe_plan_revision"],
+                ingredient_id="spaghetti",
+                product_id="recipe-spaghetti",
+            ),
+        )
+        return lookup(*args)
+
+    monkeypatch.setattr(service.connector, "lookup", supplier_lookup)
+    with pytest.raises(Problem) as error:
+        service.prepare_order(actor, request_for(plan))
+    assert error.value.code == "RECIPE_PLAN_CHANGED"
+    with connection() as c:
+        assert not c.execute("SELECT locked FROM recipe_plans").fetchone()["locked"]
+        assert c.execute("SELECT count(*) AS n FROM proposals").fetchone()["n"] == 0
+
+
+def test_recipe_proposal_and_plan_lock_roll_back_together(
+    tmp_path, actor, service, meal_products, monkeypatch
+):
+    from aimo import approval_workflow
+
+    *_, versions = import_fixture(tmp_path)
+    plan = match_all(actor, scale_recipe(actor, ref(versions)))
+    request = request_for(plan)
+    original_render = approval_workflow.render
+
+    def fail_after_persistence(*args, **kwargs):
+        raise RuntimeError("Authored failure before transaction commit")
+
+    monkeypatch.setattr(approval_workflow, "render", fail_after_persistence)
+    with pytest.raises(RuntimeError, match="Authored failure"):
+        service.prepare_order(actor, request)
+    with connection() as c:
+        assert not c.execute("SELECT locked FROM recipe_plans").fetchone()["locked"]
+        assert c.execute("SELECT count(*) AS n FROM proposals").fetchone()["n"] == 0
+    monkeypatch.setattr(approval_workflow, "render", original_render)
+    assert service.prepare_order(actor, request)["proposal_id"]
+
+
+def test_recipe_flag_keeps_direct_product_purchases_available(
+    actor, service, request_data, monkeypatch
+):
+    monkeypatch.setattr(settings(), "recipe_planning_enabled", True)
+    session = ToolSession(actor, service)
+    session.invoke("get_product", json.dumps({"product_id": "464306"}))
+    session.invoke(
+        "publish_meal_plan",
+        json.dumps(
+            {
+                "title": "Order 10 L milk",
+                "portions": 1,
+                "ingredients": [
+                    {"name": "Milk", "amount": "10", "unit": "L", "product_id": "464306"}
+                ],
+            }
+        ),
+    )
+    request = {k: v for k, v in request_data.items() if k != "idempotency_key"}
+    prepared = session.invoke("prepare_order", json.dumps(request))
+    assert prepared["proposal_id"]
+    assert prepared["request"]["recipe_plan_id"] is None
+    assert prepared["request"]["lines"][0]["amount"] == "10"
+    # Service remains additive for callers outside the chat tool harness too.
+    assert service.prepare_order(actor, PrepareRequest(**request_data))["proposal_id"]

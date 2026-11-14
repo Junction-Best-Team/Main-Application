@@ -53,20 +53,9 @@ class Service:
         }
 
     def prepare_order(self, identity, request: PrepareRequest):
-        from aimo.config import settings
         from aimo.db import Problem
-        from aimo.recipes import validate_basket
 
-        if request.recipe_plan_id:
-            with connection() as c:
-                context(c, identity)
-                row = validate_basket(c, identity, request)
-                result = workflow.prepare_order(identity, request, self.connector)
-                c.execute("UPDATE recipe_plans SET locked=true WHERE id=%s", (row["id"],))
-                return result
-        if request.recipe_plan_revision or (
-            settings().recipe_planning_enabled and identity["role"] == "agent"
-        ):
+        if request.recipe_plan_revision and not request.recipe_plan_id:
             raise Problem(
                 "RECIPE_PLAN_REQUIRED", "Prepare a complete saved recipe plan first.", 422
             )

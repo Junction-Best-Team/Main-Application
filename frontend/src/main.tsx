@@ -509,8 +509,9 @@ function ChatPage() {
                       <li key={i}>
                         <span>{ingredient.name}</span>
                         <strong>
-                          {ingredient.amount ?? "Quantity unresolved"}{" "}
-                          {ingredient.unit}
+                          {ingredient.amount == null
+                            ? "Quantity unresolved"
+                            : `${ingredient.amount} ${ingredient.unit}`}
                         </strong>
                         {ingredient.status === "unresolved" && (
                           <p>{ingredient.reason}</p>
@@ -522,7 +523,7 @@ function ChatPage() {
                           <p>
                             Buy {String(ingredient.conversion.sales_quantity)}{" "}
                             {String(ingredient.conversion.sales_unit)}
-                            {ingredient.conversion.excess &&
+                            {Number(ingredient.conversion.excess) > 0 &&
                               ` · Excess: ${ingredient.conversion.excess} ${ingredient.unit}`}
                           </p>
                         )}

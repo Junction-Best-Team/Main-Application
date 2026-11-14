@@ -240,12 +240,7 @@ def match_ingredient(identity, request):
     with connection() as c:
         _, policy, _, _ = context(c, identity)
         row, plan = read_plan(c, identity, request.plan_id, lock=True)
-        prepared = c.execute(
-            """SELECT 1 FROM proposal_revisions pr JOIN proposals p ON p.id=pr.proposal_id
-            WHERE p.buyer_id=%s AND p.agent_id=%s AND pr.request->>'recipe_plan_id'=%s LIMIT 1""",
-            (identity["buyer_id"], identity["id"], str(row["id"])),
-        ).fetchone()
-        if row["locked"] or prepared:
+        if row["locked"]:
             raise Problem(
                 "RECIPE_PLAN_LOCKED", "This plan already has a prepared basket; create a new plan."
             )
@@ -321,6 +316,11 @@ def match_ingredient(identity, request):
 
 def validate_basket(c, identity, request):
     row, plan = read_plan(c, identity, request.recipe_plan_id, lock=True)
+    if row["locked"]:
+        raise Problem(
+            "RECIPE_PLAN_LOCKED",
+            "This plan already has a prepared basket; read the existing proposal.",
+        )
     if row["revision"] != request.recipe_plan_revision:
         raise Problem("RECIPE_PLAN_CHANGED", "Prepare the current recipe plan revision.")
     if any(i["status"] != "matched" for i in plan["ingredients"]):
@@ -343,6 +343,7 @@ def validate_basket(c, identity, request):
             "Basket must cover exactly the saved recipe ingredient quantities.",
             422,
         )
+    purchase_count_evidence(c, identity, request, products)
     return row
 
 

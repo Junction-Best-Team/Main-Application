@@ -114,7 +114,7 @@ class ToolSession:
             "get_order": ToolSpec(OrderRequest, "Read an existing saved mock receipt.", self.order),
         }
 
-        self.recipe_mode = getattr(settings(), "recipe_planning_enabled", False)
+        self.recipe_mode = settings().recipe_planning_enabled
         if self.recipe_mode:
             self.registry.update(
                 {
@@ -150,11 +150,13 @@ class ToolSession:
                 }
             )
 
-    def save_recipe_result(self, value):
-        if self.prepared_digest is not None:
+    def save_recipe_result(self, value, *, read_only=False):
+        if self.prepared_digest is not None and not read_only:
             raise Problem("MEAL_PLAN_LOCKED", "Request recipe changes in a new customer message.")
         checked = self.checked(MealPlan, value)
-        self.plan = MealPlan.model_validate(checked)
+        # Reading another saved plan must not replace the already prepared plan.
+        if self.prepared_digest is None:
+            self.plan = MealPlan.model_validate(checked)
         return {"meal_plan": checked, "purchase_authorized": False}
 
     def scale_recipe(self, request):
@@ -163,7 +165,9 @@ class ToolSession:
         return self.save_recipe_result(self.service.scale_recipe(self.identity, request))
 
     def get_recipe_plan(self, request):
-        return self.save_recipe_result(self.service.get_recipe_plan(self.identity, request))
+        return self.save_recipe_result(
+            self.service.get_recipe_plan(self.identity, request), read_only=True
+        )
 
     def match_ingredient(self, request):
         if self.prepared_digest is not None:
@@ -239,7 +243,7 @@ class ToolSession:
         )
 
     def publish(self, plan):
-        if self.recipe_mode or plan.recipe_plan_id:
+        if plan.recipe_plan_id or (self.plan and self.plan.recipe_plan_id):
             raise Problem(
                 "RECIPE_PLAN_REQUIRED",
                 "Use scale_recipe, match_ingredient and get_recipe_plan; saved recipe totals cannot be model-edited.",
@@ -314,8 +318,10 @@ class ToolSession:
                     "recipe_plan_revision": self.plan.recipe_plan_revision,
                 }
             )
-        elif self.recipe_mode:
-            raise Problem("RECIPE_PLAN_REQUIRED", "Prepare a saved recipe plan first.", 422)
+        elif request.recipe_plan_id or request.recipe_plan_revision:
+            raise Problem(
+                "RECIPE_PLAN_REQUIRED", "Load the saved recipe plan before preparing it.", 422
+            )
         digest = fingerprint(request.model_dump(mode="json"))
         if self.prepared_digest is not None and self.prepared_digest != digest:
             raise Problem("IDEMPOTENCY_CONFLICT", "This turn already prepared different terms.")

@@ -8,7 +8,7 @@ from uuid import uuid4
 from aimo import recipe_search
 from aimo.db import Problem, connection, fingerprint, js
 from aimo.recipe_schemas import ProductEvidence, Recipe
-from aimo.search import vector
+from aimo.search import dimensions, vector
 
 
 def english(value):
@@ -81,7 +81,7 @@ def ingest_recipes(path: Path, expected_sha256: str, review_path: Path | None = 
     docs = {r.id: recipe_search.text(r) for r, _ in records}
     hashes = {rid: fingerprint(t) for rid, t in docs.items()}
     # Persist each successful batch independently, so paid work survives a later failure.
-    dim = 4096 if recipe_search.hosted() else 384
+    dim = dimensions()
     with connection() as c:
         cached = {
             r["text_hash"]
@@ -104,7 +104,6 @@ def ingest_recipes(path: Path, expected_sha256: str, review_path: Path | None = 
                 )
     generation = uuid4()
     source_hash = fingerprint({"dataset": digest, "review": reviews})
-    dim = 4096 if recipe_search.hosted() else 384
     with connection() as c:
         c.execute("SELECT pg_advisory_xact_lock(893019)")
         current = c.execute(

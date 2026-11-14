@@ -231,12 +231,20 @@ def prepare_order(identity, request: PrepareRequest, connector):
         old = prior_preparation(c, identity, request.idempotency_key, payload_hash)
         if old:
             return old
+        if request.recipe_plan_id:
+            from aimo.recipes import validate_basket
+
+            validate_basket(c, identity, request)
     snapshot, expires, version = build_snapshot(identity, request, connector)
     with connection() as c:
         _, policy, actor, approvers = context(c, identity, lock=True)
         old = prior_preparation(c, identity, request.idempotency_key, payload_hash)
         if old:
             return old
+        if request.recipe_plan_id:
+            # Recheck after supplier I/O. Serialize only this short persistence
+            # transaction; proposal creation and the plan lock commit together.
+            validate_basket(c, identity, request)
         if version != policy["version"]:
             raise Problem("POLICY_CHANGED", "Policy changed during lookup; prepare again.")
         pid = uuid4()
@@ -260,6 +268,8 @@ def prepare_order(identity, request: PrepareRequest, connector):
             "INSERT INTO prepare_requests(buyer_id,agent_id,key,payload_hash,proposal_id) VALUES(%s,%s,%s,%s,%s)",
             (identity["buyer_id"], identity["id"], request.idempotency_key, payload_hash, pid),
         )
+        if request.recipe_plan_id:
+            c.execute("UPDATE recipe_plans SET locked=true WHERE id=%s", (request.recipe_plan_id,))
         return render(c, *proposal(c, pid, identity), identity)
 
 

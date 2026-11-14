@@ -27,7 +27,7 @@ def embeddings(texts, query=False):
         values = provider_embeddings(texts, query=False)
     else:
         values = search.embed(texts, query=query)
-    dim = 4096 if hosted() else 384
+    dim = search.dimensions()
     if len(values) != len(texts) or any(
         len(v) != dim or any(not math.isfinite(n) for n in v) or not any(v) for v in values
     ):
