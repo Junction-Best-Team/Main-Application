@@ -1155,6 +1155,10 @@ Add new findings below, under your track heading.
 - Date: 2026-11-15. At the owner's request, replaced the generic “Thinking…” fallback with the latest server-authored activity label. Completed/failed tools retain their label and outcome between calls; the next active tool replaces it. The expandable step count/history is retained, including 15-step histories.
 - Verification: frontend `npm run check` and all six fixture-backed `chat-activity.spec.ts` browser checks passed. Covered initial request checking, completed/failed steps between calls, streamed next steps, finishing, interruptions, refresh, reduced motion and 1440/390/320px layouts; desktop/390px screenshots inspected. No backend/schema changes or live provider calls. No merge or deployment.
 
+### F-SIDEBAR-001: Restore the sidebar divider
+
+- Date: 2026-11-15. Added a full-height 1px right border to the desktop sidebar using the existing `border-subtle` token, matching the header separator.
+- Verification: frontend `npm run check` and both fixture-backed `minimal Home and navigation work` Playwright checks passed at 1440/390px; screenshots inspected. No merge or deployment.
 
 ### F-NAV-REQUESTS-001: Keep expanded conversations inside Requests
 

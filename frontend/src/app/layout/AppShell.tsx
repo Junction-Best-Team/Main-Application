@@ -202,7 +202,7 @@ function Sidebar({ conversations }: { conversations: ConversationNav }) {
   return (
     <aside
       aria-label="Sidebar"
-      className="fixed inset-y-0 left-0 z-50 hidden h-dvh w-60 flex-col bg-workspace-panel pb-space-md pt-space-md md:flex"
+      className="fixed inset-y-0 left-0 z-50 hidden h-dvh w-60 flex-col border-r border-border-subtle bg-workspace-panel pb-space-md pt-space-md md:flex"
     >
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <Link
