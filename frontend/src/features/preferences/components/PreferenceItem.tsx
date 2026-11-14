@@ -20,18 +20,6 @@ import {
   textButton,
 } from "./styles";
 
-export function ScopeChip({ scope }: { scope: MemoryItem["scope"] }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-surface-container-high px-space-sm py-0.5 font-label text-label-sm text-on-surface-variant">
-      <Icon
-        name={scope === "buyer" ? "groups" : "person"}
-        className="text-[14px]"
-      />
-      {scope === "buyer" ? "Shared" : "Personal"}
-    </span>
-  );
-}
-
 type Mode = "view" | "edit" | "delete";
 type Problem = { message: string; reload?: boolean };
 
@@ -159,7 +147,7 @@ export function PreferenceItem({
           reload: true,
         });
       } else if (!latest) {
-        announce("That preference was removed elsewhere.");
+        announce("That memory was removed elsewhere.");
       } else if (mode === "edit") {
         startEdit(latest);
         announce(
@@ -186,7 +174,7 @@ export function PreferenceItem({
         csrfToken,
       );
       forget.reset();
-      announce(`${type?.label ?? "Preference"} forgotten.`);
+      announce(`${type?.label ?? "Memory"} forgotten.`);
       onDeleted(item.id);
     } catch (e) {
       fail(e);
@@ -194,7 +182,7 @@ export function PreferenceItem({
     }
   }
 
-  const label = type?.label ?? "Saved preference";
+  const label = type?.label ?? "Saved memory";
   const problemBox = problem && (
     <div
       role="alert"
@@ -216,20 +204,21 @@ export function PreferenceItem({
   );
 
   return (
-    <li className="list-none">
+    <li className="list-none border-b border-border-subtle last:border-b-0">
       <article
         aria-labelledby={titleId}
-        className="flex flex-col gap-space-sm rounded-xl border border-border-subtle bg-surface-pure p-space-md"
+        className="grid min-w-0 grid-cols-1 items-start gap-space-sm py-space-md sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-x-space-md"
       >
-        <div className="flex flex-wrap items-center gap-space-sm">
-          <h4
-            id={titleId}
-            className="m-0 font-headline text-body-lg font-bold text-primary"
-          >
-            {label}
-          </h4>
-          <ScopeChip scope={item.scope} />
-        </div>
+        <h2
+          id={titleId}
+          className={
+            mode === "edit"
+              ? "m-0 font-headline text-headline-sm text-primary sm:col-span-2"
+              : "sr-only"
+          }
+        >
+          {label}
+        </h2>
 
         {mode === "edit" && type ? (
           <form
@@ -237,7 +226,7 @@ export function PreferenceItem({
             noValidate
             onSubmit={save}
             aria-label={`Edit ${label}`}
-            className="flex flex-col gap-space-md"
+            className="flex min-w-0 flex-col gap-space-md sm:col-span-2"
             onKeyDown={(e) => {
               if (e.key === "Escape" && !busy) {
                 e.preventDefault();
@@ -279,37 +268,44 @@ export function PreferenceItem({
           </form>
         ) : (
           <>
-            <p className="m-0 whitespace-pre-line break-words text-body-md text-on-surface">
-              {type
-                ? type.summary(item.value)
-                : "This kind of preference can't be shown here yet. The assistant still uses it."}
-            </p>
-            {item.description && (
-              <p className="m-0 break-words text-body-sm text-on-surface-variant">
-                {item.description}
+            <div className="flex min-w-0 flex-col gap-space-xs">
+              <p className="m-0 whitespace-pre-line text-body-md text-on-surface [overflow-wrap:anywhere]">
+                {type
+                  ? type.summary(item.value)
+                  : "This kind of memory can't be shown here yet. The assistant still uses it."}
               </p>
-            )}
-            <p className="m-0 flex flex-wrap items-center gap-x-space-sm gap-y-space-xs font-label text-label-sm text-on-surface-variant">
-              <span>
-                Updated{" "}
-                <time dateTime={item.updated_at}>
-                  {dateTime(item.updated_at)}
-                </time>
-              </span>
-              {item.source_conversation_id && (
-                <Link
-                  to={`/conversations/${item.source_conversation_id}`}
-                  className="text-wholesale-teal"
-                >
-                  From a conversation
-                </Link>
+              {item.description && (
+                <p className="m-0 text-body-sm text-on-surface-variant [overflow-wrap:anywhere]">
+                  {item.description}
+                </p>
               )}
-            </p>
+              <details className="text-body-sm text-on-surface-variant">
+                <summary className="w-fit cursor-pointer text-secondary">
+                  Details<span className="sr-only"> for {label}</span>
+                </summary>
+                <p className="m-0 mt-space-xs flex flex-wrap items-center gap-x-space-sm gap-y-space-xs text-body-sm text-on-surface-variant">
+                  <span>
+                    Updated{" "}
+                    <time dateTime={item.updated_at}>
+                      {dateTime(item.updated_at)}
+                    </time>
+                  </span>
+                  {item.source_conversation_id && (
+                    <Link
+                      to={`/conversations/${item.source_conversation_id}`}
+                      className="text-wholesale-teal"
+                    >
+                      From a conversation
+                    </Link>
+                  )}
+                </p>
+              </details>
+            </div>
 
             {mode === "delete" ? (
-              <div className="flex flex-col gap-space-sm rounded-lg bg-surface-container-low p-space-md">
+              <div className="flex flex-col gap-space-sm rounded-lg bg-surface-container-low p-space-md sm:col-span-2">
                 <p className="m-0 text-body-sm text-on-surface">
-                  The assistant will stop using this preference. Forgetting it
+                  The assistant will stop using this memory. Forgetting it
                   doesn't delete any conversation or purchase history.
                 </p>
                 {problemBox}
@@ -320,7 +316,7 @@ export function PreferenceItem({
                     onClick={confirmDelete}
                     disabled={busy}
                   >
-                    {busy ? "Forgetting…" : "Forget preference"}
+                    {busy ? "Forgetting…" : "Forget memory"}
                   </button>
                   <button
                     ref={keepButton}
@@ -334,7 +330,7 @@ export function PreferenceItem({
                 </div>
               </div>
             ) : (
-              <div className="flex flex-wrap gap-space-xs">
+              <div className="flex flex-wrap gap-space-xs sm:col-start-2 sm:row-start-1">
                 {type && (
                   <button
                     ref={editButton}
@@ -343,7 +339,6 @@ export function PreferenceItem({
                     onClick={() => startEdit(item)}
                     aria-label={`Edit ${label}`}
                   >
-                    <Icon name="edit" className="text-[18px]" />
                     Edit
                   </button>
                 )}
@@ -358,7 +353,6 @@ export function PreferenceItem({
                   }}
                   aria-label={`Forget ${label}`}
                 >
-                  <Icon name="delete" className="text-[18px]" />
                   Forget
                 </button>
               </div>

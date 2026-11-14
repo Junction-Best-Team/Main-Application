@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import type { MemoryItem, Session } from "../../../shared/api/types";
+import type { Session } from "../../../shared/api/types";
 import { Icon } from "../../../shared/components/DesignPrimitives";
 import { useAuth } from "../../auth/useAuth";
 import type { RequestScope } from "../api/memoryApi";
@@ -8,30 +8,14 @@ import { AddPreferenceForm } from "../components/AddPreferenceForm";
 import { PreferenceItem } from "../components/PreferenceItem";
 import { primaryButton, secondaryButton } from "../components/styles";
 import { useMemories } from "../hooks/useMemories";
-import {
-  GROUPS,
-  SCOPE_NAMES,
-  typeForKey,
-  type GroupId,
-} from "../model/preferenceCatalog";
+import { SCOPE_NAMES } from "../model/preferenceCatalog";
 
 const SCOPES: RequestScope[] = ["self", "buyer"];
 const tabId = (scope: RequestScope) => `preferences-tab-${scope}`;
 const panelId = "preferences-panel";
 
-function groupOf(item: MemoryItem): GroupId {
-  return (
-    typeForKey(item.key)?.group ??
-    (item.kind === "default"
-      ? "defaults"
-      : item.kind === "instruction"
-        ? "assistant"
-        : "purchasing")
-  );
-}
-
 /**
- * Assistant preferences (saved memory). Keyed by the signed-in identity so a
+ * Saved memory. Keyed by the signed-in identity so a
  * different account never sees the previous account's lists; signing out or an
  * expired session unmounts the route and drops all of it.
  */
@@ -54,7 +38,6 @@ function PreferencesScreen({ session }: { session: Session }) {
   const [adding, setAdding] = useState(false);
   const [status, setStatus] = useState("");
   const addButton = useRef<HTMLButtonElement>(null);
-  const panelHeading = useRef<HTMLHeadingElement>(null);
   const tabs = useRef<Record<RequestScope, HTMLButtonElement | null>>({
     self: null,
     buyer: null,
@@ -108,41 +91,46 @@ function PreferencesScreen({ session }: { session: Session }) {
     requestAnimationFrame(() => addButton.current?.focus());
   }
 
-  const grouped = GROUPS.map((group) => ({
-    ...group,
-    items: (current.items ?? []).filter((i) => groupOf(i) === group.id),
-  })).filter((group) => group.items.length);
-
   return (
-    <main>
-      <section className="border-b border-border-subtle bg-surface-pure px-margin-sm py-space-lg md:px-margin md:py-space-xl">
-        <div className="mx-auto flex max-w-4xl flex-col gap-space-sm">
-          <p className="m-0 font-label text-label-md uppercase tracking-wider text-secondary">
-            Settings
-          </p>
-          <h1 className="m-0 font-headline text-headline-lg-mobile tracking-normal text-primary md:text-headline-lg">
-            Assistant preferences
-          </h1>
-          <p className="m-0 max-w-2xl text-body-md text-on-surface-variant">
-            Saved preferences help the assistant personalize future
-            conversations.
-          </p>
-          <p className="m-0 flex max-w-2xl items-start gap-space-xs text-body-sm text-on-surface-variant">
-            <Icon
-              name="verified_user"
-              className="mt-0.5 text-[18px] text-wholesale-teal"
-            />
-            Preferences guide suggestions. Purchasing rules and purchase
-            confirmation still apply.
+    <main className="min-h-full bg-surface-pure">
+      <div className="border-b border-border-subtle py-space-md">
+        <div className="mx-auto flex max-w-3xl items-center gap-space-sm px-margin-sm text-body-sm text-secondary md:px-margin">
+          <Icon name="tune" className="text-[18px]" />
+          <p className="m-0">
+            Settings <span aria-hidden="true">/</span> Memory
           </p>
         </div>
-      </section>
+      </div>
 
-      <div className="mx-auto flex max-w-4xl flex-col gap-space-md px-margin-sm py-space-lg md:px-margin">
+      <div className="mx-auto max-w-3xl px-margin-sm py-space-lg md:px-margin md:py-space-xl">
+        <header>
+          <div className="flex flex-wrap items-center justify-between gap-space-md">
+            <h1 className="m-0 font-headline text-headline-lg-mobile text-primary md:text-headline-lg">
+              Memory
+            </h1>
+            <button
+              ref={addButton}
+              type="button"
+              className={primaryButton}
+              disabled={adding}
+              onClick={() => {
+                setStatus("");
+                setAdding(true);
+              }}
+            >
+              <Icon name="add" className="text-[18px]" />
+              Add memory
+            </button>
+          </div>
+          <p className="m-0 mt-space-sm text-body-md text-on-surface-variant">
+            What the assistant remembers for future conversations.
+          </p>
+        </header>
+
         <div
           role="tablist"
-          aria-label="Preference scope"
-          className="flex w-full gap-space-xs rounded-xl bg-surface-container-low p-space-xs sm:w-fit"
+          aria-label="Memory scope"
+          className="mt-space-lg flex gap-space-lg border-b border-border-subtle md:mt-space-xl"
           onKeyDown={onTabKey}
         >
           {SCOPES.map((value) => {
@@ -160,18 +148,12 @@ function PreferencesScreen({ session }: { session: Session }) {
                 aria-controls={panelId}
                 tabIndex={selected ? 0 : -1}
                 onClick={() => selectScope(value)}
-                className={`flex min-h-11 flex-1 items-center justify-center gap-space-xs whitespace-nowrap rounded-lg border-0 px-space-sm font-label text-label-lg sm:flex-none sm:px-space-md ${
+                className={`min-h-11 border-0 border-b-2 bg-transparent py-space-sm font-label text-label-lg ${
                   selected
-                    ? "bg-surface-pure text-primary shadow-sm"
-                    : "bg-transparent text-on-surface-variant hover:bg-surface-container-high"
+                    ? "border-wholesale-teal text-primary"
+                    : "border-transparent text-on-surface-variant hover:text-primary"
                 }`}
               >
-                <span className="hidden sm:inline-flex">
-                  <Icon
-                    name={value === "buyer" ? "groups" : "person"}
-                    className="text-[18px]"
-                  />
-                </span>
                 {SCOPE_NAMES[value]}
               </button>
             );
@@ -182,49 +164,18 @@ function PreferencesScreen({ session }: { session: Session }) {
           id={panelId}
           role="tabpanel"
           aria-labelledby={tabId(scope)}
-          className="flex flex-col gap-space-md"
+          className="flex flex-col gap-space-md pt-space-md"
         >
-          <div className="flex flex-col justify-between gap-space-sm sm:flex-row sm:items-start">
-            <div className="flex flex-col gap-space-xs">
-              <h2
-                ref={panelHeading}
-                tabIndex={-1}
-                className="m-0 font-headline text-headline-sm text-primary"
-              >
-                {SCOPE_NAMES[scope]}
-              </h2>
-              <p className="m-0 max-w-xl text-body-sm text-on-surface-variant">
-                {scope === "buyer" ? (
-                  <>
-                    Buyer preferences apply to everyone using this buyer account
-                    {buyerName && (
-                      <>
-                        {" "}
-                        (<span className="font-bold">{buyerName}</span>)
-                      </>
-                    )}
-                    .
-                  </>
-                ) : (
-                  "Personal preferences are used in conversations you start or continue. Only you can change them here; conversations themselves are shared within the buyer account."
-                )}
-              </p>
-            </div>
-            {!adding && (
-              <button
-                ref={addButton}
-                type="button"
-                className={`${primaryButton} shrink-0`}
-                onClick={() => {
-                  setStatus("");
-                  setAdding(true);
-                }}
-              >
-                <Icon name="add" className="text-[18px]" />
-                Add preference
-              </button>
+          <p className="m-0 text-body-sm text-on-surface-variant">
+            {scope === "buyer" ? (
+              <>
+                Used by everyone in {buyerName}. Any buyer approver can manage
+                these memories.
+              </>
+            ) : (
+              "Used for your messages. Only you can manage these memories."
             )}
-          </div>
+          </p>
 
           <p
             role="status"
@@ -272,59 +223,53 @@ function PreferencesScreen({ session }: { session: Session }) {
             </div>
           ) : !current.items ? (
             <p role="status" className="m-0 text-body-md text-secondary">
-              Loading preferences…
+              Loading memories…
             </p>
           ) : current.items.length === 0 ? (
-            <div className="flex flex-col items-start gap-space-sm rounded-xl border border-dashed border-outline-variant bg-surface-pure p-space-lg">
-              <Icon
-                name="bookmark_add"
-                className="text-[28px] text-wholesale-teal"
-              />
-              <p className="m-0 text-body-md text-on-surface">
-                No saved preferences yet. Add one here, or ask the assistant to
-                remember something.
+            <div className="flex min-h-64 flex-col items-center justify-center gap-space-sm py-space-xl text-center">
+              <h2 className="m-0 font-headline text-headline-sm text-primary">
+                No memories yet
+              </h2>
+              <p className="m-0 text-body-md text-on-surface-variant">
+                Add one above, or ask the assistant in chat.
               </p>
               <Link
                 to="/request"
-                className="font-label text-label-md text-wholesale-teal"
+                className="mt-space-sm rounded-lg bg-surface-container-low px-space-md py-space-sm text-body-sm text-wholesale-teal"
               >
-                Start a request
+                {scope === "buyer"
+                  ? "“Remember that we usually serve 200 portions.”"
+                  : "“Remember to keep my replies short.”"}
               </Link>
             </div>
           ) : (
-            grouped.map((group) => (
-              <section
-                key={group.id}
-                aria-labelledby={`group-${group.id}`}
-                className="flex flex-col gap-space-sm"
-              >
-                <h3
-                  id={`group-${group.id}`}
-                  className="m-0 font-label text-label-md uppercase tracking-wider text-secondary"
-                >
-                  {group.label}
-                </h3>
-                <ul className="m-0 flex flex-col gap-space-sm p-0">
-                  {group.items.map((item) => (
-                    <PreferenceItem
-                      key={item.id}
-                      item={item}
-                      csrfToken={session.csrf_token}
-                      announce={announce}
-                      onUnauthorized={onError}
-                      reload={() => load(scope)}
-                      onSaved={(saved) => applySaved(scope, saved)}
-                      onDeleted={(id) => {
-                        applyDeleted(scope, id);
-                        panelHeading.current?.focus();
-                      }}
-                    />
-                  ))}
-                </ul>
-              </section>
-            ))
+            <ul
+              aria-label={`${SCOPE_NAMES[scope]} memories`}
+              className="m-0 min-h-64 p-0"
+            >
+              {current.items.map((item) => (
+                <PreferenceItem
+                  key={item.id}
+                  item={item}
+                  csrfToken={session.csrf_token}
+                  announce={announce}
+                  onUnauthorized={onError}
+                  reload={() => load(scope)}
+                  onSaved={(saved) => applySaved(scope, saved)}
+                  onDeleted={(id) => {
+                    applyDeleted(scope, id);
+                    addButton.current?.focus();
+                  }}
+                />
+              ))}
+            </ul>
           )}
         </section>
+        <p className="m-0 mt-space-lg flex items-start gap-space-xs border-t border-border-subtle pt-space-md text-body-sm text-on-surface-variant">
+          <Icon name="verified_user" className="mt-0.5 text-[16px]" />
+          Memories guide suggestions. Purchase rules and confirmation still
+          apply.
+        </p>
       </div>
     </main>
   );
