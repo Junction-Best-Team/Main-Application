@@ -24,17 +24,16 @@ Open the printed local URL (default `http://127.0.0.1:5183`). Sign in with any u
 
 ## Confirmation
 
-There is a single confirmation path: the sticky decision panel on the basket page (`/purchases/:id`),
-pinned to the bottom of the viewport while you scroll, restating the total with Confirm/Reject. The chat
-thread only links to the basket. Confirm/reject is an authenticated, revision-bound action
+There is a single confirmation path: the Overview panel on the Request screen (a right-hand column on
+desktop, an expandable bottom drawer on mobile), with "Approve & Push to Dispatch" and Reject. The chat
+thread has no decision controls; `/purchases/:id` only shows placed (accepted) orders. Confirm/reject is an authenticated, revision-bound action
 (`store.confirm(proposalId, revision)` / `store.reject(...)`) — chat text never triggers it. See
 `src/confirmFlow.ts`.
 
 ## Try the "terms changed" recovery
 
-Open the **Weekly oat milk restock** conversation (or `/purchases/prop-conflict` directly) and
-confirm it. The fake backend simulates a race: the first confirm comes back "terms changed during
-verification", the total moves, and you must confirm again — in the sticky panel.
+Open the **Weekly oat milk restock** conversation and approve it in the Overview panel. The fake backend simulates a race: the first confirm comes back "terms changed during
+verification", the total moves, and you must approve again — in the Overview panel.
 
 ## Parity baseline and known simplifications
 
@@ -46,7 +45,7 @@ deliberate simplifications for a throwaway prototype (see `src/store.ts`):
 
 - No real backend, SSE, CSRF or session cookies — `src/store.ts` is an in-memory fake with
   simulated latency. Reload the page to reset, or use "Reset demo data".
-- Purchase list pagination is not wired (only one fixture page of items).
+- Purchase list paging is only exercised by the "Many past orders (paged)" scenario; the default is one page.
 - The "superseded" fixture's "View current revision" link resolves the fixture directly, rather
   than simulating a second server round trip.
 
@@ -56,13 +55,17 @@ Entirely self-contained under this folder (own `package.json`/lockfile/`tsconfig
 can't affect the real `frontend/` build, lint, or tests. See `src/App.tsx` for routing (Home `/`, Request
 `/request` and `/conversations/:id`, Past Orders `/purchases`), `src/AppShell.tsx` for the sidebar / mobile
 menu shell, `src/mock.ts` + `src/placeholders.tsx` for inert MOCK placeholders, `src/store.ts`
-for the fake backend, `src/ConfirmPanels.tsx` for the sticky confirmation panel, and `src/fixtures.ts` for the carbonara-style meal plan + proposal fixtures.
+for the fake backend, `src/OverviewPanel.tsx` for the Overview (confirmation) panel, and `src/fixtures.ts` for the carbonara-style meal plan + proposal fixtures.
 
 ## E2E
 
-`e2e/sticky-confirm.spec.ts` covers the sticky confirm/reject flow. From `frontend/` (reuses its
-Playwright install; starts its own dev server on port 5283):
+`e2e/` holds the Playwright specs (import `test` from `e2e/test.ts`, which serves Google Fonts from a
+local cache so the outside network can't stall a page load or screenshot), run at a desktop
+(1440×1000) and a mobile (390×844) viewport. From this folder (own `@playwright/test`
+devDependency; starts or reuses the dev server on port 5183):
 
 ```sh
-npx playwright test -c prototypes/chat-ui/playwright.config.ts
+npm ci
+npx playwright install chromium
+npx playwright test
 ```
