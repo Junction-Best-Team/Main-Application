@@ -64,7 +64,10 @@ for (const width of [1440, 390, 320]) {
     await page.goto(`/conversations/${cid}`);
     const activity = page.getByRole("region", { name: "Aimo activity" });
     await expect(activity.getByRole("status")).toHaveText("Searching recipes…");
-    await expect(page.getByRole("button", { name: "Working…" })).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: "Start voice mode" }),
+    ).toBeDisabled();
+    await expect(page.getByLabel("Continue the conversation")).toBeDisabled();
     await expect(activity.locator(".activity-sweep")).toHaveCSS(
       "animation-name",
       "activity-sweep",
@@ -137,6 +140,9 @@ for (const width of [1440, 390, 320]) {
     await expect(activity.getByRole("status")).toHaveText("Finished", {
       timeout: 10_000,
     });
+    await expect(
+      page.getByRole("button", { name: "Start voice mode" }),
+    ).toBeEnabled();
     await expect(
       page.getByText("What delivery date?", { exact: true }),
     ).toBeVisible();
