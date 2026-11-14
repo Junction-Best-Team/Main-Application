@@ -4,7 +4,7 @@ Everything is hermetic: fixture catalog, fixture embeddings, `FixtureClient` sup
 (invented prices and stock, labelled `mode: fixture`), no network and no LLM. The tools are
 driven through `ToolSession.invoke` exactly as the runner does (a JSON string of arguments).
 
-Tests marked `xfail(strict=True)` record a gap that exists on `origin/develop` 17579d8. When the
+Tests marked `xfail(strict=True)` record a gap that exists on `origin/develop` 837dfdf. When the
 gap is closed the test XPASSes, strict mode fails the run and the marker must be removed.
 Verify a gap with `pytest --runxfail <file>`: the failure must be the one named in `reason`.
 """
@@ -22,7 +22,6 @@ from test_recipes import import_fixture, meal_products  # noqa: F401  (fixture r
 from aimo import agent as runner
 from aimo.agent_provider import AssistantReply, ChatProvider
 from aimo.agent_tools import ToolSession
-from aimo.config import settings
 from aimo.db import Problem
 from aimo.guardrails import project
 from aimo.recipe_schemas import MatchIngredient
@@ -34,25 +33,24 @@ FORBIDDEN_WORDS = re.compile(r"approve|confirm|commit|reject|policy_edit|set_|gr
 LEAKS = re.compile(r"postgres(ql)?://|password|traceback|File \"|psycopg|api[_-]?key|secret", re.I)
 
 
-def build(service=None, recipes=True):
-    """A ToolSession built with the recipe flag forced (it is read at construction)."""
-    cfg = settings()
-    old = cfg.recipe_planning_enabled
-    cfg.recipe_planning_enabled = recipes
-    try:
-        return ToolSession(dict(IDENTITY), service)
-    finally:
-        cfg.recipe_planning_enabled = old
+def build(service=None):
+    """A ToolSession; the recipe tools are always registered (PR #103 removed the flag)."""
+    return ToolSession(dict(IDENTITY), service)
 
 
-def registry(recipes=True):
+def registry():
     """The tools exactly as ToolSession registers them."""
-    return build(None, recipes).registry
+    return build().registry
 
 
 ALL_TOOLS = sorted(registry())
-FLAG_OFF_TOOLS = sorted(registry(recipes=False))
-RECIPE_TOOLS = sorted(set(ALL_TOOLS) - set(FLAG_OFF_TOOLS))
+RECIPE_TOOLS = [
+    "get_recipe",
+    "get_recipe_plan",
+    "match_ingredient",
+    "scale_recipe",
+    "search_recipes",
+]
 
 
 class NoService:
@@ -63,17 +61,12 @@ class NoService:
 
 
 @pytest.fixture
-def recipes_on(monkeypatch):
-    monkeypatch.setattr(settings(), "recipe_planning_enabled", True)
-
-
-@pytest.fixture
 def actor(agent):
     return agent | {"_turn_id": str(uuid4())}
 
 
 @pytest.fixture
-def session(actor, service, recipes_on):
+def session(actor, service):
     return ToolSession(actor, service)
 
 
@@ -102,15 +95,11 @@ def assert_agent_safe(problem):
 # ----------------------------------------------------------------- TCT-001 / TCT-002 (Draft)
 
 
-def test_registry_shape_without_recipe_flag_and_with_it():
-    assert len(FLAG_OFF_TOOLS) == 8 and len(RECIPE_TOOLS) == 5, (FLAG_OFF_TOOLS, RECIPE_TOOLS)
-    assert set(RECIPE_TOOLS) == {
-        "get_recipe",
-        "get_recipe_plan",
-        "match_ingredient",
-        "scale_recipe",
-        "search_recipes",
-    }
+def test_the_full_tool_list_is_always_exposed():
+    """Eight purchasing tools and the five recipe tools are registered with no feature flag."""
+    assert len(ALL_TOOLS) == 13, ALL_TOOLS
+    assert set(RECIPE_TOOLS) <= set(ALL_TOOLS)
+    assert len(set(ALL_TOOLS) - set(RECIPE_TOOLS)) == 8
 
 
 @pytest.mark.parametrize("name", ALL_TOOLS)
@@ -425,9 +414,7 @@ def tool_call(name, arguments):
     }
 
 
-def test_tct003_runner_returns_the_error_envelope_for_a_malformed_call(
-    monkeypatch, actor, service, recipes_on
-):
+def test_tct003_runner_returns_the_error_envelope_for_a_malformed_call(monkeypatch, actor, service):
     outcome, messages = drive(
         monkeypatch, actor, service, [tool_call("get_product", '{"product_id": 7}')]
     )
@@ -445,9 +432,7 @@ def test_tct003_runner_returns_the_error_envelope_for_a_malformed_call(
     "turn with TOOL_EXECUTION_FAILED (agent.py: `except Exception` -> raise Problem 503); the "
     "agent never receives an error envelope it could act on",
 )
-def test_tct003_runner_survives_a_database_rejected_argument(
-    monkeypatch, actor, service, recipes_on
-):
+def test_tct003_runner_survives_a_database_rejected_argument(monkeypatch, actor, service):
     outcome, messages = drive(
         monkeypatch, actor, service, [tool_call("get_product", json.dumps({"product_id": "a\0b"}))]
     )
@@ -602,9 +587,7 @@ def test_tct005_get_order_receipt_names_currency_and_evidence_mode(
     assert view["currency"] == "EUR" and view["evidence_mode"] == "fixture"
 
 
-def test_tct005_recipe_tool_results_carry_units_basis_and_attribution(
-    actor, service, recipes_on, recipe_data
-):
+def test_tct005_recipe_tool_results_carry_units_basis_and_attribution(actor, service, recipe_data):
     session = ToolSession(actor, service)
     found = call(session, "search_recipes", {"query": "carbonara"})
     assert found["note"] and found["rerank_status"]
