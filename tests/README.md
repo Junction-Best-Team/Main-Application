@@ -41,6 +41,12 @@ Fixture upstream and fixture embeddings only; never the live API. Descriptions a
 | `test_evidence.py` | Supplier-response validation, unit conversion only through known factors, packaging levels and name conflicts, missing claims are unknown (not "no"), the gross spend boundary, missing currency, malformed upstream, unchanged embeddings reused and a failed import keeping the old index, dietary filters on both search paths |
 | `test_workflow.py` | Autonomous purchase and idempotency after a restart, independent inbox approval and agent resume, reduced agent authority creating a new revision, the four outcomes and hard requirements, denied before unknown, changed price and stock invalidating approval, rejection, expiry and revocation, policy version changes, approver amount and exception scope, concurrent same-key and different-key commits, competing decisions, deposit totals and overbuy, invalid policy never defaulting to permission |
 | `test_http.py` | Login, inbox, CSRF and logout, cross-account and agent isolation, input validation and error shape, login rate limit and wrong origin, `/docs` nonce and scoped CSP, all eight typed operations and both commit outcomes, historical approval linking to current terms |
+| `test_upstream_client.py` | The live Valio client over a mock transport (headers and body, retries on 429/5xx/transport errors, retries exhausted, no key leak, redirects not followed, malformed JSON, missing credentials) and 25 supplier-reply defects through `validate_lookup`; price validity caps proposal expiry |
+| `test_ingest.py` | Catalog import from a synthetic snapshot (deleted products skipped, embeddings reused, refused snapshots leave the active catalog unchanged) and the catalog download (key required, HTTPS redirect without the key, HTTP errors leave no file) |
+| `test_cli.py` | `configure` (mode 0600, no overwrite, secrets not printed), idempotent `migrate`, `seed` credential checks, every `main()` subcommand |
+| `test_purchases.py`, `test_catalog.py` | Proposal snapshot failures (past date, unknown product, variable weight, missing price, short stock, seven deposit failures) and catalog normalisation, requirement reasons and quantity rounding |
+| `test_workflow_races.py` | Changes injected between a commit's lookup and its locked re-check (policy, revision, expiry), duplicate commits, agents deciding, closed approvals, authority drift |
+| `test_edges.py` | Policy branches, session/bearer/CSRF edge cases, MCP error results, `/health/ready` states, static frontend serving, search index and model errors |
 | `test_upstream_mode.py` | `UPSTREAM_MODE=auto` uses live with a key and labelled fixtures without; `fixture` ignores a key; `live` without a key fails closed |
 
 ## Tool sweep (`tests/sweep/run_sweep.py`)
@@ -120,7 +126,7 @@ uv run python tests/coverage_report.py     # pytest only / sweep only / combined
 - **CI.** The `Python lint and tests`, `Tool sweep` and `Browser tests` jobs each upload their coverage data; the `Coverage` job downloads and combines them, prints the table in the log and the job summary, uploads the HTML/XML report and fails below the gate.
 - **Excluded.** Only `if __name__ == "__main__":` blocks. `tests/`, `scripts/`, `frontend/` and the live Valio path (not reachable without a key) are not measured.
 - **Frontend: not measured.** Browser tests need a `.env` and a coverage fixture in the specs; see F-MVP-007 for the options.
-- **Measured 2026-11-14** (fixture mode): pytest only 84.5%, sweep only about 73%, combined about 87% (runs differ by about 0.5 point). Weakest: `ingest.py` 51%, `cli.py` 69%, `upstream.py` 81% (live HTTP branches), `purchases.py` and `catalog.py` about 83-86%.
+- **Measured 2026-11-14** (fixture mode, after the coverage tests landed): pytest only 99.8%, combined 99.8% (the end-to-end server alone reaches 75.5%). The gate is 95%, so the margin is about 5 points. Two statements are knowingly not reached: an unreachable trailing `raise` after the retry loop in `ValioClient.post`, and a `main()` branch argparse makes impossible.
 
 ## Running pieces on their own
 

@@ -2,6 +2,8 @@
 
 Written by reading the test code, not the test names. Branch `mvp-local`. If a claim says "unclear from the code", I could not settle it by reading.
 
+> Update: after this guide was written, seven test files were added to raise coverage (`test_upstream_client.py`, `test_ingest.py`, `test_cli.py`, `test_purchases.py`, `test_catalog.py`, `test_workflow_races.py`, `test_edges.py`; 173 tests). They close part of the "live client" and "error handling" gaps in section 7 and add several policy and input-validation branches. This guide has not been re-read for them; see `tests/README.md` for what each file covers.
+
 ## 1. How to read this
 
 1. **Lint** (`ruff check src tests scripts`): style and obvious code errors. It checks no behaviour.
