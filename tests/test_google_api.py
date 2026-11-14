@@ -22,6 +22,13 @@ def reset_buyers():
     ("operation", "model", "payload", "path", "expected_body"),
     [
         (
+            "create_live_token",
+            None,
+            {"uses": 1, "bidiGenerateContentSetup": {"model": "models/gemini-3.8-live"}},
+            "/v1beta/auth_tokens",
+            {"uses": 1, "bidiGenerateContentSetup": {"model": "models/gemini-3.8-live"}},
+        ),
+        (
             "generate_content",
             "models/gemini-4-carbon",
             {"contents": [{"role": "user", "parts": [{"text": "Plan lunch"}]}]},
