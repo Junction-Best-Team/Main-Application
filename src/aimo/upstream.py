@@ -18,6 +18,10 @@ from aimo.numeric import D
 
 log = logging.getLogger(__name__)
 HELSINKI = ZoneInfo("Europe/Helsinki")
+# Supplier accepts 1 to 1000 product ids per price or availability request (JNP3-SUP-007).
+# Default used until Settings carries `supplier_lookup_batch_size` (read via getattr below).
+SUPPLIER_LOOKUP_BATCH_SIZE = 100
+SUPPLIER_MAX_IDS_PER_REQUEST = 1000
 
 
 def timestamp(value: str, end=False) -> datetime:
@@ -108,14 +112,60 @@ class ValioClient:
                 time.sleep(delay)
         raise Problem("UPSTREAM_UNAVAILABLE", "Supplier lookup failed.", 503)
 
+    @staticmethod
+    def batch_size() -> int:
+        value = getattr(settings(), "supplier_lookup_batch_size", SUPPLIER_LOOKUP_BATCH_SIZE)
+        if not isinstance(value, int) or isinstance(value, bool):
+            value = SUPPLIER_LOOKUP_BATCH_SIZE
+        return max(1, min(value, SUPPLIER_MAX_IDS_PER_REQUEST))
+
+    def post_batches(self, endpoint, customer, ids, delivery_date, context_keys):
+        """One sequential request per batch; rate limits are undisclosed, so never in parallel."""
+        size = self.batch_size()
+        merged, rows = None, []
+        for start in range(0, len(ids), size):
+            payload = {
+                "customer": customer,
+                "requestedDate": delivery_date.isoformat(),
+                "products": ids[start : start + size],
+            }
+            body = self.post(endpoint, payload)
+            if len(ids) <= size:
+                return body  # a single batch is passed through untouched
+            if not isinstance(body, dict) or not isinstance(body.get("products"), list):
+                raise Problem(
+                    "UPSTREAM_SCHEMA_INVALID",
+                    "Supplier returned an invalid response shape; no terms were confirmed.",
+                    502,
+                )
+            context = {k: body.get(k) for k in context_keys}
+            if merged is None:
+                merged = body
+            elif context != {k: merged.get(k) for k in context_keys}:
+                raise Problem(
+                    "UPSTREAM_SCHEMA_INVALID",
+                    "Supplier batches disagree on customer, currency or date; not merged.",
+                    502,
+                )
+            rows.extend(body["products"])
+        if merged is None:  # no ids requested: keep the former single-request behaviour
+            return self.post(
+                endpoint,
+                {
+                    "customer": customer,
+                    "requestedDate": delivery_date.isoformat(),
+                    "products": ids,
+                },
+            )
+        return merged | {"products": rows}
+
     def lookup(self, customer: str, ids: list[str], delivery_date: date):
-        payload = {
-            "customer": customer,
-            "requestedDate": delivery_date.isoformat(),
-            "products": ids,
-        }
-        prices = self.post("/api/price", payload)
-        availability = self.post("/api/availability", payload)
+        prices = self.post_batches(
+            "/api/price", customer, ids, delivery_date, ("customerId", "pricingDate", "currency")
+        )
+        availability = self.post_batches(
+            "/api/availability", customer, ids, delivery_date, ("customerId", "requestedDate")
+        )
         return {
             "mode": self.mode,
             "observed_at": now().isoformat(),

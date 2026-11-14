@@ -85,10 +85,6 @@ def test_control_a_short_lookup_is_one_request_per_endpoint_carrying_every_id(su
     assert [p["productId"] for p in raw["availability"]["products"]] == requested
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="JNP3-SUP-007 Draft: ValioClient.lookup sends one request with every id, no batching",
-)
 def test_every_request_stays_within_the_configured_batch_size(supplier):
     """JNP3-SUP-007 (a): with SUPPLIER_LOOKUP_BATCH_SIZE=250, each POST to /api/price and
     /api/availability carries at most min(250, 1000) ids when 1500 are requested."""
@@ -101,10 +97,6 @@ def test_every_request_stays_within_the_configured_batch_size(supplier):
         assert max(len(batch) for batch in batches) <= 250, [len(b) for b in batches]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="JNP3-SUP-007 Draft: default batch size 100 not applied; one request carries 1500 ids",
-)
 def test_the_default_batch_size_is_100_and_never_exceeds_the_supplier_limit(supplier):
     """JNP3-SUP-007 (a)+(d): without any setting, 1500 ids go out in 15 requests of at most 100 per
     endpoint, and no request ever exceeds the supplier's 1000-id limit."""
@@ -117,10 +109,6 @@ def test_the_default_batch_size_is_100_and_never_exceeds_the_supplier_limit(supp
         assert len(sizes) == 15, sizes
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="JNP3-SUP-007 Draft: no batching, so the batches cannot partition the requested ids",
-)
 def test_the_batches_are_exactly_the_requested_ids_in_order_without_duplicates(supplier):
     """JNP3-SUP-007 (b): for each endpoint the batches, in sequence, equal the requested ids (same
     order, no id twice, none missing), and the merged response still covers every id."""
@@ -140,7 +128,7 @@ def test_the_batches_are_exactly_the_requested_ids_in_order_without_duplicates(s
 
 @pytest.mark.xfail(
     strict=True,
-    reason="JNP3-SUP-007 Draft: 1001 ids still go out as one request (over the 1000-id limit)",
+    reason="waiting for person 1: add supplier_lookup_batch_size to config.py",
 )
 def test_with_batch_size_1000_exactly_1000_ids_is_one_call_and_1001_is_two(supplier):
     """JNP3-SUP-007 (c): with the batch size set to 1000, 1000 ids make one POST per endpoint and
@@ -158,7 +146,7 @@ def test_with_batch_size_1000_exactly_1000_ids_is_one_call_and_1001_is_two(suppl
 
 @pytest.mark.xfail(
     strict=True,
-    reason="JNP3-SUP-007 Draft: setting supplier_lookup_batch_size does not exist in Settings",
+    reason="waiting for person 1: add supplier_lookup_batch_size to config.py",
 )
 def test_the_batch_size_is_a_setting_with_default_100(monkeypatch):
     """JNP3-SUP-007 (d): Settings has `supplier_lookup_batch_size`, default 100, read from
@@ -172,7 +160,7 @@ def test_the_batch_size_is_a_setting_with_default_100(monkeypatch):
 
 @pytest.mark.xfail(
     strict=True,
-    reason="JNP3-SUP-007 Draft: setting supplier_lookup_batch_size does not exist in Settings",
+    reason="waiting for person 1: add supplier_lookup_batch_size to config.py",
 )
 @pytest.mark.parametrize("value", [1, 1000])
 def test_the_batch_size_accepts_the_supplier_limits(value, monkeypatch):
@@ -186,7 +174,7 @@ def test_the_batch_size_accepts_the_supplier_limits(value, monkeypatch):
 
 @pytest.mark.xfail(
     strict=True,
-    reason="JNP3-SUP-007 Draft: setting supplier_lookup_batch_size does not exist in Settings",
+    reason="waiting for person 1: add supplier_lookup_batch_size to config.py",
 )
 @pytest.mark.parametrize("value", [0, 1001])
 def test_the_batch_size_outside_1_to_1000_is_rejected(value, monkeypatch):
