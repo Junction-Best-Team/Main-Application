@@ -102,6 +102,16 @@ strong {
 .small {
   font-size: 0.85rem;
 }
+.topbar {
+  background: #fff;
+  border-top: 6px solid #003d59;
+  min-height: 90px;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  padding: 16px 5vw;
+  border-bottom: 1px solid #d1dfe6;
+}
 .brand {
   font-size: 2.7rem;
   font-weight: 900;
@@ -114,6 +124,17 @@ strong {
 }
 .brand-dot {
   color: #00a1a6;
+}
+.topbar-title {
+  border-left: 1px solid #c4d5de;
+  padding-left: 32px;
+}
+.account {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  font-size: 0.9rem;
 }
 .workspace {
   max-width: 1320px;
@@ -511,6 +532,19 @@ pre {
   }
 }
 @media (max-width: 650px) {
+  .topbar {
+    gap: 16px;
+    padding: 14px 20px;
+  }
+  .topbar-title {
+    display: none;
+  }
+  .account {
+    gap: 12px;
+  }
+  .account > span {
+    display: none;
+  }
   .workspace {
     padding: 28px 18px;
   }
@@ -586,6 +620,15 @@ textarea {
 textarea:focus-visible {
   outline: 3px solid #dfaa00;
   outline-offset: 4px;
+}
+.product-nav {
+  display: flex;
+  gap: 28px;
+  align-items: center;
+}
+.product-nav a {
+  font-size: 0.95rem;
+  font-weight: 700;
 }
 .chat-workspace {
   display: grid;
@@ -844,6 +887,12 @@ textarea:focus-visible {
     width: 120px;
     height: 120px;
   }
+  .topbar {
+    gap: 24px;
+  }
+  .product-nav {
+    gap: 18px;
+  }
 }
 @media (max-width: 700px) {
   .chat-workspace {
@@ -911,8 +960,28 @@ textarea:focus-visible {
   .meal-start h2 {
     font-size: 1.1rem;
   }
+  .product-nav {
+    gap: 12px;
+    flex: 1;
+  }
+  .product-nav a {
+    font-size: 0.78rem;
+  }
+  .topbar {
+    gap: 16px;
+    flex-wrap: wrap;
+    min-height: 76px;
+  }
   .brand {
     font-size: 2.2rem;
+  }
+  .account {
+    gap: 0;
+    margin-left: 0;
+  }
+  .account button {
+    padding: 7px 9px;
+    font-size: 0.8rem;
   }
   .chat-message.user {
     margin-left: 6%;

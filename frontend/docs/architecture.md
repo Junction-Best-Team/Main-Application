@@ -8,15 +8,6 @@ app renders its shell and routes. React Router handles navigation. FastAPI
 serves `dist/` from the existing single production image. No Node server runs
 in production; Vite is a development/build tool.
 
-`app/layout/AppShell.tsx` owns the branded header and authenticated navigation.
-At 1024px and above it displays a fixed sidebar; smaller viewports use a modal
-navigation drawer with keyboard focus containment, Escape dismissal and focus
-restoration. Request covers `/` and conversation routes; Purchases covers
-purchase and historical approval routes. Signed-out buyers see the brand header
-without account navigation. The shell resets when the buyer account changes.
-`styles/shell.css` applies the existing design tokens and font roles to this
-foundation; individual feature screens still retain their existing styling.
-
 ```mermaid
 flowchart TD
   Entry[main.tsx] --> App[app: providers, shell, routes]
@@ -114,7 +105,7 @@ Accepted orders remain labelled as mock, without supplier checkout/reservation.
 
 Global CSS enters through `main.tsx` only. `styles/theme.css` declares cascade
 order, imports Tailwind theme/utilities and imports `legacy.css` in the
-components layer, followed by `shell.css`. Utilities therefore override old selectors without escalating
+components layer. Utilities therefore override old selectors without escalating
 specificity. Preflight stays disabled during migration. Remove obsolete legacy
 rules as each screen adopts the design references.
 
