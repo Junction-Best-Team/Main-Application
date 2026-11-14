@@ -11,9 +11,9 @@ prepared without applying either stack.
 | `digitalocean/` | Private VPC, DOKS, managed PostgreSQL 17, restricted database user and firewall | DigitalOcean adapter; replace this stack for another cloud |
 | `kubernetes/` | Namespace, app configuration/secrets, Deployment, optional setup Job, HTTPS ingress | Kubernetes + Helm only; accepts any cluster and PostgreSQL endpoint with pgvector |
 
-Cloud-agnostic means the application deployment and database protocol are portable.
-Cloud resource definitions differ between providers; this PR implements the
-DigitalOcean adapter, not untested AWS/Azure/GCP adapters. The two stacks have
+DigitalOcean is the only cloud implemented for this hackathon. The application
+deployment and database protocol are portable so another cloud can be added
+later in its own provisioning folder. The two stacks have
 separate state and apply lifecycles so Kubernetes providers never initialize
 against a cluster that is still being created.
 
@@ -163,9 +163,25 @@ TLS and registry Secrets must be in the app namespace. An existing database can
 be initialized through the same explicit Job, or externally with the application
 commands before setting `app_replicas=1`.
 
-To replace the cloud stack while retaining the helper, export the same portable
-outputs: `kubeconfig`, `database_url`, `bootstrap_database_url`, `database_user`,
-and `database_ca`. Both URLs must use `sslmode=verify-full` and
+To add a cloud later, create a sibling provisioning folder such as `infra/aws/`.
+Keep its provider credentials, networking and managed-service resources there.
+Expose these five Terraform outputs, each a nonempty string:
+
+| Output | Shared deployment input |
+| --- | --- |
+| `kubeconfig` | Credentials for the new Kubernetes cluster |
+| `database_url` | PostgreSQL URL for the restricted application role |
+| `bootstrap_database_url` | Temporary PostgreSQL setup/admin URL |
+| `database_user` | Runtime role receiving table/sequence grants |
+| `database_ca` | PEM CA certificate for verified database TLS |
+
+Select that folder with `prepare-runtime.py --cloud-directory infra/aws ...`.
+The helper validates the shared outputs and ignores provider-specific outputs;
+`infra/kubernetes/` and the application image do not change. Cloud API keys stay
+with the provisioning stack and are never passed to the app. No AWS resources or
+placeholder AWS implementation are needed for the current demo.
+
+Both database URLs must use `sslmode=verify-full` and
 `sslrootcert=/etc/aimo-db/ca.crt`. For PostgreSQL providers that restrict extension
 installation, enable `vector` using the provider's admin process before setup.
 

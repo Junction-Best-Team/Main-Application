@@ -9,6 +9,28 @@ import subprocess
 from pathlib import Path
 
 
+# Shared interface for every cloud provisioning stack. Cloud-specific resource
+# IDs and API tokens never cross this boundary into the Kubernetes deployment.
+REQUIRED_CLOUD_OUTPUTS = (
+    "kubeconfig",
+    "database_url",
+    "bootstrap_database_url",
+    "database_user",
+    "database_ca",
+)
+
+
+def read_cloud_outputs(raw):
+    data = json.loads(raw)
+    outputs = {}
+    for name in REQUIRED_CLOUD_OUTPUTS:
+        value = data[name]["value"]
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("Cloud output must be a nonempty string")
+        outputs[name] = value
+    return outputs
+
+
 def write_private(path, content):
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as stream:
@@ -36,7 +58,7 @@ def main():
     if result.returncode:
         parser.error("Cannot read cloud outputs; provision the approved cloud plan first.")
     try:
-        outputs = {key: entry["value"] for key, entry in json.loads(result.stdout).items()}
+        outputs = read_cloud_outputs(result.stdout)
         values = {
             "kubeconfig_path": str(config),
             "image": args.image,
@@ -56,7 +78,7 @@ def main():
         }
         kubeconfig = outputs["kubeconfig"]
     except (ValueError, KeyError, TypeError):
-        parser.error("Missing portable cloud outputs; see infra/README.md for the required contract.")
+        parser.error("Invalid portable cloud outputs; see infra/README.md for the required contract.")
     write_private(config, kubeconfig)
     write_private(inputs, json.dumps(values, indent=2) + "\n")
     print("Created private kubeconfig and runtime.auto.tfvars.json (0600); no resources changed.")

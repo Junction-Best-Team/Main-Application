@@ -17,7 +17,7 @@ class PrivateRuntimeInputsTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         self.runtime = self.root / "infra/kubernetes"
         self.runtime.mkdir(parents=True)
         spec = importlib.util.spec_from_file_location("prepare_runtime", SCRIPT)
@@ -53,6 +53,7 @@ class PrivateRuntimeInputsTest(unittest.TestCase):
         self.assertNotIn("synthetic", output)
         command = run.call_args.args[0]
         self.assertEqual(command[-2:], ["output", "-json"])
+        self.assertEqual(command[1], f"-chdir={self.root / 'cloud'}")
         for name in ("kubeconfig.generated.yaml", "runtime.auto.tfvars.json"):
             self.assertEqual(stat.S_IMODE((self.runtime / name).stat().st_mode), 0o600)
         inputs = json.loads((self.runtime / "runtime.auto.tfvars.json").read_text())
@@ -70,6 +71,26 @@ class PrivateRuntimeInputsTest(unittest.TestCase):
 
     def test_missing_outputs_do_not_write_partial_credentials(self):
         result = SimpleNamespace(returncode=0, stdout="{}")
+        with patch.object(self.helper.subprocess, "run", return_value=result), self.assertRaises(SystemExit):
+            self.invoke()
+        self.assertEqual(list(self.runtime.iterdir()), [])
+
+    def test_other_cloud_uses_the_same_interface(self):
+        self.argv[self.argv.index("--cloud-directory") + 1] = str(self.root / "future-cloud")
+        data = json.loads(self.result.stdout)
+        data["provider_specific_id"] = {"value": "must-not-reach-the-app"}
+        result = SimpleNamespace(returncode=0, stdout=json.dumps(data))
+        with patch.object(self.helper.subprocess, "run", return_value=result) as run:
+            self.invoke()
+        self.assertEqual(run.call_args.args[0][1], f"-chdir={self.root / 'future-cloud'}")
+        inputs = (self.runtime / "runtime.auto.tfvars.json").read_text()
+        self.assertNotIn("must-not-reach-the-app", inputs)
+        self.assertNotIn("provider_specific_id", inputs)
+
+    def test_invalid_output_types_do_not_write_credentials(self):
+        data = json.loads(self.result.stdout)
+        data["database_url"]["value"] = {"provider_specific": "unsupported-object"}
+        result = SimpleNamespace(returncode=0, stdout=json.dumps(data))
         with patch.object(self.helper.subprocess, "run", return_value=result), self.assertRaises(SystemExit):
             self.invoke()
         self.assertEqual(list(self.runtime.iterdir()), [])
