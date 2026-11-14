@@ -76,7 +76,9 @@ def append_revision(
             "INSERT INTO approvals(id,proposal_id,revision,status,fingerprint) VALUES(%s,%s,%s,'pending',%s)",
             (uuid4(), pid, revision, fp),
         )
-    c.execute("UPDATE proposals SET current_revision=%s WHERE id=%s", (revision, pid))
+    c.execute(
+        "UPDATE proposals SET current_revision=%s,updated_at=now() WHERE id=%s", (revision, pid)
+    )
     audit(
         c,
         pid,
@@ -103,12 +105,12 @@ def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, hi
     committed = order is not None and order["revision"] == r["revision"]
     if historical:
         status = "superseded"
-    elif not committed:
+    elif not committed and status != "rejected":
         if r["expires_at"] <= current:
             status = "expired"
         elif policy["version"] != r["policy_version"]:
             status = "policy_changed"
-        elif status != "rejected":
+        else:
             # Buyer views must evaluate the purchasing agent, not the approver's authority.
             if purchasing_agent is None:
                 purchasing_agent = c.execute(
@@ -149,10 +151,10 @@ def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, hi
         action = {"type": "view_current_proposal", "tool": "get_proposal"}
     elif committed:
         action = {"type": "complete", "tool": "get_order"}
-    elif status in ("expired", "superseded", "policy_changed", "authority_changed"):
-        action = {"type": "request_fresh_proposal", "tool": "prepare_order"}
     elif status == "rejected" or r["policy_outcome"] == "denied":
         action = {"type": "stop"}
+    elif status in ("expired", "superseded", "policy_changed", "authority_changed"):
+        action = {"type": "request_fresh_proposal", "tool": "prepare_order"}
     elif r["policy_outcome"] == "needs_resolution":
         action = {"type": "revise_request", "tool": "prepare_order"}
     elif eligible:

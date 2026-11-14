@@ -22,6 +22,7 @@ services:
       UPSTREAM_MODE: ${UPSTREAM_MODE:-fixture}
       VALIO_AIMO_API_KEY: ${VALIO_AIMO_API_KEY:-}
       EMBEDDING_BACKEND: ${EMBEDDING_BACKEND:-sentence_transformers}
+      RECIPE_PLANNING_ENABLED: ${RECIPE_PLANNING_ENABLED:-false}
     depends_on:
       db: {condition: service_healthy}
     healthcheck:

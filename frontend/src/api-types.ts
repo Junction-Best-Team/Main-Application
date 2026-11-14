@@ -777,6 +777,11 @@ export interface components {
             buyer_id: string;
             /** Csrf Token */
             csrf_token: string;
+            /**
+             * Recipe Planning Enabled
+             * @default false
+             */
+            recipe_planning_enabled: boolean;
         };
         /** SnapshotLine */
         SnapshotLine: {

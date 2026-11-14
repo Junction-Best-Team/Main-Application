@@ -117,6 +117,41 @@ def test_missing_packaged_migrations_fail_closed(migration_area):
         assert conn.execute("SELECT to_regclass('schema_migrations')").fetchone()[0] is None
 
 
+def test_purchase_ordering_migration_uses_latest_revision_audit(migration_area):
+    from pathlib import Path
+
+    directory, connection, _ = migration_area
+    (directory / "001_prior.sql").write_text("""
+        CREATE TABLE proposals (id uuid PRIMARY KEY, buyer_id text, created_at timestamptz);
+        CREATE TABLE audit_events (proposal_id uuid, event text, created_at timestamptz);
+    """)
+    cli.migrate()
+    old, revised = uuid4(), uuid4()
+    with connection() as c:
+        c.execute(
+            "INSERT INTO proposals VALUES(%s,'buyer','2026-01-01Z'),(%s,'buyer','2026-01-01Z')",
+            (old, revised),
+        )
+        c.execute(
+            """INSERT INTO audit_events VALUES
+            (%s,'proposal_prepared','2026-01-01Z'),
+            (%s,'proposal_revised','2026-01-02Z'),
+            (%s,'approval_rejected','2026-01-03Z')""",
+            (revised, revised, revised),
+        )
+    source = Path(__file__).resolve().parents[1] / "migrations/008_proposal_revision_ordering.sql"
+    (directory / source.name).write_text(source.read_text())
+    cli.migrate()
+    cli.migrate()
+    with connection() as c:
+        assert c.execute(
+            "SELECT id,updated_at=created_at FROM proposals ORDER BY updated_at DESC"
+        ).fetchall() == [(revised, False), (old, True)]
+        assert c.execute(
+            "SELECT updated_at='2026-01-02Z'::timestamptz FROM proposals WHERE id=%s", (revised,)
+        ).fetchone()[0]
+
+
 @pytest.mark.parametrize("duplicate", [False, True])
 def test_recipe_proposal_link_backfills_or_rejects_ambiguous_history(migration_area, duplicate):
     from pathlib import Path

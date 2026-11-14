@@ -325,13 +325,17 @@ def validate_basket(c, identity, request):
                 "RECIPE_PLAN_LOCKED", "Prepared plan has no linked proposal; request support."
             )
         p, r, a = proposal(c, row["proposal_id"], identity)
+        if (a and a["status"] == "rejected") or r["policy_outcome"] == "denied":
+            raise Problem(
+                "RECIPE_PLAN_LOCKED",
+                "This basket was rejected or denied. A new purchase requires a new recipe plan.",
+            )
         current = render(c, p, r, a, identity, history=[])
         closed = current["approval_status"] in {
             "expired",
-            "rejected",
             "policy_changed",
             "authority_changed",
-        } or current["policy_outcome"] in {"denied", "needs_resolution"}
+        } or current["policy_outcome"] == "needs_resolution"
         if p["order_id"] or not closed:
             raise Problem(
                 "RECIPE_PLAN_LOCKED",

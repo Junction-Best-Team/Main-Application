@@ -180,6 +180,7 @@ class SessionResponse(Model):
     username: str
     buyer_id: str
     csrf_token: str
+    recipe_planning_enabled: bool = False
 
 
 class PolicyRules(Model):

@@ -783,36 +783,38 @@ def test_recipe_flag_keeps_direct_product_purchases_available(
     assert service.prepare_order(actor, PrepareRequest(**request_data))["proposal_id"]
 
 
-@pytest.mark.parametrize("closed", ["expired", "rejected", "denied", "needs_resolution"])
+@pytest.mark.parametrize("closed", ["expired", "needs_resolution"])
 def test_closed_recipe_proposal_refreshes_in_place_without_rematching(
-    tmp_path, actor, buyer, service, meal_products, closed, monkeypatch
+    tmp_path, actor, service, meal_products, closed, monkeypatch, request_data
 ):
-    from aimo import approval_workflow
-    from aimo.schemas import CommitRequest, DecisionRequest
+    from aimo import conversations
+    from aimo.schemas import CommitRequest
 
     *_, versions = import_fixture(tmp_path)
     plan = match_all(actor, scale_recipe(actor, ref(versions)))
     original_request = request_for(plan)
     if closed == "expired":
         monkeypatch.setattr(settings(), "proposal_ttl_seconds", -1)
-    elif closed == "denied":
-        original_request.budget_gross = Decimal("0.01")
     elif closed == "needs_resolution":
         with connection() as c:
             c.execute("UPDATE identities SET active=false WHERE id='buyer'")
     first = service.prepare_order(actor, original_request)
     assert first["recipe_basis"] == "saved_recipe"
     monkeypatch.setattr(settings(), "proposal_ttl_seconds", 900)
-    if closed in {"denied", "needs_resolution"}:
+    if closed == "needs_resolution":
         assert first["policy_outcome"] == closed
-    if closed == "rejected":
-        approval_workflow.record_human_decision(
-            buyer, first["approval_id"], DecisionRequest(revision=1, decision="reject")
-        )
-    elif closed == "needs_resolution":
+    if closed == "needs_resolution":
         with connection() as c:
             c.execute("UPDATE identities SET active=true WHERE id='buyer'")
 
+    newer = service.prepare_order(actor, PrepareRequest(**request_data))
+    before = conversations.purchases(actor, 0, 1)
+    assert before["items"][0]["proposal_id"] == newer["proposal_id"]
+    assert before["next_offset"] == 1
+    with connection() as c:
+        created_at = c.execute(
+            "SELECT created_at FROM proposals WHERE id=%s", (first["proposal_id"],)
+        ).fetchone()["created_at"]
     # Old preparation keys retain their retry meaning; new turns can refresh.
     assert service.prepare_order(actor, original_request)["revision"] == 1
     close_pools()
@@ -828,11 +830,20 @@ def test_closed_recipe_proposal_refreshes_in_place_without_rematching(
     assert service.prepare_order(later, fresh_request)["revision"] == 2
     assert get_plan(later, PlanReference(plan_id=plan["recipe_plan_id"])) == plan
     with connection() as c:
-        assert c.execute("SELECT count(*) AS n FROM proposals").fetchone()["n"] == 1
+        assert c.execute("SELECT count(*) AS n FROM proposals").fetchone()["n"] == 2
+        assert (
+            c.execute(
+                "SELECT created_at FROM proposals WHERE id=%s", (first["proposal_id"],)
+            ).fetchone()["created_at"]
+            == created_at
+        )
         assert (
             str(c.execute("SELECT proposal_id FROM recipe_plans").fetchone()["proposal_id"])
             == first["proposal_id"]
         )
+    after = conversations.purchases(actor, 0, 1)
+    assert after["items"][0]["proposal_id"] == first["proposal_id"]
+    assert conversations.purchases(actor, 1, 1)["items"][0]["proposal_id"] == newer["proposal_id"]
     with pytest.raises(Problem) as error:
         service.commit_order(
             actor,
@@ -841,6 +852,45 @@ def test_closed_recipe_proposal_refreshes_in_place_without_rematching(
             ),
         )
     assert error.value.code == "STALE_REVISION"
+
+
+@pytest.mark.parametrize("outcome", ["rejected", "denied"])
+@pytest.mark.parametrize("expired", [False, True])
+def test_stopped_recipe_basket_requires_new_plan(
+    tmp_path, actor, buyer, service, meal_products, outcome, expired, monkeypatch
+):
+    from aimo import approval_workflow
+    from aimo.schemas import DecisionRequest
+
+    *_, versions = import_fixture(tmp_path)
+    plan = match_all(actor, scale_recipe(actor, ref(versions)))
+    request = request_for(plan)
+    if outcome == "denied":
+        request.budget_gross = Decimal("0.01")
+    first = service.prepare_order(actor, request)
+    if outcome == "rejected":
+        approval_workflow.record_human_decision(
+            buyer, first["approval_id"], DecisionRequest(revision=1, decision="reject")
+        )
+    if expired:
+        future = approval_workflow.now() + timedelta(hours=1)
+        monkeypatch.setattr(approval_workflow, "now", lambda: future)
+
+    def unexpected_lookup(*args):
+        pytest.fail("A stopped basket must be rejected before supplier I/O")
+
+    monkeypatch.setattr(service.connector, "lookup", unexpected_lookup)
+    assert service.prepare_order(actor, request)["next_action"]["type"] == "stop"
+    later = actor | {"_turn_id": str(uuid4())}
+    saved = get_plan(later, PlanReference(plan_id=plan["recipe_plan_id"]))
+    with pytest.raises(Problem, match="new recipe plan") as error:
+        service.prepare_order(later, request_for(saved))
+    assert error.value.code == "RECIPE_PLAN_LOCKED"
+    assert service.get_proposal(actor, first["proposal_id"])["next_action"]["type"] == "stop"
+    with connection() as c:
+        assert c.execute("SELECT count(*) AS n FROM proposal_revisions").fetchone()["n"] == 1
+    new_plan = scale_recipe(later, ref(versions))
+    assert new_plan["recipe_plan_id"] != plan["recipe_plan_id"]
 
 
 @pytest.mark.parametrize("still_blocked", [False, True])
@@ -855,6 +905,9 @@ def test_concurrent_recipe_refreshes_cannot_both_append_a_revision(
     monkeypatch.setattr(settings(), "proposal_ttl_seconds", -1)
     service.prepare_order(actor, request_for(plan))
     monkeypatch.setattr(settings(), "proposal_ttl_seconds", 900)
+    if still_blocked:
+        with connection() as c:
+            c.execute("UPDATE identities SET active=false WHERE id='buyer'")
     barrier = Barrier(2)
     lookup = service.connector.lookup
 
@@ -866,8 +919,6 @@ def test_concurrent_recipe_refreshes_cannot_both_append_a_revision(
 
     def refresh(_):
         request = request_for(plan)
-        if still_blocked:
-            request.budget_gross = Decimal("0.01")
         try:
             return service.prepare_order(actor, request)
         except Problem as exc:
