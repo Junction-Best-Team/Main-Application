@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     # Blank uses the system temporary directory; the Job mounts a bounded emptyDir there.
     catalog_work_dir: str = ""
     proposal_ttl_seconds: int = 900
+    # Reusable native Google client; independent of the active chat/search providers.
+    gemini_api_key: str = Field(default="", repr=False)
     # Conversational provider configuration is independent of local embeddings.
     llm_api_key: str = ""
     llm_base_url: str = "https://openrouter.ai/api/v1"

@@ -18,6 +18,12 @@ Add any starter code or earlier prototypes separately. Describe which parts exis
 
 ## Reused code, data, models, and assets
 
+During the event on 2026-11-14, Codex added a standalone native Google REST helper
+using the existing HTTPX dependency and Google's documented request formats.
+Tests use authored HTTP fixtures. Small synthetic live checks exercised Carbon,
+Decision 1 and Embedding 2 through the private hackathon key; no image generation,
+customer data or credentials were bundled. See [Google API usage](google-api.md).
+
 On 2026-11-14, at the owner's request, Codex rebuilt Person 2's runner, provider
 client and direct-tool adapter on `develop` `f13b75b`. The prior agent
 implementation was replaced; existing shared models, product/purchasing code and
