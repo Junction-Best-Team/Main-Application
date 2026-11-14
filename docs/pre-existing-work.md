@@ -209,6 +209,13 @@ nearby topics; decline clearly unrelated requests in simple language. Extended t
 same synthetic evaluation with workout, food-before-exercise, storage, kitchen-supply
 and community-serving cases. No new external material was used.
 
+## Chat Markdown — 2026-11-14
+
+Added the MIT-licensed `react-markdown` and `remark-gfm` packages using their
+upstream documentation, with locked dependencies. Reused the existing message
+transcript, design tokens and Playwright route fixtures. Markdown and unsafe
+content examples are authored synthetic fixtures; no supplier or model calls,
+external images or customer messages were used.
 
 ## Streamed chat tool activity — 2026-11-14
 

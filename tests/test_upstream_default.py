@@ -102,12 +102,6 @@ def hosted_env(monkeypatch):
     settings.cache_clear()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Owner answers Q-01/Q-55: a hosted deployment (secure_cookies on) must have a supplier "
-    "key and fail at startup without one; waiting for person 1 (issue #73, create_app / "
-    "check_readiness).",
-)
 def test_hosted_deployment_without_a_key_fails_at_startup(hosted_env):
     from fastapi.testclient import TestClient
 

@@ -14,9 +14,11 @@ from aimo.service import Service
 
 
 def check_readiness():
+    from aimo import upstream
     from aimo.search import dimensions, model_key
     from aimo.search_provider import require_credentials
 
+    upstream.check_supplier_startup()
     cfg = settings()
     if not (cfg.gemini_api_key if cfg.llm_provider == "google" else cfg.llm_api_key):
         raise RuntimeError("Worker provider credential is not configured")

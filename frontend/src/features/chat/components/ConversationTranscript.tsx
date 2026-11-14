@@ -5,6 +5,7 @@ import { ChatActivity } from "./ChatActivity";
 import { MealPlanCard } from "./MealPlanCard";
 import { RecipeIllustration } from "./RecipeIllustration";
 import { SkuCards } from "./SkuCards";
+import { MessageMarkdown } from "./MessageMarkdown";
 export function ConversationTranscript({
   conversation,
   busy,
@@ -30,9 +31,9 @@ export function ConversationTranscript({
               <Icon name="person" className="text-[18px]" />
             </div>
             <div className="flex min-w-0 flex-col items-end">
-              <p className="whitespace-pre-wrap wrap-anywhere rounded-xl rounded-tr-none bg-primary px-space-md py-space-sm text-body-md text-on-primary shadow-sm">
-                {message.text}
-              </p>
+              <div className="max-w-full rounded-xl rounded-tr-none bg-primary px-space-md py-space-sm text-body-md text-on-primary shadow-sm">
+                <MessageMarkdown text={message.text} />
+              </div>
               <MessageByline who="You" at={message.created_at} />
             </div>
           </article>
@@ -46,9 +47,9 @@ export function ConversationTranscript({
             </div>
             <div className="flex min-w-0 flex-1 flex-col gap-space-xs">
               <div className="rounded-xl rounded-tl-none bg-surface-container-low p-space-md shadow-sm">
-                <p className="whitespace-pre-wrap wrap-anywhere text-body-md text-on-surface">
-                  {message.text}
-                </p>
+                <div className="text-body-md text-on-surface">
+                  <MessageMarkdown text={message.text} />
+                </div>
                 {message.image && (
                   <RecipeIllustration
                     key={message.image.url}
