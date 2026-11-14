@@ -33,6 +33,8 @@ DROPS = [
     ("ALTER TABLE conversation_turns DROP COLUMN progress", "022_chat_activity.sql"),
     ("ALTER TABLE conversation_turns DROP COLUMN draft_cart", "023_chat_draft_cart.sql"),
 
+
+    ("DROP FUNCTION save_buyer_settings(text,integer,jsonb)", "022_buyer_settings.sql"),
     ("ALTER TABLE conversation_messages DROP COLUMN attachments", "020_chat_attachments.sql"),
     ("DROP TRIGGER immutable_orders ON orders", "008_orders_immutable.sql"),
     ("ALTER TABLE products DROP COLUMN withdrawn_since", "009_product_withdrawn_since.sql"),

@@ -241,6 +241,13 @@ cart projection and authored plan/matching/quote/browser fixtures. Unit prices a
 in these checks remain explicitly synthetic; no live provider or supplier calls, new
 external assets or dependencies were used.
 
+## Purchasing settings simplification — 2026-11-14
+
+Reused the owner-reviewed interactive mockup from this chat, existing Nordic UI
+tokens, authenticated settings transport, versioned policies and quantity/approval
+checks. The preview and browser tests use authored demo data; orders remain mocks.
+No supplier/model calls or live deployment are part of this change.
+
 ## Self-hosted UI fonts — 2026-11-14
 
 At the owner's request, replaced the Google Fonts stylesheet with locked

@@ -1,29 +1,24 @@
-"""Authenticated buyer policy settings; no agent-facing mutation tool."""
+"""Authenticated buyer settings; no agent-facing mutation tool."""
 
-from typing import Annotated
+from typing import Literal
 
 from psycopg.errors import RaiseException
-from pydantic import Field, field_validator
+from pydantic import Field, field_serializer
 
 from aimo.db import Problem, connection, js
 from aimo.purchases import context
-from aimo.schemas import ApproverAuthority, Model, PolicyRules
+from aimo.schemas import ApproverAuthority, Model, OrderCap, PolicyRules
 
 
-class EditablePolicy(PolicyRules):
-    destinations: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(
-        min_length=1, max_length=50
-    )
-    approved_product_ids: list[Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,80}$")]] = Field(
-        max_length=1000
-    )
+class EditablePolicy(Model):
+    max_order_gross: OrderCap | None = None
+    substitution: Literal["allowed", "requires_approval", "forbidden"]
+    overbuy: Literal["allowed", "requires_approval", "forbidden"]
+    whole_sales_units: bool
 
-    @field_validator("destinations", "approved_product_ids", mode="before")
-    @classmethod
-    def normalize(cls, value):
-        if isinstance(value, list) and all(isinstance(v, str) for v in value):
-            return sorted(set(v.strip() for v in value))
-        return value
+    @field_serializer("max_order_gross", when_used="json")
+    def format_cap(self, value):
+        return None if value is None else format(abs(value) if value == 0 else value, ".2f")
 
 
 class PolicyUpdate(Model):
@@ -46,20 +41,10 @@ class PolicySettings(Model):
     history: list[PolicyChange]
 
 
-def manager(c, identity):
-    return (
-        c.execute(
-            "SELECT 1 FROM policy_managers WHERE buyer_id=%s AND identity_id=%s",
-            (identity["buyer_id"], identity["id"]),
-        ).fetchone()
-        is not None
-    )
-
-
 def render(c, identity):
     buyer, policy, actor, _ = context(c, identity)
     if actor["role"] != "approver":
-        raise Problem("POLICY_FORBIDDEN", "Only signed-in buyers can view policy settings.", 403)
+        raise Problem("POLICY_FORBIDDEN", "Only signed-in buyers can view purchasing rules.", 403)
     history = c.execute(
         "SELECT version,actor_id,created_at FROM policy_changes WHERE buyer_id=%s ORDER BY version DESC LIMIT 20",
         (buyer["id"],),
@@ -68,7 +53,7 @@ def render(c, identity):
         "buyer_id": buyer["id"],
         "policy_version": policy["version"],
         "rules": PolicyRules.model_validate(policy["rules"]),
-        "can_edit": manager(c, identity),
+        "can_edit": True,
         "approval_authority": ApproverAuthority.model_validate(actor["authority"]),
         "history": [dict(row, created_at=row["created_at"].isoformat()) for row in history],
     }
@@ -82,24 +67,17 @@ def get(identity):
 def update(identity, request: PolicyUpdate):
     with connection() as c:
         _, policy, actor, _ = context(c, identity, lock=True)
-        if actor["role"] != "approver" or not manager(c, identity):
+        if actor["role"] != "approver":
             raise Problem(
-                "POLICY_FORBIDDEN", "Only a policy manager can change purchasing rules.", 403
+                "POLICY_FORBIDDEN", "Only signed-in buyers can change purchasing rules.", 403
             )
         if request.expected_version != policy["version"]:
             raise Problem(
                 "POLICY_CONFLICT", "Settings changed since you opened them. Reload before saving."
             )
-        ids = request.rules.approved_product_ids
-        found = c.execute(
-            "SELECT id FROM products p JOIN active_catalog a ON a.generation=p.generation WHERE id=ANY(%s)",
-            (ids,),
-        ).fetchall()
-        if set(ids) - {row["id"] for row in found}:
-            raise Problem("UNKNOWN_PRODUCT", "Use product IDs from the current catalog.", 422)
         try:
             c.execute(
-                "SELECT save_buyer_policy(%s,%s,%s)",
+                "SELECT save_buyer_settings(%s,%s,%s)",
                 (actor["id"], request.expected_version, js(request.rules.model_dump(mode="json"))),
             )
         except RaiseException as exc:
@@ -110,7 +88,7 @@ def update(identity, request: PolicyUpdate):
                 ) from None
             if exc.diag.message_primary == "POLICY_FORBIDDEN":
                 raise Problem(
-                    "POLICY_FORBIDDEN", "Policy management permission was revoked.", 403
+                    "POLICY_FORBIDDEN", "This buyer can no longer edit purchasing rules.", 403
                 ) from None
             raise
         return render(c, identity)

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Icon, InertButton } from "../../../shared/components/DesignPrimitives";
+import { Icon } from "../../../shared/components/DesignPrimitives";
 import { DESIGN_PLACEHOLDERS as MOCK } from "../../../shared/lib/designPlaceholders";
 import { useVoiceMode } from "../hooks/useVoiceMode";
 import { AttachmentCards } from "./AttachmentCards";
@@ -44,6 +44,8 @@ export function ChatComposer({
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
   const disabled = Boolean(busy) || voice.active;
+  // One action at a time: send while there is a draft or attachment, otherwise voice.
+  const hasDraft = Boolean(text.trim()) || attachments.length > 0;
   async function addFiles(files: File[]) {
     if (disabled || readingRef.current || !files.length) return;
     readingRef.current = true;
@@ -142,7 +144,7 @@ export function ChatComposer({
           maxLength={4000}
           placeholder={MOCK.request.composerPlaceholder}
           disabled={disabled}
-          className="h-11 min-w-0 flex-1 rounded-lg bg-transparent p-space-sm font-body text-body-md text-on-surface placeholder:text-outline focus-visible:outline-2 focus-visible:outline-primary-container"
+          className="h-11 min-w-0 flex-1 rounded-lg bg-transparent p-space-sm font-body text-body-md text-on-surface placeholder:text-outline focus:outline-none focus-visible:outline-none"
         />
         <div className="flex shrink-0 items-center gap-space-xs">
           <div className="flex items-center text-on-surface-variant md:gap-space-xs">
@@ -169,21 +171,24 @@ export function ChatComposer({
             >
               <Icon name="attach_file" className="text-[20px] md:text-[24px]" />
             </button>
+          </div>
+          {hasDraft ? (
+            <button
+              type="submit"
+              aria-label={sendLabel}
+              title={sendLabel}
+              disabled={disabled || reading}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Icon name="arrow_forward" className="text-[22px]" />
+            </button>
+          ) : (
             <button
               type="button"
               aria-label="Start voice mode"
+              title="Start voice mode"
               onClick={() => voice.start(conversationId)}
-              disabled={
-                disabled ||
-                reading ||
-                Boolean(text.trim()) ||
-                attachments.length > 0
-              }
-              title={
-                text.trim()
-                  ? "Send or clear your draft before starting voice"
-                  : "Start voice mode"
-              }
+              disabled={disabled || reading}
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface-pure text-on-surface transition-colors hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container disabled:cursor-not-allowed disabled:opacity-50"
             >
               <svg
@@ -200,27 +205,7 @@ export function ChatComposer({
                 <path d="M4 10v4M8 5v14M12 8v8M16 3v18M20 9v6" />
               </svg>
             </button>
-            <InertButton
-              label="Scan barcode"
-              className="flex h-11 w-7 items-center justify-center md:w-8"
-            >
-              <Icon
-                name="barcode_scanner"
-                className="text-[20px] md:text-[24px]"
-              />
-            </InertButton>
-          </div>
-          <button
-            type="submit"
-            aria-label={sendLabel}
-            title={sendLabel}
-            disabled={
-              disabled || reading || (!text.trim() && !attachments.length)
-            }
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary-container text-on-primary disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Icon name="arrow_forward" className="text-[22px]" />
-          </button>
+          )}
         </div>
       </div>
     </form>

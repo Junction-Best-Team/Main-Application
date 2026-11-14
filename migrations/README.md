@@ -23,6 +23,8 @@ Do not rename applied migrations or delete their ledger rows.
 | 023_chat_draft_cart | Display-only selected ingredients and checked unit prices; attempt-fenced, no confirmation authority |
 | 022_chat_activity | Bounded, sanitized worker activity on conversation turns; attempt-fenced updates, no purchasing authority |
 
+| 022_buyer_settings | Narrow signed-in buyer settings save; preserve hidden scope and personal authority |
+
 Before allocating another number, check remote branch tips and open PRs and update
 this table with the agreed allocation. Reservations do not create migration files.
 
