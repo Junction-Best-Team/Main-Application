@@ -40,4 +40,17 @@ export const MOCK = {
     sortLabel: "Sort: Most recent",
     statusLabel: "Status: All",
   },
+  /** Home screen: welcome copy and the Active Delivery Schedule card. */
+  home: {
+    intro:
+      "Direct depot wholesale line • Fresh morning dispatch active until 04:30. Manage upcoming restaurant schedules or initiate an automated ingredient restocking order.",
+    bannerText:
+      "Speak your ingredient list, upload your prep checklist, or key in quick wholesale SKUs. The intelligent kitchen parser matches live depot stock instantly.",
+    scheduleViewAll: "View All Schedules",
+    schedules: [
+      { icon: "local_shipping", title: "Fresh Dairy & Morning Bakery Cadence", cadence: "Every Friday", next: "Next: Fri, Oct 24", status: "Shipping", total: "€248.50" },
+      { icon: "nutrition", title: "Seasonal Nordic Root Vegetables & Pantry", cadence: "Every 4 days", next: "Next: Mon, Oct 27", status: "Needs Approval", total: "€164.20" },
+      { icon: "restaurant", title: "Weekend Tasting Menu Specialty Cheeses", cadence: "Bi-weekly Thursday", next: "Next: Thu, Oct 30", status: "Confirmed", total: "€382.00" },
+    ],
+  },
 } as const;
