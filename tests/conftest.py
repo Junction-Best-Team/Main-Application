@@ -130,3 +130,17 @@ def mission(request_data):
         {"product_id": "464398", "amount": "400", "unit": "L", "substitutes_for": "464306"},
     ]
     return PrepareRequest.model_validate(request_data)
+
+
+@pytest.fixture
+def placed_order(service, buyer, request_data):
+    """A placed mock order of the demo buyer (milk, 10 L): the source of a standing order."""
+    from aimo import auth, conversations
+    from aimo.schemas import CommitRequest
+
+    p = service.prepare_order(
+        auth.internal_agent(buyer), PrepareRequest.model_validate(request_data)
+    )
+    body = CommitRequest(proposal_id=p["proposal_id"], revision=1, idempotency_key=str(uuid4()))
+    receipt = conversations.confirm(buyer, p["proposal_id"], body, service)
+    return {"order_id": receipt["order_id"], "proposal_id": p["proposal_id"]}

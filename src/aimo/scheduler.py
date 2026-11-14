@@ -4,11 +4,17 @@ Only the commit guard exists so far. It fails closed: no scheduled authorization
 yet, so the scheduler identity can commit nothing. The run engine replaces this body.
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from aimo.db import Problem, fingerprint
+from aimo.upstream import HELSINKI
 
 ONE_DAY = timedelta(days=1)
+
+
+def helsinki_today(now=None):
+    """The Helsinki calendar date: every schedule date and every run is in this zone."""
+    return (now or datetime.now(timezone.utc)).astimezone(HELSINKI).date()
 
 
 def ensure_commit_allowed(c, identity, p, r, snapshot, evaluated):
