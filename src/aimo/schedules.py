@@ -11,7 +11,7 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 from aimo import scheduler
-from aimo.approval_policy import evaluate_purchase
+from aimo.approval_policy import can_approve, evaluate_purchase
 from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, js, now
 from aimo.purchases import build_snapshot, context, load_products
@@ -32,6 +32,7 @@ NOT_A_SCHEDULE_DATE = (
     "recipe_plan_id",
     "recipe_plan_revision",
     "constraints",
+    "budget_gross",  # the one-off hard budget of that purchase; the standing order has its ceiling
 )
 
 
@@ -166,11 +167,15 @@ def build_terms(
     lines = [agreed_line(line, rules.get(line["product_id"]), names) for line in snapshot["lines"]]
     return {
         "source_order_id": str(order["id"]),
-        "title": title or str(order["request"].get("request_id") or "Standing order"),
-        "lines": lines,
+        "title": title
+        or str(order["request"].get("request_id") or "").strip()[:80]
+        or "Standing order",
+        "lines": [{k: v for k, v in line.items() if k != "deposits"} for line in lines],
+        "_agreed_lines": lines,  # with the deposit structure, stored for the run time check
         "currency": snapshot["currency"],
         "gross_total": snapshot["gross_total"],
         "policy_outcome": evaluated["policy_outcome"],
+        "_required_exceptions": evaluated["required_exceptions"],
         "terms_fingerprint": scheduler.terms_fingerprint(probe, snapshot),
         "delivery_offset_days": offset,
         "recurrence": rule,
@@ -200,6 +205,9 @@ def agreed_line(line, rule, names):
         "unit_gross": evidence["gross"],
         "tax_rate": evidence["tax_rate"],
         "line_gross": line["gross"],
+        "deposits": scheduler.deposit_structure(
+            line["deposit_lines"]
+        ),  # kept for the run time check
         "accepted_substitutes": [
             {
                 "product_id": s,
@@ -269,7 +277,11 @@ def response(c, row):
     rules = row["line_rules"] or {}
     names = load_products(c, [s for r in rules.values() for s in r.get("accepted_substitutes", [])])
     lines = [
-        {k: v for k, v in line.items() if k not in ("accepted_substitutes", "price_range_pct")}
+        {
+            k: v
+            for k, v in line.items()
+            if k not in ("accepted_substitutes", "price_range_pct", "deposits")
+        }
         | {
             "accepted_substitutes": [
                 {
@@ -416,7 +428,7 @@ def insert(c, identity, terms, *, key, digest, ceiling, supersedes=None):
             terms["title"],
             js(terms["_request"]),
             js(terms["_rules"]),
-            js(terms["lines"]),
+            js(terms["_agreed_lines"]),
             terms["terms_fingerprint"],
             terms["currency"],
             terms["gross_total"],
@@ -432,6 +444,21 @@ def insert(c, identity, terms, *, key, digest, ceiling, supersedes=None):
         c, aid, identity["id"], "created", {"supersedes": str(supersedes) if supersedes else None}
     )
     return row
+
+
+def require_authority(identity, terms, ceiling):
+    """The creating approver authorizes every run up to the ceiling, so their own limit and
+    exceptions must cover the larger of the agreed total and the ceiling (as `confirm` does for a
+    single purchase): the demo policy only needs ANY approver to cover a total, not this one."""
+    total = max(Decimal(terms["gross_total"]), Decimal(str(ceiling)))
+    if not can_approve(
+        identity["authority"], total, terms["currency"], terms["_required_exceptions"]
+    ):
+        raise Problem(
+            "APPROVAL_SCOPE",
+            "This amount or exception exceeds your current authority to approve.",
+            403,
+        )
 
 
 def agree(terms, agreed_fingerprint):
@@ -482,6 +509,7 @@ def create(identity, body: ScheduleCreateRequest, service):
         body.title,
     )
     agree(terms, body.agreed_terms_fingerprint)
+    require_authority(identity, terms, body.price_ceiling_gross)
     with connection() as c:
         context(c, identity, lock=True)
         lock_buyer(c, identity)
@@ -546,11 +574,28 @@ def replace(identity, schedule_id, body: ScheduleReplaceRequest, service):
     terms = build_terms(identity, service, **edited(old, body))
     agree(terms, body.agreed_terms_fingerprint)
     digest = digest_of(old["id"])
-    ceiling = body.price_ceiling_gross or old["price_ceiling_gross"]
+    ceiling = (
+        body.price_ceiling_gross
+        if body.price_ceiling_gross is not None
+        else old["price_ceiling_gross"]
+    )
+    require_authority(identity, terms, ceiling)
     with connection() as c:
         context(c, identity, lock=True)
         lock_buyer(c, identity)
         old = owned(c, identity, schedule_id, lock=True)
+        # Under the locks the first look is stale: a cancel, a pause or another replace may have
+        # landed since. One winner: a schedule that is finished or already has a successor is refused.
+        again = c.execute(
+            "SELECT 1 FROM scheduled_authorizations WHERE buyer_id=%s AND create_key=%s",
+            (identity["buyer_id"], body.idempotency_key),
+        ).fetchone()
+        successor = c.execute(
+            "SELECT 1 FROM scheduled_authorizations WHERE supersedes_id=%s", (old["id"],)
+        ).fetchone()
+        if not again and (old["status"] not in ("active", "paused", "stopped") or successor):
+            raise Problem("SCHEDULE_NOT_ACTIVE", "This standing order was already changed.", 409)
+        was_paused = old["status"] == "paused"
         if old["status"] in ("active", "paused"):
             c.execute(
                 "UPDATE scheduled_authorizations SET status='superseded',next_run_date=NULL,"
@@ -567,6 +612,15 @@ def replace(identity, schedule_id, body: ScheduleReplaceRequest, service):
             ceiling=ceiling,
             supersedes=old["id"],
         )
+        if was_paused and row["status"] == "active":
+            # A paused schedule that is edited stays paused (a holiday is not ended by a rename).
+            stamp = now()
+            row = c.execute(
+                "UPDATE scheduled_authorizations SET status='paused',paused_at=%s,updated_at=%s "
+                "WHERE id=%s RETURNING *",
+                (stamp, stamp, row["id"]),
+            ).fetchone()
+            event(c, row["id"], identity["id"], "paused", {"by": "replace of a paused schedule"})
         return response(c, row)
 
 
@@ -602,6 +656,21 @@ def move(identity, schedule_id, event_name, wanted, *, allowed_from):
             WHERE id=%s RETURNING *""",
             (wanted, stamp, stamp if wanted == "paused" else None, wanted, row["id"]),
         ).fetchone()
+        if wanted == "cancelled":
+            # The run's open proposal must not stay confirmable after the cancel (the customer's own
+            # explicit confirm of it would still be valid otherwise).
+            for open_run in c.execute(
+                "SELECT * FROM scheduled_runs WHERE authorization_id=%s AND status='prepared' "
+                "AND proposal_id IS NOT NULL",
+                (row["id"],),
+            ).fetchall():
+                scheduler.cancel_request(
+                    c,
+                    open_run["proposal_id"],
+                    open_run["buyer_id"],
+                    "customer_cancelled",
+                    open_run["id"],
+                )
         event(c, row["id"], identity["id"], event_name, {})
         return response(c, row)
 
@@ -627,6 +696,8 @@ def resume(identity, schedule_id):
 def substitute_candidates(identity, product_id, service):
     """Catalog substitutes the browser may offer in the dropdown: inside the approved scope."""
     require_customer(identity)
+    if "\x00" in product_id or len(product_id) > 40:
+        raise Problem("INVALID_PRODUCT_ID", "That is not a product id.", 422)
     found = service.list_substitution_candidates(identity, product_id)
     with connection() as c:
         _, policy, _, _ = context(c, identity)

@@ -64,18 +64,24 @@ MANIFEST: dict[str, list[tuple[str, ...]]] = {
         ("trigger", "recipe_versions", "immutable_recipe_versions"),
         ("trigger", "orders", "immutable_truncate"),
     ],
+    "021_turn_constraints.sql": [("column", "conversation_turns", "constraints")],
+    "022_buyer_settings.sql": [("function", "save_buyer_settings(text,integer,jsonb)")],
     "022_chat_activity.sql": [("column", "conversation_turns", "progress")],
     "023_chat_draft_cart.sql": [("column", "conversation_turns", "draft_cart")],
-
-    "020_scheduled_orders.sql": [
+    "023_scheduled_orders.sql": [
         ("table", "scheduler_identities"),
         ("table", "scheduled_authorizations"),
         ("table", "scheduled_runs"),
         ("table", "order_request_cancellations"),
         ("trigger", "scheduled_authorizations", "sched_auth_guard"),
+        ("table", "scheduled_run_events"),
+        ("table", "scheduled_authorization_events"),
+        ("trigger", "scheduled_runs", "scheduled_run_guard"),
+        ("trigger", "scheduled_run_events", "immutable_scheduled_run_events"),
+        ("trigger", "scheduled_authorization_events", "immutable_scheduled_authorization_events"),
+        ("trigger", "order_request_cancellations", "cancellation_no_order"),
+        ("trigger", "order_request_cancellations", "immutable_order_request_cancellations"),
     ],
-    "021_turn_constraints.sql": [("column", "conversation_turns", "constraints")],
-    "022_buyer_settings.sql": [("function", "save_buyer_settings(text,integer,jsonb)")],
     "024_message_notice.sql": [("column", "conversation_messages", "notice")],
 }
 
