@@ -1,8 +1,8 @@
 """Contract tests for proposal revisions and accepted substitutions (person 3, WS-D).
 
 JNP3-PRP-003 (Approved): a supplier price or availability change gives a new revision of the
-same proposal; a customer quantity change gives a new proposal. JNP3-PRP-007 (Draft): a
-substitution the customer accepts is recorded against the proposal revision it applies to.
+same proposal; a customer quantity change gives a new proposal. JNP3-PRP-007 (Approved, Q-41): a
+substitution the customer accepts is accepted by confirming the revision that contains it.
 Everything runs against the authored fixture catalog and the invented FixtureClient responses:
 nothing here is live supplier data, and the orders are the demo order service's mock acceptance.
 """
@@ -131,41 +131,53 @@ def test_a_changed_quantity_under_the_same_key_is_an_idempotency_conflict(
     assert again["proposal_id"] == first["proposal_id"]  # the unchanged retry replays
 
 
-# --- JNP3-PRP-007 (Draft): a substitution the customer accepts is recorded against its revision ---
+# --- JNP3-PRP-007 (Approved, owner Q-41): confirming the revision that holds the substitute -------
+# accepts it. There is no separate record: the acceptance is the customer's confirmation, bound
+# to the revision and fingerprint that contain the substitute line and its exception.
 
 
-def test_existing_surface_ties_confirmation_and_substitution_exception_to_one_revision(
-    service, buyer, actor, mission
-):
-    """What exists today: the substitution line and exception are in the revision, and the
-    customer's confirmation and the approval are bound to that revision and fingerprint."""
+def test_confirming_the_revision_with_a_substitute_accepts_it(service, buyer, actor, mission):
     p = service.prepare_order(actor, mission)
-    (stored,) = rows("SELECT required_exceptions FROM proposal_revisions")
-    assert "substitution" in stored["required_exceptions"]
+    # The revision carries the substitute line and the substitution exception.
     assert [x["substitutes_for"] for x in p["request"]["lines"]] == [None, "464306"]
-    conversations.confirm(buyer, p["proposal_id"], body_for(p), service)
-    (revision,) = rows("SELECT fingerprint FROM proposal_revisions")
-    (confirmation,) = rows("SELECT revision,fingerprint FROM customer_confirmations")
-    assert (confirmation["revision"], confirmation["fingerprint"]) == (1, revision["fingerprint"])
+    assert [x["product_id"] for x in p["snapshot"]["lines"]] == ["464306", "464398"]
+    (stored,) = rows("SELECT revision,fingerprint,required_exceptions FROM proposal_revisions")
+    assert "substitution" in stored["required_exceptions"]
+    receipt = conversations.confirm(buyer, p["proposal_id"], body_for(p), service)
+    # The customer's confirmation, the exception approval and the order bind that same revision.
+    (confirmation,) = rows("SELECT revision,fingerprint,actor_id FROM customer_confirmations")
+    (approval,) = rows("SELECT revision,fingerprint,status,actor_id FROM approvals")
+    assert confirmation["revision"] == approval["revision"] == receipt["revision"] == 1
+    assert confirmation["fingerprint"] == approval["fingerprint"] == stored["fingerprint"]
+    assert approval["status"] == "approved" and approval["actor_id"] == confirmation["actor_id"]
+    (order,) = rows("SELECT revision FROM orders")
+    assert order["revision"] == stored["revision"]
+    history = workflow.get_proposal(buyer, p["proposal_id"])["history"]
+    confirmed = [e for e in history if e["event"] == "customer_confirmed"]
+    assert [e["detail"]["revision"] for e in confirmed] == [1]
+    assert confirmed[0]["detail"]["fingerprint"] == stored["fingerprint"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "JNP3-PRP-007 not met: confirming records one whole-revision customer_confirmed audit "
-        "event (detail has only revision and fingerprint); nothing names the accepted "
-        "substitution (464398 for 464306) as such. Where it should live is undecided."
-    ),
-)
-def test_accepting_a_substitution_is_recorded_as_such_against_its_revision(
-    service, buyer, actor, mission
+def test_accepting_a_substitute_does_not_carry_to_a_repriced_revision(
+    service, connector, buyer, actor, mission, monkeypatch
 ):
     p = service.prepare_order(actor, mission)
-    conversations.confirm(buyer, p["proposal_id"], body_for(p), service)
-    history = workflow.get_proposal(buyer, p["proposal_id"])["history"]
-    accepted = [
-        e for e in history if e["event"] == "customer_confirmed" and "464398" in str(e["detail"])
-    ]
-    assert accepted, "no audit event names the accepted substitute product"
-    assert accepted[0]["detail"]["revision"] == 1
+    body = body_for(p)
+    original = service.commit_order
+
+    def supplier_down(*args):
+        raise Problem("SUPPLIER_UNAVAILABLE", "down", 503)
+
+    monkeypatch.setattr(service, "commit_order", supplier_down)
+    with pytest.raises(Problem):
+        conversations.confirm(buyer, p["proposal_id"], body, service)
+    monkeypatch.setattr(service, "commit_order", original)
+    connector.price_multiplier = Decimal("1.1")  # the terms change before the order is placed
+    revised = original(actor, body)
+    assert revised["status"] == "revised" and revised["revision"] == 2
+    assert [x["substitutes_for"] for x in revised["request"]["lines"]] == [None, "464306"]
+    assert [r["revision"] for r in rows("SELECT revision FROM customer_confirmations")] == [1]
+    with pytest.raises(Problem) as error:
+        original(actor, body_for(p, revision=2))
+    assert error.value.code == "CUSTOMER_CONFIRMATION_REQUIRED"
+    assert rows("SELECT id FROM orders") == []
