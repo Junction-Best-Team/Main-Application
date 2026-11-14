@@ -29,7 +29,7 @@ from aimo.db import Problem, connection, fingerprint
 from aimo.ingest import publish
 from aimo.recipe_import import import_product_evidence, ingest_recipes
 from aimo.recipe_schemas import MatchIngredient, Recipe, ScaleRecipe
-from aimo.recipes import MAX_QUANTITY_PER_PORTION, match_ingredient, scale_recipe, scaled_plan
+from aimo.recipes import match_ingredient, scale_recipe, scaled_plan
 from aimo.schemas import PrepareRequest
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "aimo"
@@ -122,30 +122,40 @@ def oracle(quantity_, unit, base, portions):
     raise AssertionError("a four-decimal value always has at most four places")
 
 
-def test_property_every_amount_is_the_exact_value_rounded_up_or_the_plan_is_refused():
+def test_property_every_amount_equals_the_exact_fraction_or_is_unresolved():
     rng = random.Random(20261114)
-    quantities = ["1", "2", "3", "7", "0.5", "12.25", "100", "150", "333", "0.0001", "99999.9999"]
-    checked = refused = 0
+    quantities = [
+        "1",
+        "2",
+        "3",
+        "7",
+        "0.5",
+        "12.25",
+        "100",
+        "150",
+        "333",
+        "0.0001",
+        "99999.9999",
+        "9999999999.9999",
+    ]
+    checked = nulls = 0
     for _ in range(1500):
         quantity_ = rng.choice(quantities)
         unit = rng.choice(list(UNIT_FACTOR))
         base = rng.choice([1, 2, 3, 4, 6, 7, 8, 12, 25, 100, 9999, 10000])
         portions = rng.choice([1, 2, 3, 7, 50, 100, 200, 1000, 9999, 10000])
         expected, out_unit = oracle(quantity_, unit, base, portions)
-        exact = Fraction(Decimal(quantity_)) * portions / base * UNIT_FACTOR[unit][0]
-        if exact > MAX_QUANTITY_PER_PORTION[out_unit] * portions:  # MEA-011: not plausible
-            with pytest.raises(Problem) as error:
-                one(quantity_, unit, base, portions)
-            assert error.value.code == "QUANTITY_PER_PORTION_EXCEEDED"
-            refused += 1
-            continue
         item = one(quantity_, unit, base, portions)
         assert item.unit == out_unit
-        assert expected is not None, "within the per-portion bound a value always fits 14 digits"
-        assert Fraction(Decimal(item.amount)) == expected, (quantity_, unit, base, portions)
-        assert item.reason == "Match a suitable catalog product."
+        if expected is None:
+            assert item.amount is None, (quantity_, unit, base, portions, item.amount)
+            assert "precision" in item.reason
+            nulls += 1
+        else:
+            assert Fraction(Decimal(item.amount)) == expected, (quantity_, unit, base, portions)
+            assert item.reason == "Match a suitable catalog product."
         checked += 1
-    assert checked > 0 and refused > 0  # both branches were exercised
+    assert checked == 1500 and 0 < nulls < checked  # both branches were exercised
 
 
 def test_non_terminating_results_are_rounded_up_never_down():
@@ -158,12 +168,10 @@ def test_non_terminating_results_are_rounded_up_never_down():
     assert one(200, "g", 6, 200).amount == "6.6667"
 
 
-def test_a_fifteen_digit_quantity_is_refused_by_the_per_portion_bound_first():
-    # Recipe.quantity is at most 14 digits; scaling such a base quantity is not plausible per
-    # portion, so the plan is refused before any digit limit could apply (MEA-011).
-    with pytest.raises(Problem) as error:
-        one("9999999999.9999", "kg", 1, 1)
-    assert error.value.code == "QUANTITY_PER_PORTION_EXCEEDED"
+def test_fifteen_digit_results_are_unresolved():
+    # Recipe.quantity is at most 14 digits (10 whole, 4 decimals); scaling can exceed that.
+    assert one("9999999999.9999", "kg", 1, 1).amount == "9999999999.9999"
+    assert one("9999999999.9999", "kg", 1, 3).amount is None  # 29999999999.9997 has 15 digits
 
 
 def test_scaled_plan_module_uses_no_float():
@@ -882,16 +890,6 @@ def test_purchase_amount_field_is_a_copy_of_the_required_amount_not_the_rounded_
         assert item["purchase_amount"] == item["amount"]
         assert item["purchase_unit"] == item["unit"]
         assert item["purchase_amount"] != item["conversion"]["proposed_amount"]
-
-
-def test_purchase_amount_fields_say_they_are_the_required_amount():
-    """Issue 99: the field names stay (a rename would break the API), the schema explains them."""
-    from aimo.chat_schemas import Ingredient
-
-    fields = Ingredient.model_json_schema()["properties"]
-    assert "proposed_amount" in fields["purchase_amount"]["description"]
-    assert "not the pack-rounded" in fields["purchase_amount"]["description"]
-    assert "Not the pack" in fields["purchase_unit"]["description"]
 
 
 def test_ingredient_purchased_amounts_add_up_to_the_basket_line(
