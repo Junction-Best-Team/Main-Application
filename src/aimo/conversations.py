@@ -365,7 +365,7 @@ def confirm(identity, pid, body, service):
         _, policy, actor, _ = context(c, identity, lock=True)
         p, r, a = workflow.proposal(c, pid, identity, lock=True)
         # Completed retries return the saved receipt; browser keys never need provider/supplier access.
-        old = workflow.prior_result(c, identity, body)
+        old = workflow.prior_result(c, identity, body, any_key=True)
         if old:
             return old
         if r["revision"] != body.revision:

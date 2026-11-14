@@ -33,8 +33,8 @@ def test_confirm_replay_and_refusal_leave_policy_rows_untouched(service, buyer, 
     receipt = conversations.confirm(buyer, p["proposal_id"], first, service)
     assert receipt["status"] == "accepted_mock"
     assert conversations.confirm(buyer, p["proposal_id"], first, service) == receipt  # replay
-    with pytest.raises(Problem):  # a second confirmation of a finalized purchase is refused
-        conversations.confirm(buyer, p["proposal_id"], body(p), service)
+    # CNF-011: a second confirmation of an ordered revision returns the saved receipt, any key.
+    assert conversations.confirm(buyer, p["proposal_id"], body(p), service) == receipt
     assert policy_state() == before
 
 
