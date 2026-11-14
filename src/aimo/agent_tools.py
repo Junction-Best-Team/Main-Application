@@ -284,6 +284,7 @@ class ToolSession:
         self.guard = guard
         self.preparation_key = "chat-" + fingerprint({"turn": identity["_turn_id"]})
         self.plan = None
+        self.restored = None  # the plan restore_plan loaded; unchanged, it is not shown again
         self.draft_basis = None
         self.draft_totals = None
         self.proposal = None
@@ -642,6 +643,37 @@ class ToolSession:
         self.commercial_dates.update({pid: str(request.delivery_date) for pid in result["products"]})
         return result
 
+    def restore_plan(self, stored):
+        """Re-verify a plan the customer already saw, from the catalog, for exactly its products.
+
+        The stored plan is data from an earlier turn, never trusted: it must validate as a
+        plain complete MealPlan, and every product is read again here (no supplier call).
+        Anything doubtful returns False and leaves the session empty, so prepare fails closed
+        with its usual error and the draft stays on screen. Products outside the plan are not
+        verified by this: PRODUCT_NOT_VERIFIED still applies to them.
+        """
+        try:
+            plan = MealPlan.model_validate(stored)
+            if plan.recipe_plan_id or not plan.ingredients:
+                return False
+            for item in plan.ingredients:
+                TypeAdapter(Amount).validate_python(item.amount)
+            ids = list(dict.fromkeys(i.product_id for i in plan.ingredients))
+            if None in ids or "" in ids:
+                return False
+            found = {}
+            for pid in ids:
+                result = self.checked(ProductResponse, self.service.get_product(self.identity, pid))
+                if result["id"] != pid or result.get("deleted"):
+                    return False
+                found[pid] = result
+        except (Problem, ValidationError, TypeError, ValueError):
+            return False
+        self.products.update(found)
+        self.plan = plan.model_copy(deep=True)
+        self.restored = plan.model_copy(deep=True)
+        return True
+
     def publish(self, plan):
         # The tool input is a subclass that only adds examples; compare and store the plain model.
         plan = MealPlan.model_validate(plan.model_dump())
@@ -810,6 +842,8 @@ class ToolSession:
     def result(self, narrative="", include_plan=True):
         """Trusted status notices; ``include_plan=False`` withholds the model-authored plan."""
         plan = self.plan if include_plan else None
+        if plan is not None and plan == self.restored and not self.proposal:
+            plan = None  # a restored plan nobody used this turn must not carry on as a fresh answer
         notice = ""
         if self.proposal:
             if self.proposal.get("order_id"):
