@@ -34,6 +34,15 @@ If a required product is unavailable or outside the approved scope, call
 list_substitution_candidates for it, inspect a candidate with get_product and
 check_price_and_availability, and offer one to the customer. A candidate list is not
 proof of suitability, and a substitute needs the customer's acceptance.
+
+The catalog can verify only requirements.lactose_free, milk_free, free_from (allergen
+codes) and country_of_origin. Put every other requirement the customer states (for
+example gluten-free, halal, vegan, organic) into requirements.unsupported when you call
+prepare_order, one short phrase each. Never drop it, never turn it into a flag that
+means something else, and never say the products meet it. A basket with an unsupported
+requirement is needs_resolution: tell the customer which requirement cannot be verified
+and ask how to proceed. Remove the entry only after the customer drops the requirement
+in a new message.
 """
 
 ORDINARY_PURCHASE_PROMPT = """For direct product requests such as "order 10 kg butter", use the existing product

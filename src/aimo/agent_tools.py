@@ -291,7 +291,9 @@ class ToolSession:
             "prepare_order": ToolSpec(
                 PrepareOrderInput,
                 "Prepare the complete published plan through purchasing validation. "
-                "Server assigns the retry key. Does not authorize or commit a purchase.",
+                "Server assigns the retry key. Does not authorize or commit a purchase. "
+                "List every requirement the catalog cannot verify (for example gluten-free) in "
+                "requirements.unsupported; each one makes the basket needs_resolution.",
                 self.prepare,
                 ProposalResponse,
             ),
