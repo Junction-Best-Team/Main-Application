@@ -127,3 +127,12 @@ On 2026-11-14, at the owner's request, Codex simplified the existing CI for the
 hackathon: reused the existing backend tests, API sweep, frontend build and
 infrastructure checks, removed coverage gating/artifact jobs and shared the
 backend setup. No new dependency, dataset, model or asset was introduced.
+
+## Production screen styling port — 2026-11-14
+
+Reused the visual language from designer PR #102 and `ui/DESIGN.md` in the
+existing production feature components: colors, typography, message bubbles,
+card surfaces, login layout and purchase controls. Reused the existing Tailwind
+tokens and fonts; no prototype store, fixtures, handwritten API types, assets
+or dependencies were imported. Routes, hooks and purchase authority stay with
+the existing production implementation.

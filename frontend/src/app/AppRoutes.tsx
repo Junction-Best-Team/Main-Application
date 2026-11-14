@@ -52,7 +52,7 @@ export function AppRoutes() {
       <Route
         path="*"
         element={
-          <main className="workspace">
+          <main className="workspace mx-auto w-full max-w-[1320px] px-4 py-7 md:px-8 md:py-10">
             <h1>Page not found</h1>
             <Link to="/">Plan a purchase</Link>
           </main>

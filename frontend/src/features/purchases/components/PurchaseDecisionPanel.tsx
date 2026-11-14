@@ -22,15 +22,19 @@ export function PurchaseDecisionPanel({
   load,
 }: Props) {
   return (
-    <aside className="decision-panel">
+    <aside className="decision-panel rounded-xl border border-border-subtle bg-surface-pure p-5 xl:sticky xl:top-28 xl:p-6 [&_h2]:text-headline-sm [&_h3]:font-label [&_h3]:text-label-md [&_h3]:text-secondary">
       <h2>Review your basket</h2>
-      <p className="decision-total">{currency(p.snapshot.gross_total)}</p>
+      <p className="mb-6 border-b border-border-subtle pb-5 font-label text-headline-lg font-bold text-primary">
+        {currency(p.snapshot.gross_total)}
+      </p>
       <h3>Purchasing checks</h3>
-      <ul className="reasons">
+      <ul className="m-0 mb-5 list-none space-y-3 p-0 text-body-sm">
         {p.reasons.map((r, i) => (
           <li key={i}>
             {r.message}
-            <span className="reason-code">{r.code}</span>
+            <span className="mt-1 block font-label text-label-sm text-secondary wrap-anywhere">
+              {r.code}
+            </span>
           </li>
         ))}
       </ul>
@@ -38,28 +42,39 @@ export function PurchaseDecisionPanel({
         <p>Mission budget: {currency(String(p.request.budget_gross))}</p>
       )}
       {message && (
-        <p role="status" className="success">
+        <p
+          role="status"
+          className="my-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-body-sm text-green-900"
+        >
           {message}
         </p>
       )}
       {canConfirm ? (
         <>
-          <p className="action-note">
+          <p className="my-4 border-t border-border-subtle pt-4 text-body-sm text-secondary">
             Your confirmation applies to revision {p.revision} only. We recheck
             prices, availability and your authority before recording a mock
             order. No supplier order or stock reservation is made.
           </p>
-          <button className="primary full" disabled={busy} onClick={confirm}>
+          <button
+            className="primary full mt-3 block w-full rounded border border-status-fresh-green bg-status-fresh-green px-4 py-3 font-label text-label-lg font-bold text-deep-ocean-navy hover:enabled:bg-tertiary-fixed"
+            disabled={busy}
+            onClick={confirm}
+          >
             {busy ? "Verifying purchase…" : "Confirm this purchase"}
           </button>
           {p.can_decide && getPurchaseStatus(p) === "pending" && (
-            <button className="danger full" disabled={busy} onClick={reject}>
+            <button
+              className="danger full mt-3 block w-full rounded border border-error bg-transparent px-4 py-3 font-label text-label-md font-bold text-error hover:enabled:bg-error-container"
+              disabled={busy}
+              onClick={reject}
+            >
               Reject purchase
             </button>
           )}
         </>
       ) : (
-        <div className="status-note">
+        <div className="status-note border-t border-border-subtle pt-4 [&_p]:mt-4 [&_p]:text-body-sm">
           <Badge value={getPurchaseStatus(p)} />
           {getPurchaseStatus(p) === "superseded" && (
             <p>
@@ -80,10 +95,17 @@ export function PurchaseDecisionPanel({
                   ? "Your account does not have authority for this amount or exception."
                   : "This revision is closed for decisions."}
           </p>
-          {p.order_id && <p className="order-reference">Order {p.order_id}</p>}
+          {p.order_id && (
+            <p className="order-reference font-label font-bold text-primary wrap-anywhere">
+              Order {p.order_id}
+            </p>
+          )}
         </div>
       )}
-      <button className="text-button" onClick={load}>
+      <button
+        className="mt-4 border-0 bg-transparent px-0 font-label text-label-md font-bold text-wholesale-teal hover:enabled:bg-transparent hover:enabled:underline"
+        onClick={load}
+      >
         Refresh status
       </button>
     </aside>

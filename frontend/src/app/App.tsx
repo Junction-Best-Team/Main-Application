@@ -8,7 +8,10 @@ function AppContent() {
   const { loading, error } = useAuth();
   if (loading)
     return (
-      <main className="loading" role="status">
+      <main
+        className="loading px-4 py-12 text-center text-secondary"
+        role="status"
+      >
         Opening your purchasing workspace…
       </main>
     );

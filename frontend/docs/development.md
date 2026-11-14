@@ -54,11 +54,13 @@ at the entry point, retain visible focus and check both desktop and mobile.
 Avoid enabling preflight as an incidental styling change: it affects every
 screen and needs its own visual verification.
 
-The structural refactor intentionally keeps existing routes and confirmation
-behavior. Follow-up design work can build Home, Request/Overview and Past Orders
-in separate focused changes, integrating useful designer work from #102.
-The prototype package remains an isolated reference; coordinate the final
-integration path against #59 before landing shared work.
+Production screen presentation now reuses the visual language from #102 in the
+existing feature components: navy/teal surfaces, lime confirmation, conversation
+bubbles, cards and typography. Hooks, API modules, generated types, route paths
+and the complete purchase-review workflow remain authoritative. Legacy screen
+selectors were removed; `legacy.css` retains minimal browser defaults without
+preflight. New Home/Request routes and the prototype Overview workflow remain
+separate product changes. The prototype stays an isolated design reference.
 
 ## Tooling dependencies
 
