@@ -537,7 +537,7 @@ test("session expiry signs out and the next sign-in reloads fresh lists", async 
   expect(stored).not.toContain("Personal instruction");
 });
 
-test("preferences are reachable from the sidebar and chat, beside Account Settings", async ({
+test("preferences are reachable from account navigation without extra chat links", async ({
   page,
 }) => {
   await mockApi(page);
@@ -552,11 +552,13 @@ test("preferences are reachable from the sidebar and chat, beside Account Settin
   ).toBeVisible();
 
   await page.goto("/request");
-  await page
-    .getByRole("main")
-    .getByRole("link", { name: "Assistant preferences" })
-    .click();
-  await expect(page).toHaveURL(/\/settings\/preferences$/);
+  await expect(
+    page.getByRole("main").getByRole("link", { name: "Assistant preferences" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("Exact-revision confirmation", { exact: true }),
+  ).toHaveCount(0);
+  await page.goto("/settings/preferences");
 
   // Purchasing policy settings stay a separate screen and link.
   const sidebar = page.getByRole("complementary", { name: "Sidebar" });

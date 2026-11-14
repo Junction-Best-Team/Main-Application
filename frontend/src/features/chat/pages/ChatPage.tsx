@@ -57,21 +57,6 @@ export function ChatPage() {
                 {conversation?.title ?? session?.buyer_id}
               </span>
             </div>
-            <div className="flex flex-wrap items-center gap-x-space-md gap-y-space-xs font-label text-label-sm text-secondary">
-              <span className="flex items-center gap-space-xs">
-                <Icon name="verified" className="text-[16px]" />
-                <span className="sr-only md:not-sr-only">
-                  Exact-revision confirmation
-                </span>
-              </span>
-              <Link
-                to="/settings/preferences"
-                className="flex items-center gap-space-xs text-wholesale-teal"
-              >
-                <Icon name="tune" className="text-[16px]" />
-                Assistant preferences
-              </Link>
-            </div>
           </div>
 
           <div
