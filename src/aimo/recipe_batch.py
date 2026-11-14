@@ -9,9 +9,9 @@ from aimo.db import Problem, connection, fingerprint, js
 from aimo.purchases import context, load_products
 from aimo.recipe_schemas import PlanReference
 from aimo.recipes import read_plan
-from aimo.schemas import Model
+from aimo.schemas import MAX_BASKET_LINES, Model
 
-MAX_BATCH_MATCHES = 1000  # MEA-013: every list a client sends has a fixed upper bound.
+MAX_BATCH_MATCHES = MAX_BASKET_LINES  # MEA-013: a plan has at most 100 ingredients.
 
 
 class IngredientMatch(Model):

@@ -17,7 +17,7 @@ import pytest
 from aimo.catalog import normalize, quantity
 from aimo.fixtures import fixture_facts
 from aimo.purchases import money
-from aimo.schemas import PrepareRequest
+from aimo.schemas import PrepareRequest, ProposalResponse
 from aimo.service import Service
 from aimo.upstream import FixtureClient
 
@@ -218,3 +218,46 @@ def test_variable_weight_line_is_flagged_but_does_not_block(service, agent, requ
     flagged = [r for r in proposal["reasons"] if r["code"].startswith("VARIABLE_WEIGHT")]
     assert [r["product_id"] for r in flagged] == ["460675"]  # still flagged for the buyer
     assert proposal["policy_outcome"] != "needs_resolution"  # but not a blocker
+
+
+def test_variable_weight_line_shows_the_warning_and_an_estimated_price(
+    service, agent, buyer, request_data
+):
+    """BAS-007 (owner Q-68): warn on the line, show the price as an estimate, keep going."""
+    from aimo import conversations
+    from aimo.schemas import CommitRequest
+
+    request_data["requirements"] = {}
+    request_data["lines"] = [
+        {"product_id": "460675", "amount": "12", "unit": "KG"},
+        {"product_id": "464306", "amount": "10", "unit": "L"},
+    ]
+    p = service.prepare_order(agent, PrepareRequest(**request_data))
+    assert p["policy_outcome"] in ("ready_to_commit", "approval_required")
+    (warning,) = [r for r in p["reasons"] if r["code"].startswith("VARIABLE_WEIGHT")]
+    assert warning["severity"] == "warning" and warning["product_id"] == "460675"
+    assert "estimate" in warning["message"] and "delivery" in warning["message"]
+    variable, fixed = p["snapshot"]["lines"]
+    assert variable["price_is_estimate"] is True and "price_is_estimate" not in fixed
+    assert p["snapshot"]["totals_are_estimates"] is True
+    view = ProposalResponse.model_validate(p)  # what the browser contract exposes
+    assert [line.price_is_estimate for line in view.snapshot.lines] == [True, None]
+    assert view.snapshot.totals_are_estimates is True
+    # the commitment is not blocked: the customer's confirmation places the mock order
+    receipt = conversations.confirm(
+        buyer,
+        p["proposal_id"],
+        CommitRequest(proposal_id=p["proposal_id"], revision=1, idempotency_key=str(uuid4())),
+        service,
+    )
+    assert receipt["status"] == "accepted_mock"
+    assert any(r["severity"] == "warning" for r in receipt["reasons"])
+
+
+def test_a_basket_without_variable_weight_is_not_marked_as_an_estimate(service, agent, request_data):
+    p = service.prepare_order(agent, PrepareRequest(**request_data))
+    assert "totals_are_estimates" not in p["snapshot"]  # earlier proposals keep their shape
+    view = ProposalResponse.model_validate(p)
+    assert not view.snapshot.totals_are_estimates
+    assert [line.price_is_estimate for line in view.snapshot.lines] == [None]
+    assert not [r for r in p["reasons"] if r["severity"] == "warning"]

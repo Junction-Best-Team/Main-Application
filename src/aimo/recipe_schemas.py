@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import Field
 
-from aimo.schemas import Amount, Model
+from aimo.schemas import MAX_BASKET_LINES, Amount, Model
 
 
 class RecipeSearch(Model):
@@ -50,7 +50,7 @@ class Recipe(Model):
     summary: str = Field(max_length=4000)
     base_servings: int = Field(ge=1, le=10000)
     category: str = Field(max_length=80)
-    ingredients: list[RecipeIngredient] = Field(min_length=1, max_length=1000)
+    ingredients: list[RecipeIngredient] = Field(min_length=1, max_length=MAX_BASKET_LINES)
     instructions: list[str] = Field(max_length=100)
 
 
