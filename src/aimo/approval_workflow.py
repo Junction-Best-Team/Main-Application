@@ -181,6 +181,7 @@ def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, hi
     return {
         "proposal_id": str(p["id"]),
         "revision": r["revision"],
+        "fingerprint": r["fingerprint"],
         "current_revision": p["current_revision"],
         "committed_revision": order["revision"] if order else None,
         "current_proposal_url": f"{settings().public_base_url}/purchases/{p['id']}",
