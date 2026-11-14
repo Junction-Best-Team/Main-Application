@@ -72,6 +72,10 @@ resource "digitalocean_database_db" "aimo" {
 resource "digitalocean_database_user" "runtime" {
   cluster_id = digitalocean_database_cluster.postgres.id
   name       = "aimo_runtime"
+
+  # The API returns empty settings on creation; explicitly retain that default.
+  # Provider 2.107 otherwise plans a removal that the API rejects with HTTP 400.
+  settings {}
 }
 
 data "digitalocean_database_ca" "postgres" {

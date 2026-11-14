@@ -90,6 +90,8 @@ seven managed resources: VPC, tag, Kubernetes cluster, PostgreSQL cluster,
 database firewall, database and runtime user. It does not mutate the account's
 existing Droplets or default VPC. Its database firewall trusts only this cluster;
 PostgreSQL uses its private endpoint and verified TLS.
+Check that the resource names are unused and `vpc_cidr` does not overlap an
+existing VPC; override the range in your private tfvars when necessary.
 
 ## Later rollout — requires an operator to apply reviewed plans
 
