@@ -13,7 +13,7 @@ export function Login() {
   const next = (location.state as { from?: string } | null)?.from;
   const nextPath = typeof next === "string" ? next.split("?")[0] : "";
   const destination =
-    typeof next === "string" && (nextPath === "/" || /^\/(approvals|purchases|conversations)(\/|$)/.test(nextPath))
+    typeof next === "string" && (nextPath === "/" || /^\/(request|approvals|purchases|conversations)(\/|$)/.test(nextPath))
       ? next
       : "/";
   if (session) return <Navigate to={destination} replace />;

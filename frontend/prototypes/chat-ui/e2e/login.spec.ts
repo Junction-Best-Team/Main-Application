@@ -30,3 +30,14 @@ test("a failed sign-in shows the error", async ({ page }, info) => {
   await expect(page.getByRole("alert")).toBeVisible();
   await page.screenshot({ path: `test-results/screens/${info.project.name}-login-error.png`, fullPage: true });
 });
+
+for (const path of ["/request", "/purchases"]) {
+  test(`signing in from a ${path} deep link returns there`, async ({ page }) => {
+    await page.goto(path);
+    await expect(page).toHaveURL((u) => u.pathname === "/login");
+    await page.getByLabel("Username").fill("buyer");
+    await page.getByLabel("Password").fill("demo");
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page).toHaveURL((u) => u.pathname === path);
+  });
+}
