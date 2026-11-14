@@ -8,6 +8,8 @@ from test_scheduler_engine import at, one, run_of, scheduled
 from aimo import conversations, scheduler, worker
 from aimo.chat_schemas import AgentTurn, ConversationCreate, MessageRequest
 
+pytestmark = pytest.mark.usefixtures("demo_mode")  # these tests start schedules today
+
 
 @pytest.fixture(autouse=True)
 def fresh_throttle(monkeypatch):

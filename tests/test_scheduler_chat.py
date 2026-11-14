@@ -17,6 +17,8 @@ from aimo.chat_schemas import AgentTurn, ConversationResponse, MessageRequest
 from aimo.db import Problem, connection
 from aimo.worker import run_once
 
+pytestmark = pytest.mark.usefixtures("demo_mode")  # these tests start schedules today
+
 
 @pytest.fixture
 def disrupted(buyer, service, connector, placed_order):

@@ -151,3 +151,11 @@ def placed_order(service, buyer, request_data):
     body = CommitRequest(proposal_id=p["proposal_id"], revision=1, idempotency_key=str(uuid4()))
     receipt = conversations.confirm(buyer, p["proposal_id"], body, service)
     return {"order_id": receipt["order_id"], "proposal_id": p["proposal_id"]}
+
+
+@pytest.fixture
+def demo_mode(monkeypatch):
+    """Scheduler demo mode (CNF-038): a first run date of today is allowed."""
+    from aimo.config import settings
+
+    monkeypatch.setattr(settings(), "scheduler_demo_mode", True)

@@ -20,6 +20,8 @@ from aimo.upstream import HELSINKI
 TODAY = date.today()
 DAILY = {"kind": "days", "interval": 1}
 
+pytestmark = pytest.mark.usefixtures("demo_mode")  # these tests start schedules today
+
 
 def at(day=TODAY, hour=7, minute=0):
     return datetime(day.year, day.month, day.day, hour, minute, tzinfo=HELSINKI)

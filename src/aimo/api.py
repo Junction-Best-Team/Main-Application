@@ -239,6 +239,7 @@ def create_app(service=None):
             "buyer_id": identity["buyer_id"],
             "csrf_token": csrf,
             "role": identity["role"],
+            "scheduler_demo_mode": settings().scheduler_demo_mode,
         }
 
     @app.get("/api/session", response_model=SessionResponse)
@@ -249,6 +250,7 @@ def create_app(service=None):
             "buyer_id": identity["buyer_id"],
             "csrf_token": data["csrf"],
             "role": identity["role"],
+            "scheduler_demo_mode": settings().scheduler_demo_mode,
         }
 
     @app.post("/api/logout", status_code=204)
@@ -559,6 +561,12 @@ def create_app(service=None):
     def schedule_cancel(schedule_id: UUID, request: Request, identity=Depends(buyer)):
         csrf(identity, request)
         return schedules.cancel(identity, schedule_id)
+
+    @app.post("/api/schedules/{schedule_id}/run-now", response_model=ScheduleResponse)
+    def schedule_run_now(schedule_id: UUID, request: Request, identity=Depends(buyer)):
+        csrf(identity, request)
+        # DEMO ONLY (CNF-038): 403 SCHEDULE_DEMO_DISABLED unless SCHEDULER_DEMO_MODE is on.
+        return schedules.run_now(identity, schedule_id, service)
 
     @app.post("/api/schedules/{schedule_id}/pause", response_model=ScheduleResponse)
     def schedule_pause(schedule_id: UUID, request: Request, identity=Depends(buyer)):

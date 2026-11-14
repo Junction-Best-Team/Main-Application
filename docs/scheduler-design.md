@@ -5,7 +5,9 @@
 > outside the agreed range with no accepted substitute is a **disruption** (no `needs_customer` run state);
 > pause, `placed` orders, per-ingredient accepted substitutes with a percentage range, and restart by
 > `replace` were added; sections 1-5 were built as described otherwise. What exists and how it runs:
-> [scheduler.md](scheduler.md).
+> [scheduler.md](scheduler.md). O-7 (missed dates) became: a date missed by a short outage runs late within
+> `SCHEDULER_GRACE_HOURS` (default 6) after the end of that date, otherwise `RUN_MISSED` (owner Q-104); the first
+> run date is tomorrow to a year ahead, today only in demo mode (Q-103).
 
 
 Status: design for the owner's review, 2026-11-14. Author: scheduler design session (reports to junction-b5).

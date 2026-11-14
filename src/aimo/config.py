@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     scheduler_max_attempts: int = Field(default=5, ge=1, le=10)
     scheduler_pass_interval_seconds: float = Field(default=30, ge=1, le=3600)
     scheduler_max_runs_per_pass: int = Field(default=50, ge=1, le=500)
+    # CNF-039: a date missed by a short outage still runs, late, while `now` is within this many hours
+    # after the end of its scheduled date; later than that it is a RUN_MISSED disruption.
+    scheduler_grace_hours: float = Field(default=6, ge=0, le=24)
+    # CNF-038: a demo switch (off by default). On: a first run date may be today and the customer
+    # can trigger the next run at once (POST /api/schedules/{id}/run-now). Every check still applies.
+    scheduler_demo_mode: bool = False
     # CNF-021: days after a proposal's current revision expired before an unfinished (never ordered)
     # proposal and its approvals may be removed by `aimo purge-proposals` (an operator command run
     # with the schema owner's DATABASE_URL; the runtime role cannot delete history).

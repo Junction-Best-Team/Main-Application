@@ -23,6 +23,8 @@ from aimo.schemas import PrepareRequest
 
 DAILY = {"kind": "days", "interval": 1}
 
+pytestmark = pytest.mark.usefixtures("demo_mode")  # these tests start schedules today
+
 
 @pytest.fixture
 def http(service):

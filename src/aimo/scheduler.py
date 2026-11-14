@@ -291,6 +291,8 @@ def receipt_note(c, proposal_id):
         "run_id": str(run["id"]),
         "schedule_id": str(run["authorization_id"]),
         "scheduled_date": str(run["scheduled_date"]),
+        "delivery_date": str(run["delivery_date"]),
+        "ran_late": "RAN_LATE" in ((run["reason"] or {}).get("codes") or []),
         "substitutions": run["substitutions"] or [],
     }
 
@@ -368,13 +370,16 @@ def open_dates(c, auth, today, after_hour, now):
     while day is not None and day <= today:
         if day == today and not after_hour:
             break
-        run_id = uuid4()
+        run_id, late, delivery = uuid4(), False, day + timedelta(days=auth["delivery_offset_days"])
         if auth["status"] == "paused":
             state, code = "skipped", "PAUSED"
-        elif day < today:
+        elif day < today and not within_grace(day, now):
             state, code = "disrupted", "RUN_MISSED"
         else:
             state, code = "due", None
+            if day < today:  # CNF-039: a short outage runs the missed date late
+                late = True
+                delivery = max(delivery, today + ONE_DAY)  # tomorrow at the earliest
         row = c.execute(
             """INSERT INTO scheduled_runs(id,authorization_id,buyer_id,scheduled_date,delivery_date,
             status,reason_code,reason) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)
@@ -384,7 +389,7 @@ def open_dates(c, auth, today, after_hour, now):
                 auth["id"],
                 auth["buyer_id"],
                 day,
-                day + timedelta(days=auth["delivery_offset_days"]),
+                delivery,
                 state,
                 code,
                 js({"codes": [code], "lines": []}) if code else None,
@@ -400,11 +405,50 @@ def open_dates(c, auth, today, after_hour, now):
         )
         if row:
             made += 1
-            run_event(c, row["id"], "scheduler", "created", {"status": state})
+            if late:
+                c.execute(
+                    "UPDATE scheduled_runs SET reason=%s WHERE id=%s",
+                    (js({"codes": ["RAN_LATE"], "lines": []}), row["id"]),
+                )
+            run_event(
+                c,
+                row["id"],
+                "scheduler",
+                "created",
+                {"status": state}
+                | ({"late": True, "delivery_date": str(delivery)} if late else {}),
+            )
             if state == "disrupted":
                 stop(c, row, auth, code, now)
                 break
     return made
+
+
+def within_grace(day, now):
+    """CNF-039: a date older than today still runs, late, until `scheduler_grace_hours` after the
+    end of that date (Helsinki), so a short outage around midnight is not a disruption."""
+    end = datetime.combine(day + ONE_DAY, datetime.min.time(), HELSINKI)
+    return now < end + timedelta(hours=settings().scheduler_grace_hours)
+
+
+def open_demo_run(c, auth, now):
+    """DEMO ONLY (CNF-038): today's run for this authorization, due at once. Idempotent per date."""
+    today = helsinki_today(now)
+    row = c.execute(
+        """INSERT INTO scheduled_runs(id,authorization_id,buyer_id,scheduled_date,delivery_date)
+        VALUES(%s,%s,%s,%s,%s) ON CONFLICT(authorization_id,scheduled_date) DO NOTHING RETURNING *""",
+        (
+            uuid4(),
+            auth["id"],
+            auth["buyer_id"],
+            today,
+            today + timedelta(days=auth["delivery_offset_days"]),
+        ),
+    ).fetchone()
+    if row:
+        run_event(c, row["id"], "scheduler", "created", {"status": "due", "demo": True})
+        run_event(c, row["id"], "scheduler", "demo_run_now", {"demo": True})
+    return row
 
 
 def stop(c, run, auth, code, now):

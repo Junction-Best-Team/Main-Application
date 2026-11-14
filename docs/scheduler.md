@@ -17,6 +17,11 @@ Routes (session cookie, same-origin and CSRF on every POST; all writes need the 
   price range. At most 20 active schedules per customer; it ends 365 days after its first run date.
 - Terms never change. Editing or restarting is `replace`: a new authorization that supersedes the old
   one. A stopped schedule keeps its history and shows `replaced_by`.
+- The first run date is tomorrow or later and at most 365 days ahead. **Demo mode**
+  (`SCHEDULER_DEMO_MODE=true`, off by default, reported as `scheduler_demo_mode` in the session response) also
+  allows today and enables `POST /api/schedules/{id}/run-now`, which makes today's run due at once; the worker
+  then runs it through the same engine and the same checks (nothing is skipped; its events carry `demo: true`).
+  Without the switch that route answers 403 `SCHEDULE_DEMO_DISABLED` and creates nothing.
 - Pause skips the dates in the pause (no order, no chat, not a disruption); resume continues from the
   next date; the 365 days keep counting.
 
@@ -36,6 +41,10 @@ request is recorded as cancelled, and a chat starts with a system-authored first
 that tells the agent what is wrong and which lines are still valid ingredients. If the first agent turn
 fails, a deterministic message closes it so the customer can still write.
 Transient supplier errors retry with backoff (5 attempts), then become a disruption.
+A date missed by a short outage runs **late**, without a disruption, until `SCHEDULER_GRACE_HOURS` (6) after the
+end of that date (Helsinki): the order is placed now, the delivery date stays if it is still tomorrow or later and
+otherwise moves to tomorrow, and the run (`reason.codes` `RAN_LATE`), its events and the order note say it ran late.
+Beyond the window the missed date is a `RUN_MISSED` disruption.
 
 ## Rules that are easy to break
 

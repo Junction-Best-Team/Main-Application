@@ -108,6 +108,13 @@ def check_line_rules(c, rules_in, request, scope, keep_known=False):
     return rules
 
 
+def first_run_window():
+    """Tomorrow to a year ahead (Q-103); demo mode (CNF-038) also allows today."""
+    today = scheduler.helsinki_today()
+    earliest = today if settings().scheduler_demo_mode else today + timedelta(days=1)
+    return earliest, today + timedelta(days=365)
+
+
 def build_terms(
     identity,
     service,
@@ -118,8 +125,13 @@ def build_terms(
     title=None,
     keep_known=False,
 ):
-    if first_run_date < scheduler.helsinki_today():
-        raise Problem("INVALID_FIRST_RUN_DATE", "The first run date is in the past.", 422)
+    earliest, latest = first_run_window()
+    if not earliest <= first_run_date <= latest:
+        raise Problem(
+            "INVALID_FIRST_RUN_DATE",
+            f"The first run date must be between {earliest} and {latest}.",
+            422,
+        )
     rule = scheduler.normalize_recurrence(recurrence.model_dump(exclude_none=True))
     with connection() as c:
         context(c, identity)
@@ -482,14 +494,14 @@ def edited(old, body):
     """The terms of a replacement: whatever the customer changed, the old schedule otherwise."""
     from aimo.schedule_schemas import LineRule, Recurrence
 
-    today = scheduler.helsinki_today()
+    earliest = first_run_window()[0]
     rules = body.line_rules
     if rules is None:
         rules = {k: LineRule.model_validate(v) for k, v in (old["line_rules"] or {}).items()}
     return {
         "order_id": body.source_order_id or old["source_order_id"],
         "recurrence": body.recurrence or Recurrence.model_validate(old["recurrence"]),
-        "first_run_date": body.first_run_date or max(today, old["next_run_date"] or today),
+        "first_run_date": body.first_run_date or max(earliest, old["next_run_date"] or earliest),
         "line_rules": rules,
         "title": body.title or old["title"],
         "keep_known": body.line_rules is None,  # carried-over rules only where they still apply
@@ -626,3 +638,18 @@ def substitute_candidates(identity, product_id, service):
             if item["id"] in scope
         ],
     }
+
+
+def run_now(identity, schedule_id, service):
+    """DEMO ONLY (CNF-038): make the schedule's run for today due at once. The worker then executes
+    it through the same engine and the same checks; nothing is skipped and nothing runs inline."""
+    require_customer(identity)
+    if not settings().scheduler_demo_mode:
+        raise Problem("SCHEDULE_DEMO_DISABLED", "The demo trigger is switched off.", 403)
+    with connection() as c:
+        context(c, identity, lock=True)
+        row = owned(c, identity, schedule_id, lock=True)
+        if row["status"] != "active" or row["valid_until"] < scheduler.helsinki_today():
+            raise Problem("SCHEDULE_NOT_ACTIVE", "Only an active standing order can run now.", 409)
+        scheduler.open_demo_run(c, row, now())
+        return response(c, row)

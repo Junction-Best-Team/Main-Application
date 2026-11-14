@@ -35,7 +35,7 @@ def test_session_has_no_recipe_feature_flag(http):
         json={"username": "buyer", "password": os.environ["DEMO_BUYER_PASSWORD"]},
     )
     assert response.status_code == 200
-    fields = {"username", "buyer_id", "csrf_token", "role"}
+    fields = {"username", "buyer_id", "csrf_token", "role", "scheduler_demo_mode"}
     assert set(response.json()) == fields
     assert set(http.get("/api/session").json()) == fields
     # The UI hides write buttons from any role but the customer's (junction-6c).
