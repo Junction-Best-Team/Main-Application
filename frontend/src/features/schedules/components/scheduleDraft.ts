@@ -1,3 +1,4 @@
+import { formatDate } from "../model/scheduleStatus";
 import type {
   LineRule,
   Recurrence,
@@ -62,11 +63,19 @@ export function todayHelsinki(offsetDays = 0): string {
   }).format(now);
 }
 
-export function validateDate(isoDate: string): string {
+// The first run date must be tomorrow or later and at most 365 days ahead (owner Q-103); demo
+// mode may allow today. Both limits are Helsinki calendar dates.
+export const firstRunRange = (allowToday = false) => ({
+  min: todayHelsinki(allowToday ? 0 : 1),
+  max: todayHelsinki(365),
+});
+
+export function validateDate(isoDate: string, allowToday = false): string {
   if (!DATE.test(isoDate) || weekdayOf(isoDate) === null)
     return "Choose the first run date.";
-  if (isoDate < todayHelsinki())
-    return "The first run date cannot be in the past.";
+  const { min, max } = firstRunRange(allowToday);
+  if (isoDate < min || isoDate > max)
+    return `The first run date must be from ${formatDate(min)} to ${formatDate(max)}.`;
   return "";
 }
 

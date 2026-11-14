@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { addDays, FRIDAY } from "./support/dates";
 import {
   cream,
   detail,
@@ -23,8 +24,7 @@ import {
 import type { OrderListItem, Schedule } from "../src/shared/api/types";
 
 // "Edit / replace and restart": mocked at the browser/API edge only. Dates are in the far future
-// so the specs do not depend on the day they run. 2030-03-15 is a Friday (weekday 4).
-const FRIDAY = "2030-03-15";
+// so the specs do not depend on the day they run (see support/dates.ts).
 const AUTH =
   "I agree to these exact terms, this price ceiling per run and this recurrence.";
 const RESTART = "Restart standing order";
@@ -37,14 +37,14 @@ const SUCCESSOR = `GET /api/schedules/${ids.successor}`;
 
 const active: Schedule = {
   ...schedule,
-  first_run_date: "2030-03-01",
+  first_run_date: addDays(FRIDAY, -14),
   next_run_date: FRIDAY,
-  valid_until: "2031-03-01",
+  valid_until: addDays(FRIDAY, 351),
 };
 const stopped: Schedule = {
   ...stoppedSchedule,
   id,
-  first_run_date: "2030-03-01",
+  first_run_date: addDays(FRIDAY, -14),
   next_run_date: null,
   last_run: disruptedRun,
 };
@@ -68,7 +68,7 @@ const previewOk: Handler = (route) =>
     termsWith({
       lines: [milk, cream],
       source_order_id: ids.sourceOrder,
-      next_dates: [FRIDAY, "2030-03-22"],
+      next_dates: [FRIDAY, addDays(FRIDAY, 7)],
     }),
   );
 const replaceOk: Handler = (route) => json(route, created());

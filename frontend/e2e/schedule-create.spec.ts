@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { addDays, FRIDAY, MONDAY, printed } from "./support/dates";
 import { cream, ids, json, milk, problem } from "./support/schedulerFixtures";
 import {
   created,
@@ -10,8 +11,7 @@ import {
 } from "./support/scheduleEditorMock";
 
 // "Standing order from a past order": create flow. Everything is mocked at the browser/API edge;
-// nothing here proves the live backend. 2030-03-15 is a Friday (weekday 4), 2030-03-18 a Monday.
-const FRIDAY = "2030-03-15";
+// nothing here proves the live backend. Dates are derived from today (see support/dates.ts).
 const AUTH =
   "I agree to these exact terms, this price ceiling per run and this recurrence.";
 const PREVIEW = "POST /api/schedules/preview";
@@ -70,7 +70,9 @@ test("preview then create posts the exact terms and opens the new standing order
   await expect(termsRegion.getByText("€109.44").first()).toBeVisible();
   await expect(termsRegion.getByText("€132.24").first()).toBeVisible();
   await expect(termsRegion.getByText("Valid until")).toBeVisible();
-  await expect(termsRegion.getByText("22 Mar 2030")).toBeVisible();
+  await expect(
+    termsRegion.getByText(printed(addDays(FRIDAY, 7))),
+  ).toBeVisible();
 
   // The ceiling defaults to the gross total; the button waits for the explicit agreement.
   await expect(page.getByLabel("Price ceiling per run (EUR)")).toHaveValue(
@@ -203,7 +205,7 @@ test.describe("recurrence presets send the exact Recurrence JSON", () => {
     },
     {
       name: "every other week",
-      date: "2030-03-18",
+      date: MONDAY,
       pick: async (page) => {
         await page.getByRole("radio", { name: "Every other week" }).check();
       },
@@ -278,18 +280,58 @@ test.describe("recurrence presets send the exact Recurrence JSON", () => {
   });
 });
 
-test("a first run date in the past cannot be previewed", async ({ page }) => {
-  const api = await mockApi(page, { [PREVIEW]: previewOk });
+// The first run date must be tomorrow or later and at most 365 days ahead (owner Q-103). The
+// allowed range is shown in the form. Dates are Helsinki calendar dates.
+const helsinkiDay = (offsetDays: number) =>
+  new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Helsinki" }).format(
+    new Date(Date.now() + offsetDays * 86_400_000),
+  );
+
+test("the form shows the allowed range for the first run date", async ({
+  page,
+}) => {
+  await mockApi(page, { [PREVIEW]: previewOk });
   await openCreate(page);
-  await page.getByLabel("First run date").fill("2020-01-03");
-  await expect(
-    page.getByText("The first run date cannot be in the past."),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Preview terms" }),
-  ).toBeDisabled();
-  expect(api.calls).toEqual([]);
+  const input = page.getByLabel("First run date");
+  await expect(input).toHaveAttribute("min", helsinkiDay(1));
+  await expect(input).toHaveAttribute("max", helsinkiDay(365));
+  await expect(page.getByText(/Allowed: .* to .*/)).toBeVisible();
 });
+
+for (const [name, offset] of [
+  ["in the past", -3],
+  ["today", 0],
+  ["more than 365 days ahead", 366],
+] as const) {
+  test(`a first run date ${name} cannot be previewed`, async ({ page }) => {
+    const api = await mockApi(page, { [PREVIEW]: previewOk });
+    await openCreate(page);
+    await page.getByLabel("First run date").fill(helsinkiDay(offset));
+    await expect(
+      page.getByText(/The first run date must be from .* to .*\./),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Preview terms" }),
+    ).toBeDisabled();
+    expect(api.calls).toEqual([]);
+  });
+}
+
+for (const offset of [1, 365]) {
+  test(`a first run date ${offset} day(s) ahead is accepted`, async ({
+    page,
+  }) => {
+    await mockApi(page, { [PREVIEW]: previewOk });
+    await openCreate(page);
+    await page.getByLabel("First run date").fill(helsinkiDay(offset));
+    await expect(page.getByText(/The first run date must be from/)).toHaveCount(
+      0,
+    );
+    await expect(
+      page.getByRole("button", { name: "Preview terms" }),
+    ).toBeEnabled();
+  });
+}
 
 test("terms become invalid when any input changes and need a new preview", async ({
   page,

@@ -15,7 +15,7 @@ import {
   secondaryButton,
 } from "./formStyles";
 import {
-  todayHelsinki,
+  firstRunRange,
   type RecurrenceDraft,
   type RuleDrafts,
 } from "./scheduleDraft";
@@ -64,7 +64,8 @@ export function ScheduleEditorBody(p: Props) {
             onDraft={p.onRecurrence}
             firstRunDate={p.firstRunDate}
             onFirstRunDate={p.onFirstRunDate}
-            minDate={todayHelsinki()}
+            minDate={firstRunRange().min}
+            maxDate={firstRunRange().max}
           />
         </section>
 

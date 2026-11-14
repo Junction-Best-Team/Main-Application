@@ -6,6 +6,7 @@ import {
   weekdayOf,
   type RecurrenceDraft,
 } from "./scheduleDraft";
+import { formatDate } from "../model/scheduleStatus";
 import { errorText, field, hint, label } from "./formStyles";
 
 type Props = {
@@ -14,6 +15,8 @@ type Props = {
   firstRunDate: string;
   onFirstRunDate: (isoDate: string) => void;
   minDate: string;
+  maxDate: string;
+  allowToday?: boolean;
 };
 
 const radioRow =
@@ -26,6 +29,8 @@ export function RecurrencePicker({
   firstRunDate,
   onFirstRunDate,
   minDate,
+  maxDate,
+  allowToday = false,
 }: Props) {
   const set = (patch: Partial<RecurrenceDraft>) =>
     onDraft({ ...draft, ...patch });
@@ -35,7 +40,7 @@ export function RecurrencePicker({
         ? draft.weekdays.filter((d) => d !== day)
         : [...draft.weekdays, day],
     });
-  const dateError = validateDate(firstRunDate);
+  const dateError = validateDate(firstRunDate, allowToday);
   const recurrenceError = buildRecurrence(draft, firstRunDate).error;
   const weekday = weekdayOf(firstRunDate);
   const showDays =
@@ -57,9 +62,13 @@ export function RecurrencePicker({
           className={field}
           value={firstRunDate}
           min={minDate}
+          max={maxDate}
           aria-invalid={dateError ? "true" : undefined}
           onChange={(e) => onFirstRunDate(e.target.value)}
         />
+        <span className="text-body-sm text-on-surface-variant">
+          Allowed: {formatDate(minDate)} to {formatDate(maxDate)}
+        </span>
         {dateError && <span className={errorText}>{dateError}</span>}
       </label>
 

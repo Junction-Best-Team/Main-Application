@@ -1,4 +1,5 @@
 import type { Page, Route } from "@playwright/test";
+import { addDays, FRIDAY } from "./dates";
 import {
   json,
   mockSignedIn,
@@ -68,9 +69,9 @@ export const termsWith = (
   terms_fingerprint: "f".repeat(64),
   delivery_offset_days: 2,
   recurrence: { kind: "weekdays", weekdays: [4], every_weeks: 1 },
-  first_run_date: "2030-03-15",
-  valid_until: "2031-03-15",
-  next_dates: ["2030-03-15", "2030-03-22", "2030-03-29"],
+  first_run_date: FRIDAY,
+  valid_until: addDays(FRIDAY, 365),
+  next_dates: [FRIDAY, addDays(FRIDAY, 7), addDays(FRIDAY, 14)],
   blocking_reasons: [],
   ...over,
 });

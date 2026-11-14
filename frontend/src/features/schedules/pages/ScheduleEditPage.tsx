@@ -86,14 +86,14 @@ function EditFlow({
     params.get("restart") === "1" || schedule.status === "stopped";
   const [changedElsewhere, setChangedElsewhere] = useState(false);
 
-  // Prefill from what was agreed. The first run date starts at the next run (or today when the
-  // series start has passed) because the server refuses a first run in the past.
+  // Prefill from what was agreed. The first run date starts at the next run (or tomorrow when the
+  // series start is too soon) because a first run must be tomorrow or later.
   const [firstRunDate, setFirstRunDate] = useState(() => {
-    const today = todayHelsinki();
+    const earliest = todayHelsinki(1);
     return (
       [schedule.next_run_date, schedule.first_run_date].find(
-        (d): d is string => !!d && d >= today,
-      ) ?? today
+        (d): d is string => !!d && d >= earliest,
+      ) ?? earliest
     );
   });
   const [recurrence, setRecurrence] = useState<RecurrenceDraft>(() =>
