@@ -713,6 +713,12 @@ function DetailPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  // Receipt fields come from CommitResponse (including idempotent replay);
+  // ProposalResponse may not carry the mock-acceptance label.
+  const [receipt, setReceipt] = useState<{
+    order_id: string;
+    label?: string;
+  } | null>(null);
   const load = useCallback(async () => {
     try {
       const result = await api<Proposal>(
@@ -731,6 +737,7 @@ function DetailPage() {
   useEffect(() => {
     setProposal(null);
     setMessage("");
+    setReceipt(null);
     void load();
   }, [load]);
   const terminal = p
@@ -748,6 +755,7 @@ function DetailPage() {
     setBusy(true);
     setError("");
     setMessage("");
+    setReceipt(null);
     try {
       setProposal(
         await api<Proposal>(`/api/approvals/${p.approval_id}/decision`, {
@@ -790,10 +798,15 @@ function DetailPage() {
       );
       await load();
       if (result.status === "revised") {
+        setReceipt(null);
         setMessage(
           "Terms changed during verification. Review the new revision and confirm again.",
         );
       } else {
+        setReceipt({
+          order_id: result.order_id,
+          label: result.label || undefined,
+        });
         setMessage("Confirmation saved. Your demo receipt is below.");
       }
     } catch (e) {
@@ -812,6 +825,7 @@ function DetailPage() {
     (p.policy_outcome === "ready_to_commit" ||
       p.can_decide ||
       p.approval_status === "approved");
+  const displayOrderId = receipt?.order_id || p?.order_id || null;
   return (
     <main className="workspace">
       <Link className="back" to="/purchases">
@@ -995,6 +1009,12 @@ function DetailPage() {
                   {message}
                 </p>
               )}
+              {receipt?.label && (
+                <p className="mock-acceptance-label">{receipt.label}</p>
+              )}
+              {displayOrderId && (
+                <p className="order-reference">Order {displayOrderId}</p>
+              )}
               {canConfirm ? (
                 <>
                   <p className="action-note">
@@ -1034,7 +1054,7 @@ function DetailPage() {
                     </p>
                   )}
                   <p>
-                    {p.order_id
+                    {displayOrderId
                       ? "Accepted by demo order service. No real supplier order was placed."
                       : status(p) === "approved"
                         ? "A buyer decision is saved. Confirm this exact purchase to continue."
@@ -1042,9 +1062,6 @@ function DetailPage() {
                           ? "Your account does not have authority for this amount or exception."
                           : "This revision is closed for decisions."}
                   </p>
-                  {p.order_id && (
-                    <p className="order-reference">Order {p.order_id}</p>
-                  )}
                 </div>
               )}
               <button className="text-button" onClick={load}>
