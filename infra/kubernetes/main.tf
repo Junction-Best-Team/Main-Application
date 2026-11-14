@@ -43,6 +43,10 @@ resource "kubernetes_secret_v1" "runtime" {
     DATABASE_URL            = var.database_url
     APPROVAL_SESSION_SECRET = var.session_secret
   })
+  # Releases own only these fields; Terraform retains all other Secret settings.
+  lifecycle {
+    ignore_changes = [data["LLM_API_KEY"], data["LLM_BASE_URL"], data["LLM_MODEL"]]
+  }
 }
 
 resource "kubernetes_secret_v1" "database_ca" {

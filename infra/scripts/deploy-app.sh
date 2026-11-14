@@ -29,6 +29,9 @@ previous_image=$(kubectl -n "$NAMESPACE" get deployment aimo -o 'jsonpath={.spec
 test -n "$previous_image"
 if [[ "$previous_image" != "$IMAGE" ]]; then
   kubectl -n "$NAMESPACE" set image deployment/aimo "aimo=$IMAGE"
+elif [[ "${LLM_REFRESHED:-false}" == true ]]; then
+  # Secret-backed environment variables are read only when a Pod starts.
+  kubectl -n "$NAMESPACE" rollout restart deployment/aimo
 fi
 if ! kubectl -n "$NAMESPACE" rollout status deployment/aimo --timeout=5m; then
   if [[ "$previous_image" != "$IMAGE" ]]; then
