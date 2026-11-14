@@ -145,3 +145,7 @@ production feature folders. Actual account and purchase data use existing API
 modules/hooks and generated types. Static schedule/hub/account-manager examples
 and disabled controls are labelled placeholders. No prototype store, fake login,
 scenario switcher, dependencies or backend/schema changes were imported.
+
+## Scheduler UI (standing orders) — 2026-11-14
+
+Built on the production frontend after PR #131. The designer mockups of PR #102 (`ui/**/code.html`, schedule list and edit pages) were read as a visual reference only; no markup, store, fixtures or assets were copied, and the mockup fields the backend does not have (unload window, hub, SKU manifest editing, shipment tracking) were left out by the owner. Types come from the generated schema of the unmerged backend branches (`p3/scheduler-design`, `p3/scheduler-orders`). Everything the scheduler places is a MOCK order ("Accepted by demo order service"). The Playwright specs mock every `/api` call with invented values and are labelled as mocked coverage; nothing was run against a live backend. Details in `docs/scheduler-ui.md`.

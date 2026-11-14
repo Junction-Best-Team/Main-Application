@@ -56,6 +56,10 @@ introduced for this refactor. Backend state remains authoritative.
 | `/`                              | `home/pages/HomePage`                        | Required                                             |
 | `/request`                       | `chat/pages/ChatPage`                        | Required                                             |
 | `/conversations/:conversationId` | `chat/pages/ChatPage`                        | Required                                             |
+| `/schedules`                     | `schedules/pages/SchedulesPage`              | Required                                             |
+| `/schedules/new`                 | `schedules/pages/ScheduleCreatePage`         | Required                                             |
+| `/schedules/:scheduleId`         | `schedules/pages/ScheduleDetailPage`         | Required                                             |
+| `/schedules/:scheduleId/edit`    | `schedules/pages/ScheduleEditPage`           | Required                                             |
 | `/purchases`                     | `purchases/pages/PurchasesPage`              | Required                                             |
 | `/purchases/:proposalId`         | `purchases/pages/PurchasesPage`              | Required                                             |
 | `/approvals/:approvalId`         | Same detail page, historical approval lookup | Required                                             |
@@ -65,7 +69,8 @@ introduced for this refactor. Backend state remains authoritative.
 `RequireAuth` preserves the requested path through login. The route table is in
 `app/AppRoutes.tsx`. Home, Request and Past Orders render inside `app/layout/AppShell`: a fixed
 desktop sidebar with collapsible conversation navigation and a mobile menu.
-Accepted-order deep links expand their receipt in Past Orders. Unplaced
+Past Orders lists `GET /api/orders` (scheduled, pending, placed, cancelled rows); the Schedule
+item opens the standing orders (see `docs/scheduler-ui.md`). Accepted-order deep links expand their receipt in Past Orders. Unplaced
 purchase links retain a complete review with the shared Overview controls;
 historical approval links retain the original revision.
 
