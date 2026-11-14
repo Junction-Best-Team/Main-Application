@@ -111,8 +111,11 @@ def test_commit_refuses_when_the_proposal_expires_during_lookup(
     assert code_of(lambda: service.commit_order(agent, commit(p))) == "PROPOSAL_EXPIRED"
 
 
-def test_a_second_commit_with_a_new_key_cannot_create_a_second_order(service, agent, request_data):
+def test_a_second_commit_with_a_new_key_cannot_create_a_second_order(
+    service, agent, request_data, confirm_terms
+):
     p = service.prepare_order(agent, PrepareRequest(**request_data))
+    confirm_terms(p)
     first = service.commit_order(agent, commit(p))
     assert code_of(lambda: service.commit_order(agent, commit(p))) == "ALREADY_COMMITTED"
     with connection() as c:
@@ -135,8 +138,9 @@ def test_decision_on_an_expired_proposal_is_closed(monkeypatch, service, agent, 
     assert code_of(lambda: decide(buyer, p)) == "DECISION_CLOSED"
 
 
-def test_decision_on_a_committed_proposal_is_closed(service, agent, buyer, mission):
+def test_decision_on_a_committed_proposal_is_closed(service, agent, buyer, mission, confirm_terms):
     p = service.prepare_order(agent, mission)
+    confirm_terms(p)
     decide(buyer, p)
     service.commit_order(agent, commit(p))
     assert code_of(lambda: decide(buyer, p, "reject")) == "DECISION_CLOSED"
@@ -206,7 +210,7 @@ def test_approval_by_an_approver_who_lost_authority_no_longer_counts(
 
 
 def test_approval_by_an_approver_who_lost_scope_is_void_even_if_another_could_approve(
-    service, agent, buyer, mission
+    service, agent, buyer, mission, confirm_terms
 ):
     """The policy outcome is unchanged (a second approver is eligible), yet the person who
     approved no longer has the authority their decision relied on."""
@@ -224,6 +228,8 @@ def test_approval_by_an_approver_who_lost_scope_is_void_even_if_another_could_ap
             ),
         )
     p = service.prepare_order(agent, mission)
+    confirm_terms(p)
+    confirm_terms(p, actor_id="buyer2")  # the second, still eligible approver also confirms
     decide(buyer, p)
     assert service.get_proposal(agent, p["proposal_id"])["next_action"]["type"] == "commit"
     with connection() as c:
