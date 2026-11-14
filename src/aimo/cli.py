@@ -6,6 +6,7 @@ from pathlib import Path
 
 from aimo.auth import hasher
 from aimo.db import connection, fingerprint, js
+from aimo.observability import configure_logging
 from aimo.schemas import PolicyRules
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -41,7 +42,9 @@ def migrate(runtime_role=None, catalog_role=None):
             from aimo.permissions import configure_catalog_sync_role
 
             configure_catalog_sync_role(c, catalog_role)
-    grants = [name for name, role in (("runtime", runtime_role), ("catalog sync", catalog_role)) if role]
+    grants = [
+        name for name, role in (("runtime", runtime_role), ("catalog sync", catalog_role)) if role
+    ]
     print(
         "Migrations committed" + (f" with {' and '.join(grants)} grants." if grants else "."),
         flush=True,
@@ -145,6 +148,7 @@ def configure():
 
 
 def main():
+    configure_logging()
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
     for name in ("configure", "seed", "serve", "worker", "fixture-catalog", "cache-model"):
@@ -218,6 +222,7 @@ def main():
             host="0.0.0.0",
             port=8000,
             forwarded_allow_ips=settings().forwarded_allow_ips,
+            access_log=False,
         )
     elif args.command == "worker":
         from aimo.worker import main as worker_main

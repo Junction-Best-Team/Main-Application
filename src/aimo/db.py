@@ -1,16 +1,20 @@
 import atexit
 import hashlib
 import json
+import logging
+import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from threading import Lock
 from typing import Any
 
+from psycopg import Error
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool, PoolTimeout, TooManyRequests
 
 from aimo.config import settings
+from aimo.observability import elapsed, event, failure
 
 
 def now() -> datetime:
@@ -61,13 +65,33 @@ atexit.register(close_pools)
 
 @contextmanager
 def connection():
+    started = time.monotonic()
     try:
         with pool().connection() as conn:
             yield conn
-    except (PoolTimeout, TooManyRequests):
+    except (PoolTimeout, TooManyRequests) as exc:
+        event(
+            "database.pool_exhausted",
+            level=logging.WARNING,
+            error_code="DATABASE_BUSY",
+            error_type=type(exc).__name__,
+        )
         raise Problem(
             "DATABASE_BUSY", "Database capacity is temporarily unavailable; retry later.", 503
         ) from None
+    except Error as exc:
+        event(
+            "database.transaction_failed",
+            level=logging.WARNING,
+            duration_ms=elapsed(started),
+            sqlstate=exc.sqlstate,
+            **failure(exc),
+        )
+        raise
+    finally:
+        duration = elapsed(started)
+        if duration >= 1000:
+            event("database.slow_connection", level=logging.WARNING, duration_ms=duration)
 
 
 class Problem(Exception):

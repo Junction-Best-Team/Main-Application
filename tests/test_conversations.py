@@ -1,3 +1,5 @@
+import json
+import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
@@ -23,6 +25,46 @@ def signed(client):
     )
     assert result.status_code == 200
     return {"Origin": "http://testserver", "X-CSRF-Token": result.json()["csrf_token"]}
+
+
+def test_request_queue_and_worker_failure_share_diagnostics_without_private_text(service, caplog):
+    from aimo.worker import run_once
+
+    def fail(actor, history, shared):
+        raise Problem("PRODUCT_NOT_VERIFIED", "private-customer-details", 422)
+
+    with caplog.at_level(logging.INFO), TestClient(create_app(service)) as client:
+        headers = signed(client)
+        cid = client.post(
+            "/api/conversations",
+            headers=headers,
+            json={
+                "idempotency_key": str(uuid4()),
+            },
+        ).json()["id"]
+        caplog.clear()
+        response = client.post(
+            f"/api/conversations/{cid}/messages",
+            headers=headers,
+            json={
+                "text": "private-customer-message",
+                "idempotency_key": str(uuid4()),
+            },
+        )
+        assert response.status_code == 200
+        with pytest.raises(Problem):
+            run_once(service, fail)
+    rows = [json.loads(r.message) for r in caplog.records if r.name == "aimo.operations"]
+    queued = next(r for r in rows if r["event"] == "chat.queued")
+    claimed = next(r for r in rows if r["event"] == "worker.claimed")
+    failed = next(r for r in rows if r["event"] == "chat.execute.failed")
+    assert queued["request_id"] == response.headers["x-request-id"]
+    assert queued["turn_id"] == claimed["turn_id"] == failed["turn_id"]
+    assert claimed["attempt_id"] == failed["attempt_id"]
+    assert failed["error_code"] == "PRODUCT_NOT_VERIFIED"
+    assert queued["conversation_id"] == failed["conversation_id"] == cid
+    assert "private-customer-message" not in caplog.text
+    assert "private-customer-details" not in caplog.text
 
 
 def test_conversation_persists_retry_and_cannot_choose_identity(service, buyer, request_data):

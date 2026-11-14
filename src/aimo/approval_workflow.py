@@ -181,6 +181,7 @@ def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, hi
     return {
         "proposal_id": str(p["id"]),
         "revision": r["revision"],
+        "fingerprint": r["fingerprint"],
         "current_revision": p["current_revision"],
         "committed_revision": order["revision"] if order else None,
         "current_proposal_url": f"{settings().public_base_url}/purchases/{p['id']}",
@@ -615,6 +616,16 @@ def commit_order(identity, request: CommitRequest, connector):
             {"receipt": receipt, "revalidated_at": snapshot["observed_at"]},
         )
         return receipt
+
+
+def get_receipt(identity, proposal_id):
+    """The stored receipt of a proposal the identity may see (the buyer's own), via get_order."""
+    with connection() as c:
+        context(c, identity)
+        p, _, _ = proposal(c, proposal_id, identity)
+    if not p["order_id"]:
+        raise Problem("NO_RECEIPT", "This purchase has no order yet, so there is no receipt.", 404)
+    return get_order(identity, p["order_id"])
 
 
 def get_order(identity, oid):
