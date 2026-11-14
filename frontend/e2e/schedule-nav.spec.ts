@@ -14,7 +14,7 @@ test("the Schedule item is in the navigation and opens the standing orders", asy
   await link.click();
   await expect(page).toHaveURL(/\/schedules$/);
   await expect(
-    page.getByRole("heading", { name: "Standing orders" }),
+    page.getByRole("heading", { name: "Standing orders", level: 1 }),
   ).toBeVisible();
 });
 
