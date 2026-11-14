@@ -2,7 +2,7 @@
 
 Three independently deployed apps serve chat purchasing: a React/Nginx frontend, an authenticated FastAPI API, and a durable AI worker. They record **persistent mock orders**. Open `/`, sign in, and ask for ingredients for 200 portions of carbonara. PostgreSQL retains conversations, exact proposal revisions, customer confirmations, policies, approvals, orders and audit history. No supplier checkout or inventory reservation is implemented.
 
-The request composer also offers [voice mode](docs/voice.md): click **Voice**, allow
+The request composer also offers [voice mode](docs/voice.md): click the waveform button, allow
 the microphone and speak with Aimo using Gemini 3.8 Live. Voice uses the same saved
 chat and purchasing controls; baskets still require confirmation on screen.
 

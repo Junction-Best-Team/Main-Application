@@ -18,6 +18,10 @@ Add any starter code or earlier prototypes separately. Describe which parts exis
 
 ## Reused code, data, models, and assets
 
+The voice entry button uses an SVG waveform authored during the event on
+2026-11-14 from the owner's circular waveform reference image. It adds no asset
+or icon dependency and retains the composer introduced by merged PR #162.
+
 During the event on 2026-11-14, Codex added the recipe illustration tool using
 the portable Google helper from PR #129 and Cloudinary's documented signed
 upload API. The tool, durable ledger, chat display and failure tests were written

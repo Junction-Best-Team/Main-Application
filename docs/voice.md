@@ -1,6 +1,8 @@
 # Voice conversations
 
-Click **Voice** beside the request composer, allow the microphone and speak.
+Click the circular waveform button (**Start voice mode**) beside the request
+composer, allow the microphone and speak. The single-line composer and fixed
+message viewport from PR #162 remain in place.
 Gemini 3.8 Live listens and speaks; the existing Aimo worker handles each request.
 The recognized words and reviewed assistant reply are saved in the normal chat.
 Mute pauses microphone input. End voice, navigation, sign-out and backgrounding

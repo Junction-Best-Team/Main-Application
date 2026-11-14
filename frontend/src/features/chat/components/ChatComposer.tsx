@@ -58,10 +58,24 @@ export function ChatComposer({
             aria-label="Start voice mode"
             onClick={() => voice.start(conversationId)}
             disabled={disabled || Boolean(text.trim())}
-            title={text.trim() ? "Send or clear your draft before starting voice" : "Start voice mode"}
+            title={
+              text.trim()
+                ? "Send or clear your draft before starting voice"
+                : "Start voice mode"
+            }
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface-pure text-on-surface transition-colors hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <svg aria-hidden="true" focusable="false" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <svg
+              aria-hidden="true"
+              focusable="false"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            >
               <path d="M4 10v4M8 5v14M12 8v8M16 3v18M20 9v6" />
             </svg>
           </button>
