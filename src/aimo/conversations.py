@@ -373,6 +373,9 @@ def purchases(identity, offset, limit):
 
 
 def confirm(identity, pid, body, service):
+    # CNF-003: only a human customer role confirms, never an agent that happens to hold authority.
+    if identity["role"] != "approver":
+        raise Problem("FORBIDDEN", "Only a buyer session can confirm a purchase.", 403)
     if str(body.proposal_id) != str(pid):
         raise Problem(
             "PROPOSAL_MISMATCH", "Confirmation must identify the purchase being reviewed.", 422
