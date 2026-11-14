@@ -87,13 +87,8 @@ def config(monkeypatch):
 def guard(monkeypatch):
     cfg = SimpleNamespace(
         guardrail_mode="enforce",
-        guardrail_api_key="private-guard-key",
-        guardrail_base_url="https://openrouter.ai/api/alpha",
-        guardrail_model="typesafe/jev-1.14",
-        guardrail_timeout_seconds=5,
-        guardrail_max_calls_per_turn=16,
         llm_api_key="private-provider-key",
-        llm_base_url="https://provider.test/v1",
+        llm_base_url="https://openrouter.ai/api/v1",
     )
     monkeypatch.setattr(guardrails, "settings", lambda: cfg)
     guardrails._SCREEN_CACHE.clear()
@@ -257,7 +252,7 @@ def test_input_unavailable_or_uncertain_in_enforcement(monkeypatch, config, guar
 def test_missing_guard_credentials_fail_closed_without_network(
     monkeypatch, config, guard, identity
 ):
-    guard.guardrail_api_key = ""
+    guard.llm_base_url = "https://provider.test/v1"  # Never send this key to OpenRouter.
     monkeypatch.setattr(DecisionsClient, "decide", lambda *a: pytest.fail("network call"))
     scripted(monkeypatch, [])
     with pytest.raises(Problem) as error:
@@ -474,7 +469,7 @@ def test_guard_state_has_no_credentials_or_identifiers(monkeypatch, config, guar
 
 
 def test_call_budget_is_bounded(monkeypatch, guard):
-    guard.guardrail_max_calls_per_turn = 1
+    monkeypatch.setattr(guardrails, "MAX_CALLS_PER_TURN", 1)
     fake_jev(monkeypatch)
     g = Guardrails("turn", HISTORY, None, time.monotonic() + 10)
     assert g.screen_input().verdict == Verdict.ALLOWED
@@ -496,10 +491,6 @@ def test_off_mode_makes_no_calls(monkeypatch, guard, identity):
 
 def client_cfg(**updates):
     values = {
-        "guardrail_api_key": "private-guard-key",
-        "guardrail_base_url": "https://openrouter.ai/api/alpha",
-        "guardrail_model": "typesafe/jev-1.14",
-        "guardrail_timeout_seconds": 5,
         "llm_api_key": "private-llm-key",
         "llm_base_url": "https://openrouter.ai/api/v1",
     }
@@ -534,14 +525,14 @@ def test_decisions_request_matches_the_documented_schema():
     request = seen[0]
     payload = json.loads(request.content)
     assert str(request.url) == "https://openrouter.ai/api/alpha/decisions"
-    assert request.headers["authorization"] == "Bearer private-guard-key"
+    assert request.headers["authorization"] == "Bearer private-llm-key"
     assert payload["model"] == "typesafe/jev-1.14"
     assert payload["state"] == {"latest_customer_message": "hello"}
     assert payload["questions"]["x"]["type"] == "noul"
     assert set(payload["questions"]["x"]["criteria"]) == {"true", "false"}
     assert payload["provider"] == {"allow_fallbacks": False}
     assert answers == {"x": 0.12} and model.startswith("typesafe/jev-1.14")
-    assert "private-guard-key" not in request.content.decode()
+    assert "private-llm-key" not in request.content.decode()
 
 
 @pytest.mark.parametrize(
@@ -619,17 +610,14 @@ def test_refusal_is_not_an_answer_and_large_state_is_not_sent():
     assert error.value.category == "too_large"
 
 
-def test_credentials_are_reused_only_for_openrouter():
-    assert api_key(client_cfg()) == "private-guard-key"
-    assert api_key(client_cfg(guardrail_api_key="")) == "private-llm-key"
-    assert api_key(client_cfg(guardrail_api_key="", llm_base_url="https://api.openai.com/v1")) == ""
+def test_the_openrouter_llm_key_is_reused_and_never_sent_elsewhere():
+    assert api_key(client_cfg()) == "private-llm-key"
+    for url in ("https://api.openai.com/v1", "https://openrouter.ai.evil.test/v1", "nope"):
+        assert api_key(client_cfg(llm_base_url=url)) == ""
     with pytest.raises(GuardError) as error:
-        DecisionsClient(client_cfg(guardrail_api_key="", llm_base_url="https://x.test"), None)
+        DecisionsClient(client_cfg(llm_base_url="https://x.test"), None)
     assert error.value.category == "not_configured"
-    for url in ("http://openrouter.ai/api/alpha", "https://user:pw@openrouter.ai/api", "nope"):
-        with pytest.raises(GuardError) as error:
-            DecisionsClient(client_cfg(guardrail_base_url=url), None)
-        assert error.value.category == "configuration"
+    assert guardrails.DECISIONS_URL == "https://openrouter.ai/api/alpha/decisions"
 
 
 @pytest.mark.parametrize(

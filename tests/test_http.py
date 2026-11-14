@@ -28,21 +28,15 @@ def login(http):
     return {"Origin": "http://testserver", "X-CSRF-Token": r.json()["csrf_token"]}
 
 
-@pytest.mark.parametrize("enabled", [False, True])
-def test_session_exposes_current_recipe_feature_flag(http, monkeypatch, enabled):
-    from aimo.config import settings
-
-    monkeypatch.setattr(settings(), "recipe_planning_enabled", enabled)
+def test_session_has_no_recipe_feature_flag(http):
     response = http.post(
         "/api/login",
         headers={"Origin": "http://testserver"},
         json={"username": "buyer", "password": os.environ["DEMO_BUYER_PASSWORD"]},
     )
     assert response.status_code == 200
-    assert response.json()["recipe_planning_enabled"] is enabled
-    assert http.get("/api/session").json()["recipe_planning_enabled"] is enabled
-    monkeypatch.setattr(settings(), "recipe_planning_enabled", not enabled)
-    assert http.get("/api/session").json()["recipe_planning_enabled"] is not enabled
+    assert set(response.json()) == {"username", "buyer_id", "csrf_token"}
+    assert set(http.get("/api/session").json()) == {"username", "buyer_id", "csrf_token"}
 
 
 def test_auth_inbox_csrf_and_logout(http, service, agent, mission):
