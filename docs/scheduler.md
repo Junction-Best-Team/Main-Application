@@ -71,6 +71,9 @@ first run date of today would be missed at once: use "Run now (demo)" there.
   (their order, no second order, no disruption). A pause or cancel between the engine's checks and the gate skips the
   run (`PAUSED` or `AUTHORIZATION_*`). A terms revision that keeps changing is counted and ends as `TERMS_UNSETTLED`.
 - A standing order is a free-form basket (a recipe link would attach to the already ordered proposal).
+  A counted line ("20 piece" of eggs) converts to packs only through the reviewed recipe evidence bound to the
+  recipe plan, so the reorder repeats the packs the customer's order resolved (their sales quantity in the sales
+  unit) instead of the count.
 - Accepted substitutes must be inside the buyer's approved product scope (standing product authority).
 - Cancelled means an order **request** (append-only `order_request_cancellations`); placed orders stay immutable.
   The unfinished-proposal purge must skip proposals referenced by `scheduled_runs` or the cancellations.
