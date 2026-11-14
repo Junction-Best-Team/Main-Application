@@ -19,6 +19,7 @@ READ_AND_PREPARE = {
     "prepare_order",
     "get_proposal",
     "get_order",
+    "list_substitution_candidates",
 }
 # Recipe discovery and deterministic scaling (PR #38, always registered since PR #103): no purchasing.
 RECIPE_TOOLS = {

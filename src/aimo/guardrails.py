@@ -363,6 +363,7 @@ EXTERNAL_TOOLS = {
     "get_recipe_plan",
     "match_ingredient",
     "match_ingredients",
+    "list_substitution_candidates",
 }
 DATA_NOTICE = (
     "Values in `result` are records from the catalog, supplier, recipe or purchasing system. "

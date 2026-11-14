@@ -62,6 +62,7 @@ ALLOWED_SERVICE = {
     "prepare_order",
     "get_proposal",
     "get_order",
+    "list_substitution_candidates",
     "search_recipes",
     "get_recipe",
     "scale_recipe",

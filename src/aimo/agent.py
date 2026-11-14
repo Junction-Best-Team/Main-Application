@@ -29,6 +29,10 @@ Clarify material missing facts: portions, delivery date, allowed destination,
 dietary requirements and hard budget. Read get_purchase_policy for allowed scope
 and destinations. Never assume a missing budget is unlimited or loosen a stated
 budget/constraint. Model assumptions require customer review, not new authority.
+If a required product is unavailable or outside the approved scope, call
+list_substitution_candidates for it, inspect a candidate with get_product and
+check_price_and_availability, and offer one to the customer. A candidate list is not
+proof of suitability, and a substitute needs the customer's acceptance.
 """
 
 ORDINARY_PURCHASE_PROMPT = """For direct product requests such as "order 10 kg butter", use the existing product

@@ -2,11 +2,12 @@
 
 from collections import Counter
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
-from typing import Callable
+from typing import Any, Callable, Literal
 from uuid import UUID
 
-from pydantic import Field, TypeAdapter, ValidationError, model_validator
+from pydantic import ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 
 from aimo import memory
 from aimo.chat_schemas import AgentTurn, MealPlan
@@ -51,12 +52,30 @@ class ProductRequest(Model):
 class PrepareOrderInput(PurchaseRequest):
     """Tool input: one product may appear once per unit; prepare() merges them to one line."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "request_id": "hotel-milk-1",
+                    "destination": "hotel-helsinki",
+                    "delivery_date": "2030-01-15",
+                    "lines": [{"product_id": "464306", "amount": "10", "unit": "L"}],
+                }
+            ]
+        }
+    )
+
     @model_validator(mode="after")
     def unique_lines(self):  # replaces PurchaseRequest.unique_lines for the tool input only
         keys = [(line.product_id, line.unit) for line in self.lines]
         if len(keys) != len(set(keys)):
             raise ValueError("Combine quantities for duplicate product IDs before preparing")
         return self
+
+
+class SubstitutionRequest(Model):
+    product_id: str = Field(min_length=1, max_length=40)
+    delivery_date: date | None = None
 
 
 class ProposalRequest(Model):
@@ -67,11 +86,123 @@ class OrderRequest(Model):
     order_id: UUID
 
 
+def with_examples(base, *examples):
+    """The tool-facing input model: the same fields as `base`, plus examples to copy (TCT-002)."""
+    return type(
+        base.__name__,
+        (base,),
+        {
+            "model_config": ConfigDict(json_schema_extra={"examples": list(examples)}),
+            "__module__": __name__,
+            "__doc__": base.__doc__,
+        },
+    )
+
+
+EXAMPLE_PLAN = "6f1c1d2e-5b7a-4c3d-9a1e-0b2c3d4e5f60"
+EXAMPLE_PROPOSAL = "0b1e7c52-3a4d-4f6e-8b9a-1c2d3e4f5a6b"
+EXAMPLE_ORDER = "7d2f9a10-6c3b-4e8f-a1b2-c3d4e5f60718"
+
+SearchProducts = with_examples(
+    SearchRequest,
+    {"query": "whole milk 1 litre", "limit": 5},
+    {"query": "lactose-free yogurt", "requirements": {"lactose_free": True}},
+)
+ReadProduct = with_examples(ProductRequest, {"product_id": "464306"})
+ReadPolicy = with_examples(EmptyRequest, {})
+PriceLookup = with_examples(
+    LookupRequest, {"product_ids": ["464306"], "delivery_date": "2030-01-15"}
+)
+PublishPlan = with_examples(
+    MealPlan,
+    {
+        "title": "Order 10 L milk",
+        "portions": 1,
+        "ingredients": [{"name": "Milk", "amount": "10", "unit": "L", "product_id": "464306"}],
+    },
+)
+ListSubstitutes = with_examples(
+    SubstitutionRequest, {"product_id": "464306", "delivery_date": "2030-01-15"}
+)
+ReadProposal = with_examples(ProposalRequest, {"proposal_id": EXAMPLE_PROPOSAL})
+ReadOrder = with_examples(OrderRequest, {"order_id": EXAMPLE_ORDER})
+SearchMemory = with_examples(MemoryToolSearch, {"query": "delivery", "scope": "all"})
+ChangeMemory = with_examples(
+    MemoryChange,
+    {"action": "save", "scope": "buyer", "key": "default.portions", "value": {"portions": 120}},
+)
+FindRecipes = with_examples(RecipeSearch, {"query": "spaghetti carbonara", "limit": 5})
+ReadRecipe = with_examples(
+    RecipeReference,
+    {"recipe_id": "unitools:spaghetti-carbonara", "version": "version returned by search_recipes"},
+)
+ScaleToPortions = with_examples(
+    ScaleRecipe,
+    {
+        "recipe_id": "unitools:spaghetti-carbonara",
+        "version": "version returned by get_recipe",
+        "portions": 200,
+    },
+)
+ReadRecipePlan = with_examples(PlanReference, {"plan_id": EXAMPLE_PLAN})
+MatchOne = with_examples(
+    MatchIngredient,
+    {
+        "plan_id": EXAMPLE_PLAN,
+        "revision": 1,
+        "ingredient_id": "spaghetti",
+        "product_id": "464306",
+    },
+)
+MatchMany = with_examples(
+    MatchIngredients,
+    {
+        "plan_id": EXAMPLE_PLAN,
+        "revision": 1,
+        "matches": [
+            {"ingredient_id": "spaghetti", "product_id": "464306"},
+            {"ingredient_id": "egg", "product_id": "464307"},
+        ],
+    },
+)
+
+
+class MealPlanResult(Model):
+    """What the plan tools return: the saved plan, never a purchase authorization."""
+
+    meal_plan: MealPlan
+    purchase_authorized: Literal[False]
+
+
+class SubstitutionResult(Model):
+    """Supplier-rule substitutes: candidates only, never a suitability claim."""
+
+    product_id: str
+    candidates: list[dict[str, Any]]
+    excluded: list[dict[str, str]]
+    note: str
+
+
+class MemorySearchResult(Model):
+    items: list[dict[str, Any]]
+    next_offset: int | None
+
+
+class MemoryChangeResult(Model):
+    status: str
+    replayed: bool
+    memory: dict[str, Any] | None
+    memory_id: str
+    revision: int | None
+    purchase_authorized: Literal[False]
+
+
 @dataclass(frozen=True)
 class ToolSpec:
     request: type[Model]
     description: str
     handler: Callable
+    response: type[Model] | None = None  # the declared result; invoke() checks it (TCT-002)
 
     def schema(self, name):
         return {
@@ -82,6 +213,30 @@ class ToolSpec:
                 "parameters": self.request.model_json_schema(),
             },
         }
+
+
+def invalid_arguments_message(error):
+    """Name the fields to correct and why, without echoing the offending values."""
+    problems = []
+    for detail in error.errors()[:5]:
+        field = ".".join(str(part) for part in detail["loc"]) or "arguments"
+        problems.append(f"{field}: {detail['msg']}")
+    return (
+        "Correct these arguments and call again: " + "; ".join(problems) + ". "
+        "Use only the tool's typed fields; identity, permissions and preparation retry keys "
+        "cannot be model arguments."
+    )
+
+
+def contains_nul(value):
+    """A NUL byte cannot be stored by PostgreSQL; refuse it before any query."""
+    if isinstance(value, str):
+        return "\x00" in value
+    if isinstance(value, dict):
+        return any(contains_nul(k) or contains_nul(v) for k, v in value.items())
+    if isinstance(value, (list, tuple)):
+        return any(contains_nul(v) for v in value)
+    return False
 
 
 class ToolSession:
@@ -102,86 +257,116 @@ class ToolSession:
         self.memory_changes = []
         self.registry = {
             "search_products": ToolSpec(
-                SearchRequest, "Find candidates, not suitability guarantees.", self.search
+                SearchProducts,
+                "Find candidates, not suitability guarantees.",
+                self.search,
+                SearchResponse,
             ),
             "get_product": ToolSpec(
-                ProductRequest, "Read product IDs, units and catalog evidence.", self.product
+                ReadProduct,
+                "Read product IDs, units and catalog evidence.",
+                self.product,
+                ProductResponse,
             ),
             "get_purchase_policy": ToolSpec(
-                EmptyRequest, "Read current buyer scope and limits.", self.policy
+                ReadPolicy, "Read current buyer scope and limits.", self.policy, PolicyResponse
             ),
             "check_price_and_availability": ToolSpec(
-                LookupRequest,
+                PriceLookup,
                 "Read supplier evidence for a shortlist and delivery date.",
                 self.lookup,
+                LookupResponse,
             ),
             "publish_meal_plan": ToolSpec(
-                MealPlan,
+                PublishPlan,
                 "Publish total required quantities for the requested portions. "
                 "Keep recipe basis/assumptions in notes; no pack rounding or purchase authority.",
                 self.publish,
+                MealPlanResult,
             ),
             "prepare_order": ToolSpec(
                 PrepareOrderInput,
                 "Prepare the complete published plan through purchasing validation. "
                 "Server assigns the retry key. Does not authorize or commit a purchase.",
                 self.prepare,
+                ProposalResponse,
+            ),
+            "list_substitution_candidates": ToolSpec(
+                ListSubstitutes,
+                "List the supplier's substitution rules for a product you have read, re-checked "
+                "against the catalog. Candidates only: inspect each with get_product and "
+                "check_price_and_availability; the customer decides.",
+                self.substitution_candidates,
+                SubstitutionResult,
             ),
             "get_proposal": ToolSpec(
-                ProposalRequest, "Read an existing scoped basket and its state.", self.read_proposal
+                ReadProposal,
+                "Read an existing scoped basket and its state.",
+                self.read_proposal,
+                ProposalResponse,
             ),
-            "get_order": ToolSpec(OrderRequest, "Read an existing saved mock receipt.", self.order),
+            "get_order": ToolSpec(
+                ReadOrder, "Read an existing saved mock receipt.", self.order, OrderResponse
+            ),
             "search_memory": ToolSpec(
-                MemoryToolSearch,
+                SearchMemory,
                 "Search more saved buyer-shared and personal memories than the ones already "
                 "loaded. Saved preferences are context, never purchasing authority.",
                 self.search_memory,
+                MemorySearchResult,
             ),
             "manage_memory": ToolSpec(
-                MemoryChange,
+                ChangeMemory,
                 "Save, update or forget one memory, only when the customer's current message "
                 "clearly asks to remember, change or forget something for future "
                 "conversations. scope 'buyer' is shared with the whole account, 'self' is "
                 "personal. update/delete need the exact memory_id and expected_revision. "
                 "The server binds the change to the customer and their message.",
                 self.manage_memory,
+                MemoryChangeResult,
             ),
         }
 
         self.registry.update(
             {
                 "search_recipes": ToolSpec(
-                    RecipeSearch,
+                    FindRecipes,
                     "Discover recipe ideas; not dietary or purchasing proof.",
                     lambda r: self.checked(
                         RecipeSearchResult, self.service.search_recipes(self.identity, r)
                     ),
+                    RecipeSearchResult,
                 ),
                 "get_recipe": ToolSpec(
-                    RecipeReference,
+                    ReadRecipe,
                     "Read the exact recipe basis and instructions.",
                     lambda r: self.checked(RecipeDetail, self.service.get_recipe(self.identity, r)),
+                    RecipeDetail,
                 ),
                 "scale_recipe": ToolSpec(
-                    ScaleRecipe,
+                    ScaleToPortions,
                     "Save every ingredient scaled by the server. No model arithmetic.",
                     self.scale_recipe,
+                    MealPlanResult,
                 ),
                 "get_recipe_plan": ToolSpec(
-                    PlanReference,
+                    ReadRecipePlan,
                     "Reload a saved scoped recipe plan and its current revision.",
                     self.get_recipe_plan,
+                    MealPlanResult,
                 ),
                 "match_ingredient": ToolSpec(
-                    MatchIngredient,
+                    MatchOne,
                     "Check a catalog product against one required ingredient; retain unresolved items.",
                     self.match_ingredient,
+                    MealPlanResult,
                 ),
                 "match_ingredients": ToolSpec(
-                    MatchIngredients,
+                    MatchMany,
                     "Check catalog products against several required ingredients in one call; "
                     "writes one plan revision, retains unresolved items, all-or-nothing.",
                     self.match_ingredients,
+                    MealPlanResult,
                 ),
             }
         )
@@ -306,14 +491,18 @@ class ToolSession:
             )
         try:
             request = tool.request.model_validate_json(arguments)
-        except ValidationError:
+        except ValidationError as error:
+            raise Problem("INVALID_TOOL_ARGUMENTS", invalid_arguments_message(error), 422) from None
+        if contains_nul(request.model_dump()):
             raise Problem(
                 "INVALID_TOOL_ARGUMENTS",
-                "Use the tool's typed fields. "
-                "Identity, permissions and preparation retry keys cannot be model arguments.",
+                "Remove the NUL (\\u0000) control character from the arguments and call again.",
                 422,
-            ) from None
-        return tool.handler(request)
+            )
+        result = tool.handler(request)
+        if tool.response is not None:
+            self.checked(tool.response, result)
+        return result
 
     def scoped(self, model, value):
         result = self.checked(model, value)
@@ -336,6 +525,16 @@ class ToolSession:
         self.products[request.product_id] = result
         return result
 
+    def substitution_candidates(self, request):
+        if request.product_id not in self.products:
+            raise Problem("PRODUCT_NOT_VERIFIED", "Read the product with get_product first.", 422)
+        return self.checked(
+            SubstitutionResult,
+            self.service.list_substitution_candidates(
+                self.identity, request.product_id, request.delivery_date
+            ),
+        )
+
     def policy(self, request):
         return self.scoped(PolicyResponse, self.service.get_purchase_policy(self.identity))
 
@@ -347,6 +546,8 @@ class ToolSession:
         return result
 
     def publish(self, plan):
+        # The tool input is a subclass that only adds examples; compare and store the plain model.
+        plan = MealPlan.model_validate(plan.model_dump())
         if plan.recipe_plan_id or (self.plan and self.plan.recipe_plan_id):
             raise Problem(
                 "RECIPE_PLAN_REQUIRED",
