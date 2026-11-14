@@ -27,13 +27,13 @@ One workflow, `.github/workflows/ci.yml`, runs on PRs into `develop` and `main`,
 
 | Job (GitHub name) | What it does |
 | --- | --- |
-| Python lint and tests | `ruff check`, then `pytest` against temporary PostgreSQL/pgvector, then the strict buyer-facing API sweep; uses fixture embeddings and supplier responses |
+| Python lint and tests | `ruff check`, then core app regressions against temporary PostgreSQL/pgvector, then the strict buyer-facing API sweep; uses fixture embeddings and supplier responses |
 | Frontend types and build | `npm ci`, TypeScript check and production build; formatting and browser tests stay local |
 | Detect application components | Selects backend, frontend and infrastructure checks; retains its existing name for required status checks |
 | Terraform | Format, validate, mocked-provider plan tests and Helm render for `infra/` (only when it or the workflows changed) |
 | **CI gate** | Requires change detection and every selected application/infrastructure check to succeed |
 
-Frontend-only PRs skip backend tests, except the shared OpenAPI contract; documentation-only PRs skip application checks. Python source changes run both application jobs; tests, migrations and Python dependencies run backend checks. Infrastructure changes run Terraform; workflow changes and unknown paths run conservative checks. The gate accepts a skip only when change detection explicitly marked that check unrelated. Manual CI runs every check.
+Frontend-only PRs skip backend tests, except the shared OpenAPI contract; documentation-only PRs skip application checks. Python source changes run both application jobs; tests, migrations and Python dependencies run backend checks. Infrastructure changes run Terraform; workflow changes and unknown paths run conservative checks. The gate accepts a skip only when change detection explicitly marked that check unrelated. Manual CI runs every check and the full pytest suite. PRs use `tests/pr-tests.sh`: login/CSRF, buyer isolation, persistent chat/retries, worker recovery, scripted-agent checkout, exact-revision confirmation, purchase limits, migrations/runtime grants and a scheduling flow. Exhaustive edge-case tests stay available locally and on manual CI; they no longer block ordinary contributions.
 
 The API sweep shares the backend job's Python environment and temporary, memory-backed PostgreSQL service. Coverage is an optional local diagnostic, with no percentage requirement or coverage artifact jobs in CI. Dependencies are locked and cached; new commits cancel outdated PR runs. CI uses fixtures, without supplier keys, model downloads or full catalog imports. The live check is local: `tests/ci.sh --live`. See [tests/README.md](tests/README.md) and [tests/TEST-GUIDE.md](tests/TEST-GUIDE.md).
 

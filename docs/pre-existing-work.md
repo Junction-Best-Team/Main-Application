@@ -309,3 +309,5 @@ Deployment follow-up reused the existing locked frontend/Vite image build and mo
 
 Homepage paperclip follow-up (2026-11-15): reused the existing shared composer and
 fixture content; only the homepage picker presentation changed. No new assets or external material.
+
+Minimal-PR follow-up (2026-11-15): selected existing core regression cases for the owner-requested hackathon gate; no tests or fixtures were deleted and no new dependency or external material was added.
