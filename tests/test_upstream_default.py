@@ -1,10 +1,11 @@
 """JNP3-SUP-005: fixture mode only in tests and explicit offline runs; live otherwise.
 
-Owner decision 2026-11-14: the deployment default must be LIVE. On develop `efedf8f` the code and
-`.env.example` default to `auto` (live with a key, labelled fixture without one); whether a
-deployment without a key may fall back to fixtures is an open owner question, so it is not decided
-here. The Kubernetes default is still an explicit `fixture` and belongs to person 1: that check is a
-strict xfail that turns into an error when it changes (remove the marker then). No supplier call.
+Owner decisions 2026-11-14 (Q-01, Q-55): local runs stay on `auto` (live with a key, labelled fixture
+without one); a deployment defaults to LIVE (the Terraform default is `live`, checked here and in
+infra/tests) and a hosted deployment without a key must fail at startup. The startup guard is person
+1's (issue #73, marker `secure_cookies`): that test stays a strict xfail until it exists, and it must
+set SECURE_COOKIES itself, because a guard that raises at import would break any process importing
+aimo.api with secure cookies on and no key. No supplier call.
 """
 
 import re
@@ -19,7 +20,6 @@ from aimo.service import Service
 from aimo.upstream import FixtureClient, ValioClient
 
 ROOT = Path(__file__).resolve().parents[1]
-WAITING = "SUP-005: infra default is an explicit fixture; waiting for person 1 to change it"
 
 
 def configured(monkeypatch, **values):
@@ -29,7 +29,6 @@ def configured(monkeypatch, **values):
     return cfg
 
 
-@pytest.mark.xfail(strict=True, reason=WAITING)
 def test_kubernetes_variable_default_is_not_an_explicit_fixture():
     """Deployment default must not be an explicit fixture (owner: live; `auto` is undecided)."""
     block = re.search(
@@ -105,9 +104,9 @@ def hosted_env(monkeypatch):
 
 @pytest.mark.xfail(
     strict=True,
-    reason="Owner answer Q-01: a hosted deployment must have a key and fail at startup without "
-    "one; waiting for person 1 (config.py / api.py). ASSUMPTION: hosted == SECURE_COOKIES=true; "
-    "adapt the signal if person 1 adds an explicit one.",
+    reason="Owner answers Q-01/Q-55: a hosted deployment (secure_cookies on) must have a supplier "
+    "key and fail at startup without one; waiting for person 1 (issue #73, create_app / "
+    "check_readiness).",
 )
 def test_hosted_deployment_without_a_key_fails_at_startup(hosted_env):
     from fastapi.testclient import TestClient
