@@ -219,8 +219,9 @@ function Avatar() {
   );
 }
 
-/** Account switcher + settings (inert) and the real Sign out action. */
-function AccountBlock() {
+/** Account switcher placeholder, policy settings and the real Sign out action. */
+function AccountBlock({ onNavigate }: { onNavigate?: () => void }) {
+  const { pathname } = useLocation();
   const { session, logout } = useAuth();
   return (
     <div className="flex shrink-0 flex-col gap-space-xs bg-surface-container-low p-space-sm">
@@ -244,13 +245,15 @@ function AccountBlock() {
           className="text-[18px] text-on-surface-variant"
         />
       </InertButton>
-      <InertButton
-        label="Account Settings"
-        className="flex items-center gap-space-sm px-space-md py-space-sm font-label text-label-md text-on-surface-variant"
+      <Link
+        to="/settings"
+        onClick={onNavigate}
+        aria-current={pathname === "/settings" ? "page" : undefined}
+        className={`flex items-center gap-space-sm rounded-lg px-space-md py-space-sm font-label text-label-md no-underline hover:no-underline ${pathname === "/settings" ? "bg-secondary-container text-primary" : "text-on-surface-variant hover:bg-surface-container-high"}`}
       >
         <Icon name="manage_accounts" className="text-[18px]" />
         Account Settings
-      </InertButton>
+      </Link>
       <button
         type="button"
         onClick={logout}
@@ -447,7 +450,7 @@ function MobileMenu({
           <HubBadge />
           <NavLinks conversations={conversations} onNavigate={onClose} />
         </div>
-        <AccountBlock />
+        <AccountBlock onNavigate={onClose} />
       </div>
     </div>
   );
