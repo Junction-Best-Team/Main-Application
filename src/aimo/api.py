@@ -13,7 +13,16 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from aimo import approval_workflow as workflow
-from aimo import auth, cancellations, conversations, memory, orders_list, schema_state, upstream
+from aimo import (
+    auth,
+    cancellations,
+    conversations,
+    memory,
+    orders_list,
+    schedules,
+    schema_state,
+    upstream,
+)
 from aimo.chat_schemas import (
     ConversationCreate,
     ConversationList,
@@ -34,6 +43,17 @@ from aimo.memory_schemas import (
 )
 from aimo.observability import RequestLoggingMiddleware, configure_logging, event
 from aimo.order_schemas import CancellationResponse, OrdersResponse
+from aimo.schedule_schemas import (
+    ScheduleCreateRequest,
+    ScheduleDetail,
+    ScheduleEditPreviewRequest,
+    ScheduleList,
+    SchedulePreviewRequest,
+    ScheduleReplaceRequest,
+    ScheduleResponse,
+    ScheduleTerms,
+    SubstituteCandidates,
+)
 from aimo.schemas import (
     CommitRequest,
     CommitResponse,
@@ -305,6 +325,81 @@ def create_app(service=None):
         identity=Depends(buyer),
     ):
         return orders_list.orders_page(identity, offset, limit)
+
+    def csrf(identity, request: Request):
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+
+    # Standing orders (CNF-022 to CNF-037). Reads need the session; every POST also needs CSRF and
+    # a same-origin request. The customer functions require the approver role themselves.
+    @app.get("/api/schedules", response_model=ScheduleList)
+    def schedule_list(
+        offset: int = Query(0, ge=0, le=10000),
+        limit: int = Query(20, ge=1, le=50),
+        identity=Depends(buyer),
+    ):
+        return schedules.list_schedules(identity, offset, limit)
+
+    # Registered before /api/schedules/{schedule_id}, or "substitute-candidates" is parsed as an id.
+    @app.get("/api/schedules/substitute-candidates", response_model=SubstituteCandidates)
+    def schedule_substitute_candidates(
+        product_id: str = Query(min_length=1, max_length=40), identity=Depends(buyer)
+    ):
+        return schedules.substitute_candidates(identity, product_id, service)
+
+    @app.post("/api/schedules/preview", response_model=ScheduleTerms)
+    def schedule_preview(body: SchedulePreviewRequest, request: Request, identity=Depends(buyer)):
+        csrf(identity, request)
+        return schedules.preview(identity, body, service)
+
+    @app.post("/api/schedules", response_model=ScheduleResponse)
+    def schedule_create(body: ScheduleCreateRequest, request: Request, identity=Depends(buyer)):
+        csrf(identity, request)
+        return schedules.create(identity, body, service)
+
+    @app.get("/api/schedules/{schedule_id}", response_model=ScheduleDetail)
+    def schedule_detail(
+        schedule_id: UUID,
+        runs_offset: int = Query(0, ge=0, le=10000),
+        identity=Depends(buyer),
+    ):
+        return schedules.get(identity, schedule_id, runs_offset)
+
+    @app.post("/api/schedules/{schedule_id}/preview", response_model=ScheduleTerms)
+    def schedule_edit_preview(
+        schedule_id: UUID,
+        body: ScheduleEditPreviewRequest,
+        request: Request,
+        identity=Depends(buyer),
+    ):
+        csrf(identity, request)
+        return schedules.preview_edit(identity, schedule_id, body, service)
+
+    @app.post("/api/schedules/{schedule_id}/replace", response_model=ScheduleResponse)
+    def schedule_replace(
+        schedule_id: UUID,
+        body: ScheduleReplaceRequest,
+        request: Request,
+        identity=Depends(buyer),
+    ):
+        csrf(identity, request)
+        return schedules.replace(identity, schedule_id, body, service)
+
+    @app.post("/api/schedules/{schedule_id}/cancel", response_model=ScheduleResponse)
+    def schedule_cancel(schedule_id: UUID, request: Request, identity=Depends(buyer)):
+        csrf(identity, request)
+        return schedules.cancel(identity, schedule_id)
+
+    @app.post("/api/schedules/{schedule_id}/pause", response_model=ScheduleResponse)
+    def schedule_pause(schedule_id: UUID, request: Request, identity=Depends(buyer)):
+        csrf(identity, request)
+        return schedules.pause(identity, schedule_id)
+
+    @app.post("/api/schedules/{schedule_id}/resume", response_model=ScheduleResponse)
+    def schedule_resume(schedule_id: UUID, request: Request, identity=Depends(buyer)):
+        csrf(identity, request)
+        return schedules.resume(identity, schedule_id)
 
     @app.get("/api/memories", response_model=MemoryList)
     def memory_list(
