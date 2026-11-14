@@ -538,7 +538,14 @@ def activate_catalog(generation):
         if actual == 0 or actual != row["product_count"]:
             raise ValueError("Target catalog is incomplete or has been pruned; reimport it")
         _activate(c, generation)
-    return {"generation": str(generation), "products": actual, "model": model_key()}
+        # DIS-012: a staged generation is published inactive (no trim then), so trim on activation.
+        trimmed = _cleanup(c, WITHDRAWN_LIMIT)["removed"]
+    return {
+        "generation": str(generation),
+        "products": actual - trimmed,
+        "trimmed_withdrawn": trimmed,
+        "model": model_key(),
+    }
 
 
 # --- unattended sync -------------------------------------------------------------------------
