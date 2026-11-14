@@ -81,11 +81,23 @@ def test_context_never_defaults_an_invalid_policy_to_permission(agent):
     assert error.value.code == "INVALID_POLICY_CONFIGURATION"
 
 
-def test_context_rejects_an_invalid_agent_authority(agent):
+@pytest.mark.parametrize(
+    "authority",
+    [{}, {"currency": "EUR", "autonomous_limit": "1500"}, {"autonomous_limit": "999999"}],
+)
+def test_context_ignores_the_content_of_an_agent_authority(agent, authority):
+    # Q-35 replacement: an agent holds no authority, so no stored shape can invalidate it.
     with connection() as c:
-        c.execute("UPDATE identities SET authority=%s WHERE id='demo-agent'", (js({}),))
+        c.execute("UPDATE identities SET authority=%s WHERE id='demo-agent'", (js(authority),))
+        _, _, actor, _ = context(c, agent)
+    assert actor["id"] == "demo-agent"
+
+
+def test_context_still_rejects_an_invalid_approver_authority(buyer):
+    with connection() as c:
+        c.execute("UPDATE identities SET authority=%s WHERE id='buyer'", (js({}),))
         with pytest.raises(Problem) as error:
-            context(c, agent)
+            context(c, buyer)
     assert error.value.code == "INVALID_POLICY_CONFIGURATION"
 
 
