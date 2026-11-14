@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { createRoot } from "react-dom/client";
@@ -13,6 +14,7 @@ import {
   Route,
   Routes,
   useLocation,
+  useNavigate,
   useParams,
 } from "react-router-dom";
 import type { components } from "./api-types";
@@ -21,6 +23,9 @@ import "./style.css";
 type Session = components["schemas"]["SessionResponse"];
 type Proposal = components["schemas"]["ProposalResponse"];
 type Inbox = components["schemas"]["InboxResponse"];
+type Conversation = components["schemas"]["ConversationResponse"];
+type ConversationList = components["schemas"]["ConversationList"];
+type Commit = components["schemas"]["CommitResponse"];
 const Auth = createContext<{
   session: Session | null;
   setSession: (s: Session | null) => void;
@@ -46,7 +51,7 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
       body.error?.message ||
         (r.status === 422
           ? "Check the submitted values."
-          : "Unable to load the purchase. Try again."),
+          : "The service could not complete this request. Try again."),
     );
   }
   return r.status === 204 ? (undefined as T) : r.json();
@@ -69,6 +74,7 @@ const title = (status: string) =>
 function status(p: Proposal) {
   if (p.approval_status === "superseded") return "superseded";
   if (p.order_status === "accepted_mock") return "accepted_mock";
+  if (p.approval_status === "rejected") return "rejected";
   if (new Date(p.expires_at) <= new Date()) return "expired";
   return p.approval_status === "not_required"
     ? p.policy_outcome
@@ -92,9 +98,10 @@ function Login() {
   const [busy, setBusy] = useState(false);
   const next = (location.state as { from?: string } | null)?.from;
   const destination =
-    typeof next === "string" && /^\/(approvals|purchases)(\/|$)/.test(next)
+    typeof next === "string" &&
+    (next === "/" || /^\/(approvals|purchases|conversations)(\/|$)/.test(next))
       ? next
-      : "/approvals";
+      : "/";
   if (session) return <Navigate to={destination} replace />;
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -123,15 +130,16 @@ function Login() {
           aimo<span className="brand-dot">.</span>
         </span>
         <h1>
-          A clear decision.
-          <br />A considered purchase.
+          From the menu
+          <br />
+          to your basket.
         </h1>
         <p>
-          Review purchases prepared by your agent. You decide on permitted
-          exceptions before the agent can place a demo order.
+          Plan a meal, find ingredients and review real catalog matches. You
+          confirm the exact basket before a demo order is recorded.
         </p>
         <div className="welcome-note">
-          Your inbox is available independently of your agent or chat.
+          Your conversations, decisions and purchase history stay together.
         </div>
       </section>
       <section className="login-panel">
@@ -190,7 +198,409 @@ function useRefresh(load: () => Promise<void>, enabled = true) {
   }, [load, enabled]);
 }
 
-function InboxPage() {
+function ChatPage() {
+  const { conversationId } = useParams();
+  const { session, setSession } = useContext(Auth);
+  const navigate = useNavigate();
+  const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [conversations, setConversations] = useState<ConversationList | null>(
+    null,
+  );
+  const [text, setText] = useState("");
+  const [error, setError] = useState("");
+  const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const sendingRef = useRef(false);
+  const createKey = useRef(crypto.randomUUID());
+  const transcript = useRef<HTMLDivElement>(null);
+  const loadedConversation = useRef<string | null>(null);
+  const activeConversation = useRef(conversationId);
+  activeConversation.current = conversationId;
+  const pendingStorage = `aimo-pending-${session?.buyer_id}-${conversationId}`;
+  const fail = useCallback(
+    (e: unknown) => {
+      if (e instanceof ApiError && e.status === 401) setSession(null);
+      else setError((e as Error).message);
+    },
+    [setSession],
+  );
+  const loadList = useCallback(async () => {
+    try {
+      setConversations(
+        await api<ConversationList>("/api/conversations?limit=30"),
+      );
+    } catch (e) {
+      fail(e);
+    }
+  }, [fail]);
+  async function loadOlder() {
+    if (conversations?.next_offset == null || loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const older = await api<ConversationList>(
+        `/api/conversations?limit=30&offset=${conversations.next_offset}`,
+      );
+      setConversations((current) =>
+        current
+          ? {
+              ...older,
+              items: [
+                ...current.items,
+                ...older.items.filter(
+                  (item) =>
+                    !current.items.some((existing) => existing.id === item.id),
+                ),
+              ],
+            }
+          : older,
+      );
+    } catch (e) {
+      fail(e);
+    } finally {
+      setLoadingOlder(false);
+    }
+  }
+  const load = useCallback(async () => {
+    if (!conversationId) return;
+    try {
+      const data = await api<Conversation>(
+        `/api/conversations/${conversationId}`,
+      );
+      if (activeConversation.current !== conversationId) return;
+      setConversation(data);
+      if (loadedConversation.current !== conversationId) {
+        loadedConversation.current = conversationId;
+        if (data.retry_message && !sendingRef.current)
+          setText(data.retry_message.text);
+      }
+      setReconnecting(false);
+    } catch (e) {
+      fail(e);
+    }
+  }, [conversationId, fail]);
+  useEffect(() => {
+    void loadList();
+  }, [loadList, conversationId]);
+  useEffect(() => {
+    setConversation(null);
+    loadedConversation.current = null;
+    setError("");
+    const saved = sessionStorage.getItem(pendingStorage);
+    try {
+      setText(saved ? JSON.parse(saved).text : "");
+    } catch {
+      setText("");
+    }
+    if (!conversationId) return;
+    setLoading(true);
+    void load().finally(() => setLoading(false));
+  }, [conversationId, load, pendingStorage]);
+  useRefresh(load, Boolean(conversationId));
+  useEffect(() => {
+    if (!conversationId) return;
+    let stream: EventSource | null = null;
+    const open = () => {
+      stream?.close();
+      stream = null;
+      if (document.visibilityState !== "visible") return;
+      stream = new EventSource(`/api/conversations/${conversationId}/events`);
+      stream.addEventListener("conversation", (event) => {
+        try {
+          setConversation(JSON.parse((event as MessageEvent).data));
+          setReconnecting(false);
+        } catch {
+          void load();
+        }
+      });
+      stream.onerror = () => setReconnecting(true);
+    };
+    open();
+    document.addEventListener("visibilitychange", open);
+    return () => {
+      stream?.close();
+      document.removeEventListener("visibilitychange", open);
+    };
+  }, [conversationId, load]);
+  useEffect(() => {
+    transcript.current?.scrollIntoView({ block: "end", behavior: "instant" });
+  }, [conversation?.messages.length, conversation?.busy]);
+  async function send(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!text.trim() || !session || sendingRef.current || conversation?.busy)
+      return;
+    sendingRef.current = true;
+    setSending(true);
+    setError("");
+    const messageText = text.trim();
+    let id = conversationId;
+    try {
+      if (!id) {
+        const created = await api<Conversation>("/api/conversations", {
+          method: "POST",
+          headers: { "X-CSRF-Token": session.csrf_token },
+          body: JSON.stringify({
+            title: messageText.slice(0, 120),
+            idempotency_key: createKey.current,
+          }),
+        });
+        id = created.id;
+        setConversation(created);
+        createKey.current = crypto.randomUUID();
+        navigate(`/conversations/${id}`, { replace: true });
+      }
+      const storageKey = `aimo-pending-${session.buyer_id}-${id}`;
+      let key: string = crypto.randomUUID();
+      try {
+        const saved = JSON.parse(sessionStorage.getItem(storageKey) || "null");
+        if (saved?.text === messageText) key = saved.idempotency_key;
+      } catch {
+        /* A missing pending request starts a new turn. */
+      }
+      if (conversation?.retry_message?.text === messageText) {
+        key = conversation.retry_message.idempotency_key;
+      }
+      sessionStorage.setItem(
+        storageKey,
+        JSON.stringify({ text: messageText, idempotency_key: key }),
+      );
+      const result = await api<Conversation>(
+        `/api/conversations/${id}/messages`,
+        {
+          method: "POST",
+          headers: { "X-CSRF-Token": session.csrf_token },
+          body: JSON.stringify({ text: messageText, idempotency_key: key }),
+        },
+      );
+      sessionStorage.removeItem(storageKey);
+      if (activeConversation.current === id) {
+        setConversation(result);
+        setText("");
+      }
+      await loadList();
+    } catch (e) {
+      if (activeConversation.current !== id) return;
+      fail(e);
+      setText(messageText);
+      if (id) {
+        try {
+          const result = await api<Conversation>(`/api/conversations/${id}`);
+          if (activeConversation.current === id) setConversation(result);
+        } catch {
+          /* Keep the actionable send error. */
+        }
+      }
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
+    }
+  }
+  const busy = sending || conversation?.busy;
+  return (
+    <main className="chat-workspace">
+      <aside className="conversation-sidebar" aria-label="Conversations">
+        <Link className="new-conversation" to="/">
+          New purchase
+        </Link>
+        <h2>Your conversations</h2>
+        {!conversations ? (
+          <p className="muted small">Loading conversations…</p>
+        ) : conversations.items.length === 0 ? (
+          <p className="muted small">
+            Start with a meal or an ingredient list.
+          </p>
+        ) : (
+          <ul>
+            {conversations.items.map((item) => (
+              <li key={item.id}>
+                <Link
+                  to={`/conversations/${item.id}`}
+                  aria-current={conversationId === item.id ? "page" : undefined}
+                >
+                  {item.title}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+        {conversations?.next_offset != null && (
+          <button
+            className="older-conversations"
+            onClick={loadOlder}
+            disabled={loadingOlder}
+          >
+            {loadingOlder ? "Loading…" : "Older conversations"}
+          </button>
+        )}
+        <Link className="history-link" to="/purchases">
+          View purchase history
+        </Link>
+      </aside>
+      <section className="conversation-main">
+        <div className="chat-heading">
+          <h1>
+            {conversation?.title ||
+              (conversationId ? "Your conversation" : "What are we cooking?")}
+          </h1>
+          <p>
+            {conversationId
+              ? "Meal planning and purchasing, in one conversation."
+              : "Tell us the meal and how many people. We’ll help build the basket."}
+          </p>
+        </div>
+        <ErrorMessage message={error} />
+        {loading && <p role="status">Loading your conversation…</p>}
+        {!conversationId && (
+          <div className="meal-start">
+            <div className="meal-illustration" aria-hidden="true">
+              <span>200</span>
+              <span>portions</span>
+            </div>
+            <div>
+              <h2>A menu is a good place to start.</h2>
+              <button
+                className="example-request"
+                onClick={() =>
+                  setText("I need ingredients for 200 portions of carbonara.")
+                }
+              >
+                I need ingredients for 200 portions of carbonara.
+              </button>
+              <p className="muted small">
+                We’ll clarify the details, check actual catalog products and
+                show the exact purchase for your confirmation.
+              </p>
+            </div>
+          </div>
+        )}
+        <div
+          className="transcript"
+          aria-label="Conversation messages"
+          aria-live="polite"
+          aria-relevant="additions"
+        >
+          {conversation?.messages.map((message) => (
+            <article
+              className={`chat-message ${message.role}`}
+              key={message.id}
+            >
+              <div className="message-byline">
+                <strong>{message.role === "user" ? "You" : "Aimo"}</strong>
+                <time dateTime={message.created_at}>
+                  {dateTime(message.created_at)}
+                </time>
+              </div>
+              <p className="message-text">{message.text}</p>
+              {message.meal_plan && (
+                <section className="meal-plan" aria-label="Proposed meal plan">
+                  <h2>{message.meal_plan.title}</h2>
+                  <p>{message.meal_plan.portions} portions</p>
+                  <ul>
+                    {message.meal_plan.ingredients.map((ingredient, i) => (
+                      <li key={i}>
+                        <span>{ingredient.name}</span>
+                        <strong>
+                          {ingredient.amount} {ingredient.unit}
+                        </strong>
+                      </li>
+                    ))}
+                  </ul>
+                  {(message.meal_plan.notes ?? []).map((note, i) => (
+                    <p className="muted small" key={i}>
+                      {note}
+                    </p>
+                  ))}
+                  <p className="muted small">
+                    Recipe quantities are a proposal. Verified quantities and
+                    purchasing checks appear in the basket.
+                  </p>
+                </section>
+              )}
+              {message.proposal_id && (
+                <Link
+                  className="basket-link"
+                  to={`/purchases/${message.proposal_id}`}
+                >
+                  Review basket and purchasing checks
+                </Link>
+              )}
+            </article>
+          ))}
+          {busy && (
+            <p className="agent-working" role="status">
+              Aimo is checking your request… You can return to this
+              conversation.
+            </p>
+          )}
+          <div ref={transcript} />
+        </div>
+        {Boolean(conversation?.purchases.length) && (
+          <section
+            className="conversation-baskets"
+            aria-label="Conversation baskets"
+          >
+            <h2>Baskets in this conversation</h2>
+            {conversation?.purchases.map((purchase) => (
+              <Link
+                key={purchase.proposal_id}
+                to={`/purchases/${purchase.proposal_id}`}
+              >
+                <span>{purchase.request.request_id}</span>
+                <Badge value={status(purchase)} />
+                <strong>{currency(purchase.snapshot.gross_total)}</strong>
+              </Link>
+            ))}
+          </section>
+        )}
+        <form className="chat-composer" onSubmit={send}>
+          <label htmlFor="purchase-message">
+            {conversationId
+              ? "Continue the conversation"
+              : "Your meal or purchasing request"}
+          </label>
+          <textarea
+            id="purchase-message"
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            rows={3}
+            maxLength={4000}
+            placeholder="A meal, the number of portions, dietary needs…"
+            disabled={Boolean(busy)}
+            required
+          />
+          <div className="composer-footer">
+            <p className="muted small">
+              Messages never authorize a purchase. You confirm the exact basket
+              separately.
+            </p>
+            <button
+              className="primary"
+              disabled={Boolean(busy) || !text.trim()}
+            >
+              {busy
+                ? "Working…"
+                : error && text
+                  ? "Retry request"
+                  : "Send request"}
+            </button>
+          </div>
+        </form>
+        {reconnecting && (
+          <p className="muted small" role="status">
+            Reconnecting to updates. Your conversation is saved; refresh to
+            check the latest state.
+          </p>
+        )}
+        <p className="chat-demo-note">
+          Demo ordering only. No real supplier orders or stock reservations.
+        </p>
+      </section>
+    </main>
+  );
+}
+
+function PurchasesPage() {
   const { setSession } = useContext(Auth);
   const [data, setData] = useState<Inbox | null>(null);
   const [offset, setOffset] = useState(0);
@@ -199,7 +609,7 @@ function InboxPage() {
   const load = useCallback(async () => {
     setBusy(true);
     try {
-      setData(await api<Inbox>(`/api/approvals?offset=${offset}&limit=20`));
+      setData(await api<Inbox>(`/api/purchases?offset=${offset}&limit=20`));
       setError("");
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) setSession(null);
@@ -216,32 +626,32 @@ function InboxPage() {
     <main className="workspace">
       <div className="page-heading">
         <div>
-          <h1>Purchase approvals</h1>
-          <p>Purchases waiting for a buyer decision.</p>
+          <h1>Your purchases</h1>
+          <p>Review pending baskets and return to your purchase history.</p>
         </div>
         <button onClick={load} disabled={busy}>
-          {busy ? "Refreshing…" : "Refresh inbox"}
+          {busy ? "Refreshing…" : "Refresh purchases"}
         </button>
       </div>
       <div className="inbox-caption">
-        <span>Pending requests</span>
+        <span>All purchases</span>
         <span>Refreshes every 30 seconds while visible</span>
       </div>
       <ErrorMessage message={error} />
       {!data && !error ? (
         <p role="status" className="loading">
-          Loading your inbox…
+          Loading your purchases…
         </p>
       ) : data?.items.length === 0 ? (
         <section className="empty">
           <div className="empty-mark" aria-hidden="true">
             ✓
           </div>
-          <h2>No pending decisions</h2>
+          <h2>No purchases yet</h2>
           <p>
-            Requests appear here when your agent needs an approval.
+            Start a conversation to prepare your first basket.
             <br />
-            You can return to this page at any time.
+            Your decisions and demo receipts will appear here.
           </p>
         </section>
       ) : (
@@ -250,7 +660,7 @@ function InboxPage() {
             <Link
               className="purchase-row"
               key={p.proposal_id}
-              to={`/approvals/${p.approval_id}`}
+              to={`/purchases/${p.proposal_id}`}
             >
               <div className="row-main">
                 <Badge value={status(p)} />
@@ -285,8 +695,7 @@ function InboxPage() {
         </button>
       </div>
       <p className="muted small">
-        This inbox does not send email or push notifications. All times shown in
-        Helsinki time.
+        Purchases are saved to your account. All times shown in Helsinki time.
       </p>
     </main>
   );
@@ -315,6 +724,8 @@ function DetailPage() {
     }
   }, [approvalId, proposalId, setSession]);
   useEffect(() => {
+    setProposal(null);
+    setMessage("");
     void load();
   }, [load]);
   const terminal = p
@@ -327,26 +738,20 @@ function DetailPage() {
       ].includes(status(p))
     : false;
   useRefresh(load, !terminal);
-  async function decide(decision: "approve" | "reject") {
-    if (!p || !session) return;
+  async function reject() {
+    if (!p || !session || !p.approval_id) return;
     setBusy(true);
     setError("");
     setMessage("");
     try {
-      const result = await api<Proposal>(
-        `/api/approvals/${p.approval_id}/decision`,
-        {
+      setProposal(
+        await api<Proposal>(`/api/approvals/${p.approval_id}/decision`, {
           method: "POST",
           headers: { "X-CSRF-Token": session.csrf_token },
-          body: JSON.stringify({ decision, revision: p.revision }),
-        },
+          body: JSON.stringify({ decision: "reject", revision: p.revision }),
+        }),
       );
-      setProposal(result);
-      setMessage(
-        decision === "approve"
-          ? "Approval recorded. Your agent can now recheck terms and commit the purchase."
-          : "Rejection recorded. This purchase cannot be committed.",
-      );
+      setMessage("Rejection recorded. This purchase cannot be committed.");
     } catch (e) {
       const msg = (e as Error).message;
       await load();
@@ -355,10 +760,52 @@ function DetailPage() {
       setBusy(false);
     }
   }
+  async function confirm() {
+    if (!p || !session) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await api<Commit>(
+        `/api/purchases/${p.proposal_id}/confirm`,
+        {
+          method: "POST",
+          headers: { "X-CSRF-Token": session.csrf_token },
+          body: JSON.stringify({
+            proposal_id: p.proposal_id,
+            revision: p.revision,
+            idempotency_key: `customer-confirm-${p.proposal_id}-${p.revision}`,
+          }),
+        },
+      );
+      await load();
+      if (result.status === "revised") {
+        setMessage(
+          "Terms changed during verification. Review the new revision and confirm again.",
+        );
+      } else {
+        setMessage("Confirmation saved. Your demo receipt is below.");
+      }
+    } catch (e) {
+      const msg = (e as Error).message;
+      await load();
+      setError(msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const canConfirm =
+    p &&
+    p.revision === p.current_revision &&
+    !terminal &&
+    !["denied", "needs_resolution"].includes(p.policy_outcome) &&
+    (p.policy_outcome === "ready_to_commit" ||
+      p.can_decide ||
+      p.approval_status === "approved");
   return (
     <main className="workspace">
-      <Link className="back" to="/approvals">
-        Back to inbox
+      <Link className="back" to="/purchases">
+        Back to purchases
       </Link>
       <ErrorMessage message={error} />
       {!p ? (
@@ -515,11 +962,11 @@ function DetailPage() {
               </details>
             </article>
             <aside className="decision-panel">
-              <h2>Buyer decision</h2>
+              <h2>Review your basket</h2>
               <p className="decision-total">
                 {currency(p.snapshot.gross_total)}
               </p>
-              <h3>Why your decision is needed</h3>
+              <h3>Purchasing checks</h3>
               <ul className="reasons">
                 {p.reasons.map((r, i) => (
                   <li key={i}>
@@ -538,26 +985,30 @@ function DetailPage() {
                   {message}
                 </p>
               )}
-              {p.can_decide && status(p) === "pending" ? (
+              {canConfirm ? (
                 <>
                   <p className="action-note">
-                    Approval applies to this revision only. It does not place an
-                    order, reserve stock or raise your standing limit.
+                    Your confirmation applies to revision {p.revision} only. We
+                    recheck prices, availability and your authority before
+                    recording a mock order. No supplier order or stock
+                    reservation is made.
                   </p>
                   <button
                     className="primary full"
                     disabled={busy}
-                    onClick={() => decide("approve")}
+                    onClick={confirm}
                   >
-                    {busy ? "Recording decision…" : "Approve this purchase"}
+                    {busy ? "Verifying purchase…" : "Confirm this purchase"}
                   </button>
-                  <button
-                    className="danger full"
-                    disabled={busy}
-                    onClick={() => decide("reject")}
-                  >
-                    Reject purchase
-                  </button>
+                  {p.can_decide && status(p) === "pending" && (
+                    <button
+                      className="danger full"
+                      disabled={busy}
+                      onClick={reject}
+                    >
+                      Reject purchase
+                    </button>
+                  )}
                 </>
               ) : (
                 <div className="status-note">
@@ -576,7 +1027,7 @@ function DetailPage() {
                     {p.order_id
                       ? "Accepted by demo order service. No real supplier order was placed."
                       : status(p) === "approved"
-                        ? "Waiting for the agent to resume and commit. Terms and authority will be checked again."
+                        ? "A buyer decision is saved. Confirm this exact purchase to continue."
                         : status(p) === "pending"
                           ? "Your account does not have authority for this amount or exception."
                           : "This revision is closed for decisions."}
@@ -633,21 +1084,20 @@ function App() {
   if (loading)
     return (
       <main className="loading" role="status">
-        Opening buyer inbox…
+        Opening your purchasing workspace…
       </main>
     );
   return (
     <Auth.Provider value={{ session, setSession }}>
       <BrowserRouter>
         <header className="topbar">
-          <Link
-            to="/approvals"
-            className="brand"
-            aria-label="Aimo purchase approvals"
-          >
+          <Link to="/" className="brand" aria-label="Aimo purchasing home">
             aimo<span className="brand-dot">.</span>
           </Link>
-          <span className="topbar-title">Buyer approvals</span>
+          <nav className="product-nav" aria-label="Main navigation">
+            <Link to="/">Plan a purchase</Link>
+            <Link to="/purchases">Purchases</Link>
+          </nav>
           {session && (
             <div className="account">
               <span>{session.buyer_id}</span>
@@ -660,11 +1110,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route
             path="/approvals"
-            element={
-              <Guard>
-                <InboxPage />
-              </Guard>
-            }
+            element={<Navigate to="/purchases" replace />}
           />
           <Route
             path="/purchases/:proposalId"
@@ -682,13 +1128,36 @@ function App() {
               </Guard>
             }
           />
-          <Route path="/" element={<Navigate to="/approvals" replace />} />
+          <Route
+            path="/"
+            element={
+              <Guard>
+                <ChatPage />
+              </Guard>
+            }
+          />
+          <Route
+            path="/conversations/:conversationId"
+            element={
+              <Guard>
+                <ChatPage />
+              </Guard>
+            }
+          />
+          <Route
+            path="/purchases"
+            element={
+              <Guard>
+                <PurchasesPage />
+              </Guard>
+            }
+          />
           <Route
             path="*"
             element={
               <main className="workspace">
                 <h1>Page not found</h1>
-                <Link to="/approvals">Open purchase approvals</Link>
+                <Link to="/">Plan a purchase</Link>
               </main>
             }
           />

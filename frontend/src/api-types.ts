@@ -1000,6 +1000,132 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** ChatMessage */
+        ChatMessage: {
+            /** Id */
+            id: number;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
+            /** Text */
+            text: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** @default null */
+            meal_plan: components["schemas"]["MealPlan"] | null;
+            /**
+             * Proposal Id
+             * @default null
+             */
+            proposal_id: string | null;
+        };
+        /** Ingredient */
+        Ingredient: {
+            /** Name */
+            name: string;
+            /** Amount */
+            amount: string;
+            /** Unit */
+            unit: string;
+            /**
+             * Product Id
+             * @default null
+             */
+            product_id: string | null;
+        };
+        /** LineRequest */
+        LineRequest: {
+            /** Product Id */
+            product_id: string;
+            /** Amount */
+            amount: string;
+            /**
+             * Unit
+             * @description Explicit catalog unit code, L or KG; boxes is ambiguous.
+             */
+            unit: string;
+            /**
+             * Substitutes For
+             * @default null
+             */
+            substitutes_for: string | null;
+        };
+        /** MealPlan */
+        MealPlan: {
+            /** Title */
+            title: string;
+            /** Portions */
+            portions: number;
+            /** Ingredients */
+            ingredients: components["schemas"]["Ingredient"][];
+            /** Notes */
+            notes?: string[];
+        };
+        /** ConversationResponse */
+        ConversationResponse: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Messages */
+            messages: components["schemas"]["ChatMessage"][];
+            /** Purchases */
+            purchases: components["schemas"]["ProposalResponse"][];
+            /**
+             * Busy
+             * @default false
+             */
+            busy: boolean;
+            /** @default null */
+            retry_message: components["schemas"]["MessageRequest"] | null;
+        };
+        /** ConversationSummary */
+        ConversationSummary: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ConversationList */
+        ConversationList: {
+            /** Items */
+            items: components["schemas"]["ConversationSummary"][];
+            /**
+             * Next Offset
+             * @default null
+             */
+            next_offset: number | null;
+        };
+        /** MessageRequest */
+        MessageRequest: {
+            text: string;
+            idempotency_key: string;
+        };
     };
     responses: never;
     parameters: never;

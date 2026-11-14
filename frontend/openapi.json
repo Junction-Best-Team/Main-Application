@@ -2710,6 +2710,332 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "ChatMessage": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "meal_plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MealPlan"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "proposal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Proposal Id"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "text",
+          "created_at"
+        ],
+        "title": "ChatMessage",
+        "type": "object"
+      },
+      "Ingredient": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "amount": {
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Amount",
+            "type": "string"
+          },
+          "unit": {
+            "maxLength": 12,
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          },
+          "product_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Product Id"
+          }
+        },
+        "required": [
+          "name",
+          "amount",
+          "unit"
+        ],
+        "title": "Ingredient",
+        "type": "object"
+      },
+      "LineRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "product_id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Product Id",
+            "type": "string"
+          },
+          "amount": {
+            "title": "Amount",
+            "type": "string"
+          },
+          "unit": {
+            "description": "Explicit catalog unit code, L or KG; boxes is ambiguous.",
+            "maxLength": 12,
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          },
+          "substitutes_for": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Substitutes For"
+          }
+        },
+        "required": [
+          "product_id",
+          "amount",
+          "unit"
+        ],
+        "title": "LineRequest",
+        "type": "object"
+      },
+      "MealPlan": {
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "portions": {
+            "maximum": 10000,
+            "minimum": 1,
+            "title": "Portions",
+            "type": "integer"
+          },
+          "ingredients": {
+            "items": {
+              "$ref": "#/components/schemas/Ingredient"
+            },
+            "maxItems": 30,
+            "minItems": 1,
+            "title": "Ingredients",
+            "type": "array"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Notes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "title",
+          "portions",
+          "ingredients"
+        ],
+        "title": "MealPlan",
+        "type": "object"
+      },
+      "ConversationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ChatMessage"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "purchases": {
+            "items": {
+              "$ref": "#/components/schemas/ProposalResponse"
+            },
+            "title": "Purchases",
+            "type": "array"
+          },
+          "busy": {
+            "default": false,
+            "title": "Busy",
+            "type": "boolean"
+          },
+          "retry_message": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MessageRequest"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "created_at",
+          "updated_at",
+          "messages",
+          "purchases"
+        ],
+        "title": "ConversationResponse",
+        "type": "object"
+      },
+      "ConversationSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ConversationSummary",
+        "type": "object"
+      },
+      "ConversationList": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Next Offset"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ConversationList",
+        "type": "object"
+      },
+      "MessageRequest": {
+        "title": "MessageRequest",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "text",
+          "idempotency_key"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 120
+          }
+        }
       }
     }
   }
