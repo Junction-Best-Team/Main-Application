@@ -5,7 +5,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 from aimo import approval_workflow as workflow
-from aimo import auth, cancellations
+from aimo import auth, cancellations, scheduler
 from aimo.approval_policy import can_approve
 from aimo.chat_schemas import AgentTurn
 from aimo.db import Problem, connection, fingerprint, js, now
@@ -220,6 +220,7 @@ def claim_turn(cid=None):
         ).fetchone()
         if turn["worker_attempts"] >= 3:
             c.execute("UPDATE conversation_turns SET state='failed' WHERE id=%s", (turn["id"],))
+            scheduler.settle_failed_system_turn(c, turn["id"], turn["conversation_id"])
             event(
                 "worker.attempt_limit",
                 turn_id=str(turn["id"]),
@@ -275,7 +276,7 @@ def execute_turn(turn, service, runner=None):
         else:
             actor["_memory_unavailable"] = True
         data = detail(identity, cid)
-        history = [{"role": m["role"], "content": m["text"]} for m in data["messages"]]
+        history = [scheduler.provider_message(m["role"], m["text"]) for m in data["messages"]]
         # Structured persisted plans and status survive refresh, restarts and a provider context reset.
         for index, msg in enumerate(data["messages"]):
             if msg["meal_plan"]:
@@ -340,10 +341,12 @@ def execute_turn(turn, service, runner=None):
             c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
     except Exception:
         with connection() as c:
-            c.execute(
+            failed = c.execute(
                 "UPDATE conversation_turns SET state='failed' WHERE id=%s AND attempt=%s AND state='running'",
                 (tid, attempt),
-            )
+            ).rowcount
+            if failed:
+                scheduler.settle_failed_system_turn(c, tid, cid)
         raise
     return detail(identity, cid)
 

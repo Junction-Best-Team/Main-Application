@@ -33,6 +33,10 @@ CLEANUP_DESIGN = {
     "conversation_messages": "set proposal_id NULL (the chat text stays)",
     "meal_authorization_withdrawals": "delete (exists once migration 010 is applied)",
     "orders": "never touched: an ordered proposal is not unfinished",
+    "scheduled_runs": "a proposal that a scheduled run points to is never purged (WS-E: the run "
+    "keeps it as the evidence of what was prepared)",
+    "order_request_cancellations": "a cancelled request is never purged (WS-E: immutable; the "
+    "orders list shows it as cancelled)",
 }
 
 
