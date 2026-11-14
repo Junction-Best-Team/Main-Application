@@ -1,8 +1,29 @@
 # Implementation validation — 14 November 2026
 
-Implemented on `codex/valio-aimo-mvp` in an isolated worktree, based on main `76296c1`. The original checkout remained clean on `codex/valio-aimo-plan`. PR #2 was closed **without merging**; this implementation targets main and includes the agreed brief while preserving PR #3's reference work.
+Implemented on `codex/valio-aimo-mvp` in an isolated worktree, originally based on main `76296c1`. The original checkout remained clean on `codex/valio-aimo-plan` during implementation. PR #2 was closed **without merging**; this implementation includes the agreed brief while preserving PR #3's reference work. PR #4 now targets the shared integration branch, `develop`.
 
-## Executed checks
+## PR #4 review fixes — 14 November 2026
+
+Fixed the four findings against `6acfe89`, starting from the current PR head `cd16b09`:
+
+- A changed effective authorization decision creates a new immutable revision in the locked commit transaction, even when prices and buyer policy version are unchanged. The €17 purchase/€10 agent-limit regression creates one pending buyer approval; without an eligible approver it becomes `needs_resolution`. Reads flag stale authority instead of recommending commitment.
+- A historical approval stays superseded and carries no accepted order ID/status belonging to another revision. Its authenticated current-purchase link works both when the new revision needs approval and when it can commit autonomously. Direct links also survive sign-in.
+- `/docs` has a fresh script nonce and documentation-specific CSP. Swagger assets still come from jsDelivr; the buyer UI keeps its original restrictive policy.
+- All eight HTTP/MCP operations share typed output contracts. Commit preserves the flat receipt/revised-proposal alternatives, distinguished by `status`. OpenAPI and browser types were regenerated.
+
+Checks executed on these fixes:
+
+| Check | Actual result |
+| --- | --- |
+| Backend regression suite | **53 passed** against PostgreSQL/pgvector in isolated `aimo_review_test`, including all eight operations over HTTP and MCP, both commit responses, authority changes, historical/current terms, cross-buyer access and nonce/CSP scope. |
+| Production frontend build; Ruff; `git diff --check` | Passed. |
+| Chromium/Playwright | **6 passed** against the local server and compiled frontend, using the separate `aimo_review_browser` database. New tests cover the actual persisted €1,700 → €1,870 revision flow, links after login/relogin, and rendered Swagger operations with zero CSP violations. The four original browser flows also passed. Repeated development runs hit the intended login limit; only the isolated test database's counters were reset before the final run. |
+| Official MCP SDK | All eight tools invoked over authenticated stateless HTTP; mock commitment and identical receipt on retry passed. |
+| New product response model | Validated all **17,546 existing normalized catalog products**, with zero validation errors. No reingestion, new embeddings or catalog export. |
+
+These fixes do not add services, migrations or dependencies. The Docker image was not rebuilt for this review pass. Live supplier integration and Kubernetes deployment remain unverified; the earlier initial-image checks below are historical results, not a claim of a fresh deployment.
+
+## Initial MVP checks
 
 | Check | Actual result |
 | --- | --- |

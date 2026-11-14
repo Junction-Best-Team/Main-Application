@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
+import { execFileSync } from "node:child_process";
 const env = Object.fromEntries(
   fs
     .readFileSync("../.env", "utf8")
@@ -11,6 +12,85 @@ const env = Object.fromEntries(
     }),
 );
 const authorization = `Bearer ${env.DEMO_AGENT_TOKEN}`;
+
+test("historical approval stays superseded and links to committed terms", async ({
+  page,
+}) => {
+  const fixture = JSON.parse(
+    execFileSync("uv", ["run", "python", "tests/browser_revision_fixture.py"], {
+      cwd: "..",
+      encoding: "utf8",
+    }),
+  );
+  await page.goto(`/approvals/${fixture.approval_id}`);
+  await page.getByLabel("Username").fill("buyer");
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill(env.DEMO_BUYER_PASSWORD);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.locator(".decision-total")).toContainText("1,700.00");
+  await expect(page.locator(".status-note")).toContainText("Superseded");
+  await expect(
+    page.getByText(
+      "Accepted by demo order service. No real supplier order was placed.",
+    ),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Approve this purchase", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("link", { name: "View current revision 2" }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/purchases/${fixture.proposal_id}$`),
+  );
+  await expect(page.locator(".decision-total")).toContainText("1,870.00");
+  await expect(
+    page.getByText(
+      "Accepted by demo order service. No real supplier order was placed.",
+    ),
+  ).toBeVisible();
+  await page.reload();
+  await expect(page.locator(".decision-total")).toContainText("1,870.00");
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByLabel("Username").fill("buyer");
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill(env.DEMO_BUYER_PASSWORD);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/purchases/${fixture.proposal_id}$`),
+  );
+  await expect(page.locator(".decision-total")).toContainText("1,870.00");
+});
+
+test("Swagger loads its operations without CSP violations", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.addInitScript(() => {
+    (window as unknown as { cspViolations: string[] }).cspViolations = [];
+    document.addEventListener("securitypolicyviolation", (event) => {
+      (window as unknown as { cspViolations: string[] }).cspViolations.push(
+        `${event.violatedDirective}: ${event.blockedURI}`,
+      );
+    });
+  });
+  await page.goto("/docs");
+  await expect(page.locator(".swagger-ui .info .title")).toContainText(
+    "Valio Aimo purchasing gateway",
+  );
+  await expect(
+    page
+      .locator(".opblock-summary-path")
+      .filter({ hasText: "/api/agent/commit_order" }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { cspViolations: string[] }).cspViolations,
+    ),
+  ).toEqual([]);
+  expect(errors).toEqual([]);
+});
 
 test("independent buyer inbox, exact-revision approval, agent resume and retry", async ({
   page,

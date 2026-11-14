@@ -123,6 +123,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/purchases/{proposal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Current Purchase */
+        get: operations["current_purchase_api_purchases__proposal_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/approvals/{approval_id}/decision": {
         parameters: {
             query?: never;
@@ -280,6 +297,47 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** CommercialEvidence */
+        CommercialEvidence: {
+            /** Product Id */
+            product_id: string;
+            /** Currency */
+            currency: string | null;
+            /** Net */
+            net: string | null;
+            /** Gross */
+            gross: string | null;
+            /** Tax Rate */
+            tax_rate: string | null;
+            /** Available Sales Quantity */
+            available_sales_quantity: string | null;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Reasons */
+            reasons: components["schemas"]["Reason"][];
+            /** Mode */
+            mode: string;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            source: components["schemas"]["CommercialSource"];
+        };
+        /** CommercialSource */
+        CommercialSource: {
+            /** Price */
+            price: {
+                [key: string]: components["schemas"]["JsonValue"];
+            } | null;
+            /** Availability */
+            availability: {
+                [key: string]: components["schemas"]["JsonValue"];
+            } | null;
+        };
         /** CommitRequest */
         CommitRequest: {
             /**
@@ -292,6 +350,8 @@ export interface components {
             /** Idempotency Key */
             idempotency_key: string;
         };
+        /** CommitResponse */
+        CommitResponse: components["schemas"]["OrderResponse"] | components["schemas"]["RevisedProposalResponse"];
         /** DecisionRequest */
         DecisionRequest: {
             /** Revision */
@@ -314,6 +374,7 @@ export interface components {
             /** Next Offset */
             next_offset?: number | null;
         };
+        JsonValue: unknown;
         /** LineRequest */
         "LineRequest-Input": {
             /** Product Id */
@@ -359,17 +420,208 @@ export interface components {
              */
             delivery_date: string;
         };
+        /** LookupResponse */
+        LookupResponse: {
+            /** Mode */
+            mode: string;
+            /** Products */
+            products: {
+                [key: string]: components["schemas"]["CommercialEvidence"];
+            };
+        };
+        /** Measure */
+        Measure: {
+            /** Value */
+            value: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "known" | "unknown" | "conflicting";
+            /** Basis */
+            basis: string[];
+            /** Name Hint */
+            name_hint?: string | null;
+        };
         /** NextAction */
         NextAction: {
             /**
              * Type
              * @enum {string}
              */
-            type: "commit" | "wait" | "revise_request" | "request_fresh_proposal" | "stop" | "complete";
+            type: "commit" | "wait" | "revise_request" | "request_fresh_proposal" | "stop" | "complete" | "view_current_proposal";
             /** Tool */
             tool?: string | null;
             /** Poll After Seconds */
             poll_after_seconds?: number | null;
+        };
+        /** OrderResponse */
+        OrderResponse: {
+            /** Order Id */
+            order_id: string;
+            /** Proposal Id */
+            proposal_id: string;
+            /** Revision */
+            revision: number;
+            /** Policy Version */
+            policy_version: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            status: "accepted_mock";
+            /**
+             * Policy Outcome
+             * @enum {string}
+             */
+            policy_outcome: "ready_to_commit" | "approval_required";
+            /**
+             * Approval Status
+             * @enum {string}
+             */
+            approval_status: "not_required" | "approved";
+            /**
+             * Order Status
+             * @constant
+             */
+            order_status: "accepted_mock";
+            /** Reasons */
+            reasons: components["schemas"]["Reason"][];
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            next_action: components["schemas"]["NextAction"];
+            /** Label */
+            label: string;
+            /**
+             * Upstream Order Placed
+             * @constant
+             */
+            upstream_order_placed: false;
+            /**
+             * Inventory Reserved
+             * @constant
+             */
+            inventory_reserved: false;
+            /** Buyer Id */
+            buyer_id: string;
+            /** Gross Total */
+            gross_total: string;
+            /** Currency */
+            currency: string;
+            /** Evidence Mode */
+            evidence_mode: string;
+            /**
+             * Accepted At
+             * Format: date-time
+             */
+            accepted_at: string;
+            /** Explanation */
+            explanation: string;
+        };
+        /** PolicyResponse */
+        PolicyResponse: {
+            /** Buyer Id */
+            buyer_id: string;
+            /** Agent Id */
+            agent_id: string;
+            /** Policy Version */
+            policy_version: number;
+            rules: components["schemas"]["PolicyRules"];
+            /** Spend Basis */
+            spend_basis: string;
+            /**
+             * Editable
+             * @constant
+             */
+            editable: false;
+        };
+        /** PolicyRules */
+        PolicyRules: {
+            /**
+             * Currency
+             * @constant
+             */
+            currency: "EUR";
+            /** Autonomous Limit */
+            autonomous_limit: string;
+            /** Destinations */
+            destinations: string[];
+            /**
+             * Substitution
+             * @enum {string}
+             */
+            substitution: "allowed" | "requires_approval" | "forbidden";
+            /**
+             * Overbuy
+             * @enum {string}
+             */
+            overbuy: "allowed" | "requires_approval" | "forbidden";
+            /** Whole Sales Units */
+            whole_sales_units: boolean;
+        };
+        /** ProductResponse */
+        ProductResponse: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Names */
+            names: {
+                [key: string]: string;
+            };
+            /** Sales Unit */
+            sales_unit: string | null;
+            /** Base Unit */
+            base_unit: string | null;
+            /** Units */
+            units: {
+                [key: string]: string;
+            };
+            /** Order Step */
+            order_step: string;
+            /** Measures */
+            measures: {
+                [key: string]: components["schemas"]["Measure"];
+            };
+            /** Claims */
+            claims: string[];
+            /** Allergens */
+            allergens: {
+                [key: string]: "CONTAINS" | "MAY_CONTAIN";
+            };
+            /** Free From */
+            free_from: string[];
+            provenance: components["schemas"]["Provenance"];
+            /** Gtin */
+            gtin: string | null;
+            /** Variable Weight */
+            variable_weight: boolean;
+            /** Allergen Conflicts */
+            allergen_conflicts: string[];
+            /** Conflicts */
+            conflicts: string[];
+            /**
+             * Deposits
+             * @description Original supplier deposit declarations.
+             */
+            deposits: components["schemas"]["JsonValue"][];
+            /**
+             * Substitutions
+             * @description Original supplier substitution declarations.
+             */
+            substitutions: components["schemas"]["JsonValue"][];
+            category: components["schemas"]["JsonValue"];
+            country_of_origin: components["schemas"]["JsonValue"];
+            /** Deleted */
+            deleted: boolean;
+            /**
+             * Packaging
+             * @description Original supplier packaging evidence.
+             */
+            packaging: components["schemas"]["JsonValue"][];
         };
         /** ProposalResponse */
         ProposalResponse: {
@@ -377,6 +629,12 @@ export interface components {
             proposal_id: string;
             /** Revision */
             revision: number;
+            /** Current Revision */
+            current_revision: number;
+            /** Committed Revision */
+            committed_revision: number | null;
+            /** Current Proposal Url */
+            current_proposal_url: string;
             /** Policy Version */
             policy_version: number;
             /**
@@ -417,6 +675,13 @@ export interface components {
              * @default false
              */
             can_decide: boolean;
+        };
+        /** Provenance */
+        Provenance: {
+            /** Source */
+            source: string;
+            /** Product Id */
+            product_id: string;
         };
         /** PurchaseRequest */
         "PurchaseRequest-Input": {
@@ -547,6 +812,105 @@ export interface components {
              */
             milk_free: boolean;
         };
+        /** RevisedProposalResponse */
+        RevisedProposalResponse: {
+            /** Proposal Id */
+            proposal_id: string;
+            /** Revision */
+            revision: number;
+            /** Current Revision */
+            current_revision: number;
+            /** Committed Revision */
+            committed_revision: number | null;
+            /** Current Proposal Url */
+            current_proposal_url: string;
+            /** Policy Version */
+            policy_version: number;
+            /**
+             * Policy Outcome
+             * @enum {string}
+             */
+            policy_outcome: "ready_to_commit" | "approval_required" | "denied" | "needs_resolution";
+            /** Approval Status */
+            approval_status: string;
+            /** Order Status */
+            order_status: string;
+            /** Reasons */
+            reasons: components["schemas"]["Reason"][];
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            next_action: components["schemas"]["NextAction"];
+            /** Approval Id */
+            approval_id?: string | null;
+            /** Approval Url */
+            approval_url?: string | null;
+            /** Order Id */
+            order_id?: string | null;
+            /** Buyer Id */
+            buyer_id: string;
+            /** Agent Id */
+            agent_id: string;
+            request: components["schemas"]["PurchaseRequest-Output"];
+            snapshot: components["schemas"]["PurchaseSnapshot"];
+            /** History */
+            history?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Can Decide
+             * @default false
+             */
+            can_decide: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            status: "revised";
+        };
+        /** SearchCandidate */
+        SearchCandidate: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Names */
+            names: {
+                [key: string]: string;
+            };
+            /** Sales Unit */
+            sales_unit: string | null;
+            /** Base Unit */
+            base_unit: string | null;
+            /** Units */
+            units: {
+                [key: string]: string;
+            };
+            /** Order Step */
+            order_step: string;
+            /** Measures */
+            measures: {
+                [key: string]: components["schemas"]["Measure"];
+            };
+            /** Claims */
+            claims: string[];
+            /** Allergens */
+            allergens: {
+                [key: string]: "CONTAINS" | "MAY_CONTAIN";
+            };
+            /** Free From */
+            free_from: string[];
+            provenance: components["schemas"]["Provenance"];
+            /** Score */
+            score: number;
+            /**
+             * Match Is Suitability Proof
+             * @constant
+             */
+            match_is_suitability_proof: false;
+        };
         /** SearchRequest */
         SearchRequest: {
             /** Query */
@@ -557,6 +921,22 @@ export interface components {
              * @default 5
              */
             limit: number;
+        };
+        /** SearchResponse */
+        SearchResponse: {
+            /** Products */
+            products: components["schemas"]["SearchCandidate"][];
+            /** Generation */
+            generation: string;
+            /** Model */
+            model: string;
+            /**
+             * Strategy
+             * @enum {string}
+             */
+            strategy: "keyword" | "semantic" | "hybrid";
+            /** Note */
+            note: string;
         };
         /** SessionResponse */
         SessionResponse: {
@@ -793,6 +1173,37 @@ export interface operations {
             };
         };
     };
+    current_purchase_api_purchases__proposal_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     decision_api_approvals__approval_id__decision_post: {
         parameters: {
             query?: never;
@@ -849,7 +1260,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SearchResponse"];
                 };
             };
             /** @description Validation Error */
@@ -882,7 +1293,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ProductResponse"];
                 };
             };
             /** @description Validation Error */
@@ -913,7 +1324,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["PolicyResponse"];
                 };
             };
             /** @description Validation Error */
@@ -948,7 +1359,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["LookupResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1051,7 +1462,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CommitResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1084,7 +1495,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["OrderResponse"];
                 };
             };
             /** @description Validation Error */

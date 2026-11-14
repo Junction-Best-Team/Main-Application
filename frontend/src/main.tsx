@@ -13,7 +13,6 @@ import {
   Route,
   Routes,
   useLocation,
-  useNavigate,
   useParams,
 } from "react-router-dom";
 import type { components } from "./api-types";
@@ -68,7 +67,8 @@ const dateTime = (value: string) =>
 const title = (status: string) =>
   status.replaceAll("_", " ").replace(/^./, (s) => s.toUpperCase());
 function status(p: Proposal) {
-  if (p.order_id) return "accepted_mock";
+  if (p.approval_status === "superseded") return "superseded";
+  if (p.order_status === "accepted_mock") return "accepted_mock";
   if (new Date(p.expires_at) <= new Date()) return "expired";
   return p.approval_status === "not_required"
     ? p.policy_outcome
@@ -87,11 +87,15 @@ function ErrorMessage({ message }: { message: string }) {
 
 function Login() {
   const { session, setSession } = useContext(Auth);
-  const navigate = useNavigate();
   const location = useLocation();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  if (session) return <Navigate to="/approvals" replace />;
+  const next = (location.state as { from?: string } | null)?.from;
+  const destination =
+    typeof next === "string" && /^\/(approvals|purchases)(\/|$)/.test(next)
+      ? next
+      : "/approvals";
+  if (session) return <Navigate to={destination} replace />;
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -106,10 +110,6 @@ function Login() {
         }),
       });
       setSession(s);
-      const next = (location.state as { from?: string } | null)?.from;
-      navigate(next?.startsWith("/approvals") ? next : "/approvals", {
-        replace: true,
-      });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -293,7 +293,7 @@ function InboxPage() {
 }
 
 function DetailPage() {
-  const { approvalId } = useParams();
+  const { approvalId, proposalId } = useParams();
   const { session, setSession } = useContext(Auth);
   const [p, setProposal] = useState<Proposal | null>(null);
   const [error, setError] = useState("");
@@ -301,13 +301,19 @@ function DetailPage() {
   const [message, setMessage] = useState("");
   const load = useCallback(async () => {
     try {
-      setProposal(await api<Proposal>(`/api/approvals/${approvalId}`));
+      setProposal(
+        await api<Proposal>(
+          proposalId
+            ? `/api/purchases/${proposalId}`
+            : `/api/approvals/${approvalId}`,
+        ),
+      );
       setError("");
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) setSession(null);
       else setError((e as Error).message);
     }
-  }, [approvalId, setSession]);
+  }, [approvalId, proposalId, setSession]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -328,7 +334,7 @@ function DetailPage() {
     setMessage("");
     try {
       const result = await api<Proposal>(
-        `/api/approvals/${approvalId}/decision`,
+        `/api/approvals/${p.approval_id}/decision`,
         {
           method: "POST",
           headers: { "X-CSRF-Token": session.csrf_token },
@@ -556,6 +562,16 @@ function DetailPage() {
               ) : (
                 <div className="status-note">
                   <Badge value={status(p)} />
+                  {status(p) === "superseded" && (
+                    <p>
+                      These terms were superseded.{" "}
+                      <Link to={`/purchases/${p.proposal_id}`}>
+                        View current revision {p.current_revision}
+                      </Link>
+                      {p.committed_revision != null &&
+                        ` (revision ${p.committed_revision} was accepted).`}
+                    </p>
+                  )}
                   <p>
                     {p.order_id
                       ? "Accepted by demo order service. No real supplier order was placed."
@@ -647,6 +663,14 @@ function App() {
             element={
               <Guard>
                 <InboxPage />
+              </Guard>
+            }
+          />
+          <Route
+            path="/purchases/:proposalId"
+            element={
+              <Guard>
+                <DetailPage />
               </Guard>
             }
           />

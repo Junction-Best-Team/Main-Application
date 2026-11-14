@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, RootModel, model_validator
 
 Amount = Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)]
 Money = Annotated[Decimal, Field(ge=0, max_digits=16, decimal_places=4)]
@@ -82,7 +82,15 @@ class Reason(Model):
 
 
 class NextAction(Model):
-    type: Literal["commit", "wait", "revise_request", "request_fresh_proposal", "stop", "complete"]
+    type: Literal[
+        "commit",
+        "wait",
+        "revise_request",
+        "request_fresh_proposal",
+        "stop",
+        "complete",
+        "view_current_proposal",
+    ]
     tool: str | None = None
     poll_after_seconds: int | None = None
 
@@ -131,6 +139,9 @@ class PurchaseSnapshot(Model):
 class ProposalResponse(Model):
     proposal_id: str
     revision: int
+    current_revision: int
+    committed_revision: int | None
+    current_proposal_url: str
     policy_version: int
     policy_outcome: Literal["ready_to_commit", "approval_required", "denied", "needs_resolution"]
     approval_status: str
@@ -178,3 +189,126 @@ class ApproverAuthority(Model):
     currency: Literal["EUR"]
     max_gross: Money
     exceptions: list[Literal["spend", "substitution", "overbuy"]]
+
+
+class Measure(Model):
+    value: str | None
+    status: Literal["known", "unknown", "conflicting"]
+    basis: list[str]
+    name_hint: str | None = None
+
+
+class Provenance(Model):
+    source: str
+    product_id: str
+
+
+class ProductSummary(Model):
+    id: str
+    name: str
+    names: dict[str, str]
+    sales_unit: str | None
+    base_unit: str | None
+    units: dict[str, str]
+    order_step: str
+    measures: dict[str, Measure]
+    claims: list[str]
+    allergens: dict[str, Literal["CONTAINS", "MAY_CONTAIN"]]
+    free_from: list[str]
+    provenance: Provenance
+
+
+class SearchCandidate(ProductSummary):
+    score: float
+    match_is_suitability_proof: Literal[False]
+
+
+class SearchResponse(Model):
+    products: list[SearchCandidate]
+    generation: str
+    model: str
+    strategy: Literal["keyword", "semantic", "hybrid"]
+    note: str
+
+
+class ProductResponse(ProductSummary):
+    gtin: str | None
+    variable_weight: bool
+    allergen_conflicts: list[str]
+    conflicts: list[str]
+    deposits: list[JsonValue] = Field(description="Original supplier deposit declarations.")
+    substitutions: list[JsonValue] = Field(
+        description="Original supplier substitution declarations."
+    )
+    category: JsonValue
+    country_of_origin: JsonValue
+    deleted: bool
+    packaging: list[JsonValue] = Field(description="Original supplier packaging evidence.")
+
+
+class PolicyResponse(Model):
+    buyer_id: str
+    agent_id: str
+    policy_version: int
+    rules: PolicyRules
+    spend_basis: str
+    editable: Literal[False]
+
+
+class CommercialSource(Model):
+    price: dict[str, JsonValue] | None
+    availability: dict[str, JsonValue] | None
+
+
+class CommercialEvidence(Model):
+    product_id: str
+    currency: str | None
+    net: str | None
+    gross: str | None
+    tax_rate: str | None
+    available_sales_quantity: str | None
+    expires_at: datetime
+    reasons: list[Reason]
+    mode: str
+    observed_at: datetime
+    source: CommercialSource
+
+
+class LookupResponse(Model):
+    mode: str
+    products: dict[str, CommercialEvidence]
+
+
+class OrderResponse(Model):
+    order_id: str
+    proposal_id: str
+    revision: int
+    policy_version: int
+    status: Literal["accepted_mock"]
+    policy_outcome: Literal["ready_to_commit", "approval_required"]
+    approval_status: Literal["not_required", "approved"]
+    order_status: Literal["accepted_mock"]
+    reasons: list[Reason]
+    expires_at: datetime
+    next_action: NextAction
+    label: str
+    upstream_order_placed: Literal[False]
+    inventory_reserved: Literal[False]
+    buyer_id: str
+    gross_total: str
+    currency: str
+    evidence_mode: str
+    accepted_at: datetime
+    explanation: str
+
+
+class RevisedProposalResponse(ProposalResponse):
+    status: Literal["revised"]
+
+
+class CommitResponse(
+    RootModel[Annotated[OrderResponse | RevisedProposalResponse, Field(discriminator="status")]]
+):
+    # Both alternatives are objects. Keep the existing flat wire format in HTTP and MCP;
+    # FastMCP otherwise wraps a bare union in an extra {"result": ...} envelope.
+    model_config = ConfigDict(json_schema_extra={"type": "object"})
