@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from aimo import recipe_search
 from aimo.catalog import combine_in_priority_unit, quantity
-from aimo.chat_schemas import MealPlan
+from aimo.chat_schemas import MAX_REJECTED, MealPlan
 from aimo.db import Problem, connection, fingerprint, js
 from aimo.numeric import fraction_text
 from aimo.purchases import context, load_products
@@ -266,6 +266,16 @@ def get_plan(identity, request):
         return read_plan(c, identity, request.plan_id)[1]
 
 
+def record_rejection(item, product_id):
+    """MEA-005: keep a refused product choice with its reason, appended in order. Only the newest
+    MAX_REJECTED are kept (the plan schema's cap), so a long dialogue cannot make the plan unreadable.
+    Every path that refuses a choice (single and batch matching) uses this."""
+    if item["status"] == "unresolved" and item["amount"] and item.get("reason"):
+        rejected = item.setdefault("rejected", [])
+        rejected.append({"product_id": product_id, "reason": item["reason"]})
+        del rejected[:-MAX_REJECTED]
+
+
 def match_ingredient(identity, request):
     with connection() as c:
         _, policy, _, _ = context(c, identity)
@@ -332,11 +342,7 @@ def match_ingredient(identity, request):
                 item["reason"] = (
                     "Structured product data cannot convert the ingredient quantity into sales units."
                 )
-        if item["status"] == "unresolved" and item["amount"] and item.get("reason"):
-            # MEA-005: keep a refused product choice (appended, never removed) with its reason.
-            item.setdefault("rejected", []).append(
-                {"product_id": request.product_id, "reason": item["reason"]}
-            )
+        record_rejection(item, request.product_id)
         plan["recipe_plan_revision"] = row["revision"] + 1
         c.execute(
             "INSERT INTO recipe_plan_revisions VALUES(%s,%s,%s,now())",

@@ -8,7 +8,7 @@ from aimo.catalog import quantity
 from aimo.db import Problem, connection, fingerprint, js
 from aimo.purchases import context, load_products
 from aimo.recipe_schemas import PlanReference
-from aimo.recipes import read_plan
+from aimo.recipes import read_plan, record_rejection
 from aimo.schemas import MAX_BASKET_LINES, Model
 
 MAX_BATCH_MATCHES = MAX_BASKET_LINES  # MEA-013: a plan has at most 100 ingredients.
@@ -54,7 +54,7 @@ def match_ingredients(identity, request):
         for pair in request.matches:
             item = items[pair.ingredient_id]
             _match(c, policy, item, products.get(pair.product_id), pair)
-            _record_rejection(item, pair.product_id)
+            record_rejection(item, pair.product_id)
         plan["recipe_plan_revision"] = row["revision"] + 1
         c.execute(
             "INSERT INTO recipe_plan_revisions VALUES(%s,%s,%s,now())",
@@ -65,12 +65,6 @@ def match_ingredients(identity, request):
             (plan["recipe_plan_revision"], row["id"]),
         )
     return plan
-
-
-def _record_rejection(item, product_id):
-    """MEA-005: keep a refused product choice (appended, never removed) with its reason."""
-    if item["status"] == "unresolved" and item["amount"] and item.get("reason"):
-        item.setdefault("rejected", []).append({"product_id": product_id, "reason": item["reason"]})
 
 
 # Mirrors recipes.match_ingredient; keep in sync or refactor (see MEA-014-requests.md).
