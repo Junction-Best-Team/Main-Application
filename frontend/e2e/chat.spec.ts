@@ -602,7 +602,10 @@ test("a lost message response reuses its idempotency key after refresh", async (
         await route.fulfill({
           status: 503,
           json: {
-            error: { message: "Provider timed out. Retry this request." },
+            error: {
+              code: "PROVIDER_TIMEOUT",
+              message: "Provider timed out. Retry this request.",
+            },
           },
         });
       else
@@ -777,6 +780,7 @@ test("history retains completed purchases and reports an actionable refresh erro
             status: 503,
             json: {
               error: {
+                code: "HISTORY_UNAVAILABLE",
                 message:
                   "History is temporarily unavailable. Refresh to retry.",
               },
