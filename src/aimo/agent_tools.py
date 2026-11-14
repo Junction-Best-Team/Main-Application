@@ -72,15 +72,18 @@ class ToolSpec:
 class ToolSession:
     """Fresh per turn; persistent preparation deduplication belongs to Service."""
 
-    def __init__(self, identity, service):
+    def __init__(self, identity, service, guard=None):
         self.identity = dict(identity)
         self.service = service
+        # Optional semantic review; deterministic checks here and in Service always apply.
+        self.guard = guard
         self.preparation_key = "chat-" + fingerprint({"turn": identity["_turn_id"]})
         self.plan = None
         self.proposal = None
         self.receipt = None
         self.prepared_digest = None
         self.products = {}
+        self.commercial = {}
         self.registry = {
             "search_products": ToolSpec(
                 SearchRequest, "Find candidates, not suitability guarantees.", self.search
@@ -238,9 +241,11 @@ class ToolSession:
         return self.scoped(PolicyResponse, self.service.get_purchase_policy(self.identity))
 
     def lookup(self, request):
-        return self.checked(
+        result = self.checked(
             LookupResponse, self.service.check_price_and_availability(self.identity, request)
         )
+        self.commercial.update(result["products"])
+        return result
 
     def publish(self, plan):
         if plan.recipe_plan_id or (self.plan and self.plan.recipe_plan_id):
@@ -325,6 +330,8 @@ class ToolSession:
         digest = fingerprint(request.model_dump(mode="json"))
         if self.prepared_digest is not None and self.prepared_digest != digest:
             raise Problem("IDEMPOTENCY_CONFLICT", "This turn already prepared different terms.")
+        if self.guard is not None and self.prepared_digest != digest:
+            self.guard.check_prepare(self, request)
         result = self.scoped(
             ProposalResponse,
             self.service.prepare_order(
@@ -352,7 +359,9 @@ class ToolSession:
         self.receipt = result
         return result
 
-    def result(self, narrative=""):
+    def result(self, narrative="", include_plan=True):
+        """Trusted status notices; ``include_plan=False`` withholds the model-authored plan."""
+        plan = self.plan if include_plan else None
         notice = ""
         if self.proposal:
             if self.proposal.get("order_id"):
@@ -368,9 +377,9 @@ class ToolSession:
                 )
         elif self.receipt:
             notice = "Accepted by demo order service. No supplier order or inventory reservation."
-        if self.plan:
+        if plan:
             recipe_notice = "Recipe quantities are estimates for customer review."
-            unresolved = [item.name for item in self.plan.ingredients if not item.product_id]
+            unresolved = [item.name for item in plan.ingredients if not item.product_id]
             if unresolved:
                 recipe_notice += " Unresolved ingredients: " + ", ".join(unresolved) + "."
             notice = "\n\n".join(part for part in (recipe_notice, notice) if part)
@@ -380,6 +389,6 @@ class ToolSession:
         text = "\n\n".join(part for part in (narrative, notice) if part)
         return AgentTurn(
             text=(text or "Review the recipe and resolve missing ingredient evidence.")[:20_000],
-            meal_plan=self.plan,
+            meal_plan=plan,
             proposal_id=self.proposal["proposal_id"] if self.proposal else None,
         )

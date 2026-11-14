@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     llm_model: str = "openai/gpt-4.1-mini"
     llm_timeout_seconds: float = Field(default=20, gt=0, le=30)
     llm_max_tool_rounds: int = Field(default=20, ge=1, le=24)
+    # Semantic guardrails (TypeSafe Jev through OpenRouter, using LLM_API_KEY): enforce, shadow
+    # (record only) or off. Deterministic purchasing controls always apply. See docs/guardrails.md.
+    guardrail_mode: Literal["off", "shadow", "enforce"] = "enforce"
 
 
 @lru_cache

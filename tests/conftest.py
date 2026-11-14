@@ -17,6 +17,8 @@ os.environ["APPROVAL_SESSION_SECRET"] = "test-session-secret-only-not-a-real-sec
 os.environ["SECURE_COOKIES"] = "false"
 os.environ["PUBLIC_BASE_URL"] = "http://testserver"
 os.environ["DEMO_BUYER_PASSWORD"] = "test-buyer-password-only"
+# Tests never reach the semantic classifier; guardrail tests inject explicit fakes.
+os.environ["GUARDRAIL_MODE"] = "off"
 
 from aimo.cli import migrate, seed
 from aimo.config import settings

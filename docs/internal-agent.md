@@ -29,6 +29,11 @@ provider responses produce safe errors. Protocol references:
 
 ## Behavior and controls
 
+Semantic guardrails (TypeSafe Jev, enforced by default; shadow/off available) wrap the runner at
+four boundaries; deterministic controls below remain authoritative. See
+[guardrails](guardrails.md).
+
+
 The agent clarifies missing delivery/budget/dietary facts and reuses known
 constraints. It proposes a recipe basis, total quantities and scaling assumptions
 in plan notes for customer review. Carbonara includes pasta, eggs, cured pork,
