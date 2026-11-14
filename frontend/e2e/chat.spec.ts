@@ -1,4 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
+import type { components } from "../src/shared/api/schema";
+import type { Conversation, Proposal } from "../src/shared/api/types";
 
 const session = {
   username: "buyer",
@@ -9,7 +11,7 @@ const conversationId = "fa0d5e73-f5a5-4594-a1c5-e4c1a24eebae";
 const proposalId = "b7b7dc8d-8e75-4f79-ac23-649ed1e5fd96";
 const approvalId = "9d42774c-5c59-4eb2-881d-c5e487f6a52d";
 const timestamp = "2026-11-14T12:00:00Z";
-const blankConversation = {
+const blankConversation: Conversation = {
   id: conversationId,
   title: "Carbonara for 200",
   created_at: timestamp,
@@ -18,7 +20,8 @@ const blankConversation = {
   purchases: [],
   busy: false,
 };
-const proposal = {
+const proposal: Proposal = {
+  recipe_basis: "free_form",
   proposal_id: proposalId,
   revision: 1,
   current_revision: 1,
@@ -47,7 +50,7 @@ const proposal = {
     lines: [{ product_id: "pasta", amount: "20", unit: "KG" }],
     destination: "hotel-helsinki",
     delivery_date: "2026-11-16",
-    requirements: {},
+    requirements: { lactose_free: false, milk_free: false },
     allow_substitution: true,
     allow_overbuy: true,
   },
@@ -123,7 +126,7 @@ test("root starts a meal conversation and keeps messages through refresh", async
   page,
 }) => {
   await mockSession(page);
-  let saved = structuredClone(blankConversation) as Record<string, any>;
+  let saved: Conversation = structuredClone(blankConversation);
   const keys: string[] = [];
   await page.route("**/api/conversations", (route) =>
     route.fulfill({ json: saved }),
@@ -158,6 +161,7 @@ test("root starts a meal conversation and keeps messages through refresh", async
                   amount: "20",
                   unit: "KG",
                   product_id: "pasta",
+                  status: "proposed",
                 },
               ],
               notes: ["Recipe quantities are estimates."],
@@ -263,7 +267,7 @@ test("purchase deep links survive sign-in and confirmation requires an explicit 
 }) => {
   await mockSession(page, false);
   let current = structuredClone(proposal);
-  const confirmations: any[] = [];
+  const confirmations: components["schemas"]["CommitRequest"][] = [];
   await page.route(`**/api/purchases/${proposalId}`, (route) =>
     route.fulfill({ json: current }),
   );
@@ -456,8 +460,72 @@ test("unfinished server turns restore the request and retry key on another brows
   await expect(page.getByLabel("Continue the conversation")).toHaveValue(
     retry.text,
   );
-  await page.getByRole("button", { name: "Send request" }).click();
+  await expect(page.getByRole("alert")).toHaveText(
+    "The response was interrupted. Retry this request to continue.",
+  );
+  await page.getByRole("button", { name: "Retry request" }).click();
   await expect(page.getByText("Your saved request resumed.")).toBeVisible();
+  expect(payload).toEqual(retry);
+});
+
+test("an interrupted turn arriving through SSE restores the persisted retry action", async ({
+  page,
+}) => {
+  await mockSession(page);
+  const retry = {
+    text: "Recover this interrupted request",
+    idempotency_key: "sse-retry-key",
+  };
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: blankConversation }),
+  );
+  let publish: () => void = () => {};
+  const streamReady = new Promise<void>((resolve) => {
+    publish = resolve;
+  });
+  await page.route(
+    `**/api/conversations/${conversationId}/events`,
+    async (route) => {
+      await streamReady;
+      await route.fulfill({
+        contentType: "text/event-stream",
+        body: `event: conversation\ndata: ${JSON.stringify({ ...blankConversation, retry_message: retry })}\n\n`,
+      });
+    },
+  );
+  let payload: unknown;
+  await page.route(
+    `**/api/conversations/${conversationId}/messages`,
+    async (route) => {
+      payload = route.request().postDataJSON();
+      await route.fulfill({
+        json: {
+          ...blankConversation,
+          messages: [
+            {
+              id: 1,
+              role: "assistant",
+              text: "The interrupted turn resumed.",
+              created_at: timestamp,
+            },
+          ],
+        },
+      });
+    },
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  await expect(
+    page.getByRole("heading", { name: blankConversation.title, exact: true }),
+  ).toBeVisible();
+  publish();
+  await expect(page.getByLabel("Continue the conversation")).toHaveValue(
+    retry.text,
+  );
+  await expect(page.getByRole("alert")).toHaveText(
+    "The response was interrupted. Retry this request to continue.",
+  );
+  await page.getByRole("button", { name: "Retry request" }).click();
+  await expect(page.getByText("The interrupted turn resumed.")).toBeVisible();
   expect(payload).toEqual(retry);
 });
 

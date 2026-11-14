@@ -62,6 +62,7 @@ Reference: [Junction general terms](https://www.hackjunction.com/terms-of-servic
 | Buyer UI | 2026-11-14 | Original React/CSS interface; system fonts, no third-party photos or downloaded visual assets. Styled text marks this as the challenge demo; it is not an official supplier checkout. |
 | PR #4 review fixes | 2026-11-14 | Codex changes to authority reevaluation, historical/current purchase views, documentation CSP and shared response contracts, with regression tests. Built on PR head `cd16b09`; no new services or dependencies. Swagger continues using FastAPI's jsDelivr assets, with nonced scripts on the documentation route. |
 | PR #4 second review | 2026-11-14 | Codex fixes on `ea8e9aa`: trusted product scope, prepare idempotency, exact pack arithmetic, withdrawal retention, bounded login and supplier retries, worker-only MCP database work, connection pooling, batched inbox, exact filtered retrieval and bounded product generations. Added migration 002 and psycopg-pool 3.3.3 (LGPL-3.0-only, per installed package metadata); no new service. Regression and container/browser/retrieval results are in `docs/validation.md`. |
+| Phase-0 product API stub | 2026-11-14 | `docs/api-stub-phase0.md`, written for [issue #66](https://github.com/Junction-Best-Team/Main-Application/issues/66). Documentation only, synthesized from the existing `src/aimo/api.py` routes and `schemas.py`/`chat_schemas.py` payload shapes; no new route, schema, or server was added. |
 
 ### Integrated dependencies and model
 
@@ -106,6 +107,20 @@ existing application code; hosted recipe search targets PR #34's Qwen provider.
 Tests use authored recipe/product/commerce evidence, not verified sponsor stock.
 See `docs/recipes.md` for the snapshot checksum and remaining recipe/data limitations.
 
+## Production frontend styling foundation — 2026-11-14
+
+Reused PR #107's Tailwind v4 theme and Google Fonts declaration in the production
+`frontend/` package. Restored the existing `ui/` design references from `develop`.
+The existing stylesheet now occupies the components cascade layer, allowing
+Tailwind utilities to override it during gradual screen migration. Existing API,
+session, SSE and purchasing behavior is retained.
+
+The subsequent frontend organization reuses those same production components
+and behavior in feature folders (`auth`, `chat`, `purchases`), with shared API
+transport/types, formatting and UI. Generated OpenAPI types were relocated
+without changing their content. Added agent/architecture/development/testing
+guides and ESLint/Prettier checks; no new customer screen or mock backend was
+introduced by the structural refactor.
 
 On 2026-11-14, at the owner's request, Codex simplified the existing CI for the
 hackathon: reused the existing backend tests, API sweep, frontend build and

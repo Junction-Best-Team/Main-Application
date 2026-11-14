@@ -470,6 +470,19 @@ Add new findings below, under your track heading.
 - Evidence: Completed the interrupted review fixes and added regressions for colleague retries before/after a durable write, original-author retries, legacy turns, replayed delete/save/update after forgetting, superseded attempts and populated-database migration. On private local databases: Ruff passed; all 573 pytest cases passed; the API sweep passed 11/11 checks; combined coverage was 96.00% against the 95% gate. Providers and classifiers remained scripted fakes.
 - Impact: Fixes both PR #105 review findings. No shared database, live model, supplier, merge or deployment was used.
 
+## Frontend styling
+
+### F-FE-001: Production app supports gradual Tailwind migration
+- Date: 2026-11-14   Track: all   Status: verified (local UI fixtures)
+- Finding: The production `frontend/` package now loads PR #107's theme and fonts. Its existing stylesheet is in the components layer, below Tailwind utilities, without enabling preflight. The prototype stays separate.
+- Evidence: `npm run build --prefix frontend` and all seven `e2e/chat.spec.ts` regressions passed against local Vite. Chromium inspection of Login at 1440px and 390px showed no horizontal overflow; an injected utility-layer rule overrode the legacy button background and padding. Browser regressions use intercepted API fixtures, not a live backend.
+- Impact: Screen migration can reuse the existing authenticated API behavior. `frontend/README.md` records the implementation order and the outstanding need to reconcile integration ownership with #59 before landing. No backend, merge or deployment was performed.
+
+### F-FE-002: Production frontend is organized by feature
+- Date: 2026-11-14   Track: all   Status: verified (local UI fixtures)
+- Finding: `frontend/src/main.tsx` now only mounts React. App composition, auth/chat/purchases pages, props-driven components, behavior hooks and typed endpoint modules are separated; shared transport/schema/formatting and layered styles have explicit homes. Frontend agent, architecture, development and testing guides describe the boundaries. The task branch was rebased onto current develop, retaining its recipe evidence and interrupted-turn recovery UI in the extracted components.
+- Evidence: Fresh `npm ci`, `npm run check` (lint, formatting, strict TypeScript and build), schema regeneration, and `npm test` pass locally. Eleven browser regressions pass; two live backend/database specs skip by default. The recovered-request regression now asserts the existing Retry request action, and a new SSE regression checks persisted-key recovery after an interrupted snapshot. Playwright starts/stops Vite automatically. The relocated generated schema matches current develop byte for byte. `npm audit` reports no vulnerabilities after a scoped lint-tool glob dependency override.
+- Impact: Agents can work within feature folders without editing a monolithic entry point. CI's existing frontend step runs lint, TypeScript and build; formatting and browser checks remain local per repository policy. No authentication/purchasing authority, backend behavior, deployed infrastructure or release switch was changed by the refactor.
 
 ### F-CI-001: Hackathon CI keeps functional checks without a coverage gate
 - Date: 2026-11-14   Track: maintenance   Status: verified locally; hosted checks pending
