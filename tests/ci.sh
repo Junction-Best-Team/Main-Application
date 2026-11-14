@@ -5,13 +5,26 @@
 #                         Needs no API key and never touches your dev database.
 #   tests/ci.sh --live    your .env database + full catalog, LIVE price/stock (fails closed
 #                         without VALIO_AIMO_API_KEY; the key exists, ask a teammate).
+#   --browser             also build the frontend and run the Playwright browser tests
+#                         (hermetic only: they need fixture commerce).
+#   --skip-unit           skip ruff + pytest (the quick pipeline already runs them).
 #
 # Requires Docker (PostgreSQL + pgvector via compose) and uv. See tests/README.md.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-LIVE=0
-[ "${1:-}" = "--live" ] && LIVE=1
+LIVE=0; BROWSER=0; UNIT=1
+for arg in "$@"; do
+  case "$arg" in
+    --live) LIVE=1 ;;
+    --browser) BROWSER=1 ;;
+    --skip-unit) UNIT=0 ;;
+    *) echo "unknown option: $arg"; exit 2 ;;
+  esac
+done
+if [ "$LIVE" = 1 ] && [ "$BROWSER" = 1 ]; then
+  echo "--browser needs fixture commerce; it cannot be combined with --live"; exit 2
+fi
 PORT="${SWEEP_PORT:-8765}"
 BASE="http://127.0.0.1:${PORT}"
 
@@ -20,11 +33,13 @@ step() { printf '\n== %s\n' "$1"; }
 step "Database"
 if [ -z "${CI:-}" ]; then docker compose up -d --wait db >/dev/null; fi
 
-step "Lint (ruff)"
-uv run ruff check src tests scripts
+if [ "$UNIT" = 1 ]; then
+  step "Lint (ruff)"
+  uv run ruff check src tests scripts
 
-step "Tests (pytest, real PostgreSQL, isolated aimo_test)"
-uv run pytest -q --disable-warnings
+  step "Tests (pytest, real PostgreSQL, isolated aimo_test)"
+  uv run pytest -q --disable-warnings
+fi
 
 if [ "$LIVE" = 0 ]; then
   step "Sweep setup: hermetic aimo_ci database, fixture catalog"
@@ -58,6 +73,13 @@ else
   export UPSTREAM_MODE=live
 fi
 
+if [ "$BROWSER" = 1 ]; then
+  step "Frontend build and Playwright browser"
+  npm ci --prefix frontend --no-audit --no-fund
+  npm run build --prefix frontend
+  npm exec --prefix frontend -- playwright install ${PLAYWRIGHT_DEPS:+--with-deps} chromium
+fi
+
 export SECURE_COOKIES=false PUBLIC_BASE_URL="$BASE" DEMO_BASE_URL="$BASE"
 
 step "Start server on ${BASE}"
@@ -70,5 +92,21 @@ for _ in $(seq 1 90); do
   sleep 1
 done
 
-step "Tool sweep (all eight tools + MCP + commit gate)"
-uv run python tests/sweep/run_sweep.py --base-url "$BASE" ${SWEEP_ARGS:-}
+RESULT=0
+
+step "Tool sweep (all eight tools + MCP + controls)"
+uv run python tests/sweep/run_sweep.py --base-url "$BASE" ${SWEEP_ARGS:-} || RESULT=1
+
+if [ "$BROWSER" = 1 ]; then
+  step "Browser tests (Playwright, real Chromium)"
+  # The login limiter counts attempts per window; start the browser run with a clean counter.
+  uv run python - <<'PY'
+from aimo.db import connection
+with connection() as c:
+    c.execute("TRUNCATE login_attempts")
+PY
+  BASE_URL="$BASE" npm run test --prefix frontend || RESULT=1
+fi
+
+[ "$RESULT" = 0 ] && echo && echo "ALL CI STEPS PASSED" || { echo && echo "CI FAILED"; }
+exit $RESULT

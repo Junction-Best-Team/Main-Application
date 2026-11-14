@@ -1,16 +1,20 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
-const env = Object.fromEntries(
-  fs
-    .readFileSync("../.env", "utf8")
-    .split("\n")
-    .filter((l) => l && !l.startsWith("#"))
-    .map((l) => {
-      const i = l.indexOf("=");
-      return [l.slice(0, i), l.slice(i + 1)];
-    }),
-);
+// Credentials come from the environment (CI) or, locally, from the ignored ../.env file.
+const fileEnv: Record<string, string> = fs.existsSync("../.env")
+  ? Object.fromEntries(
+      fs
+        .readFileSync("../.env", "utf8")
+        .split("\n")
+        .filter((l) => l && !l.startsWith("#"))
+        .map((l) => {
+          const i = l.indexOf("=");
+          return [l.slice(0, i), l.slice(i + 1)];
+        }),
+    )
+  : {};
+const env = { ...fileEnv, ...process.env } as Record<string, string>;
 const authorization = `Bearer ${env.DEMO_AGENT_TOKEN}`;
 
 test("historical approval stays superseded and links to committed terms", async ({

@@ -225,8 +225,8 @@ class Sweep:
         self.receipt = first.json()
         return "accepted_mock, identical receipt on retry"
 
-    def approval_path(self):
-        """Exception flow: split purchase needs the buyer. Agent cannot commit until they decide."""
+    def split_proposal(self):
+        """A split purchase that needs the buyer, or Skip if live data does not produce one."""
         lines = [
             {"product_id": self.product, "amount": "600", "unit": "L"},
             {
@@ -242,11 +242,29 @@ class Sweep:
         if p["policy_outcome"] != "approval_required":
             reasons = [x["code"] for x in p["reasons"]]
             raise Skip(f"split purchase is {p['policy_outcome']} ({reasons}); no approval to test")
-        body = {
+        return p
+
+    def commit_body(self, p):
+        return {
             "proposal_id": p["proposal_id"],
             "revision": p["revision"],
             "idempotency_key": "sweep-" + str(uuid4()),
         }
+
+    def decide(self, p, decision, csrf=True):
+        headers = {"Origin": self.base}
+        if csrf:
+            headers["X-CSRF-Token"] = self.csrf
+        return self.buyer.post(
+            f"/api/approvals/{p['approval_id']}/decision",
+            json={"revision": p["revision"], "decision": decision},
+            headers=headers,
+        )
+
+    def approval_path(self):
+        """Exception flow: split purchase needs the buyer. Agent cannot commit until they decide."""
+        p = self.split_proposal()
+        body = self.commit_body(p)
         early = self.post("commit_order", body)
         need(early.status_code >= 400, "commit must be refused before the buyer decides")
         self.buyer_login()
@@ -256,15 +274,45 @@ class Sweep:
             p["proposal_id"] in [i["proposal_id"] for i in inbox.json()["items"]],
             "pending proposal missing from the buyer inbox",
         )
-        d = self.buyer.post(
-            f"/api/approvals/{p['approval_id']}/decision",
-            json={"revision": p["revision"], "decision": "approve"},
-            headers={"X-CSRF-Token": self.csrf, "Origin": self.base},
-        )
+        d = self.decide(p, "approve")
         need(d.status_code == 200, f"buyer decision HTTP {d.status_code}")
         done = self.post("commit_order", body)
         need(done.status_code == 200, f"commit after approval HTTP {done.status_code}")
         return "refused before approval; in inbox; committed after buyer approval"
+
+    def reject_path(self):
+        """The buyer says no: the decision needs a CSRF token and the agent can never commit."""
+        p = self.split_proposal()
+        self.buyer_login()
+        no_csrf = self.decide(p, "reject", csrf=False)
+        need(no_csrf.status_code in (400, 403), f"decision without CSRF got {no_csrf.status_code}")
+        rejected = self.decide(p, "reject")
+        need(rejected.status_code == 200, f"buyer rejection HTTP {rejected.status_code}")
+        after = self.post("commit_order", self.commit_body(p))
+        need(after.status_code >= 400, "a rejected proposal must not commit")
+        state = self.get("proposals/" + p["proposal_id"]).json()
+        need("reject" in state["approval_status"].lower(), f"status: {state['approval_status']}")
+        need(state["next_action"]["type"] != "commit", "next_action must not say commit")
+        return "CSRF enforced; rejection recorded; commit refused"
+
+    def buyer_agent_separation(self):
+        """The two realms stay apart: agent token is not a buyer, a buyer session is not an agent."""
+        for r in (
+            self.agent.get("/api/approvals"),
+            httpx.get(self.base + "/api/approvals", timeout=30),
+        ):
+            need(r.status_code in (401, 403), f"inbox must refuse non-buyers, got {r.status_code}")
+        bad = httpx.post(
+            self.base + "/api/login",
+            json={"username": "buyer", "password": "definitely-not-the-password"},
+            headers={"Origin": self.base},
+            timeout=30,
+        )
+        need(bad.status_code in (400, 401, 403), f"wrong password got {bad.status_code}")
+        self.buyer_login()
+        r = self.buyer.get("/api/agent/purchase-policy")
+        need(r.status_code in (401, 403), f"buyer session must not act as agent: {r.status_code}")
+        return "agent token refused by inbox; wrong password refused; buyer session refused by agent API"
 
     def get_order(self):
         if not self.receipt:
@@ -311,7 +359,9 @@ class Sweep:
             ("get_proposal", self.get_proposal),
             ("commit gate (denied cannot commit)", self.commit_gate_blocks_denied),
             ("commit_order (+ approval, retry)", self.commit_order),
+            ("buyer/agent separation", self.buyer_agent_separation),
             ("approval path (inbox, then commit)", self.approval_path),
+            ("reject path (CSRF, no commit)", self.reject_path),
             ("get_order", self.get_order),
             ("MCP tool discovery", self.mcp_tools),
         ]:
