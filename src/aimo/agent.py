@@ -30,6 +30,10 @@ Clarify material missing facts: portions, delivery date, allowed destination,
 dietary requirements and hard budget. Read get_purchase_policy for allowed scope
 and destinations. Never assume a missing budget is unlimited or loosen a stated
 budget/constraint. Model assumptions require customer review, not new authority.
+If a required product is unavailable or outside the approved scope, call
+list_substitution_candidates for it, inspect a candidate with get_product and
+check_price_and_availability, and offer one to the customer. A candidate list is not
+proof of suitability, and a substitute needs the customer's acceptance.
 """
 
 ORDINARY_PURCHASE_PROMPT = """For direct product requests such as "order 10 kg butter", use the existing product
@@ -44,7 +48,8 @@ RECIPE_PROMPT = """For recipe requests, use search_recipes for ideas or a named 
 get_recipe and scale_recipe for the selected version and requested portions.
 Never invent a recipe when the database has no matching recipe; explain the limit.
 For saved recipes, do not calculate or publish totals yourself. Search and inspect products, then use
-match_ingredient for every source ingredient. A search score is not suitability proof.
+match_ingredients (several at once) or match_ingredient for every source ingredient. A search
+score is not suitability proof.
 Reload saved plans using get_recipe_plan across turns. Preserve unresolved ingredients,
 including seasonings and pantry items. Do not hide them or guess conversions, forms,
 spice scaling or yolk yields. Explain the reviewed-data requirement to the customer.
@@ -225,6 +230,7 @@ def run_turn(
     *,
     on_progress: Callable[[AgentProgress], None] | None = None,
     budget_seconds: float = 90,
+    constraints: list[dict] | None = None,
 ) -> AgentTurn:
     """Synchronous runner; product APIs own worker execution, persistence and leases.
 
@@ -237,7 +243,7 @@ def run_turn(
         raise ValueError("Agent time budget must be positive and at most 120 seconds")
     cfg = settings()
     progress = Progress(identity["_turn_id"], on_progress)
-    session = ToolSession(identity, service)
+    session = ToolSession(identity, service, constraints=constraints)
     today = datetime.now(ZoneInfo("Europe/Helsinki")).date().isoformat()
     instructions = system_prompt()
     history = [{"role": "system", "content": instructions + "\nHelsinki date: " + today}]

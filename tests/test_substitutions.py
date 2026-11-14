@@ -88,3 +88,26 @@ def test_a_product_without_supplier_rules_has_no_supplier_rule_candidates(
     found = candidates_of(service.list_substitution_candidates(agent, "464398"))
     assert all(c["source"] != "supplier_rule" for c in found)
     assert OWNER not in [product_id(c) for c in found if c["source"] == "supplier_rule"]
+
+
+def test_the_agent_can_list_substitution_candidates_after_reading_the_product(
+    rules_catalog, service, agent
+):
+    """Issue 97 (DIS-010, POL-006): the assistant gets the same candidates through a tool."""
+    import json
+
+    import pytest
+
+    from aimo.agent_tools import ToolSession
+    from aimo.db import Problem
+
+    session = ToolSession(agent | {"_turn_id": "turn-substitutes"}, service)
+    assert "list_substitution_candidates" in session.registry
+    arguments = json.dumps({"product_id": OWNER})
+    with pytest.raises(Problem) as error:  # the product being replaced must be read first
+        session.invoke("list_substitution_candidates", arguments)
+    assert error.value.code == "PRODUCT_NOT_VERIFIED"
+    session.invoke("get_product", arguments)
+    result = session.invoke("list_substitution_candidates", arguments)
+    assert [product_id(c) for c in result["candidates"]] == EXPECTED
+    assert {c["match_is_suitability_proof"] for c in result["candidates"]} == {False}

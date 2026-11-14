@@ -544,13 +544,23 @@ export interface components {
             status: "proposed" | "matched" | "unresolved";
             /** Reason */
             reason?: string | null;
-            /** Purchase Amount */
+            /**
+             * Purchase Amount
+             * @description The REQUIRED amount in the unit the basket uses (a copy of amount, converted to the plan unit). It is not the pack-rounded purchase: see conversion.proposed_amount.
+             */
             purchase_amount?: string | null;
-            /** Purchase Unit */
+            /**
+             * Purchase Unit
+             * @description Unit of purchase_amount (KG, L or piece). Not the pack or sales unit.
+             */
             purchase_unit?: string | null;
             /** Product Fingerprint */
             product_fingerprint?: string | null;
             conversion?: components["schemas"]["QuantityCalculation"] | null;
+            /** Rejected */
+            rejected?: {
+                [key: string]: string;
+            }[];
         };
         JsonValue: unknown;
         /** LineRequest */
@@ -1013,7 +1023,7 @@ export interface components {
              * Severity
              * @enum {string}
              */
-            severity: "denied" | "unresolved" | "exception";
+            severity: "denied" | "unresolved" | "exception" | "warning";
         };
         /** RecipeImage */
         RecipeImage: {

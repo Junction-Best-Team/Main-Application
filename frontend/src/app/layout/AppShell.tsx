@@ -214,7 +214,7 @@ function Avatar() {
   );
 }
 
-/** Account switcher placeholder, policy settings and the real Sign out action. */
+/** Account switcher placeholder, policy settings, assistant preferences and the real Sign out action. */
 function AccountBlock({ onNavigate }: { onNavigate?: () => void }) {
   const { pathname } = useLocation();
   const { session, logout } = useAuth();
@@ -248,6 +248,21 @@ function AccountBlock({ onNavigate }: { onNavigate?: () => void }) {
       >
         <Icon name="manage_accounts" className="text-[18px]" />
         Account Settings
+      </Link>
+      <Link
+        to="/settings/preferences"
+        onClick={onNavigate}
+        aria-current={
+          pathname.startsWith("/settings/preferences") ? "page" : undefined
+        }
+        className={`flex items-center gap-space-sm rounded-lg px-space-md py-space-sm font-label text-label-md no-underline hover:no-underline ${
+          pathname.startsWith("/settings/preferences")
+            ? "bg-secondary-container text-primary"
+            : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+        }`}
+      >
+        <Icon name="tune" className="text-[18px]" />
+        Assistant preferences
       </Link>
       <button
         type="button"

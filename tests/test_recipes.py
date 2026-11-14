@@ -202,6 +202,15 @@ def test_scaling_preserves_ambiguous_ingredients_and_is_not_doubled(tmp_path, ac
 
 @pytest.fixture
 def meal_products(monkeypatch, tmp_path):
+    yield from installed_meal_products(monkeypatch, tmp_path, variable_weight=False)
+
+
+@pytest.fixture
+def variable_weight_meal_products(monkeypatch, tmp_path):
+    yield from installed_meal_products(monkeypatch, tmp_path, variable_weight=True)
+
+
+def installed_meal_products(monkeypatch, tmp_path, *, variable_weight):
     original = fixtures.fixture_facts()
     products = []
     for iid, weight in [("spaghetti", "3"), ("egg", "1"), ("pepper", ".21")]:
@@ -214,7 +223,7 @@ def meal_products(monkeypatch, tmp_path):
             base_unit="ST",
             units={"ST": "1"},
             order_step=".01",
-            variable_weight=False,
+            variable_weight=variable_weight,
             deposits=[],
             allergens={},
             claims=[],
@@ -551,7 +560,8 @@ def test_unknown_units_and_nonterminating_scaling_are_unresolved(tmp_path, actor
     raw["ingredients"][1]["unit"] = "slice"
     *_, versions = import_fixture(tmp_path, [raw])
     plan = scale_recipe(actor, ref(versions, portions=1))
-    assert plan["ingredients"][0]["amount"] is None
+    # MEA-012: 100 g at base 3 for one portion is 0.0333... kg and is rounded UP, never down.
+    assert plan["ingredients"][0]["amount"] == "0.0334"
     assert plan["ingredients"][1]["amount"] is None
 
 
@@ -601,6 +611,33 @@ def test_hosted_recipe_search_reranks_only_its_shortlist(tmp_path, actor, monkey
     assert seen[0][0].startswith("Find cooking recipes")
 
 
+def test_batch_match_tool_matches_every_ingredient_in_one_revision(
+    tmp_path, actor, service, meal_products
+):
+    """Issue 95 (MEA-014): the agent can match several ingredients with one tool call."""
+    *_, versions = import_fixture(tmp_path)
+    session = ToolSession(actor, service)
+    assert "match_ingredients" in session.registry
+
+    def invoke(name, args):
+        return session.invoke(name, json.dumps(args))
+
+    plan = invoke("scale_recipe", dict(versions[0], portions=200))["meal_plan"]
+    pairs = [
+        {"ingredient_id": i["ingredient_id"], "product_id": "recipe-" + i["ingredient_id"]}
+        for i in plan["ingredients"]
+    ]
+    base = dict(plan_id=plan["recipe_plan_id"], revision=plan["recipe_plan_revision"])
+    with pytest.raises(Problem) as error:  # no product was read with get_product yet
+        invoke("match_ingredients", base | {"matches": pairs})
+    assert error.value.code == "PRODUCT_NOT_VERIFIED"
+    for pair in pairs:
+        invoke("get_product", {"product_id": pair["product_id"]})
+    matched = invoke("match_ingredients", base | {"matches": pairs})["meal_plan"]
+    assert matched["recipe_plan_revision"] == plan["recipe_plan_revision"] + 1
+    assert all(i["status"] == "matched" for i in matched["ingredients"])
+
+
 def test_commit_rechecks_suitability_for_mass_ingredients(tmp_path, actor, service, meal_products):
     from aimo.schemas import CommitRequest
 
@@ -619,6 +656,42 @@ def test_commit_rechecks_suitability_for_mass_ingredients(tmp_path, actor, servi
             ),
         )
     assert error.value.code == "RECIPE_PRODUCT_EVIDENCE_CHANGED"
+
+
+def test_variable_weight_products_can_be_matched_and_only_warn(
+    tmp_path, actor, service, variable_weight_meal_products
+):
+    """Issue 101 (BAS-007): a variable-weight product is flagged on the proposal, never a blocker."""
+    *_, versions = import_fixture(tmp_path)
+    plan = match_all(actor, scale_recipe(actor, ref(versions)))
+    assert {i["status"] for i in plan["ingredients"]} == {"matched"}
+    prepared = service.prepare_order(actor, request_for(plan))
+    warnings = [r for r in prepared["reasons"] if r["code"] == "VARIABLE_WEIGHT_UNRESOLVED"]
+    assert warnings and {r["severity"] for r in warnings} == {"warning"}
+    assert prepared["policy_outcome"] != "needs_resolution"
+
+
+def test_commit_after_a_planned_product_left_the_catalog_is_a_problem_not_a_crash(
+    tmp_path, actor, service, meal_products
+):
+    """Issue 94: a product missing from the active catalog must not raise a bare KeyError."""
+    from aimo.schemas import CommitRequest
+
+    *_, versions = import_fixture(tmp_path)
+    plan = match_all(actor, scale_recipe(actor, ref(versions)))
+    prepared = service.prepare_order(actor, request_for(plan))
+    with connection() as c:
+        c.execute("DELETE FROM products WHERE id=%s", (plan["ingredients"][0]["product_id"],))
+    with pytest.raises(Problem) as error:
+        service.commit_order(
+            actor,
+            CommitRequest(
+                proposal_id=prepared["proposal_id"],
+                revision=prepared["revision"],
+                idempotency_key=str(uuid4()),
+            ),
+        )
+    assert error.value.code in {"RECIPE_PRODUCT_EVIDENCE_CHANGED", "RECIPE_PRODUCT_CHANGED"}
 
 
 @pytest.mark.parametrize("pool_size", [1, 2])
@@ -1013,7 +1086,7 @@ def test_new_turn_free_form_basket_is_labeled_without_recipe_completeness_claim(
         "publish_meal_plan",
         json.dumps(
             {
-                "title": unresolved["title"],
+                "title": "Spaghetti only",  # another dish: the same title would be refused (MEA-008)
                 "portions": 200,
                 "ingredients": [
                     {
@@ -1119,11 +1192,11 @@ def test_recipe_creation_requires_turn_known_version_and_supported_size(tmp_path
         get_plan(actor, PlanReference(plan_id=uuid4()))
     assert error.value.code == "NOT_FOUND"
     raw = source_recipe()
-    raw["ingredients"] = [raw["ingredients"][0] | {"id": "ingredient-" + str(i)} for i in range(31)]
-    *_, versions = import_fixture(tmp_path, [raw])
-    with pytest.raises(Problem) as error:
-        scale_recipe(actor, ref(versions))
-    assert error.value.code == "RECIPE_TOO_LARGE"
+    raw["ingredients"] = [raw["ingredients"][0] | {"id": f"ingredient-{i}"} for i in range(1001)]
+    with pytest.raises(
+        ValueError, match="at most 1000"
+    ):  # MEA-013: the import refuses a larger recipe
+        import_fixture(tmp_path, [raw])
 
 
 def test_partial_recipe_reference_fails_closed(actor, service, request_data):
