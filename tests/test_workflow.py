@@ -31,11 +31,13 @@ def expect_code(code, fn):
     assert error.value.code == code
 
 
-def test_autonomous_and_idempotent_after_restart(service, agent, request_data):
+def test_autonomous_and_idempotent_after_restart(service, agent, request_data, confirm_terms):
     p = service.prepare_order(agent, PrepareRequest(**request_data))
     assert p["policy_outcome"] == "ready_to_commit"
     assert p["snapshot"]["gross_total"] == "17.00"
     req = commit(p)
+    expect_code("CUSTOMER_CONFIRMATION_REQUIRED", lambda: service.commit_order(agent, req))
+    confirm_terms(p)
     receipt = service.commit_order(agent, req)
     assert receipt["label"] == "Accepted by demo order service"
     assert receipt["upstream_order_placed"] is False
@@ -52,13 +54,14 @@ def test_autonomous_and_idempotent_after_restart(service, agent, request_data):
     assert service.get_proposal(agent, p["proposal_id"])["next_action"]["type"] == "complete"
 
 
-def test_independent_inbox_and_agent_resume(service, agent, buyer, mission):
+def test_independent_inbox_and_agent_resume(service, agent, buyer, mission, confirm_terms):
     p = service.prepare_order(agent, mission)
     assert p["policy_outcome"] == "approval_required"
     assert p["snapshot"]["gross_total"] == "1700.00"
     assert p["next_action"]["type"] == "wait"
     inbox = workflow.list_approvals(buyer)
     assert inbox["items"][0]["proposal_id"] == p["proposal_id"]
+    confirm_terms(p)
     expect_code("APPROVAL_REQUIRED", lambda: service.commit_order(agent, commit(p)))
     approved = decide(buyer, p)
     assert approved["approval_status"] == "approved"
@@ -74,7 +77,7 @@ def test_independent_inbox_and_agent_resume(service, agent, buyer, mission):
 
 @pytest.mark.parametrize("eligible_approver", [True, False])
 def test_reduced_agent_authority_revises_without_policy_change(
-    service, agent, buyer, request_data, eligible_approver
+    service, agent, buyer, request_data, eligible_approver, confirm_terms
 ):
     p = service.prepare_order(agent, PrepareRequest(**request_data))
     assert p["snapshot"]["gross_total"] == "17.00"
@@ -103,6 +106,7 @@ def test_reduced_agent_authority_revises_without_policy_change(
         assert resumed["approval_status"] == "pending"
         assert resumed["next_action"]["type"] == "wait"
         assert workflow.list_approvals(buyer)["items"][0]["approval_id"] == fresh["approval_id"]
+        confirm_terms(fresh)
         expect_code("APPROVAL_REQUIRED", lambda: service.commit_order(agent, commit(fresh)))
         decide(buyer, fresh)
         assert service.commit_order(agent, commit(fresh))["status"] == "accepted_mock"
@@ -165,7 +169,7 @@ def test_denied_precedes_unknown(service, agent, request_data):
 
 
 def test_changed_price_creates_revision_and_invalidates_approval(
-    service, connector, agent, buyer, mission
+    service, connector, agent, buyer, mission, confirm_terms
 ):
     p = service.prepare_order(agent, mission)
     decide(buyer, p)
@@ -177,6 +181,7 @@ def test_changed_price_creates_revision_and_invalidates_approval(
     assert workflow.approval_detail(buyer, p["approval_id"])["approval_status"] == "superseded"
     expect_code("STALE_REVISION", lambda: decide(buyer, p))
     expect_code("STALE_REVISION", lambda: service.commit_order(agent, commit(p)))
+    confirm_terms(fresh)
     expect_code("APPROVAL_REQUIRED", lambda: service.commit_order(agent, commit(fresh)))
     decide(buyer, fresh)
     receipt = service.commit_order(agent, commit(fresh))
@@ -298,8 +303,9 @@ def test_approver_amount_and_exception_scope(service, agent, buyer, mission):
     assert "NO_ELIGIBLE_APPROVER" in [r["code"] for r in fresh["reasons"]]
 
 
-def test_concurrent_same_key_one_order(service, agent, request_data):
+def test_concurrent_same_key_one_order(service, agent, request_data, confirm_terms):
     p = service.prepare_order(agent, PrepareRequest(**request_data))
+    confirm_terms(p)
     req = commit(p)
     with ThreadPoolExecutor(max_workers=8) as executor:
         receipts = list(executor.map(lambda _: service.commit_order(agent, req), range(8)))
@@ -309,8 +315,11 @@ def test_concurrent_same_key_one_order(service, agent, request_data):
         assert c.execute("SELECT count(*) n FROM idempotency").fetchone()["n"] == 1
 
 
-def test_concurrent_different_keys_and_conflicting_payloads(service, agent, request_data):
+def test_concurrent_different_keys_and_conflicting_payloads(
+    service, agent, request_data, confirm_terms
+):
     p = service.prepare_order(agent, PrepareRequest(**request_data))
+    confirm_terms(p)
 
     def submit(_):
         try:
@@ -324,6 +333,7 @@ def test_concurrent_different_keys_and_conflicting_payloads(service, agent, requ
     p2 = service.prepare_order(
         agent, PrepareRequest(**(request_data | {"idempotency_key": str(uuid4())}))
     )
+    confirm_terms(p2)
     req = commit(p2, "same-key-for-different-purchases")
     service.commit_order(agent, req)
     p3 = service.prepare_order(
