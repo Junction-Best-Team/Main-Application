@@ -5,9 +5,10 @@ resource "kubernetes_secret_v1" "bootstrap" {
     namespace = kubernetes_namespace_v1.aimo.metadata[0].name
   }
   data = {
-    BOOTSTRAP_DATABASE_URL = try(var.bootstrap_credentials.database_url, "")
-    RUNTIME_DATABASE_USER  = try(var.bootstrap_credentials.database_user, "")
-    DEMO_BUYER_PASSWORD    = try(var.bootstrap_credentials.buyer_password, "")
+    BOOTSTRAP_DATABASE_URL     = try(var.bootstrap_credentials.database_url, "")
+    RUNTIME_DATABASE_USER      = try(var.bootstrap_credentials.database_user, "")
+    CATALOG_SYNC_DATABASE_USER = try(coalesce(var.bootstrap_credentials.catalog_sync_database_user, ""), "")
+    DEMO_BUYER_PASSWORD        = try(var.bootstrap_credentials.buyer_password, "")
   }
   lifecycle {
     precondition {
@@ -56,21 +57,14 @@ resource "kubernetes_job_v1" "bootstrap" {
           name    = "setup"
           image   = var.worker_image
           command = ["/app/.venv/bin/python", "/setup/bootstrap.py"]
-          env_from {
-            config_map_ref { name = kubernetes_config_map_v1.runtime.metadata[0].name }
-          }
-          env_from {
-            secret_ref { name = kubernetes_secret_v1.runtime.metadata[0].name }
-          }
-          env_from {
-            secret_ref { name = kubernetes_secret_v1.worker.metadata[0].name }
-          }
+          # Setup only migrates, seeds and grants; the catalog-sync Job imports products,
+          # so no session, provider or supplier credentials are needed here.
           env_from {
             secret_ref { name = kubernetes_secret_v1.bootstrap[0].metadata[0].name }
           }
           resources {
-            requests = { cpu = "1", memory = "2Gi" }
-            limits   = { cpu = "2", memory = "3Gi" }
+            requests = { cpu = "100m", memory = "256Mi" }
+            limits   = { cpu = "1", memory = "512Mi" }
           }
           security_context {
             run_as_non_root            = true
@@ -114,7 +108,7 @@ resource "kubernetes_job_v1" "bootstrap" {
   lifecycle {
     precondition {
       condition     = var.app_replicas == 0
-      error_message = "Stop the app (app_replicas=0) for setup/import on the single demo worker."
+      error_message = "Stop the app (app_replicas=0) for the one-time database setup."
     }
   }
 }

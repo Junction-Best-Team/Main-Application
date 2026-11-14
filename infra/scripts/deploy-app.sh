@@ -61,3 +61,13 @@ for index in "${!components[@]}"; do
 done
 trap - ERR
 printf 'Deployed frontend, API and worker.\n'
+
+# Keep scheduled catalog sync on the released worker code. Absent when sync is not enabled.
+# A failure here leaves the healthy apps deployed but fails the release visibly.
+cron_image=$(kubectl -n "$NAMESPACE" get cronjob aimo-catalog-sync --ignore-not-found \
+  --request-timeout=10s -o 'jsonpath={.spec.jobTemplate.spec.template.spec.containers[?(@.name=="catalog-sync")].image}')
+if [[ -n "$cron_image" && "$cron_image" != "$WORKER_IMAGE" ]]; then
+  kubectl -n "$NAMESPACE" set image cronjob/aimo-catalog-sync "catalog-sync=$WORKER_IMAGE" ||
+    { echo 'Apps deployed, but the catalog-sync CronJob image was not updated.' >&2; exit 1; }
+  printf 'Updated the catalog-sync CronJob image.\n'
+fi

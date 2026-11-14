@@ -93,7 +93,7 @@ class ClusterAccessTest(unittest.TestCase):
 
 class AppDeploymentTest(unittest.TestCase):
     def run_deploy(self, replicas="1", fail_rollout=False, image=None, previous_image=None,
-                   llm_refreshed=False, migration_status="Complete"):
+                   llm_refreshed=False, migration_status="Complete", cronjob=True):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             kubectl = root / "kubectl"
@@ -102,6 +102,7 @@ echo "$*" >> "$CALL_LOG"
 case "$*" in
   *"get deployment aimo-api -o json") echo '{"spec":{"template":{"spec":{}}}}' ;;
   *"get job"*) printf '{"status":{"conditions":[{"type":"%s","status":"True"}]}}\\n' "$MIGRATION_STATUS" ;;
+  *"get cronjob"*) if [[ "$CRONJOB" == 1 ]]; then echo "$PREVIOUS_IMAGE"; fi ;;
   *spec.replicas*) echo "$REPLICAS" ;;
   *jsonpath*) echo "$PREVIOUS_IMAGE" ;;
   *"set image"*)
@@ -120,6 +121,7 @@ esac
                      "MIGRATION_STATUS": migration_status,
                      "REPLICAS": replicas, "FAIL_ROLLOUT": "1" if fail_rollout else "0",
                      "LLM_REFRESHED": "true" if llm_refreshed else "false",
+                     "CRONJOB": "1" if cronjob else "0",
                      "PREVIOUS_IMAGE": previous_image or "ghcr.io/team/app@sha256:" + "b" * 64,
                      "CALL_LOG": str(log), "UNDONE": str(root / "undone")},
                 capture_output=True, text=True)
@@ -133,6 +135,24 @@ esac
         self.assertLess(calls.index("create -f -"), calls.index("set image"))
         self.assertLess(calls.index("get job"), calls.index("set image"))
         self.assertNotIn("rollout undo", calls)
+
+    def test_catalog_sync_cronjob_follows_the_released_worker_digest(self):
+        result, calls = self.run_deploy()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("set image cronjob/aimo-catalog-sync catalog-sync=ghcr.io/team/app@sha256:"
+                      + "a" * 64, calls)
+        self.assertLess(calls.index("rollout status deployment/aimo-worker"),
+                        calls.index("set image cronjob/aimo-catalog-sync"))
+
+    def test_absent_catalog_sync_cronjob_is_not_created_by_releases(self):
+        result, calls = self.run_deploy(cronjob=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("cronjob/aimo-catalog-sync", calls)
+
+    def test_failed_rollout_never_moves_the_catalog_sync_cronjob(self):
+        result, calls = self.run_deploy(fail_rollout=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("cronjob", calls)
 
     def test_migration_failure_prevents_any_rollout_or_restart(self):
         result, calls = self.run_deploy(migration_status="Failed", llm_refreshed=True)

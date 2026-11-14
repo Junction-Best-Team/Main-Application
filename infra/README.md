@@ -92,8 +92,8 @@ terraform -chdir=infra/digitalocean plan -var-file=demo.tfvars -out=demo.tfplan
 ```
 
 Inspect the exact resources and prices before applying. The cloud plan contains
-seven managed resources: VPC, tag, Kubernetes cluster, PostgreSQL cluster,
-database firewall, database and runtime user. It does not mutate the account's
+eight managed resources: VPC, tag, Kubernetes cluster, PostgreSQL cluster,
+database firewall, database, runtime user and catalog-sync user. It does not mutate the account's
 existing Droplets or default VPC. Its database firewall trusts only this cluster;
 PostgreSQL uses its private endpoint and verified TLS.
 Check that the resource names are unused and `vpc_cidr` does not overlap an
@@ -142,12 +142,18 @@ These steps document the future deployment; none were performed for this PR.
 4. Keep `app_replicas=0`, set `bootstrap_generation="v1"` in the private inputs,
    review the new Kubernetes plan, and apply it. One explicit Job migrates with
    the setup role (enabling pgvector), seeds missing demo identities/policies,
-   grants ordinary table/sequence access to the runtime role, then downloads and
-   imports the catalog with its original SHA-256 and count checks. It uses the
-   same pinned CPU embedding model as serving. The Job is never a pod-start hook.
-   Bootstrap may take time; inspect its logs if it fails. It stops on any error,
-   does not silently substitute fixtures, and preserves completed Job state so
-   later Terraform runs do not unexpectedly repeat setup.
+   grants ordinary table/sequence access to the runtime role and catalog-only
+   access to the `aimo_catalog_sync` role. It no longer imports products and
+   receives no app, provider or supplier Secrets. The Job is never a pod-start hook.
+   It stops on any error, and its completed state is kept so later Terraform runs
+   do not repeat setup unexpectedly.
+   **Populate the catalog** with the scheduled ingestion Job's own template. Set
+   `catalog_sync = { enabled = true }` (with `catalog_sync_database_url` and
+   `runtime_secrets.VALIO_AIMO_API_KEY`), then apply. Run
+   `kubectl -n junction create job aimo-catalog-sync-initial --from=cronjob/aimo-catalog-sync`
+   and wait for its JSON result `"outcome": "updated"`. It downloads, checks the
+   approved SHA-256 and count, embeds with the same pinned CPU model as serving,
+   and activates atomically. See [catalog sync](../docs/catalog-sync.md).
 5. Before enabling serving, add `FORWARDED_ALLOW_IPS` to `runtime_secrets` with
    the actual ingress proxy IPs/CIDRs. Never use `*` or a publicly routable
    catch-all network. Ensure ingress replaces untrusted forwarded headers and
@@ -171,8 +177,12 @@ These steps document the future deployment; none were performed for this PR.
    Orders/receipts remain mock acceptance as defined in the application plan.
 
 Routine schema migrations use the [release migration gate](../docs/release-migrations.md).
-Catalog imports remain explicit operator work with the app stopped; use a new
-setup generation only when intentionally repeating full bootstrap/import. Renew
+Routine product-catalog ingestion is the `aimo-catalog-sync` CronJob. It runs
+daily while the apps keep serving and skips unchanged snapshots. The earlier
+"stop the app to import" rule was a capacity limit, not a correctness limit; see
+[catalog sync](../docs/catalog-sync.md#resources-and-capacity) for the measured
+cold-import limitation on the single demo node. Use a new setup generation only
+when intentionally repeating bootstrap. Renew
 the kubeconfig through the provider/CLI when its credentials expire. The helper does not rotate
 demo credentials on reruns.
 
@@ -198,7 +208,7 @@ cancel a deployment halfway through.
    the short-lived Actions token as a cluster image-pull credential.
 3. Use the image digest from the run summary in `prepare-runtime.py --image ...`.
    Complete the cloud provisioning and rollout steps above, including DNS,
-   database migration/seeding, full catalog import, and `app_replicas=1`.
+   database migration/seeding, the first catalog-sync Job, and `app_replicas=1`.
    Verify the demo is healthy before enabling automatic deployment.
 4. Create a deployment DigitalOcean token with `kubernetes:read`,
    `kubernetes:access_cluster`, and `kubernetes:update` scopes. Its account must
@@ -232,7 +242,8 @@ IP and local kubeconfig even after a rollout failure. If a runner is forcibly
 terminated and cleanup cannot run, remove its `/32` through the cloud console
 or reapply the cloud stack's operator allowlist. A failed rollout restores the
 previous image and leaves the workflow failed. The job refuses to enable a
-stopped or unbootstrapped app.
+stopped or unbootstrapped app. After a successful rollout it points an existing
+`aimo-catalog-sync` CronJob at the released worker digest; it never creates one.
 
 Terraform owns initial infrastructure/configuration and the first image; it
 ignores later Deployment image changes so an infrastructure apply cannot undo
@@ -270,6 +281,10 @@ Expose these five Terraform outputs, each a nonempty string:
 | `bootstrap_database_url` | Temporary PostgreSQL setup/admin URL |
 | `database_user` | Runtime role receiving table/sequence grants |
 | `database_ca` | PEM CA certificate for verified database TLS |
+
+Optionally expose both `catalog_sync_database_url` and `catalog_sync_database_user`
+(a dedicated role for scheduled catalog ingestion). The helper then writes them
+into the private inputs. Without them the CronJob stays disabled.
 
 Select that folder with `prepare-runtime.py --cloud-directory infra/aws ...`.
 The helper validates the shared outputs and ignores provider-specific outputs;

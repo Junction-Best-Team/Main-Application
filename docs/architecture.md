@@ -18,7 +18,7 @@ flowchart TB
         Frontend[aimo-frontend: Nginx]
         API[aimo-api: FastAPI]
         Worker[aimo-worker: queue polling and agent harness]
-        Importer[Explicit ingestion Job: worker image]
+        Importer[Scheduled catalog-sync Job: worker image]
     end
     DB[(Managed PostgreSQL + pgvector)]
     Provider[Conversational LLM via OpenRouter by default]
@@ -216,7 +216,9 @@ sequenceDiagram
     Operator->>App: Verify readiness and real Finnish/English searches
 ```
 
-The import is an operator action, never a deployment/startup hook or continuous sync.
+This staged hosted-search cutover is an operator action, never a deployment/startup hook. Routine
+ingestion of the approved snapshot runs as a daily CronJob in its own temporary pod. It skips unchanged data
+and never runs inside the API or worker ([catalog sync](catalog-sync.md)).
 The Job creates its own local/hosted embedding adapter; it does not call a running worker pod. Only changed
 text needs new embeddings within the same profile; switching models requires a new compatible
 catalog. The reranker runs at search time, not during ingestion. Readiness checks the database,

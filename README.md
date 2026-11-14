@@ -37,7 +37,7 @@ Our workflow is **task PR → green CI → self-merge**. Branch protection on `d
 
 After a release PR reaches `main` and CI passes, GitHub builds the frontend, API and worker Docker images and pushes each to GHCR with a component/commit tag and immutable digest. Once the cluster is bootstrapped and `DEPLOY_ENABLED=true`, the same release updates all three apps and waits for readiness; a failed rollout restores every changed image. Human approval is not required.
 
-Deployment is off until the one-time setup is complete. Terraform provisioning, database migrations and catalog import remain explicit operator steps. See [the release setup instructions](infra/README.md#simple-main-to-cluster-release-pipeline) for the cluster ID, deployment token, initial public image, and activation switch.
+Deployment is off until the one-time setup is complete. Terraform provisioning, database migrations, grants and secret provisioning remain explicit operator steps. Product-catalog ingestion then runs automatically as the scheduled `aimo-catalog-sync` Kubernetes Job, which skips unchanged snapshots ([catalog sync](docs/catalog-sync.md)). See [the release setup instructions](infra/README.md#simple-main-to-cluster-release-pipeline) for the cluster ID, deployment token, initial public image, and activation switch.
 
 ## Local setup
 
@@ -61,13 +61,16 @@ uv run aimo ingest --file /absolute/path/valio_aimo_junction26_product_data.json
 # Or obtain it from the sponsor with a server-side VALIO_AIMO_API_KEY:
 mkdir -p data
 uv run aimo ingest --download --file data/valio_aimo_junction26_product_data.json
+# Or the unattended command the Kubernetes CronJob runs: download (or --file), verify the
+# approved hash, skip if the active catalog is current, otherwise import and activate.
+uv run aimo sync-catalog
 uv run aimo serve                    # API terminal
 # In separate terminals: uv run aimo worker, and npm run dev --prefix frontend
 ```
 
 For hosted Qwen3 Embedding 8B and shortlist reranking through OpenRouter, follow the [hosted search migration and cutover](docs/hosted-search.md). Existing deployments keep the local model until explicitly migrated and reindexed.
 
-The first import downloads the pinned `intfloat/multilingual-e5-small` model and embeds the catalog on CPU. Subsequent imports reuse unchanged text embeddings. Publication is atomic: failures leave the old generation active. Updated snapshots require an explicitly verified `--expected-count` and `--expected-sha256`. There is no import on requests or startup. Imports retain withdrawal markers for explicit purchase denial while excluding withdrawn products from discovery. Publication retains the active and previous generation's product/vector rows by default (`CATALOG_GENERATIONS_TO_KEEP=2`). Generation metadata, reusable embedding cache and immutable purchase snapshots remain. Semantic retrieval ranks the filtered active generation exactly, avoiding filtered approximate-index recall loss at this MVP catalog size.
+The first import downloads the pinned `intfloat/multilingual-e5-small` model and embeds the catalog on CPU. Subsequent imports reuse unchanged text embeddings. Publication is atomic: failures leave the old generation active. Updated snapshots require an explicitly verified `--expected-count` and `--expected-sha256`. There is no import on requests or startup. `aimo ingest` always builds a new generation, while `aimo sync-catalog` skips a snapshot whose hash, embedding profile, import profile and complete row count already match the active catalog. Only one ingestion run (either command) can hold the database lock at a time. Imports retain withdrawal markers for explicit purchase denial while excluding withdrawn products from discovery. Publication retains the active and previous generation's product/vector rows by default (`CATALOG_GENERATIONS_TO_KEEP=2`). Generation metadata, reusable embedding cache and immutable purchase snapshots remain. Semantic retrieval ranks the filtered active generation exactly, avoiding filtered approximate-index recall loss at this MVP catalog size.
 
 For a quick authored-fixture catalog, use `uv run aimo fixture-catalog` instead of `ingest`. Set `EMBEDDING_BACKEND=fixture` in `.env` only when you also want deterministic fake embeddings; ingestion and serving must use the same setting. The default uses the real model, including for a small fixture catalog. `UPSTREAM_MODE=fixture` is independent: commercial prices/stock remain invented unless explicitly switched to `live` with private credentials. There is no silent live-to-fixture fallback.
 

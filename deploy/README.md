@@ -15,10 +15,12 @@ configuration as the reference for non-secret configuration fields and trusted
 proxy addresses; never use `FORWARDED_ALLOW_IPS=*`.
 
 Apply migrations with a setup role before enabling API/worker. Keep existing
-runtime grants and database/catalog contents. Ingestion uses the **worker image**
-with an explicit `ingest` command and existing catalog volume; it is never a
-pod-start hook. `ingest-job.yaml` remains a manual template and needs environment-
-specific database CA/configuration mounts and a writable temporary volume.
+runtime grants and database/catalog contents. Catalog ingestion runs in its own
+temporary pod from the **worker image** with `sync-catalog`, scheduled by a CronJob;
+it is never a pod-start hook and never runs inside the API or worker.
+`catalog-sync-cronjob.yaml` is the template for this alternative path; it needs the
+dedicated `aimo-catalog-sync` Secret described there and in
+[catalog sync operations](../docs/catalog-sync.md).
 
 The frontend runs as UID 101, API/worker as UID 10001, with non-root restricted
 security contexts and read-only roots. Requests total 650m CPU and 1,248 MiB
