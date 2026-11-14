@@ -258,3 +258,43 @@ def activate_catalog(generation):
             raise ValueError("Target catalog is incomplete or has been pruned; reimport it")
         _activate(c, generation)
     return {"generation": str(generation), "products": actual, "model": model_key()}
+
+
+def cleanup_withdrawn():
+    """Remove withdrawn products from the active catalog that no pending proposal includes (DIS-011).
+
+    Pending means the proposal can still be committed or refreshed: no order yet, the current
+    revision not rejected, and either live (not denied, not expired) or a saved-recipe proposal,
+    which is refreshed in place even when closed. Product ids come from the stored line snapshot.
+    History is never touched: proposals, orders and receipts keep their own copy of the facts.
+    """
+    with connection() as c:
+        c.execute("SELECT pg_advisory_xact_lock(893017)")
+        active = c.execute("SELECT generation FROM active_catalog").fetchone()
+        if not active:
+            return {"removed": 0, "kept_in_use": 0, "removed_ids": []}
+        generation = active["generation"]
+        in_use = """SELECT DISTINCT line->>'product_id' FROM proposals p
+            JOIN proposal_revisions r ON r.proposal_id=p.id AND r.revision=p.current_revision
+            LEFT JOIN approvals a ON a.proposal_id=p.id AND a.revision=p.current_revision
+            CROSS JOIN LATERAL jsonb_array_elements(r.snapshot->'lines') AS line
+            WHERE p.order_id IS NULL AND COALESCE(a.status,'') NOT IN ('rejected','superseded')
+            AND ((r.policy_outcome <> 'denied' AND r.expires_at > now())
+                 OR EXISTS (SELECT 1 FROM recipe_plans rp WHERE rp.proposal_id=p.id))"""
+        removed = [
+            r["id"]
+            for r in c.execute(
+                f"""DELETE FROM products WHERE generation=%s AND facts->'deleted'='true'::jsonb
+                AND id NOT IN ({in_use} AND line->>'product_id' IS NOT NULL) RETURNING id""",
+                (generation,),
+            ).fetchall()
+        ]
+        kept = c.execute(
+            "SELECT count(*) AS n FROM products WHERE generation=%s AND facts->'deleted'='true'::jsonb",
+            (generation,),
+        ).fetchone()["n"]
+        c.execute(
+            "UPDATE catalog_generations SET product_count=product_count-%s WHERE id=%s",
+            (len(removed), generation),
+        )
+    return {"removed": len(removed), "kept_in_use": kept, "removed_ids": sorted(removed)}
