@@ -123,17 +123,11 @@ export function ChatComposer({
           {fileError}
         </p>
       )}
-      <p
-        id="attachment-help"
-        className="px-space-sm text-label-sm text-secondary"
-        aria-live="polite"
-      >
-        {dragging
-          ? "Drop files here"
-          : reading
-            ? "Reading files…"
-            : "PDF, Word, Excel, CSV, TXT or images · 3 files · 2 MB each · 4 MB total"}
-      </p>
+      {(dragging || reading) && (
+        <p className="px-space-sm text-label-sm text-secondary" role="status">
+          {dragging ? "Drop files here" : "Reading files…"}
+        </p>
+      )}
       <div className="flex w-full min-w-0 items-center gap-space-sm">
         <label htmlFor="purchase-message" className="sr-only">
           {conversationId
@@ -169,7 +163,6 @@ export function ChatComposer({
             <button
               type="button"
               aria-label="Attach file"
-              aria-describedby="attachment-help"
               onClick={() => picker.current?.click()}
               disabled={disabled || reading}
               className="flex h-11 w-7 items-center justify-center md:w-8"
