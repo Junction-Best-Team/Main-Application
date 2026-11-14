@@ -172,6 +172,10 @@ resource "kubernetes_deployment_v1" "aimo" {
     }
   }
   timeouts { create = "15m" }
+  lifecycle {
+    # Terraform supplies the first image; release CI owns subsequent image updates.
+    ignore_changes = [spec[0].template[0].spec[0].container[0].image]
+  }
 }
 
 resource "kubernetes_service_v1" "aimo" {
