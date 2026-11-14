@@ -11,15 +11,15 @@ git clone https://github.com/Junction-Best-Team/Main-Application.git
 cd Main-Application
 ```
 
-All four teammates need write access. Before building, each person should confirm they can clone and push a task branch. Publish the preparation files first so everyone starts from the same commit.
+All four teammates need write access. Before building, each person should confirm they can clone and push a task branch. New clones start on `develop`, the default integration branch.
 
 ## Working in parallel
 
-- Start a task from the latest `main`: `git switch main`, then `git pull --ff-only` with a clean working tree.
-- Use a short task branch when working in parallel, for example `git switch -c otto/map-view`. A small coordinated change can go directly to `main`.
+- Start a task from the latest `develop`: `git switch develop`, then `git pull --ff-only` with a clean working tree. For an existing clone without that branch, first run `git fetch origin` and `git switch --track origin/develop`.
+- Use a short task branch, for example `git switch -c otto/map-view`. Do not commit or push directly to `develop` or `main`.
 - Say which feature/files you are changing. Coordinate edits to shared APIs, schemas, dependency files, and deployment configuration.
-- Check the affected feature works, then integrate small changes frequently. You can merge your own work; PRs and reviews are optional.
-- Keep `main` ready to demonstrate. Avoid force pushes to shared branches and preserve teammates' uncommitted work.
+- Check the affected feature works, then open a PR into `develop`: `gh pr create --base develop`. All feature, fix, documentation, and maintenance PRs must target `develop`. You can merge your own work; reviews are optional.
+- Keep `main` ready to demonstrate. Promote a tested snapshot with a release PR from `develop` to `main` only when a release is explicitly requested. Avoid force pushes to shared branches and preserve teammates' uncommitted work.
 - Use a separate checkout/worktree and branch for each concurrent agent on the same machine.
 
 No required pipelines, approval gates, or special GitHub board. Use the team chat to coordinate.
