@@ -91,8 +91,8 @@ const proposal = {
   history: [],
   can_decide: true,
 };
-async function mockSession(page: Page, signedIn = true, recipeEnabled = false) {
-  const currentSession = { ...session, recipe_planning_enabled: recipeEnabled };
+async function mockSession(page: Page, signedIn = true) {
+  const currentSession = session;
   let authenticated = signedIn;
   await page.route("**/api/session", (route) =>
     route.fulfill({
@@ -461,116 +461,110 @@ test("unfinished server turns restore the request and retry key on another brows
   expect(payload).toEqual(retry);
 });
 
-for (const enabled of [false, true]) {
-  test(`recipe plan keeps unresolved ingredients visible beside matched packs (enabled=${enabled})`, async ({
+test(`recipe plan keeps unresolved ingredients visible beside matched packs`, async ({
+  page,
+}) => {
+  await mockSession(page);
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({
+      json: {
+        ...blankConversation,
+        messages: [
+          {
+            id: 1,
+            role: "assistant",
+            text: "The recipe needs more product evidence.",
+            created_at: timestamp,
+            meal_plan: {
+              title: "Carbonara",
+              portions: 200,
+              attribution: "UniTools — theunitools.com / CC BY-SA 4.0",
+              ingredients: [
+                {
+                  name: "Dry spaghetti",
+                  amount: "20",
+                  unit: "KG",
+                  status: "matched",
+                  product_id: "465236",
+                  conversion: {
+                    sales_quantity: "7",
+                    sales_unit: "ST",
+                    excess: "1",
+                  },
+                },
+                {
+                  name: "Whole eggs",
+                  amount: "120",
+                  unit: "piece",
+                  status: "matched",
+                  product_id: "egg-tray",
+                  conversion: {
+                    sales_quantity: "4",
+                    sales_unit: "ST",
+                    excess: "0",
+                  },
+                },
+                {
+                  name: "Salt",
+                  amount: null,
+                  unit: "tsp",
+                  status: "unresolved",
+                  reason:
+                    "Recipe quantity is unspecified; provide a reviewed numeric quantity.",
+                },
+              ],
+              notes: ["Recipe quantities are estimates for customer review."],
+            },
+          },
+        ],
+      },
+    }),
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  const plan = page.getByRole("region", { name: "Proposed meal plan" });
+  await expect(
+    plan.getByText("Free-form plan — recipe completeness not checked.", {
+      exact: true,
+    }),
+  ).toHaveCount(1);
+  await expect(plan.getByText("Salt", { exact: true })).toBeVisible();
+  await expect(
+    plan.getByText("Quantity unresolved", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    plan.getByText("Quantity unresolved tsp", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    plan.getByText("Recipe quantity is unspecified", { exact: false }),
+  ).toBeVisible();
+  await expect(plan.getByText("Buy 7 ST", { exact: false })).toBeVisible();
+  await expect(plan.getByText("Excess: 1 KG", { exact: false })).toBeVisible();
+  await expect(plan.getByText("Buy 4 ST", { exact: true })).toBeVisible();
+  await expect(plan.getByText("Excess: 0", { exact: false })).toHaveCount(0);
+  await expect(plan.getByText("UniTools", { exact: false })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Review basket and purchasing checks" }),
+  ).toHaveCount(0);
+});
+for (const basis of ["free_form", "saved_recipe"] as const) {
+  test(`purchase review identifies ${basis} basket before confirmation`, async ({
     page,
   }) => {
-    await mockSession(page, true, enabled);
-    await page.route(`**/api/conversations/${conversationId}`, (route) =>
-      route.fulfill({
-        json: {
-          ...blankConversation,
-          messages: [
-            {
-              id: 1,
-              role: "assistant",
-              text: "The recipe needs more product evidence.",
-              created_at: timestamp,
-              meal_plan: {
-                title: "Carbonara",
-                portions: 200,
-                attribution: "UniTools — theunitools.com / CC BY-SA 4.0",
-                ingredients: [
-                  {
-                    name: "Dry spaghetti",
-                    amount: "20",
-                    unit: "KG",
-                    status: "matched",
-                    product_id: "465236",
-                    conversion: {
-                      sales_quantity: "7",
-                      sales_unit: "ST",
-                      excess: "1",
-                    },
-                  },
-                  {
-                    name: "Whole eggs",
-                    amount: "120",
-                    unit: "piece",
-                    status: "matched",
-                    product_id: "egg-tray",
-                    conversion: {
-                      sales_quantity: "4",
-                      sales_unit: "ST",
-                      excess: "0",
-                    },
-                  },
-                  {
-                    name: "Salt",
-                    amount: null,
-                    unit: "tsp",
-                    status: "unresolved",
-                    reason:
-                      "Recipe quantity is unspecified; provide a reviewed numeric quantity.",
-                  },
-                ],
-                notes: ["Recipe quantities are estimates for customer review."],
-              },
-            },
-          ],
-        },
-      }),
+    await mockSession(page);
+    await page.route(`**/api/purchases/${proposalId}`, (route) =>
+      route.fulfill({ json: { ...proposal, recipe_basis: basis } }),
     );
-    await page.goto(`/conversations/${conversationId}`);
-    const plan = page.getByRole("region", { name: "Proposed meal plan" });
+    await page.goto(`/purchases/${proposalId}`);
     await expect(
-      plan.getByText("Free-form plan — recipe completeness not checked.", {
-        exact: true,
-      }),
-    ).toHaveCount(enabled ? 1 : 0);
-    await expect(plan.getByText("Salt", { exact: true })).toBeVisible();
+      page.getByText(
+        basis === "saved_recipe"
+          ? "Recipe-backed basket — includes every ingredient from the saved recipe plan."
+          : "Free-form basket — recipe completeness and ingredient conversions are not checked against a saved recipe.",
+        { exact: true },
+      ),
+    ).toHaveCount(1);
     await expect(
-      plan.getByText("Quantity unresolved", { exact: true }),
+      page.getByRole("button", { name: "Confirm this purchase" }),
     ).toBeVisible();
-    await expect(
-      plan.getByText("Quantity unresolved tsp", { exact: true }),
-    ).toHaveCount(0);
-    await expect(
-      plan.getByText("Recipe quantity is unspecified", { exact: false }),
-    ).toBeVisible();
-    await expect(plan.getByText("Buy 7 ST", { exact: false })).toBeVisible();
-    await expect(
-      plan.getByText("Excess: 1 KG", { exact: false }),
-    ).toBeVisible();
-    await expect(plan.getByText("Buy 4 ST", { exact: true })).toBeVisible();
-    await expect(plan.getByText("Excess: 0", { exact: false })).toHaveCount(0);
-    await expect(plan.getByText("UniTools", { exact: false })).toBeVisible();
-    await expect(
-      page.getByRole("link", { name: "Review basket and purchasing checks" }),
-    ).toHaveCount(0);
   });
-}
-for (const enabled of [false, true]) {
-  for (const basis of ["free_form", "saved_recipe"] as const) {
-    test(`purchase review identifies ${basis} basket before confirmation (enabled=${enabled})`, async ({
-      page,
-    }) => {
-      await mockSession(page, true, enabled);
-      await page.route(`**/api/purchases/${proposalId}`, (route) =>
-        route.fulfill({ json: { ...proposal, recipe_basis: basis } }),
-      );
-      await page.goto(`/purchases/${proposalId}`);
-      await expect(
-        page.getByText(
-          basis === "saved_recipe"
-            ? "Recipe-backed basket — includes every ingredient from the saved recipe plan."
-            : "Free-form basket — recipe completeness and ingredient conversions are not checked against a saved recipe.",
-          { exact: true },
-        ),
-      ).toHaveCount(enabled ? 1 : 0);
-      await expect(
-        page.getByRole("button", { name: "Confirm this purchase" }),
-      ).toBeVisible();
-    });
-  }
 }

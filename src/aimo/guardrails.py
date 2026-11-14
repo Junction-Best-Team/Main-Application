@@ -302,7 +302,7 @@ EXTERNAL_TOOLS = {
     "prepare_order",
     "get_proposal",
     "get_order",
-    # Recipe tools (RECIPE_PLANNING_ENABLED) return imported recipe text: wrapped as data,
+    # Recipe tools return imported recipe text: wrapped as data,
     # not yet semantically screened (see docs/guardrails.md).
     "search_recipes",
     "get_recipe",
