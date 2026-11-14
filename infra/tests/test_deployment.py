@@ -93,7 +93,8 @@ class ClusterAccessTest(unittest.TestCase):
 
 class AppDeploymentTest(unittest.TestCase):
     def run_deploy(self, replicas="1", fail_rollout=False, image=None, previous_image=None,
-                   llm_refreshed=False, migration_status="Complete", cronjob=True):
+                   llm_refreshed=False, migration_status="Complete", cronjob=True,
+                   fail_rollout_component="frontend", fail_update_component=""):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             kubectl = root / "kubectl"
@@ -106,9 +107,14 @@ case "$*" in
   *spec.replicas*) echo "$REPLICAS" ;;
   *jsonpath*) echo "$PREVIOUS_IMAGE" ;;
   *"set image"*)
-    if [[ "$*" == *"=$PREVIOUS_IMAGE" ]]; then touch "$UNDONE"; fi ;;
+    if [[ "$*" == *"=$PREVIOUS_IMAGE" ]]; then
+      touch "$UNDONE"
+    elif [[ -n "$FAIL_UPDATE_COMPONENT" && "$*" == *"deployment/aimo-$FAIL_UPDATE_COMPONENT "* ]]; then
+      # Model an API error after the update may already have reached Kubernetes.
+      exit 1
+    fi ;;
   *"rollout status"*)
-    if [[ "$FAIL_ROLLOUT" == 1 && "$*" == *"aimo-frontend"* && ! -f "$UNDONE" ]]; then exit 1; fi ;;
+    if [[ "$FAIL_ROLLOUT" == 1 && "$*" == *"aimo-$FAIL_ROLLOUT_COMPONENT"* && ! -f "$UNDONE" ]]; then exit 1; fi ;;
 esac
 ''')
             kubectl.chmod(0o700)
@@ -120,6 +126,8 @@ esac
                      "FRONTEND_IMAGE": "ghcr.io/team/app@sha256:" + "a" * 64,
                      "MIGRATION_STATUS": migration_status,
                      "REPLICAS": replicas, "FAIL_ROLLOUT": "1" if fail_rollout else "0",
+                     "FAIL_ROLLOUT_COMPONENT": fail_rollout_component,
+                     "FAIL_UPDATE_COMPONENT": fail_update_component,
                      "LLM_REFRESHED": "true" if llm_refreshed else "false",
                      "CRONJOB": "1" if cronjob else "0",
                      "PREVIOUS_IMAGE": previous_image or "ghcr.io/team/app@sha256:" + "b" * 64,
@@ -170,10 +178,25 @@ esac
         self.assertNotIn("set image", calls)
 
     def test_failed_rollout_restores_previous_image_and_fails(self):
-        result, calls = self.run_deploy(fail_rollout=True)
-        self.assertNotEqual(result.returncode, 0)
-        for component in ("api", "worker", "frontend"):
-            self.assertIn(component + "=ghcr.io/team/app@sha256:" + "b" * 64, calls)
+        for failed in ("worker", "api", "frontend"):
+            with self.subTest(failed=failed):
+                result, calls = self.run_deploy(fail_rollout=True, fail_rollout_component=failed)
+                self.assertNotEqual(result.returncode, 0)
+                for component in ("api", "worker", "frontend"):
+                    self.assertIn(component + "=ghcr.io/team/app@sha256:" + "b" * 64, calls)
+                self.assertNotIn("cronjob", calls)
+
+    def test_ambiguous_image_update_restores_every_attempted_component(self):
+        components = ("worker", "api", "frontend")
+        for index, failed in enumerate(components):
+            with self.subTest(failed=failed):
+                result, calls = self.run_deploy(fail_update_component=failed)
+                self.assertNotEqual(result.returncode, 0)
+                for component in components[:index + 1]:
+                    self.assertIn(component + "=ghcr.io/team/app@sha256:" + "b" * 64, calls)
+                for component in components[index + 1:]:
+                    self.assertNotIn("set image deployment/aimo-" + component, calls)
+                self.assertNotIn("cronjob", calls)
 
     def test_same_image_failure_does_not_roll_back_an_unrelated_revision(self):
         image = "ghcr.io/team/app@sha256:" + "a" * 64

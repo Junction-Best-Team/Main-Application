@@ -12,4 +12,11 @@
 data
 local
 .claude
+# Not consumed by any image target.
+.github
+docs
+tests
+infra
+scripts
+ui
 *.log

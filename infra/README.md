@@ -200,6 +200,10 @@ Docker layers are cached. Main releases are serialized so a new commit cannot
 cancel a deployment halfway through. After migrations succeed, all three app
 rollouts start before waiting for readiness; a failed rollout still restores
 every changed image.
+The frontend image bundles production files with Vite; required PR CI still runs
+frontend lint, type checks and the production build. Browser tests and documentation
+do not invalidate the frontend packaging layer. Unused repository directories stay
+out of the Docker build context.
 
 ### One-time setup
 

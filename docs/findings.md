@@ -1104,3 +1104,10 @@ Add new findings below, under your track heading.
   browser checks passed (two optional backend integration checks skipped) before the
   final shared homepage-height adjustment; focused homepage checks verify that adjustment.
   The preceding CI run was superseded by these updates; final-head CI runs separately.
+
+
+### F-DEPLOY-SPEED-001: Faster image packaging with release failure checks retained
+
+- Date: 2026-11-15. A measured main release (run 43647997283) spent about 62 seconds in migration/rollout; cached build jobs took about 26/44/56 seconds for API/frontend/worker. PR #194 already starts independent app rollouts together after migrations. No live speed claim is made for the unmerged changes.
+- Change: the frontend Docker stage copies production source/public/config files and runs Vite directly; required PR CI still performs lint, TypeScript checking and a full production build. Browser-test/documentation edits no longer invalidate that image stage. Repository directories unused by any Docker target are excluded from the build context. Runtime code, locked dependencies, migration-first ordering, health checks, worker shutdown grace, rollback, immutable image digests and the deployment switch are retained.
+- Verification: all three default image targets built locally with the narrower context. The non-root frontend container served the application and readiness route with its existing CSP/frame headers; API and worker import checks passed. All 50 infrastructure helper tests passed, now covering each component failing readiness and ambiguous image-update failures; every attempted image is restored and catalog sync is left unchanged after a failure. Workflow syntax, shell syntax and diff checks passed. No shared-branch merge, deployment, Terraform apply or deployment-switch change.
