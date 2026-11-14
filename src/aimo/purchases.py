@@ -1,5 +1,5 @@
 from datetime import timedelta
-from decimal import ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, ROUND_UP
 from fractions import Fraction
 from math import floor
 
@@ -7,13 +7,14 @@ from pydantic import ValidationError
 
 from aimo import upstream
 from aimo.basket import allocate_line, line_contributions
-from aimo.catalog import quantity, requirement_reasons
+from aimo.catalog import line_weight_kg, quantity, requirement_reasons
 from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, now
 from aimo.numeric import D, fraction_text
 from aimo.schemas import ApproverAuthority, PolicyRules, PurchaseRequest
 
 MAX_MATERIALS = 1000  # request lines plus deposit materials in one supplier lookup
+MAX_ORDER_WEIGHT_KG = Fraction(30_000)  # MEA-011 (owner Q-70): per order, in kilograms
 
 
 def money(value):
@@ -84,6 +85,40 @@ def load_products(c, ids):
     }
 
 
+def check_order_weight(request, products, whole_packs, count_evidence):
+    """MEA-011: refuse an order heavier than 30,000 kg before any supplier call, naming the limit
+    and the computed weight. Only lines with kilogram evidence count; the error says how many
+    lines had none, so the number is never presented as complete when it is not."""
+    total, unweighed = Fraction(0), 0
+    for line in request.lines:
+        p = products.get(line.product_id)
+        if not p:
+            continue
+        weight = line_weight_kg(
+            p, line.amount, line.unit, whole_packs, count_evidence.get(line.product_id)
+        )
+        if weight is None:
+            unweighed += 1
+        else:
+            total += weight
+    if total <= MAX_ORDER_WEIGHT_KG:
+        return
+    shown = (D(total.numerator) / D(total.denominator)).quantize(D(".01"), rounding=ROUND_UP)
+    text = f"{shown:,.2f}".rstrip("0").rstrip(".")
+    note = (
+        f" ({unweighed} line{'s have' if unweighed != 1 else ' has'} no weight in the catalogue "
+        f"and {'are' if unweighed != 1 else 'is'} not counted)"
+        if unweighed
+        else ""
+    )
+    raise Problem(
+        "ORDER_WEIGHT_LIMIT_EXCEEDED",
+        f"This order weighs {text} kg{note}, over the limit of {int(MAX_ORDER_WEIGHT_KG):,} kg per "
+        "order. Reduce the quantities or split it into several orders.",
+        422,
+    )
+
+
 def build_snapshot(identity, request: PurchaseRequest, connector):
     current = now()
     with connection() as c:
@@ -114,6 +149,7 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
             f"Shortlist plus deposits exceeds {MAX_MATERIALS} materials.",
             422,
         )
+    check_order_weight(request, products, policy["rules"].get("whole_sales_units", True), count_evidence)
     raw = connector.lookup(buyer["upstream_customer"], ids, request.delivery_date)
     evidence = upstream.validate_lookup(
         raw, buyer["upstream_customer"], ids, request.delivery_date, products, current
