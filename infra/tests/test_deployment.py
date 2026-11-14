@@ -183,12 +183,12 @@ esac
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(calls, "")
 
-    def test_same_image_restarts_only_when_provider_settings_were_refreshed(self):
+    def test_same_image_restarts_provider_consumers_when_settings_were_refreshed(self):
         image = "ghcr.io/team/app@sha256:" + "a" * 64
         result, calls = self.run_deploy(image=image, previous_image=image, llm_refreshed=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("rollout restart deployment/aimo-worker", calls)
-        self.assertNotIn("rollout restart deployment/aimo-api", calls)
+        self.assertIn("rollout restart deployment/aimo-api", calls)
         self.assertNotIn("rollout restart deployment/aimo-frontend", calls)
         self.assertNotIn("set image", calls)
 

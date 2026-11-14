@@ -162,6 +162,16 @@ tokens and fonts; no prototype store, fixtures, handwritten API types, assets
 or dependencies were imported. Routes, hooks and purchase authority stay with
 the existing production implementation.
 
+## Voice interface — 2026-11-14
+
+At the owner's request, voice mode reuses PR #132's native HTTPX Google helper,
+shared server-side Google credential, existing chat queue, typed tools and Nordic
+UI tokens. The PCM microphone worklet, WebSocket bridge and browser fixtures were
+authored for this feature against Google's documented Gemini 3.8 Live protocol.
+No new dependency, voice recording, model weight or dataset is committed. Live
+transport checks used synthetic text, locally synthesized test speech and stub
+tool replies; they did not execute purchasing tools or use customer audio.
+
 ## Complete designer UI integration — 2026-11-14
 
 Adapted PR #102 (5f550d2) presentational markup for the shell, Home, Request,

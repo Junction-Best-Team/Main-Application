@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     proposal_ttl_seconds: int = 900
     # Native Google credentials shared by chat, decisions, embeddings and images.
     gemini_api_key: str = Field(default="", repr=False)
+    voice_enabled: bool = True
+    voice_model: str = "gemini-3.8-live"
     cloudinary_url: str = Field(default="", repr=False)
     recipe_images_enabled: bool = True
     recipe_image_model: str = "gemini-nano-banana-2.1"

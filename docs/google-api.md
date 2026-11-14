@@ -8,6 +8,9 @@ endpoint](https://aistudio.google.com/docs/openai), but this helper uses the nat
 API so chat, image generation, embeddings and decisions share one entry point.
 
 Store `GEMINI_API_KEY` server-side in ignored `.env` or the process environment.
+The helper also supports `create_live_token` (`POST /auth_tokens`) with native
+`bidiGenerateContentSetup` constraints; see [voice mode](voice.md). Live audio
+itself uses WebSockets rather than the helper's REST transport.
 The standalone helper reads the process environment only. In this repository,
 `Settings` reads `.env`; pass its key explicitly as below. Do not source the whole
 `.env` in a shell or expose the key through frontend variables.

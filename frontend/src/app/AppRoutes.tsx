@@ -3,6 +3,7 @@ import { RequireAuth } from "../features/auth/components/RequireAuth";
 import { LoginPage } from "../features/auth/pages/LoginPage";
 import { HomePage } from "../features/home/pages/HomePage";
 import { ChatPage } from "../features/chat/pages/ChatPage";
+import { VoiceModeProvider } from "../features/chat/components/VoiceModeProvider";
 import { PurchasesPage } from "../features/purchases/pages/PurchasesPage";
 import { PurchaseDetailPage } from "../features/purchases/pages/PurchaseDetailPage";
 import { PreferencesPage } from "../features/preferences/pages/PreferencesPage";
@@ -16,7 +17,9 @@ export function AppRoutes() {
       <Route
         element={
           <RequireAuth>
-            <AppShell />
+            <VoiceModeProvider>
+              <AppShell />
+            </VoiceModeProvider>
           </RequireAuth>
         }
       >
