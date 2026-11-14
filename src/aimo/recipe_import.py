@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from aimo import recipe_search
 from aimo.db import Problem, connection, fingerprint, js
+from aimo.observability import operation
 from aimo.recipe_schemas import ProductEvidence, Recipe
 from aimo.search import dimensions, vector
 
@@ -54,6 +55,7 @@ def normalize(raw, review=None):
     )
 
 
+@operation("recipe_import.ingest_recipes")
 def ingest_recipes(path: Path, expected_sha256: str, review_path: Path | None = None):
     content = path.read_bytes()
     digest = hashlib.sha256(content).hexdigest()
@@ -184,6 +186,7 @@ def ingest_recipes(path: Path, expected_sha256: str, review_path: Path | None = 
     }
 
 
+@operation("recipe_import.import_product_evidence")
 def import_product_evidence(path):
     """Privileged reviewed annotation import; never available as a model tool."""
     rows = [ProductEvidence.model_validate(r) for r in json.loads(path.read_text())]

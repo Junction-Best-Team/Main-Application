@@ -1,5 +1,6 @@
 """Bounded OpenRouter search calls. Never log credentials, source text or provider bodies."""
 
+import logging
 import math
 import time
 
@@ -7,6 +8,7 @@ import httpx
 
 from aimo.config import settings
 from aimo.db import Problem
+from aimo.observability import elapsed, event, failure, operation
 
 EMBEDDING_MODEL = "qwen/qwen3-embedding-8b"
 RERANK_MODEL = "qwen/qwen3-reranker-8b"
@@ -21,6 +23,7 @@ def require_credentials():
         raise Problem("SEARCH_NOT_CONFIGURED", "Configure SEARCH_API_KEY for hosted search.", 503)
 
 
+@operation("search.provider")
 def post(endpoint, payload):
     require_credentials()
     cfg = settings()
@@ -32,20 +35,37 @@ def post(endpoint, payload):
     ) as client:
         for attempt in range(cfg.search_max_attempts):
             retryable = False
+            started = time.monotonic()
             try:
                 response = client.post(endpoint, json=payload)
+                event(
+                    "search.response",
+                    endpoint=endpoint if endpoint in {"embeddings", "rerank"} else "other",
+                    model=payload.get("model"),
+                    attempt=attempt + 1,
+                    status=response.status_code,
+                    duration_ms=elapsed(started),
+                )
                 if response.status_code == 200:
                     body = response.json()
                     if isinstance(body, dict) and "error" not in body:
                         return body
                     break
                 retryable = response.status_code in (408, 429, 500, 502, 503, 504)
-            except (httpx.TimeoutException, httpx.TransportError):
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                event(
+                    "search.transport_failed",
+                    level=logging.WARNING,
+                    attempt=attempt + 1,
+                    duration_ms=elapsed(started),
+                    **failure(exc),
+                )
                 retryable = True
             except ValueError:
                 break
             if not retryable or attempt + 1 == cfg.search_max_attempts:
                 break
+            event("search.retry", level=logging.WARNING, attempt=attempt + 1)
             time.sleep(0.25 * (attempt + 1))
     raise Problem(
         "SEARCH_PROVIDER_UNAVAILABLE", "Search provider is unavailable; retry later.", 503
@@ -56,6 +76,7 @@ def invalid_response():
     return Problem("SEARCH_PROVIDER_INVALID", "Search provider returned an invalid response.", 502)
 
 
+@operation("search_provider.embeddings")
 def embeddings(texts, query=False):
     if not texts:
         return []
@@ -95,6 +116,7 @@ def embeddings(texts, query=False):
         raise invalid_response() from None
 
 
+@operation("search_provider.rerank")
 def rerank(query, documents):
     """Return only validated positions into our own already-filtered candidate list."""
     if not documents:

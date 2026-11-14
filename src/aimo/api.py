@@ -30,6 +30,7 @@ from aimo.memory_schemas import (
     MemorySearch,
     MemoryUpdate,
 )
+from aimo.observability import RequestLoggingMiddleware, configure_logging, event
 from aimo.schemas import (
     CommitRequest,
     CommitResponse,
@@ -55,10 +56,13 @@ def create_app(service=None):
     async def lifespan(app):
         import anyio
 
+        configure_logging()
+        event("api.started", upstream_mode=upstream.effective_mode())
         try:
             yield
         finally:
             await anyio.to_thread.run_sync(close_pools)
+            event("api.stopped")
 
     app = FastAPI(
         title="Aimo chat purchasing",
@@ -88,6 +92,7 @@ def create_app(service=None):
 
     @app.exception_handler(Problem)
     async def problem_handler(request, exc):
+        event("http.problem", error_code=exc.code, status=exc.status, retry_after=exc.retry_after)
         return JSONResponse(
             {"error": {"code": exc.code, "message": exc.message}},
             status_code=exc.status,
@@ -115,6 +120,8 @@ def create_app(service=None):
         if request.url.path.startswith("/api"):
             response.headers["Cache-Control"] = "no-store"
         return response
+
+    app.add_middleware(RequestLoggingMiddleware)
 
     def buyer(request: Request):
         return auth.browser_identity(request.cookies.get("aimo_session"))[0]

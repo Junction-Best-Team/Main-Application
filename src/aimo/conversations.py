@@ -10,6 +10,7 @@ from aimo.approval_policy import can_approve
 from aimo.chat_schemas import AgentTurn
 from aimo.db import Problem, connection, fingerprint, js, now
 from aimo.guardrails import encode, proposal_view
+from aimo.observability import event, operation
 from aimo.purchases import context
 
 
@@ -154,6 +155,13 @@ def enqueue(identity, cid, body):
                 (cid, tid, body.text),
             )
             c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
+    event(
+        "chat.queued",
+        conversation_id=str(cid),
+        turn_id=str(old["id"] if old else tid),
+        reused=bool(old),
+        state=old["state"] if old and old["state"] != "failed" else "queued",
+    )
     return detail(identity, cid)
 
 
@@ -212,6 +220,13 @@ def claim_turn(cid=None):
         ).fetchone()
         if turn["worker_attempts"] >= 3:
             c.execute("UPDATE conversation_turns SET state='failed' WHERE id=%s", (turn["id"],))
+            event(
+                "worker.attempt_limit",
+                turn_id=str(turn["id"]),
+                conversation_id=str(turn["conversation_id"]),
+                error_code="WORKER_ATTEMPT_LIMIT",
+                worker_attempts=turn["worker_attempts"],
+            )
             return None
         return c.execute(
             """UPDATE conversation_turns SET state='running',attempt=%s,lease_until=%s,
@@ -220,6 +235,7 @@ def claim_turn(cid=None):
         ).fetchone()
 
 
+@operation("chat.execute", context_arg="turn")
 def execute_turn(turn, service, runner=None):
     """Execute only a claimed job, and fence the reply against lease replacement."""
     if runner is None:
