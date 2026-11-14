@@ -69,6 +69,8 @@ A check that cannot run is reported as `SKIP` with its reason, never as a pass (
 
 ## Frontend component tests (`frontend/tests/chat.test.tsx`)
 
+**Purpose:** they validate that the UI loads and behaves correctly, and are the safety net for when the UI design is added. After design changes, re-run them and update the selectors (visible text, roles, the three CSS-class lookups) rather than the behaviours; add a test for every new screen or state. See the comment at the top of the test file.
+
 Vitest with React Testing Library in jsdom: the real `App` is rendered and `fetch` answers every API call from `frontend/tests/fixtures/api.json` (an unmocked call fails the test). No browser, no server, no database; the whole file runs in about a second. They replaced the Playwright tests: the real-server ones duplicated pytest (removed `/mcp` and `/api/agent/*` routes, historical approval), and the mocked ones are ported. One thing is deliberately no longer checked: the 390 px no-sideways-scroll layout assertion, which needs a real layout engine.
 
 | Test | Verifies |

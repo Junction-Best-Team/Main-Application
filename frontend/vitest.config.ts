@@ -1,3 +1,5 @@
+// Component tests that check the UI loads and behaves correctly (jsdom, no browser, no server).
+// They are the safety net for the upcoming UI design work: see the note in tests/chat.test.tsx.
 import { defineConfig, mergeConfig } from "vitest/config";
 import viteConfig from "./vite.config";
 

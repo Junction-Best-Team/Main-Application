@@ -1,3 +1,7 @@
+// Shared helpers for the UI loading tests in chat.test.tsx: `mockApi` answers fetch from a route
+// table (an unmocked request fails the test) and `openApp` renders the real App at a URL.
+// When the UI design is added these helpers should not need to change; only the selectors in the
+// tests do (see the note at the top of chat.test.tsx).
 import { render } from "@testing-library/react";
 import { vi } from "vitest";
 import fixtures from "./fixtures/api.json";

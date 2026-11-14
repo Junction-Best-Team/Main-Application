@@ -1,3 +1,20 @@
+/*
+ * UI loading and behaviour checks for the chat product (Vitest + Testing Library, no browser).
+ *
+ * Purpose: prove that each screen loads and behaves correctly (sign-in and deep links, starting and
+ * resuming a conversation, retry keys, explicit purchase confirmation, closed and stale states,
+ * purchase history) against canned API responses from tests/fixtures/api.json.
+ *
+ * WHEN THE UI DESIGN IS ADDED: these tests are the safety net for that work, so re-run them after
+ * every design change. Expect to update the selectors, not the behaviour being asserted:
+ *   - they find elements by visible text and accessible role/label ("Send request",
+ *     "Confirm this purchase", "Your purchases", ...): update the strings if the copy changes;
+ *   - three assertions use CSS classes (.order-reference, .status-note, .purchase-row): prefer
+ *     adding a role, label or data-testid in the new design and switching to that;
+ *   - layout is NOT tested here (jsdom has none). Check responsive layout of the new design
+ *     separately (a browser test or a visual check) if it matters.
+ * Add a test here for every new screen or state the design introduces.
+ */
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
