@@ -1,15 +1,19 @@
 import { defineConfig } from "@playwright/test";
 
 // Runs against the standalone prototype dev server (fake in-memory backend).
+// PW_PORT lets parallel checkouts run suites without sharing a dev server.
+const port = Number(process.env.PW_PORT ?? 5183);
+const baseURL = `http://127.0.0.1:${port}`;
+
 export default defineConfig({
   testDir: "./e2e",
   workers: 1,
   reporter: "list",
   outputDir: "test-results",
-  use: { baseURL: "http://127.0.0.1:5183" },
+  use: { baseURL },
   webServer: {
-    command: "npm run dev",
-    url: "http://127.0.0.1:5183",
+    command: `npm run dev -- --port ${port} --strictPort`,
+    url: baseURL,
     reuseExistingServer: true,
   },
   projects: [
