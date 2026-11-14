@@ -17,21 +17,19 @@ See the [architecture diagrams](docs/architecture.md) for the system overview, p
 
 ## CI
 
-One workflow, `.github/workflows/ci.yml`, runs on PRs into `develop` and `main` and on pushes to either. Its jobs run in parallel:
+One workflow, `.github/workflows/ci.yml`, runs on PRs into `develop` and `main` and on pushes to either. Backend and frontend checks start in parallel:
 
 | Job (GitHub name) | What it does |
 | --- | --- |
-| Detect application components | Decides which jobs apply (backend, frontend, Terraform) |
-| Python lint and tests | `ruff check`, then `pytest` against temporary PostgreSQL/pgvector with fixture embeddings and supplier responses; saves coverage data |
-| Frontend types and build | `npm ci`, TypeScript check, production build. There are no UI tests in CI: the current UI is an old mockup, so UI testing waits for the real design |
-| API sweep | Starts the real server and drives the buyer-facing API: sign-in, CSRF and Origin checks, conversations, purchases and approvals, and that a chat turn without an LLM provider fails honestly (`tests/sweep/run_sweep.py`) |
+| Python lint and tests | `ruff check`, then `pytest` against temporary PostgreSQL/pgvector, then the strict buyer-facing API sweep; uses fixture embeddings and supplier responses |
+| Frontend types and build | `npm ci`, TypeScript check and production build; formatting and browser tests stay local |
+| Detect application components | Only detects infrastructure/workflow changes; retains its existing name for required status checks |
 | Terraform | Format, validate, mocked-provider plan tests and Helm render for `infra/` (only when it or the workflows changed) |
-| Coverage (95% minimum) | Combines the pytest and sweep coverage data and fails below `fail_under` in `pyproject.toml` |
-| **CI gate** | Waits for every job above; the required status check |
+| **CI gate** | Requires backend, frontend and change detection to succeed, plus Terraform when applicable |
 
-Dependencies come from the lockfiles with the unused ML stack pruned, downloads are cached and a new commit cancels outdated PR runs (main releases are serialized). Everything runs on fixtures: CI never has the Valio API key, and no model weights, full catalog imports, Docker builds or deployments are needed. The live check is the local `tests/ci.sh --live`. What every check verifies is in [tests/README.md](tests/README.md) and [tests/TEST-GUIDE.md](tests/TEST-GUIDE.md).
+The API sweep shares the backend job's Python environment and PostgreSQL service. Coverage is an optional local diagnostic, with no percentage requirement or coverage artifact jobs in CI. Dependencies are locked and cached; new commits cancel outdated PR runs. CI uses fixtures, without supplier keys, model downloads or full catalog imports. The live check is local: `tests/ci.sh --live`. See [tests/README.md](tests/README.md) and [tests/TEST-GUIDE.md](tests/TEST-GUIDE.md).
 
-Our workflow is **task PR → green CI → self-merge**. Branch protection on `develop` requires the CI gate plus the three application checks; reviews are optional and the `skip-review` label does not bypass CI. Adding a job: give it a `name`, add it to the gate's `needs` and `applies` table in `ci.yml`.
+Our workflow is **task PR → green CI → self-merge**. Repository rules require the CI gate plus the three existing application check names; reviews are optional and the `skip-review` label does not bypass CI. If adding a job, include its result in the gate.
 
 ## Build and deploy releases
 
