@@ -14,6 +14,14 @@ Entry format:
 
 Owner decisions use `D-<nnn>` and quote the owner's words verbatim.
 
+## Infrastructure
+
+### F-INFRA-001: Optional Terraform hosting and portable deployment
+- Date: 2026-11-14   Track: 4   Status: verified (configuration and read-only API checks); deployment unverified
+- Finding: The owner requested a separate worktree and Terraform PR based on PR #2, selected the DigitalOcean weekend direction, required cloud portability, and explicitly prohibited applying Terraform. PR #2 is closed and unmerged; PR #4 separately implements the application image/CLI. Two Terraform stacks isolate DigitalOcean VPC/DOKS/managed PostgreSQL provisioning from portable Kubernetes/Helm application resources. PostgreSQL runs outside Kubernetes, using its private endpoint and verified TLS. Initial app replicas and setup Jobs remain off until explicitly enabled by the operator.
+- Evidence: `infra/README.md`, `infra/digitalocean`, and `infra/kubernetes`; read-only authenticated DigitalOcean `/v2/account`, `/v2/regions`, `/v2/kubernetes/options`, and `/v2/databases/options` on this date confirmed account access, `ams3`, Kubernetes `1.35.10-do.0`, PostgreSQL 17 and the selected single-node database size. The token is stored privately outside the repository. No infrastructure was applied.
+- Impact: Plans and CI can be reviewed without spending or mutating existing resources. Before rollout, supply the actual operator CIDRs, published application image, DNS name/email and challenge API key. Replacing the cloud requires a new provisioning adapter; the Kubernetes deployment accepts standard kubeconfig/PostgreSQL inputs. One worker and one database primary are demo defaults, not a high-availability or measured-capacity claim.
+
 ## Owner decisions
 
 ### D-001: Build the Valio Aimo side, not the buyer's agent
