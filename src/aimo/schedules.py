@@ -167,7 +167,9 @@ def build_terms(
     lines = [agreed_line(line, rules.get(line["product_id"]), names) for line in snapshot["lines"]]
     return {
         "source_order_id": str(order["id"]),
-        "title": title or str(order["request"].get("request_id") or "Standing order"),
+        "title": title
+        or str(order["request"].get("request_id") or "").strip()[:80]
+        or "Standing order",
         "lines": [{k: v for k, v in line.items() if k != "deposits"} for line in lines],
         "_agreed_lines": lines,  # with the deposit structure, stored for the run time check
         "currency": snapshot["currency"],
@@ -582,6 +584,18 @@ def replace(identity, schedule_id, body: ScheduleReplaceRequest, service):
         context(c, identity, lock=True)
         lock_buyer(c, identity)
         old = owned(c, identity, schedule_id, lock=True)
+        # Under the locks the first look is stale: a cancel, a pause or another replace may have
+        # landed since. One winner: a schedule that is finished or already has a successor is refused.
+        again = c.execute(
+            "SELECT 1 FROM scheduled_authorizations WHERE buyer_id=%s AND create_key=%s",
+            (identity["buyer_id"], body.idempotency_key),
+        ).fetchone()
+        successor = c.execute(
+            "SELECT 1 FROM scheduled_authorizations WHERE supersedes_id=%s", (old["id"],)
+        ).fetchone()
+        if not again and (old["status"] not in ("active", "paused", "stopped") or successor):
+            raise Problem("SCHEDULE_NOT_ACTIVE", "This standing order was already changed.", 409)
+        was_paused = old["status"] == "paused"
         if old["status"] in ("active", "paused"):
             c.execute(
                 "UPDATE scheduled_authorizations SET status='superseded',next_run_date=NULL,"
@@ -598,6 +612,15 @@ def replace(identity, schedule_id, body: ScheduleReplaceRequest, service):
             ceiling=ceiling,
             supersedes=old["id"],
         )
+        if was_paused and row["status"] == "active":
+            # A paused schedule that is edited stays paused (a holiday is not ended by a rename).
+            stamp = now()
+            row = c.execute(
+                "UPDATE scheduled_authorizations SET status='paused',paused_at=%s,updated_at=%s "
+                "WHERE id=%s RETURNING *",
+                (stamp, stamp, row["id"]),
+            ).fetchone()
+            event(c, row["id"], identity["id"], "paused", {"by": "replace of a paused schedule"})
         return response(c, row)
 
 
