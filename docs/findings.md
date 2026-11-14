@@ -875,3 +875,8 @@ Add new findings below, under your track heading.
 ### F-FE-NOTIFICATIONS-001: Remove the notification placeholder
 
 - Date: 2026-11-14. Removed the disabled notification bell and unread dot from desktop/mobile headers, the unused notification flag and the orphaned desktop separator. `npm run check --prefix frontend` and both existing desktop/mobile Home-navigation browser checks passed.
+
+### F-FE-BANNER-001: Remove the global demo banner
+
+- Date: 2026-11-14. Removed the top demo-ordering banner from the app shell, login and not-found screens, and deleted its unused component. Existing mock-order labels and confirmation controls remain within purchasing screens.
+- Verification: `npm run check --prefix frontend` passed; the complete fixture-backed browser suite passed 43 tests, with two optional backend integration checks skipped. Desktop and short-phone chat screenshots were visually inspected. The initial check caught remaining login/not-found imports during removal; those were removed before the successful rerun.

@@ -3,7 +3,6 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import { DESIGN_PLACEHOLDERS as MOCK } from "../../shared/lib/designPlaceholders";
 import { useAuth } from "../../features/auth/useAuth";
 import { useConversationNavigation } from "../../features/chat/hooks/useConversationNavigation";
-import { NoticeBar } from "../../shared/components/NoticeBar";
 import { Wordmark } from "../../shared/components/Wordmark";
 import { Icon, InertButton } from "../../shared/components/DesignPrimitives";
 
@@ -431,7 +430,6 @@ export function AppShell() {
       <div
         className={`flex min-w-0 flex-col md:pl-72 ${isChat ? "h-dvh overflow-hidden" : ""}`}
       >
-        <NoticeBar />
         <DesktopHeader />
         <MobileTopBar
           menuOpen={menuOpen}
