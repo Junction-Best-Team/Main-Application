@@ -176,7 +176,7 @@ class Reason(Model):
     code: str
     message: str
     product_id: str | None = None
-    severity: Literal["denied", "unresolved", "exception"]
+    severity: Literal["denied", "unresolved", "exception", "warning"]
 
 
 class NextAction(Model):

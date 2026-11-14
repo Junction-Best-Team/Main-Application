@@ -202,6 +202,15 @@ def test_scaling_preserves_ambiguous_ingredients_and_is_not_doubled(tmp_path, ac
 
 @pytest.fixture
 def meal_products(monkeypatch, tmp_path):
+    yield from installed_meal_products(monkeypatch, tmp_path, variable_weight=False)
+
+
+@pytest.fixture
+def variable_weight_meal_products(monkeypatch, tmp_path):
+    yield from installed_meal_products(monkeypatch, tmp_path, variable_weight=True)
+
+
+def installed_meal_products(monkeypatch, tmp_path, *, variable_weight):
     original = fixtures.fixture_facts()
     products = []
     for iid, weight in [("spaghetti", "3"), ("egg", "1"), ("pepper", ".21")]:
@@ -214,7 +223,7 @@ def meal_products(monkeypatch, tmp_path):
             base_unit="ST",
             units={"ST": "1"},
             order_step=".01",
-            variable_weight=False,
+            variable_weight=variable_weight,
             deposits=[],
             allergens={},
             claims=[],
@@ -647,6 +656,19 @@ def test_commit_rechecks_suitability_for_mass_ingredients(tmp_path, actor, servi
             ),
         )
     assert error.value.code == "RECIPE_PRODUCT_EVIDENCE_CHANGED"
+
+
+def test_variable_weight_products_can_be_matched_and_only_warn(
+    tmp_path, actor, service, variable_weight_meal_products
+):
+    """Issue 101 (BAS-007): a variable-weight product is flagged on the proposal, never a blocker."""
+    *_, versions = import_fixture(tmp_path)
+    plan = match_all(actor, scale_recipe(actor, ref(versions)))
+    assert {i["status"] for i in plan["ingredients"]} == {"matched"}
+    prepared = service.prepare_order(actor, request_for(plan))
+    warnings = [r for r in prepared["reasons"] if r["code"] == "VARIABLE_WEIGHT_UNRESOLVED"]
+    assert warnings and {r["severity"] for r in warnings} == {"warning"}
+    assert prepared["policy_outcome"] != "needs_resolution"
 
 
 def test_commit_after_a_planned_product_left_the_catalog_is_a_problem_not_a_crash(

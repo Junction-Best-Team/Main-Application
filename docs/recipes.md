@@ -98,7 +98,9 @@ one exact product fact snapshot and ingredient/form. A catalog change invalidate
 it. A name or semantic score alone does not establish suitability. Current product
 scope, supported dietary checks, stock, price and policy are still enforced by the
 purchasing layer. Missing physical weight cannot be repaired by a suitability row.
-Variable/unknown-weight products remain blocked in the fixed-quantity MVP.
+Variable/unknown-weight products can be matched; the proposal carries a non-blocking
+`VARIABLE_WEIGHT_UNRESOLVED` warning (severity `warning`) because actual-weight settlement
+is outside the fixed-quantity MVP.
 
 `piece_per_sales` is the reviewed ingredient yield per purchasable sales unit, e.g.
 30 whole eggs per tray. Do not equate yolks with whole eggs without evidence.

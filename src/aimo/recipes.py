@@ -268,8 +268,8 @@ def match_ingredient(identity, request):
             pass  # Preserve the scaling/unit blocker.
         elif item["form"] == "unspecified":
             item["reason"] = "Review the required ingredient form before product matching."
-        elif not p or p["deleted"] or p["variable_weight"]:
-            item["reason"] = "Product is absent, withdrawn or has unresolved variable weight."
+        elif not p or p["deleted"]:
+            item["reason"] = "Product is absent or withdrawn."
         elif not evidence:
             item["reason"] = (
                 "No current reviewed evidence that this product fits the ingredient and form."

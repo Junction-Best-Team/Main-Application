@@ -882,7 +882,7 @@ export interface components {
              * Severity
              * @enum {string}
              */
-            severity: "denied" | "unresolved" | "exception";
+            severity: "denied" | "unresolved" | "exception" | "warning";
         };
         /** Requirements */
         Requirements: {
