@@ -88,7 +88,7 @@ one authored read-only policy result, without a database/supplier/purchase call.
 The default command prints `skipped` without credentials; `--require-config`
 exits nonzero. The initial rebuild had no configured key and skipped this check.
 
-The owner subsequently selected OpenRouter. Defaults/local configuration now use
+The owner subsequently selected OpenRouter. Private local configuration uses
 `https://openrouter.ai/api/v1` and `openai/gpt-4.1-mini`. The private key is stored
 in the ignored local `.env` (mode 0600) and repository secret `LLM_API_KEY`;
 `LLM_BASE_URL` and `LLM_MODEL` are repository variables. The live smoke then
