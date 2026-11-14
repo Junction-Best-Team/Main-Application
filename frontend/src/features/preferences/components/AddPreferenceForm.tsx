@@ -65,7 +65,7 @@ export function AddPreferenceForm({
     event.preventDefault();
     if (busy) return;
     if (!type) {
-      setErrors({ type: "Choose what the preference is about." });
+      setErrors({ type: "Choose what the memory is about." });
       setProblem("Check the highlighted fields.");
       return;
     }
@@ -119,7 +119,7 @@ export function AddPreferenceForm({
         id="add-preference-title"
         className="m-0 font-headline text-headline-sm text-primary"
       >
-        Add preference
+        Add memory
       </h2>
 
       <fieldset className="m-0 flex flex-col gap-space-xs border-0 p-0">
@@ -171,7 +171,7 @@ export function AddPreferenceForm({
           onChange={(e) => chooseType(e.target.value)}
           className={inputClass}
         >
-          <option value="">Choose a preference…</option>
+          <option value="">Choose a memory type…</option>
           {GROUPS.map((group) => (
             <optgroup key={group.id} label={group.label}>
               {PREFERENCE_TYPES.filter((t) => t.group === group.id).map((t) => {
@@ -230,7 +230,7 @@ export function AddPreferenceForm({
 
       <div className="flex flex-wrap gap-space-sm">
         <button type="submit" className={primaryButton} disabled={busy}>
-          {busy ? "Saving…" : "Save preference"}
+          {busy ? "Saving…" : "Save memory"}
         </button>
         <button
           type="button"

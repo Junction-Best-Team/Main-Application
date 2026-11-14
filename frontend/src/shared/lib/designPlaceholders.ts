@@ -20,7 +20,7 @@ export const DESIGN_PLACEHOLDERS = {
     substitutionsLabel: "Substitutions allowed",
     substitutionsOn: true,
   },
-  /** Past Orders screen (inert toolbar and account chips). */
+  /** Past Orders screen (search/filter labels and account chips). */
   pastOrders: {
     account: {
       label: "Customer Account",
