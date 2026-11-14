@@ -341,10 +341,12 @@ test("busy affordance shows while a turn is in flight", async ({ page }) => {
   );
 
   await page.goto(`/conversations/${conversationId}`);
+  // develop's chat activity strip replaced "Aimo is checking your request".
   await expect(
-    page.getByRole("status").filter({
-      hasText: "Aimo is checking your request",
-    }),
+    page
+      .getByRole("region", { name: "Aimo activity" })
+      .getByRole("status")
+      .filter({ hasText: "Sending your request" }),
   ).toBeVisible();
   await expect(page.getByLabel("Continue the conversation")).toBeDisabled();
   // The composer's buttons are disabled while a turn runs (the send button only shows with text).
