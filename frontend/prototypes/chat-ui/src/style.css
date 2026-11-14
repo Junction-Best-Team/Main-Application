@@ -453,86 +453,12 @@ pre {
 .loading {
   padding: 48px;
 }
-.login-layout {
-  max-width: 1200px;
-  margin: 64px auto;
-  display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  background: #fff;
-  border-radius: 16px;
-  overflow: hidden;
-  border: 1px solid #d1dfe6;
-}
-.welcome {
-  padding: 60px;
-  background: #003d59;
-  color: white;
-}
-.brand.large {
-  display: block;
-  color: white;
-  font-size: 5rem;
-  margin-bottom: 50px;
-}
-.welcome h1 {
-  font-size: 2.7rem;
-  line-height: 1.15;
-  margin-bottom: 26px;
-}
-.welcome p {
-  color: #cde4ed;
-  line-height: 1.7;
-}
-.welcome-note {
-  border-top: 1px solid #47768d;
-  padding-top: 24px;
-  margin-top: 48px;
-  font-size: 0.9rem;
-  color: #cde4ed;
-}
-.login-panel {
-  padding: 72px 52px;
-}
-.login-panel h2 {
-  font-size: 1.8rem;
-}
-.login-panel form {
-  margin: 28px 0 36px;
-}
-.login-panel label {
-  display: block;
-  font-weight: 700;
-  margin: 20px 0;
-}
-.login-panel input {
-  display: block;
-  width: 100%;
-  padding: 12px;
-  border: 1px solid #8aa4b1;
-  border-radius: 6px;
-  margin-top: 8px;
-}
-.login-panel button {
-  width: 100%;
-}
 @media (max-width: 1000px) {
   .review-layout {
     grid-template-columns: 1fr;
   }
   .decision-panel {
     position: static;
-  }
-  .login-layout {
-    margin: 32px;
-  }
-  .welcome {
-    padding: 40px;
-  }
-  .login-panel {
-    padding: 40px;
-  }
-  .welcome h1 {
-    font-size: 2rem;
   }
 }
 @media (max-width: 650px) {
@@ -585,29 +511,6 @@ pre {
   .history li {
     flex-direction: column;
     gap: 2px;
-  }
-  .login-layout {
-    margin: 20px;
-    grid-template-columns: 1fr;
-  }
-  .welcome {
-    padding: 32px;
-  }
-  .brand.large {
-    font-size: 3.5rem;
-    margin-bottom: 24px;
-  }
-  .welcome-note {
-    display: none;
-  }
-  .login-panel {
-    padding: 32px;
-  }
-  .welcome h1 {
-    font-size: 1.8rem;
-  }
-  .welcome p {
-    margin: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {
