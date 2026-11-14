@@ -42,7 +42,8 @@ class Settings(BaseSettings):
     catalog_work_dir: str = ""
     proposal_ttl_seconds: int = 900
     # CNF-021: days after a proposal's current revision expired before an unfinished (never ordered)
-    # proposal and its approvals may be removed by `aimo purge-proposals`.
+    # proposal and its approvals may be removed by `aimo purge-proposals` (an operator command run
+    # with the schema owner's DATABASE_URL; the runtime role cannot delete history).
     unfinished_proposal_retention_days: int = Field(default=30, ge=1, le=3650)
     # Native Google credentials shared by chat, decisions, embeddings and images.
     gemini_api_key: str = Field(default="", repr=False)

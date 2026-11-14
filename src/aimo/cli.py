@@ -153,7 +153,8 @@ def main():
     )
     purge = sub.add_parser(
         "purge-proposals",
-        help="Remove proposals and approvals that never became orders (CNF-021); orders are kept",
+        help="Operator command, run as the schema owner (DATABASE_URL of the owner, not the runtime "
+        "role): remove proposals and approvals that never became orders (CNF-021); orders are kept",
     )
     purge.add_argument(
         "--older-than-days",

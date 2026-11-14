@@ -168,7 +168,15 @@ def test_a_chat_message_keeps_its_text_after_the_purge(service, buyer, actor, re
     assert count("conversation_messages", "WHERE text = 'Review this basket.'") == 1
 
 
-def test_the_restricted_runtime_role_can_run_the_purge(service, buyer, actor, request_data):
+def test_the_restricted_runtime_role_cannot_run_the_purge_the_owner_does(
+    service, buyer, actor, request_data
+):
+    """Owner decision Q-99: the purge is an operator command run as the schema owner.
+
+    The runtime role holds no DELETE on the history tables and no INSERT on purged_proposals, so
+    a purge attempted as that role fails on privilege and removes nothing; as the owner (the test
+    database user) the same call works.
+    """
     prepare(service, actor, request_data)
     with psycopg.connect(settings().database_url, row_factory=dict_row) as conn:
         capable = conn.execute(
@@ -180,16 +188,20 @@ def test_the_restricted_runtime_role_can_run_the_purge(service, buyer, actor, re
         try:
             conn.execute(sql.SQL("CREATE ROLE {} NOLOGIN").format(sql.Identifier(role)))
             configure_runtime_role(conn, role)  # the grants the release Job applies
+            conn.execute("SAVEPOINT as_owner")
             conn.execute(sql.SQL("SET LOCAL ROLE {}").format(sql.Identifier(role)))
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                workflow.purge_unfinished_proposals(PERIOD, as_of=now() + LATE, conn=conn)
+            conn.execute("ROLLBACK TO SAVEPOINT as_owner")  # back to the owner role
             result = workflow.purge_unfinished_proposals(PERIOD, as_of=now() + LATE, conn=conn)
             assert result["proposals"] == 1
             assert conn.execute("SELECT count(*) AS n FROM purged_proposals").fetchone()["n"] == 1
         finally:
             conn.rollback()
-    assert count("proposals") == 1  # the role's run was rolled back with the transaction
+    assert count("proposals") == 1  # nothing committed either way
 
 
-def test_the_cli_command_purges_and_a_dry_run_does_not(
+def test_the_cli_command_purges_as_the_schema_owner_and_a_dry_run_does_not(
     service, buyer, actor, request_data, monkeypatch, capsys
 ):
     prepare(service, actor, request_data)
@@ -263,15 +275,15 @@ def test_a_proposal_a_protected_record_points_at_is_never_purged(
     assert count("proposals") == 2 and count("purged_proposals") == 0  # nothing leaked out
 
 
-def test_as_the_restricted_runtime_role_the_flag_alone_is_not_enough_to_delete_history(
+def test_as_the_restricted_runtime_role_history_cannot_be_deleted_nor_a_record_forged(
     service, buyer, actor, request_data
 ):
-    """What the guard does and does not stop, for the role the deployed API really uses.
+    """Two layers for the role the deployed API uses: the trigger and, since Q-99, the privileges.
 
-    (a) The flag alone is refused; (b) the normal purge (which writes the record first) works;
-    (c) a record the same role inserts itself does allow the delete: the flag and the record guard
-    against mistakes and loose credentials, NOT against a compromised runtime role that can insert
-    into purged_proposals. The no-order check is what keeps ordered proposals safe whatever the role does.
+    Even with the purge flag set, the runtime role gets InsufficientPrivilege (not just the
+    trigger's refusal) when it deletes history, and it cannot insert the purged_proposals record
+    that would let the trigger through. The no-order check still protects ordered proposals for
+    anyone who does hold DELETE (the owner).
     """
     unfinished = prepare(service, actor, request_data, "11")
     ordered = prepare(service, actor, request_data, "12")
@@ -294,33 +306,22 @@ def test_as_the_restricted_runtime_role_the_flag_alone_is_not_enough_to_delete_h
             conn.execute(sql.SQL("SET LOCAL ROLE {}").format(sql.Identifier(role)))
             conn.execute("SET LOCAL aimo.purge_unfinished = 'on'")
             conn.execute("SAVEPOINT s")
-            for table in ("audit_events", "proposal_revisions"):  # (a) flag without a record
-                with pytest.raises(psycopg.errors.RaiseException, match="immutable history"):
+            for table in ("audit_events", "proposal_revisions", "customer_confirmations"):
+                with pytest.raises(psycopg.errors.InsufficientPrivilege):
                     conn.execute(
                         f"DELETE FROM {table} WHERE proposal_id=%s", (unfinished["proposal_id"],)
                     )
                 conn.execute("ROLLBACK TO SAVEPOINT s")
-            conn.execute(record, (ordered["proposal_id"],))  # a record does not help an ordered one
-            with pytest.raises(psycopg.errors.RaiseException, match="immutable history"):
-                conn.execute(
-                    "DELETE FROM audit_events WHERE proposal_id=%s", (ordered["proposal_id"],)
-                )
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                conn.execute(record, (unfinished["proposal_id"],))  # it cannot forge the record
             conn.execute("ROLLBACK TO SAVEPOINT s")
-            conn.execute(record, (unfinished["proposal_id"],))  # (c) the role's own record
-            deleted = conn.execute(
-                "DELETE FROM audit_events WHERE proposal_id=%s", (unfinished["proposal_id"],)
-            ).rowcount
-            assert deleted >= 1  # a documented limit, not a protection
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                conn.execute("UPDATE audit_events SET event=event")
             conn.execute("ROLLBACK TO SAVEPOINT s")
-            result = workflow.purge_unfinished_proposals(  # (b) the normal purge works
-                PERIOD, as_of=now() + LATE, conn=conn
-            )
-            assert result["proposals"] == 1 and result["audit_events"] >= 1
-            kept = conn.execute(
-                "SELECT count(*) AS n FROM audit_events WHERE proposal_id=%s",
-                (ordered["proposal_id"],),
-            ).fetchone()["n"]
-            assert kept >= 3
+            # Reading and locking what the app really locks still works for the role.
+            conn.execute("SELECT id FROM proposals FOR UPDATE").fetchall()
+            conn.execute("SELECT id FROM buyers FOR UPDATE").fetchall()
+            assert conn.execute("SELECT count(*) AS n FROM audit_events").fetchone()["n"] >= 3
         finally:
             conn.rollback()
     assert count("proposals") == 2 and count("purged_proposals") == 0
