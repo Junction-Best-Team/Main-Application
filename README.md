@@ -23,6 +23,8 @@ GitHub Actions runs on PRs into `develop` and `main`, and pushes to either branc
 
 Backend and frontend jobs run in parallel, dependency downloads are cached, and a new commit cancels outdated runs. Components are explicitly skipped only while their application code has not been added; incomplete manifests fail the workflow. No model weights, full catalog imports, Docker builds, browser tests, production credentials, or deployments are needed for this pipeline. Run broader demo/browser checks locally when the change warrants them.
 
+A separate workflow, `.github/workflows/coverage.yml`, runs on pull requests and manually: pytest plus the black-box sweep under coverage with fixtures, failing below the `fail_under` threshold in `pyproject.toml` (see [tests/README.md](tests/README.md)).
+
 Our workflow is **task PR → green CI → self-merge**. Reviews are optional, and the optional `skip-review` label does not bypass CI. GitHub's current plan blocks branch protection for this private repository, so teammates and agents must follow this convention; the merge button is not technically gated. No approval gates or special GitHub board are required. Use the team chat to coordinate.
 
 ## Local setup

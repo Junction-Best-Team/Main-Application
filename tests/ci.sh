@@ -6,6 +6,9 @@
 #   tests/ci.sh --live    your .env database + full catalog, LIVE price/stock (fails closed
 #                         without VALIO_AIMO_API_KEY; the key exists, ask a teammate).
 #
+#   CI_COVERAGE=1         (env var, any mode) measure code coverage of pytest and of the server the
+#                         sweep drives into .coverage/; report with tests/coverage_report.py.
+#
 # Requires Docker (PostgreSQL + pgvector via compose) and uv. See tests/README.md.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -17,6 +20,16 @@ BASE="http://127.0.0.1:${PORT}"
 
 step() { printf '\n== %s\n' "$1"; }
 
+# --- coverage (CI_COVERAGE=1); behaviour is unchanged when unset -----------------------------------
+PYTEST_COV=()
+aimo_cli() { uv run aimo "$@"; }
+if [ "${CI_COVERAGE:-0}" = 1 ]; then
+  rm -rf .coverage
+  PYTEST_COV=(--cov --cov-fail-under=0)  # the gate applies to the combined total, not pytest alone
+  aimo_cli() { COVERAGE_FILE=.coverage/sweep uv run coverage run -m aimo.cli "$@"; }
+fi
+# ---------------------------------------------------------------------------------------------------
+
 step "Database"
 if [ -z "${CI:-}" ]; then docker compose up -d --wait db >/dev/null; fi
 
@@ -24,7 +37,7 @@ step "Lint (ruff)"
 uv run ruff check src tests scripts
 
 step "Tests (pytest, real PostgreSQL, isolated aimo_test)"
-uv run pytest -q --disable-warnings
+COVERAGE_FILE=.coverage/pytest uv run pytest -q --disable-warnings ${PYTEST_COV[@]+"${PYTEST_COV[@]}"}
 
 if [ "$LIVE" = 0 ]; then
   step "Sweep setup: hermetic aimo_ci database, fixture catalog"
@@ -44,15 +57,15 @@ PY
   export DEMO_AGENT_TOKEN="ci-agent-$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
   export DEMO_BUYER_PASSWORD="ci-buyer-$(head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
   export APPROVAL_SESSION_SECRET="ci-session-$(head -c 36 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
-  uv run aimo migrate
+  aimo_cli migrate
   # The CI database is disposable, so rotate the seeded credentials on every run.
   uv run python - <<'PY'
 from aimo.db import connection
 with connection() as c:
     c.execute("TRUNCATE buyers, login_attempts RESTART IDENTITY CASCADE")
 PY
-  uv run aimo seed
-  uv run aimo fixture-catalog >/dev/null
+  aimo_cli seed
+  aimo_cli fixture-catalog >/dev/null
 else
   step "Sweep setup: live mode with your .env (full catalog must already be ingested)"
   export UPSTREAM_MODE=live
@@ -61,9 +74,14 @@ fi
 export SECURE_COOKIES=false PUBLIC_BASE_URL="$BASE" DEMO_BASE_URL="$BASE"
 
 step "Start server on ${BASE}"
-uv run uvicorn aimo.api:app --host 127.0.0.1 --port "$PORT" --log-level warning &
+if [ "${CI_COVERAGE:-0}" = 1 ]; then
+  COVERAGE_FILE=.coverage/sweep uv run coverage run -m uvicorn aimo.api:app --host 127.0.0.1 --port "$PORT" --log-level warning &
+else
+  uv run uvicorn aimo.api:app --host 127.0.0.1 --port "$PORT" --log-level warning &
+fi
 SERVER=$!
-trap 'kill $SERVER 2>/dev/null || true' EXIT
+# Coverage data is written when the server exits, so wait for it (harmless without coverage).
+trap 'kill $SERVER 2>/dev/null || true; wait $SERVER 2>/dev/null || true' EXIT
 for _ in $(seq 1 90); do
   curl -fsS "${BASE}/health/live" >/dev/null 2>&1 && break
   kill -0 $SERVER 2>/dev/null || { echo "server exited early"; exit 1; }

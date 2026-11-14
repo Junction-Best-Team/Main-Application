@@ -29,7 +29,7 @@ Four-person Junction hackathon repository. The implemented Valio Aimo MVP is des
 
 ## Checks
 
-`tests/ci.sh` runs lint, the pytest suite and a black-box sweep of all eight agent tools (`tests/README.md`). Run it before pushing; `tests/ci.sh --live` repeats the sweep against the real Valio API.
+`tests/ci.sh` runs lint, the pytest suite and a black-box sweep of all eight agent tools (`tests/README.md`). Run it before pushing; `tests/ci.sh --live` repeats the sweep against the real Valio API. `CI_COVERAGE=1 tests/ci.sh` then `uv run python tests/coverage_report.py` measures Python coverage and enforces the `fail_under` gate in `pyproject.toml`; `coverage.yml` does this on PRs.
 
 ## Scope and history
 
