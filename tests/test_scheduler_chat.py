@@ -5,7 +5,7 @@ is then woken by the ordinary worker path. A failed first turn must never leave 
 stuck (the conversation would otherwise refuse new messages and have nothing to retry).
 """
 
-from datetime import date, datetime
+from datetime import datetime
 from decimal import Decimal
 from uuid import uuid4
 
@@ -68,7 +68,7 @@ def test_the_message_lists_what_is_still_valid_and_what_changed(
         "request_id": "Two products",
         "idempotency_key": str(uuid4()),
         "destination": "hotel-helsinki",
-        "delivery_date": str(date.today() + __import__("datetime").timedelta(days=2)),
+        "delivery_date": str(scheduler.helsinki_today() + __import__("datetime").timedelta(days=2)),
         "lines": [{"product_id": p, "amount": a, "unit": "L"} for p, a in request_lines],
     }
     p = service.prepare_order(auth.internal_agent(buyer), PrepareRequest.model_validate(base))

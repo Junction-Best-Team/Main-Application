@@ -1,5 +1,5 @@
 import os
-from datetime import date, timedelta
+from datetime import timedelta
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
@@ -30,6 +30,7 @@ from aimo.config import settings
 from aimo.db import connection, fingerprint
 from aimo.fixtures import fixture_facts
 from aimo.ingest import publish
+from aimo.scheduler import helsinki_today
 from aimo.schemas import PrepareRequest
 from aimo.service import Service
 from aimo.upstream import FixtureClient
@@ -124,7 +125,7 @@ def request_data():
         "request_id": "Hotel breakfast",
         "idempotency_key": str(uuid4()),
         "destination": "hotel-helsinki",
-        "delivery_date": str(date.today() + timedelta(days=2)),
+        "delivery_date": str(helsinki_today() + timedelta(days=2)),
         "requirements": {"lactose_free": True},
         "lines": [{"product_id": "464306", "amount": "10", "unit": "L"}],
     }

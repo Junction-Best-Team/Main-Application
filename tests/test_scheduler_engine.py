@@ -5,7 +5,7 @@ compares it, the next commits it. `now` is injected, so no test waits for a cloc
 mock ("Accepted by demo order service"). No model call happens anywhere on this path.
 """
 
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from threading import Thread
 from uuid import uuid4
@@ -17,7 +17,7 @@ from aimo.db import Problem, connection
 from aimo.schedule_schemas import ScheduleCreateRequest, SchedulePreviewRequest
 from aimo.upstream import HELSINKI
 
-TODAY = date.today()
+TODAY = scheduler.helsinki_today()  # the Helsinki date, whatever the machine zone
 DAILY = {"kind": "days", "interval": 1}
 
 pytestmark = pytest.mark.usefixtures("demo_mode")  # these tests start schedules today

@@ -6,7 +6,7 @@ test clock (07:00 Helsinki today); the agent turn uses a fake model runner. Ever
 ("Accepted by demo order service"). No live supplier traffic, no model call.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -35,7 +35,7 @@ def http(service):
 @pytest.fixture(autouse=True)
 def clock(monkeypatch):
     """The worker's scheduler step runs at 07:00 Helsinki on clock["day"], whatever the real time."""
-    state = {"day": date.today()}
+    state = {"day": scheduler.helsinki_today()}
     real = scheduler.run_due_schedules
     monkeypatch.setattr(
         scheduler, "run_due_schedules", lambda svc, **kw: real(svc, now=at(state["day"]), **kw)
@@ -68,7 +68,7 @@ def create_schedule(http, headers, order_id, *, rules=None, ceiling="100.00"):
     base = {
         "order_id": order_id,
         "recurrence": DAILY,
-        "first_run_date": str(date.today()),
+        "first_run_date": str(scheduler.helsinki_today()),
         "line_rules": rules or {},
     }
     terms = post(http, headers, "/api/schedules/preview", base)
@@ -192,7 +192,7 @@ def test_a_pause_skips_dates_and_an_accepted_substitute_keeps_the_schedule_runni
     # Resumed, the next date runs; the original is out of stock, so the accepted substitute is used.
     post(http, headers, f"/api/schedules/{schedule['id']}/resume")
     connector.stock = {"464306": "0"}
-    clock["day"] = date.today() + timedelta(days=1)  # the next scheduled date
+    clock["day"] = scheduler.helsinki_today() + timedelta(days=1)  # the next scheduled date
     tick(service)
     detail = get(http, f"/api/schedules/{schedule['id']}")
     newest = detail["runs"][0]

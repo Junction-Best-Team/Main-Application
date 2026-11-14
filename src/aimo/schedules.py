@@ -5,11 +5,10 @@ refused. Prices and quantities never come from the client: a schedule is created
 of the same buyer and from the exact terms the customer was just shown (`terms_fingerprint`).
 """
 
+import json
 from datetime import date, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
-
-from fastapi.encoders import jsonable_encoder
 
 from aimo import scheduler
 from aimo.approval_policy import evaluate_purchase
@@ -34,6 +33,11 @@ NOT_A_SCHEDULE_DATE = (
     "recipe_plan_revision",
     "constraints",
 )
+
+
+def plain(value):
+    """JSON-ready (dates as text) for error details; no web framework is imported here."""
+    return json.loads(json.dumps(value, default=str))
 
 
 def require_customer(identity):
@@ -436,14 +440,14 @@ def agree(terms, agreed_fingerprint):
             "SCHEDULE_NOT_REORDERABLE",
             "This order needs a decision each time and cannot be scheduled as it is.",
             422,
-            details=jsonable_encoder({"blocking_reasons": terms["blocking_reasons"]}),
+            details=plain({"blocking_reasons": terms["blocking_reasons"]}),
         )
     if terms["terms_fingerprint"] != agreed_fingerprint:
         raise Problem(
             "SCHEDULE_TERMS_CHANGED",
             "Prices or products changed; review the new terms.",
             409,
-            details=jsonable_encoder({"terms": public_terms(terms)}),
+            details=plain({"terms": public_terms(terms)}),
         )
 
 
