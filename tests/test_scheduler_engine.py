@@ -558,3 +558,35 @@ def test_a_stored_request_with_a_server_only_constraints_key_still_prepares():
     }
     run = {"scheduled_date": TODAY, "delivery_date": TODAY + timedelta(days=2)}
     assert "constraints" not in scheduler.basket(auth, run, [])
+
+
+def test_resume_after_a_worker_outage_skips_the_paused_dates_and_is_not_a_missed_run(
+    buyer, service, placed_order, monkeypatch
+):
+    """Q-90: resume continues from the next date. The paused dates are skipped runs, never RUN_MISSED."""
+    s = scheduled(buyer, service, placed_order)
+    schedules.pause(buyer, s["id"])
+    later = TODAY + timedelta(days=3)  # the worker was down: no pass ran while the dates went by
+    with monkeypatch.context() as clock:
+        clock.setattr(scheduler, "helsinki_today", lambda now=None: later)
+        resumed = schedules.resume(buyer, s["id"])
+    before = len(orders())
+    assert resumed["status"] == "active" and resumed["next_run_date"] == later + timedelta(days=1)
+    skipped = many("SELECT scheduled_date,status,reason_code FROM scheduled_runs ORDER BY 1")
+    assert [(r["scheduled_date"], r["status"], r["reason_code"]) for r in skipped] == [
+        (TODAY + timedelta(days=d), "skipped", "PAUSED") for d in (0, 1, 2, 3)
+    ]
+    drive(service, at(later))  # the first pass after the resume
+    assert schedule_row(s)["status"] == "active" and len(orders()) == before
+    assert not many("SELECT 1 FROM scheduled_runs WHERE reason_code='RUN_MISSED'")
+    drive(service, at(later + timedelta(days=1)))  # the next scheduled date places the order
+    assert len(orders()) == before + 1
+    assert run_of_date(s, later + timedelta(days=1))["status"] == "committed"
+
+
+def run_of_date(schedule, day):
+    return one(
+        "SELECT * FROM scheduled_runs WHERE authorization_id=%s AND scheduled_date=%s",
+        schedule["id"],
+        day,
+    )

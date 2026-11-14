@@ -574,6 +574,10 @@ def move(identity, schedule_id, event_name, wanted, *, allowed_from):
             c.connection.commit()
             raise Problem("SCHEDULE_NOT_ACTIVE", "The year of this standing order is over.", 409)
         stamp = now()
+        if wanted == "active":
+            # Resume continues from the next date (Q-90): the paused dates up to today become
+            # skipped runs now, so a worker that was down meanwhile cannot call them missed.
+            scheduler.open_dates(c, row, scheduler.helsinki_today(), True, stamp)
         row = c.execute(
             """UPDATE scheduled_authorizations SET status=%s,updated_at=%s,
             paused_at=%s,next_run_date=CASE WHEN %s IN ('cancelled') THEN NULL ELSE next_run_date END
