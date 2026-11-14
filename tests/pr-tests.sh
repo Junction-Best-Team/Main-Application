@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# The hackathon PR gate: core app regressions, not the exhaustive edge-case suite.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+case "${1:-}" in
+  --full) exec .venv/bin/pytest -q --durations=10 ;;
+  '') ;;
+  *) echo 'Usage: tests/pr-tests.sh [--full]' >&2; exit 2 ;;
+esac
+exec .venv/bin/pytest -q -x --durations=5 \
+  tests/test_http.py \
+  tests/test_conversations.py \
+  tests/test_worker.py \
+  tests/test_agent_integration.py \
+  tests/test_isolation.py \
+  tests/test_migrations.py \
+  tests/test_runtime_permissions.py \
+  tests/test_scheduler_flow.py \
+  tests/test_readiness_migrations.py::test_a_fully_migrated_database_is_ready \
+  tests/test_readiness_migrations.py::test_every_packaged_migration_from_008_has_a_probe_manifest_entry \
+  tests/test_confirmation_contract.py::test_confirmation_never_authorizes_a_later_revision \
+  tests/test_confirmation_contract.py::test_concurrent_confirmations_with_one_key_create_one_order \
+  tests/test_agent_cannot_purchase.py::test_registry_exposes_only_read_and_prepare_operations \
+  tests/test_workflow.py::test_four_outcomes_and_hard_requirements

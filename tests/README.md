@@ -1,10 +1,12 @@
 # Tests and CI procedure
 
-One command runs the checks locally. GitHub Actions (`.github/workflows/ci.yml`) runs ruff (job "Python lint and tests") and the frontend build on every PR and push. The tests and the sweep run only when code goes to `main`: a PR into `main`, a push to `main` or a manual run (Actions, CI, Run workflow, on any branch). Then pytest runs as four parallel shards ("Backend tests (shard i of 4)": `tests/test_*.py` sorted by name, file number n goes to shard n mod 4, each shard with its own PostgreSQL) and the strict API sweep as "Backend API sweep". A PR into `develop` therefore does not run the tests; run `pytest` locally or start the workflow by hand. The `CI gate` job waits for every applicable check and requires the shards and the sweep to pass when they are scheduled and to be skipped otherwise. For a plain-language explanation of each test, see [TEST-GUIDE.md](TEST-GUIDE.md).
+One command runs the checks locally. GitHub Actions (`.github/workflows/ci.yml`) selects backend lint/pytest/strict API sweep and frontend builds by changed paths on PRs into `develop` or `main`; frontend-only and documentation-only changes skip unrelated jobs, while manual runs check everything, including the full pytest suite. PRs run the small, explicit core-flow selection in `tests/pr-tests.sh` with fail-fast; exhaustive edge-case tests remain in the repository. Release PRs from this repository’s protected `develop` to `main` skip the repeated test/build/infra pass; source-branch validation and the CI gate remain. Merged pushes do not repeat these checks; the `CI gate` job waits for every applicable check. For a plain-language explanation of each test, see [TEST-GUIDE.md](TEST-GUIDE.md).
 
 ```sh
-tests/ci.sh                          # lint + pytest + tool sweep, hermetic (no API key needed)
-tests/ci.sh --skip-unit              # only the sweep (the CI job "Backend API sweep")
+tests/pr-tests.sh                   # quick PR regressions (existing test DB + .venv required)
+tests/pr-tests.sh --full            # full pytest suite
+tests/ci.sh                          # lint + full pytest + HTTP sweep, hermetic (no API key needed)
+tests/ci.sh --skip-unit              # only the sweep (last step of the CI backend job)
 tests/ci.sh --live                   # read-only Valio lookup, then HTTP sweep (needs API key)
 SWEEP_ARGS=--strict tests/ci.sh      # a skipped check counts as a failure
 ```
@@ -16,9 +18,9 @@ Needs Docker (PostgreSQL + pgvector, started by the script) and `uv`. The script
 | Layer | What it is | Needs | CI job in `ci.yml` | Local only |
 | --- | --- | --- | --- | :-: |
 | `ruff check src tests scripts` | Lint | nothing | Python lint and tests | |
-| `pytest` (`tests/test_*.py`) | Unit and integration tests against real PostgreSQL, fixture upstream and embeddings | pgvector DB | Backend tests (shard i of 4), only into `main` | |
+| `tests/pr-tests.sh` | Core app integration regressions against real PostgreSQL; manual CI uses `--full` | pgvector DB | Python lint and tests | |
 | Frontend `npm run build` | TypeScript check and production build | Node | Frontend types and build | |
-| `tests/sweep/run_sweep.py` | Black-box sweep of the buyer-facing API (sign-in, CSRF/Origin, conversations, purchases, approvals) against a running server; no LLM | server + DB | Backend API sweep, only into `main` | `--live` too |
+| `tests/sweep/run_sweep.py` | Black-box sweep of the buyer-facing API (sign-in, CSRF/Origin, conversations, purchases, approvals) against a running server; no LLM | server + DB | Python lint and tests | `--live` too |
 | `scripts/demo.py` | Demo helper rewritten for the chat product in PR #15 (not re-run here) | running server | | yes |
 | `scripts/restart_smoke.py` | Real container restart between approval and commit | Docker image | | yes |
 | `scripts/verify_catalog.py`, `scripts/evaluate_search.py` | Seven golden catalog cases; 30-case retrieval evaluation | full catalog | | yes |
@@ -28,9 +30,11 @@ Needs Docker (PostgreSQL + pgvector, started by the script) and `uv`. The script
 
 Not covered by any CI: the Docker image build, Kubernetes manifests, the live Valio API (key not stored in GitHub), and search quality (the evaluation needs the 84 MB catalog and real embeddings).
 
+The PR selection covers login/CSRF, buyer isolation, persistent chat and retry, worker recovery, scripted-agent checkout, exact-revision confirmation and duplicate-order prevention, policy blocks, migrations/runtime grants and scheduling. It intentionally omits the exhaustive supplier/parser/search and combinatorial contract tests. Those remain runnable with the full suite. A green smoke gate reduces risk; it does not establish that every feature or edge case works.
+
 ## pytest (`tests/test_*.py`)
 
-Fixture upstream and fixture embeddings only; never the live API. Descriptions are taken from the test names.
+Fixture upstream and fixture embeddings only; never the live API. Fixture setup reuses a real Argon2 hash for the repeated demo password; explicit seed/login tests still exercise the real hasher and verifier. Descriptions are taken from the test names.
 
 | File | Covers |
 | --- | --- |
