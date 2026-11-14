@@ -285,6 +285,10 @@ def validate_lookup(
             "gross": None,
             "tax_rate": None,
             "available_sales_quantity": None,
+            "sales_unit": (products.get(pid) or {}).get("sales_unit"),
+            "base_unit": (products.get(pid) or {}).get("base_unit"),
+            "price_basis": None,
+            "quantity_unit": (products.get(pid) or {}).get("sales_unit"),
             "expires_at": (
                 current + timedelta(seconds=settings().proposal_ttl_seconds)
             ).isoformat(),
@@ -328,6 +332,7 @@ def validate_lookup(
                     )
                 expiries.append(end)
             out.update(
+                price_basis="per_sales_unit",
                 net=str(net),
                 gross=str(gross),
                 tax_rate=str(rate),

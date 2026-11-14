@@ -336,6 +336,11 @@ class CommercialEvidence(Model):
     mode: str
     observed_at: datetime
     source: CommercialSource
+    # Units (JNP3-TCT-005): net, gross and available_sales_quantity are all per one sales unit.
+    sales_unit: str | None = None
+    base_unit: str | None = None
+    price_basis: Literal["per_sales_unit"] | None = None
+    quantity_unit: str | None = None
 
 
 class LookupResponse(Model):

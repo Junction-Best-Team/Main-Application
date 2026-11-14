@@ -522,12 +522,6 @@ def test_tct005_lookup_result_carries_mode_time_currency_and_validity(session, d
     assert {"mode", "observed_at", "expires_at", "currency", "net", "gross"} <= seen.keys()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="JNP3-TCT-005: check_price_and_availability returns available_sales_quantity, net and "
-    "gross as bare strings; no field says which unit they are per (the unit sits only in "
-    "source.availability.scheduleLines[].salesUnit, which project() strips before the model)",
-)
 def test_tct005_lookup_quantity_and_price_state_their_unit(session, delivery):
     result = call(
         session,
