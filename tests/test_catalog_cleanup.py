@@ -266,3 +266,33 @@ def test_a_protected_withdrawn_product_is_skipped_and_the_next_oldest_goes(
     assert rows["464306"] is True  # protected, though the oldest
     assert "464398" not in rows and "463380" not in rows
     assert {"465039", "460123"} <= set(rows)
+
+
+def test_an_ingest_with_nothing_withdrawn_trims_nothing():
+    """JNP3-DIS-012: the automatic rule never deletes data when no product is withdrawn."""
+    result = publish_trimmed(catalog(20, set()))
+    assert result["trimmed_withdrawn"] == 0 and result["withdrawn_products"] == 0
+    assert len(active_rows()) == 20
+
+
+def test_the_trim_skips_a_withdrawn_product_of_a_refreshable_recipe_proposal(
+    tmp_path, actor, service, meal_products, monkeypatch
+):
+    """JNP3-DIS-012 with the owner's protection rule (Q-36): the oldest withdrawn product
+    (recipe-spaghetti) belongs to a closed but refreshable saved-recipe proposal, so the automatic
+    trim keeps it and removes the next oldest withdrawn products instead."""
+    first = closed_recipe_proposal(tmp_path, actor, service, monkeypatch)
+    extras = [
+        dict(fixtures.fixture_facts()[0], id=f"cl-x{n:02d}", name=f"F {n}", names={"en": f"F {n}"})
+        for n in range(30)
+    ]
+    withdrawn = ["recipe-spaghetti", "463380", "464398", "465039", "460123", "460035"]
+    data = flagged(fixtures.fixture_facts(), set(withdrawn)) + extras
+    publish(data, "dis-012-recipe", fingerprint(data) + str(uuid4()))
+    age({pid: 60 - number for number, pid in enumerate(withdrawn)})
+    result = publish_trimmed(data)
+    rows = active_rows()
+    assert result["trimmed_withdrawn"] == 2
+    assert rows["recipe-spaghetti"] is True  # protected though the oldest
+    assert "463380" not in rows and "464398" not in rows
+    assert service.get_proposal(actor, first["proposal_id"])["snapshot"]["lines"]
