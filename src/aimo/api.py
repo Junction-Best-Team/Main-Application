@@ -1,12 +1,10 @@
 from contextlib import asynccontextmanager
-from pathlib import Path
 from secrets import token_urlsafe
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Query, Request, Response
 from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 from aimo import approval_workflow as workflow
 from aimo import auth, conversations
@@ -102,7 +100,7 @@ def create_app(service=None):
 
     @app.get("/health/ready")
     def ready():
-        from aimo.search import dimensions, model, model_key
+        from aimo.search import dimensions, model_key
 
         with connection() as c:
             active = c.execute(
@@ -116,12 +114,8 @@ def create_app(service=None):
             raise Problem(
                 "INDEX_NOT_READY", "Ingest with the configured model before serving.", 503
             )
-        if settings().embedding_backend == "sentence_transformers":
-            model()
-        elif settings().embedding_backend == "openrouter":
-            from aimo.search_provider import require_credentials
-
-            require_credentials()  # Probes never spend tokens or depend on provider uptime.
+        with connection() as c:
+            c.execute("SELECT requested_by FROM conversation_turns LIMIT 0")
         return {
             "status": "ready",
             "model": active["model_key"],
@@ -232,9 +226,7 @@ def create_app(service=None):
         auth.csrf_check(
             identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
         )
-        return conversations.message(
-            identity, conversation_id, body, service, getattr(app.state, "agent_runner", None)
-        )
+        return conversations.enqueue(identity, conversation_id, body)
 
     @app.get(
         "/api/conversations/{conversation_id}/events",
@@ -286,24 +278,6 @@ def create_app(service=None):
             },
         )
 
-    dist = Path(settings().frontend_dist)
-    if (dist / "assets").exists():
-        app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
-
-    @app.get("/", include_in_schema=False)
-    @app.get("/conversations/{conversation_id}", include_in_schema=False)
-    @app.get("/purchases", include_in_schema=False)
-    @app.get("/login", include_in_schema=False)
-    @app.get("/approvals", include_in_schema=False)
-    @app.get("/approvals/{approval_id}", include_in_schema=False)
-    @app.get("/purchases/{proposal_id}", include_in_schema=False)
-    def frontend():
-        if not (dist / "index.html").exists():
-            return JSONResponse(
-                {"error": "Build the frontend: cd frontend && npm ci && npm run build"},
-                status_code=503,
-            )
-        return FileResponse(dist / "index.html", headers={"Cache-Control": "no-cache"})
 
     return app
 

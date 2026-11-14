@@ -18,7 +18,7 @@ both external APIs. Live prices and stock are not embedded.
 These are explicit operator steps after migration review. This PR does not deploy,
 merge itself, apply Terraform or enable the release switch.
 
-1. Run `aimo migrate` as the schema owner. Migration `004_hosted_search.sql`
+1. Run `aimo migrate` as the schema owner. Migration `005_hosted_search.sql`
    preserves old rows and removes the unused HNSW index. Vector columns can hold
    both 384- and 4096-dimensional generations; a database trigger enforces each
    generation's dimension. Exact cosine ranking stays within one materialized
@@ -39,27 +39,30 @@ merge itself, apply Terraform or enable the release switch.
    vectors per worker stays in memory; final product insertion copies vectors
    inside PostgreSQL. Model, dimension and text-profile keys isolate caches.
    Failed/cancelled requests may still incur provider usage.
-4. Save the old active generation ID for rollback. Stop serving for a coordinated
-   cutover. With the **new profile** configured, run:
+4. Save the old active generation ID for rollback. Stop accepting new turns, drain
+   in-flight work, and stop the API and worker for a coordinated cutover. With the **new profile** configured, run:
 
    ```sh
    aimo activate-catalog --generation NEW_GENERATION_UUID
    ```
 
-   Activation checks the profile, dimension and full row count. Configure serving
-   with the same backend/key and restart. The default retains the immediately
+   Activation checks the profile, dimension and full row count. Configure both API and worker
+   with the same backend profile, supply the search key only to the worker, and restart. The default retains the immediately
    previous active catalog for rollback. Staging does not prune old catalogs;
    unused staged rows persist until a subsequent activation/prune.
 5. Check readiness and real Finnish/English queries through chat. Readiness checks
    database/profile/key presence without billable calls, so provider uptime needs
    a real search smoke test too.
 
-In the Terraform installation, both importer and app read `aimo-runtime`. Set the
-backend/key through private `runtime_secrets`; Secret values override the legacy
-ConfigMap backend. Keep importer overrides separate until cutover, so an old app
-does not restart with the new profile. The release helper syncs conversational
-`LLM_*` fields only, not search keys. No GPU/model server is needed. The existing
-image retains E5 weights for rollback but hosted mode never loads them.
+In the Terraform installation, importer and worker read `aimo-worker-runtime`;
+the API reads `aimo-runtime`. Private `runtime_secrets` supplies the matching
+`EMBEDDING_BACKEND` to both and `SEARCH_API_KEY` only to the worker/importer.
+Secret values override the legacy ConfigMap backend. Keep staging importer
+overrides separate until cutover, so serving processes keep the old profile.
+The release helper syncs conversational `LLM_*` fields only, not search keys.
+No GPU/model server is needed. The worker image retains E5 weights for rollback
+but hosted mode never loads them. The API checks profile compatibility without
+model loading or provider credentials; the worker additionally checks key presence.
 
 Rollback: stop serving, select the old backend/model settings, run
 `aimo activate-catalog --generation PREVIOUS_GENERATION_UUID`, and restart with the

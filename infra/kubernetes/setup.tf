@@ -54,13 +54,16 @@ resource "kubernetes_job_v1" "bootstrap" {
         }
         container {
           name    = "setup"
-          image   = var.image
+          image   = var.worker_image
           command = ["/app/.venv/bin/python", "/setup/bootstrap.py"]
           env_from {
             config_map_ref { name = kubernetes_config_map_v1.runtime.metadata[0].name }
           }
           env_from {
             secret_ref { name = kubernetes_secret_v1.runtime.metadata[0].name }
+          }
+          env_from {
+            secret_ref { name = kubernetes_secret_v1.worker.metadata[0].name }
           }
           env_from {
             secret_ref { name = kubernetes_secret_v1.bootstrap[0].metadata[0].name }
@@ -106,7 +109,7 @@ resource "kubernetes_job_v1" "bootstrap" {
     }
   }
   wait_for_completion = true
-  depends_on          = [kubernetes_deployment_v1.aimo]
+  depends_on          = [kubernetes_deployment_v1.apps]
   timeouts { create = "60m" }
   lifecycle {
     precondition {

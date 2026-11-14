@@ -14,6 +14,26 @@ Entry format:
 
 Owner decisions use `D-<nnn>` and quote the owner's words verbatim.
 
+## Internal agent
+
+### F-AGENT-001: Person 2 rebuild uses persisted turns and canonical Service contracts
+- Date: 2026-11-14   Track: 2   Status: verified
+- Finding: The rebuilt runner requires the server's persisted turn ID, validates canonical tool inputs/outputs and retains the matching prepared plan/proposal after provider failures. Progress callbacks are optional metadata; browser SSE remains persisted snapshots. The model has no confirmation or commit operation.
+- Evidence: `tests/test_agent.py` (66 passing cases) and `tests/test_agent_integration.py`, within the full 174-test PostgreSQL/pgvector suite. `scripts/smoke_agent_provider.py` reported skipped because `LLM_API_KEY` was not configured; no live-provider success is claimed.
+- Impact: Person 1 can retain the existing three-argument runner call and optionally consume typed progress; Person 3 retains domain arithmetic and authorization. Backend retry recovery still uses the existing `chat-` plus turn-fingerprint preparation key. The runner needs no shared schema change. The later requested release wiring is separated into PR #32; this agent PR contains no deployment changes.
+
+### F-AGENT-002: OpenRouter live function calling and release credential wiring
+- Date: 2026-11-14   Track: 2   Status: verified (local/provider and GitHub storage); deployment pending
+- Finding: The owner's OpenRouter credential was stored only in ignored local configuration and GitHub `LLM_API_KEY`; provider variables select `https://openrouter.ai/api/v1` and `openai/gpt-4.1-mini`. The live smoke passed two completions and a read-only fixture-policy tool round trip. The existing release workflow previously did not transfer LLM settings to runtime; PR #32 proposes passing the secret and merging only provider fields through kubectl stdin on a future authorized deployment, separately from the agent rebuild.
+- Evidence: `scripts/smoke_agent_provider.py --require-config` returned `status=passed`, `provider=live`, `completions=2`; GitHub secret-name/variable readback confirmed storage. Backend 174 tests and infrastructure helper 23 tests passed; no credential value is recorded in tracked files or test evidence.
+- Impact: Local LLM connectivity is proven. GitHub Secret storage alone does not change running Pods: release wiring must be integrated and an authorized deployment must load the settings. Orders remain mock; no cluster modification or release activation was performed here.
+
+### F-AGENT-003: Review fixes and unresolved shared acceptance checks
+- Date: 2026-11-14   Track: 2   Status: verified (agent fixes); shared acceptance gaps remain
+- Finding: Remote provider URLs require HTTPS, with loopback-only HTTP development. Unexpected Service/provider failures emit safe error progress and preserve a previously verified basket; no automatic tool retry follows an unexpected failure. Final plan text labels estimates and lists unresolved product matches independently of model text. Model arithmetic, cross-turn recipe completeness and trusted constraint provenance remain incomplete; `docs/internal-agent.md` records the owning roles and required integration checks.
+- Evidence: Ruff, 79 deterministic agent tests and the full 188-test PostgreSQL suite passed after review. Runtime wiring is separately reviewed in PR #32 (28 helper tests, actionlint, Kubernetes Terraform validation and seven mocked plans); no cluster mutation ran. The review decisions are in PR #19's owner comment.
+- Impact: #19 is canonical, superseding #12/#16. Persons 1 and 3 must settle and implement the shared context, recipe template and quantity bounds before claiming the affected acceptance checks pass. No shared schema is invented by the agent PR.
+
 ## Infrastructure
 
 ### F-INFRA-001: Optional Terraform hosting and portable deployment
@@ -27,6 +47,12 @@ Owner decisions use `D-<nnn>` and quote the owner's words verbatim.
 - Finding: After PR #9 merged and the owner explicitly authorized applying the plan, Terraform created all seven cloud resources in `ams3`. One 4-GB worker is Ready, PostgreSQL is online, and its sole firewall rule trusts the Kubernetes cluster. Private deployment inputs use the operator's current public IPv4 and `10.121.0.0/20`; the original range was already used by the account's default VPC. The provider records an empty runtime-user settings block at creation; omitting it produces a subsequent removal request rejected with HTTP 400. Declare `settings {}` to retain the returned default.
 - Evidence: `terraform -chdir=infra/digitalocean apply -input=false weekend.tfplan` reported seven additions; DigitalOcean cluster/database/firewall reads and `kubectl get nodes` verified readiness and isolation. A subsequent Terraform plan and rejected settings-only update reproduced the provider issue; see [provider v2.107.0](https://github.com/digitalocean/terraform-provider-digitalocean/blob/v2.107.0/digitalocean/database/resource_database_user.go). Retaining the empty settings block applied successfully; a refreshed plan with the private deployment tfvars then reported no changes (exit 0).
 - Impact: Cloud billing is active. Keep the private tfvars and local state for future plans and teardown; credentials, kubeconfig and a private state backup stay outside Git. The Kubernetes application/ingress stack, SQL bootstrap, catalog import and app readiness remain pending; no application image, DNS or challenge API key was invented.
+
+### F-INFRA-003: Independent application containers and durable worker queue
+- Date: 2026-11-14   Track: all   Status: verified locally; live cutover pending
+- Finding: The owner requested “separete all into their apps, worker is a pod api fe etc” and “new pr new worktree”. The frontend, API and worker now have independent build targets, Kubernetes Deployments/Services, probes and credentials. PostgreSQL stores queued turns; workers claim with bounded leases and attempt fencing. Migration 005 preserves business history and makes historical interrupted turns explicitly retryable.
+- Evidence: 144 PostgreSQL-backed backend tests; Python lint; three successful Docker target builds; 8 mocked portable Terraform plans; 28 infrastructure helper tests (including the merged OpenRouter sync); rendered Traefik chart. A three-container smoke with fixture embeddings/provider returned a queued message in 0.02 seconds with the worker stopped, retained it across API restart, processed it after worker startup, and delivered SSE through the frontend proxy. No live supplier calls or production changes were made by these checks.
+- Impact: The API no longer loads ML weights or runs agent turns inline. The static frontend receives no secrets. Apply migration 004 and the reviewed separate-app Terraform cutover before enabling the new three-image release pipeline; see `docs/separate-apps.md`.
 
 ## Owner decisions
 
@@ -260,7 +286,7 @@ Add new findings below, under your track heading.
 - Date: 2026-11-14   Track: 1   Status: verified (local PostgreSQL and live OpenRouter); deployed cutover unverified
 - Finding: The supplied SHA-256-verified snapshot imported all 17,546 products into a separate local evaluation database with 4,096-dimensional Qwen3 Embedding 8B vectors. An interrupted run resumed with 192 cached embeddings and generated the remaining 17,354. All normalized products validated against the product schema; the evaluation database including its embedding cache occupies approximately 698 MB. No production database or Kubernetes configuration changed.
 - Evidence: `docs/search-evaluation-openrouter.json`, `docs/search-reranker-comparison.json`, and `scripts/evaluate_search.py`. Hybrid search with Qwen3 Reranker 8B found a labeled top-five result in 20/21 descriptive cases, versus 17/21 in the saved E5 baseline and 19/21 with Reranker 0.6B. Two 8B reranker runs had 12–14/21 labeled top-one results (baseline 12/21) and 2.1–2.9 second descriptive median latency. Both passed all six identifier and three exclusion cases, with zero supported dietary-filter violations or reranker outages. The remaining top-five miss was `Snellman naudan kuve`. These are curated, incompletely labeled regression cases, not a held-out benchmark; the baseline also used different document text, and hosted rankings/timings varied between runs.
-- Impact: Select the 8B embedding/reranker profile as an opt-in candidate-retrieval upgrade, without claiming first-result correctness or a universally best model. Migration 004, resumable batch caching, staged imports, exact filtered ranking and explicit profile-matched cutover/rollback preserve existing catalogs and purchasing history. Readiness does not spend API tokens. `165` backend tests, Python lint and the frontend production build passed locally. Cloud latency/capacity and operator rollout remain separate from this PR.
+- Impact: Select the 8B embedding/reranker profile as an opt-in candidate-retrieval upgrade, without claiming first-result correctness or a universally best model. Migration 005, resumable batch caching, staged imports, exact filtered ranking and explicit profile-matched cutover/rollback preserve existing catalogs and purchasing history. Readiness does not spend API tokens. `165` backend tests, Python lint and the frontend production build passed locally. Cloud latency/capacity and operator rollout remain separate from this PR.
 
 ### Track 2: Quote and Order
 
@@ -313,3 +339,9 @@ Add new findings below, under your track heading.
 - Finding: The existing React/FastAPI image now owns customer chat, typed direct Service tools, persisted conversation recovery and exact-revision browser confirmation. Migration 003 is additive and starts internal agents at zero autonomous authority without changing the buyer product scope. MCP/external-agent routes and dependency are removed; historical identity/proposal/approval/order references remain.
 - Evidence: `tests/test_agent_integration.py`, `tests/test_conversations.py`, `frontend/e2e`, generated browser contracts, and `docs/chat-purchasing.md` contain the current checks and limits. The carbonara fixture exercises five catalog matches and the actual quantity/policy/order modules; a local production-image restart retains session/messages/decision/receipt. Local Traefik streams the snapshot/heartbeat and observes logout revocation.
 - Impact: The backend, frontend and agent workstreams are integrated for review. Recipe agreement/model text cannot authorize purchasing. Changed terms require a new customer click. Apply neither Terraform nor release/deployment steps as part of this task. Live LLM and selected-cluster ingress still need operator acceptance after configuration/deployment.
+
+### F-SEARCH-002: Hosted search follows the separate worker deployment
+- Date: 2026-11-14   Track: 1   Status: verified (local integration); deployed cutover unverified
+- Finding: After integration with the frontend/API/worker split, only the worker/importer receives `SEARCH_API_KEY`. Both API and worker check the active embedding profile/dimension, while the worker also checks credential presence without provider calls. The hosted migration is `005_hosted_search.sql`, after `004_worker_queue.sql`.
+- Evidence: All 217 backend tests passed against a fresh isolated PostgreSQL/pgvector database; frontend build and Python lint passed. All three architecture diagrams rendered. Terraform validation, eight mocked plans and 28 infrastructure helper tests passed, including profile/credential separation.
+- Impact: The staged import and coordinated API/worker cutover remain explicit operator steps. No production configuration, database or deployment was changed.

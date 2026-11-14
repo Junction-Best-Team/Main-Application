@@ -27,7 +27,7 @@ class LlmSecretTest(unittest.TestCase):
         self.assertNotIn("synthetic-secret", " ".join(command))
         self.assertNotIn("synthetic-secret", output.getvalue())
         self.assertIn("--patch-file=/dev/stdin", command)
-        self.assertEqual(command[3:7], ["patch", "secret", "aimo-runtime", "--type=merge"])
+        self.assertEqual(command[3:7], ["patch", "secret", "aimo-worker-runtime", "--type=merge"])
         body = json.loads(run.call_args.kwargs["input"])
         self.assertEqual(body, {"stringData": {
             "LLM_API_KEY": "synthetic-secret", "LLM_BASE_URL": "https://openrouter.ai/api/v1",

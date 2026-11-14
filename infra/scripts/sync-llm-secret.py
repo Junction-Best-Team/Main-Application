@@ -32,7 +32,7 @@ def sync(environ=None):
     desired = {"LLM_API_KEY": key, "LLM_BASE_URL": base_url, "LLM_MODEL": model}
     try:
         current = subprocess.run([
-            "kubectl", "-n", namespace, "get", "secret", "aimo-runtime", "-o", "json",
+            "kubectl", "-n", namespace, "get", "secret", "aimo-worker-runtime", "-o", "json",
             "--request-timeout=30s",
         ], text=True, capture_output=True, check=False, timeout=45)
         if current.returncode:
@@ -46,14 +46,14 @@ def sync(environ=None):
     body = json.dumps({"stringData": desired})
     try:
         result = subprocess.run([
-            "kubectl", "-n", namespace, "patch", "secret", "aimo-runtime", "--type=merge",
+            "kubectl", "-n", namespace, "patch", "secret", "aimo-worker-runtime", "--type=merge",
             "--patch-file=/dev/stdin", "--request-timeout=30s",
         ], input=body, text=True, capture_output=True, check=False, timeout=45)
     except (OSError, subprocess.TimeoutExpired):
         raise SystemExit("Runtime Secret update failed or timed out; provider omitted.") from None
     if result.returncode:
         # A kubectl/API error can contain the submitted object; never relay it.
-        raise SystemExit("Could not configure the existing aimo-runtime Secret; provider omitted.")
+        raise SystemExit("Could not configure the existing aimo-worker-runtime Secret; provider omitted.")
     print("Configured server-side LLM settings in the existing runtime Secret.")
     return True
 

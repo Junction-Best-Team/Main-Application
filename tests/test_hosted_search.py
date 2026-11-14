@@ -16,6 +16,7 @@ from aimo.fixtures import fixture_facts
 from aimo.ingest import activate_catalog, publish
 from aimo.schemas import Requirements, SearchRequest, SearchResponse
 from aimo.search import search_products
+from aimo.worker import check_readiness
 
 
 def response_vector(index=0, value=1):
@@ -236,8 +237,17 @@ def test_exact_ids_readiness_and_filters_do_not_depend_on_provider(
     )
     with TestClient(app) as client:
         assert client.get("/health/ready").status_code == 200
+        monkeypatch.setattr(settings(), "llm_api_key", "synthetic-worker-key")
+        check_readiness()
         monkeypatch.setattr(settings(), "search_api_key", "")
+        assert client.get("/health/ready").status_code == 200
+        with pytest.raises(Problem):
+            check_readiness()
+        monkeypatch.setattr(settings(), "search_api_key", "synthetic-search-key")
+        monkeypatch.setattr(settings(), "embedding_backend", "hash")
         assert client.get("/health/ready").status_code == 503
+        with pytest.raises(RuntimeError, match="Catalog/model mismatch"):
+            check_readiness()
 
 
 def test_rerank_filters_before_provider_and_reports_outage(hosted_catalog, monkeypatch, agent):
@@ -298,7 +308,7 @@ def test_migration_preserves_existing_384_dimension_rows():
                 "INSERT INTO embedding_cache VALUES('legacy-e5','hash',%s::vector)", (old_vector,)
             )
             c.execute("INSERT INTO active_catalog VALUES(true,%s)", (generation,))
-            c.execute((ROOT / "migrations/004_hosted_search.sql").read_text())
+            c.execute((ROOT / "migrations/005_hosted_search.sql").read_text())
             assert (
                 c.execute("SELECT embedding_dimensions FROM catalog_generations").fetchone()[
                     "embedding_dimensions"

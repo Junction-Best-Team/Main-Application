@@ -2,6 +2,8 @@ mock_provider "kubernetes" {}
 mock_provider "helm" {}
 
 variables {
+  worker_image    = "ghcr.io/junction-best-team/main-application:worker-test"
+  frontend_image  = "ghcr.io/junction-best-team/main-application:frontend-test"
   image           = "ghcr.io/junction-best-team/main-application:test-commit"
   hostname        = "aimo.test.example.com"
   acme_email      = "demo@example.com"
@@ -14,11 +16,11 @@ variables {
 run "safe_initial_plan" {
   command = plan
   assert {
-    condition     = kubernetes_deployment_v1.aimo.spec[0].replicas == "0" && length(kubernetes_job_v1.bootstrap) == 0
+    condition     = kubernetes_deployment_v1.apps["api"].spec[0].replicas == "0" && length(kubernetes_job_v1.bootstrap) == 0
     error_message = "Initial setup must not start the app or run privileged setup jobs."
   }
   assert {
-    condition     = kubernetes_service_v1.aimo.spec[0].type == "ClusterIP"
+    condition     = kubernetes_service_v1.apps["api"].spec[0].type == "ClusterIP"
     error_message = "The app should be reachable only through the HTTPS ingress."
   }
   assert {
@@ -30,7 +32,7 @@ run "safe_initial_plan" {
     error_message = "Use secure cookies and explicitly mocked supplier responses by default."
   }
   assert {
-    condition     = kubernetes_deployment_v1.aimo.spec[0].template[0].spec[0].security_context[0].run_as_non_root && kubernetes_deployment_v1.aimo.spec[0].template[0].spec[0].container[0].security_context[0].run_as_non_root
+    condition     = kubernetes_deployment_v1.apps["api"].spec[0].template[0].spec[0].security_context[0].run_as_non_root && kubernetes_deployment_v1.apps["api"].spec[0].template[0].spec[0].container[0].security_context[0].run_as_non_root
     error_message = "The container must not override the pod's non-root requirement; restricted admission rejects an explicit false value."
   }
 }
@@ -48,6 +50,10 @@ run "restricted_setup_plan" {
   assert {
     condition     = kubernetes_job_v1.bootstrap[0].spec[0].template[0].spec[0].security_context[0].run_as_non_root && kubernetes_job_v1.bootstrap[0].spec[0].template[0].spec[0].container[0].security_context[0].run_as_non_root
     error_message = "The setup container must satisfy the namespace's restricted non-root admission policy."
+  }
+  assert {
+    condition     = contains([for source in kubernetes_job_v1.bootstrap[0].spec[0].template[0].spec[0].container[0].env_from : try(source.secret_ref[0].name, "")], "aimo-worker-runtime")
+    error_message = "The explicit setup/import Job must receive the worker's embedding profile and search credentials."
   }
 }
 
@@ -76,7 +82,7 @@ run "reject_serving_without_trusted_proxy" {
     app_replicas    = 1
     runtime_secrets = {}
   }
-  expect_failures = [kubernetes_deployment_v1.aimo]
+  expect_failures = [kubernetes_deployment_v1.apps]
 }
 
 run "reject_wildcard_proxy_trust" {
@@ -85,7 +91,7 @@ run "reject_wildcard_proxy_trust" {
     app_replicas    = 1
     runtime_secrets = { FORWARDED_ALLOW_IPS = "*" }
   }
-  expect_failures = [kubernetes_deployment_v1.aimo]
+  expect_failures = [kubernetes_deployment_v1.apps]
 }
 
 run "reject_import_with_serving_app" {
@@ -100,4 +106,35 @@ run "reject_import_with_serving_app" {
     }
   }
   expect_failures = [kubernetes_job_v1.bootstrap]
+}
+
+run "separate_apps" {
+  command = plan
+  variables {
+    runtime_secrets = {
+      FORWARDED_ALLOW_IPS = "10.23.0.0/24"
+      SEARCH_API_KEY      = "synthetic-search-key"
+      EMBEDDING_BACKEND   = "openrouter"
+    }
+  }
+  assert {
+    condition     = length(kubernetes_deployment_v1.apps) == 3 && length(kubernetes_service_v1.apps) == 3
+    error_message = "Frontend, API and worker must be independent deployments and services."
+  }
+  assert {
+    condition     = length(kubernetes_deployment_v1.apps["frontend"].spec[0].template[0].spec[0].container[0].env_from) == 0
+    error_message = "The static frontend must not receive database/session/provider secrets."
+  }
+  assert {
+    condition     = !contains(keys(kubernetes_secret_v1.worker.data), "APPROVAL_SESSION_SECRET") && !contains(keys(kubernetes_secret_v1.runtime.data), "LLM_API_KEY")
+    error_message = "Worker must not receive session signing keys; API must not receive provider keys."
+  }
+  assert {
+    condition     = !contains(keys(kubernetes_secret_v1.runtime.data), "SEARCH_API_KEY") && kubernetes_secret_v1.worker.data.SEARCH_API_KEY == "synthetic-search-key"
+    error_message = "Only the worker/importer may receive the hosted search credential."
+  }
+  assert {
+    condition     = kubernetes_secret_v1.runtime.data.EMBEDDING_BACKEND == "openrouter" && kubernetes_secret_v1.worker.data.EMBEDDING_BACKEND == "openrouter"
+    error_message = "API readiness and worker search must use the same catalog profile."
+  }
 }

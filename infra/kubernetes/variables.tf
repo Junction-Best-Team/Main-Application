@@ -14,7 +14,7 @@ variable "namespace" {
 }
 
 variable "image" {
-  description = "PR #4 application image built for the worker architecture and pushed to an OCI registry."
+  description = "API image (Docker target api), pinned by commit or digest."
   type        = string
   validation {
     condition     = !endswith(var.image, ":latest") && can(regex("(:[A-Za-z0-9_.-]+|@sha256:[a-f0-9]{64})$", var.image)) && !strcontains(var.image, "example.invalid")
@@ -172,5 +172,22 @@ variable "llm_base_url" {
   validation {
     condition     = startswith(var.llm_base_url, "https://")
     error_message = "Hosted LLM provider traffic requires HTTPS."
+  }
+}
+
+variable "worker_image" {
+  description = "Independent worker image (Docker target worker), also used for setup jobs."
+  type        = string
+  validation {
+    condition     = !endswith(var.worker_image, ":latest") && can(regex("(:[A-Za-z0-9_.-]+|@sha256:[a-f0-9]{64})$", var.worker_image))
+    error_message = "Pin the worker image by commit tag or digest."
+  }
+}
+variable "frontend_image" {
+  description = "Independent static frontend image (Docker target frontend)."
+  type        = string
+  validation {
+    condition     = !endswith(var.frontend_image, ":latest") && can(regex("(:[A-Za-z0-9_.-]+|@sha256:[a-f0-9]{64})$", var.frontend_image))
+    error_message = "Pin the frontend image by commit tag or digest."
   }
 }

@@ -1,6 +1,6 @@
 # Aimo chat purchasing
 
-One authenticated FastAPI application serves the existing React frontend, runs our internal meal-purchasing assistant, and records **persistent mock orders**. Open `/`, sign in, and ask for ingredients for 200 portions of carbonara. PostgreSQL retains conversations, exact proposal revisions, customer confirmations, policies, approvals, orders and audit history. No supplier checkout or inventory reservation is implemented.
+Three independently deployed apps serve chat purchasing: a React/Nginx frontend, an authenticated FastAPI API, and a durable AI worker. They record **persistent mock orders**. Open `/`, sign in, and ask for ingredients for 200 portions of carbonara. PostgreSQL retains conversations, exact proposal revisions, customer confirmations, policies, approvals, orders and audit history. No supplier checkout or inventory reservation is implemented.
 
 The current [product migration](docs/chat-purchasing.md) overrides the external-agent entry points in the [original brief](docs/brief.md). The underlying purchasing controls remain. [Infrastructure](infra/README.md) is optional and operator-managed; this migration does not apply Terraform, deploy or enable releases.
 
@@ -14,6 +14,8 @@ See the [architecture diagrams](docs/architecture.md) for the system overview, p
 - Check the affected feature works, then open a PR into `develop`: `gh pr create --base develop`. All feature, fix, documentation, and maintenance PRs must target `develop`. Wait for the latest CI run to pass, then self-merge. Human approval is optional; request teammate review for risky authentication, database schema, or shared-interface changes.
 - Keep `main` ready to demonstrate. Promote a tested snapshot with a release PR from `develop` to `main` only when a release is explicitly requested. Avoid force pushes to shared branches and preserve teammates' uncommitted work.
 - Use a separate checkout/worktree and branch for each concurrent agent on the same machine.
+
+See [separate apps and the one-time cluster cutover](docs/separate-apps.md) for images, routing, queue recovery and deployment steps.
 
 ## Lightweight CI
 
@@ -32,7 +34,7 @@ Our workflow is **task PR → green CI → self-merge**. Reviews are optional, a
 
 ## Build and deploy releases
 
-After a release PR reaches `main` and CI passes, GitHub builds the application Docker image and pushes it to GHCR with a commit tag and immutable digest. Once the cluster is bootstrapped and `DEPLOY_ENABLED=true`, the same release updates the running app and waits for readiness; a failed rollout restores the previous image. Human approval is not required.
+After a release PR reaches `main` and CI passes, GitHub builds the frontend, API and worker Docker images and pushes each to GHCR with a component/commit tag and immutable digest. Once the cluster is bootstrapped and `DEPLOY_ENABLED=true`, the same release updates all three apps and waits for readiness; a failed rollout restores every changed image. Human approval is not required.
 
 Deployment is off until the one-time setup is complete. Terraform provisioning, database migrations and catalog import remain explicit operator steps. See [the release setup instructions](infra/README.md#simple-main-to-cluster-release-pipeline) for the cluster ID, deployment token, initial public image, and activation switch.
 
@@ -58,7 +60,8 @@ uv run aimo ingest --file /absolute/path/valio_aimo_junction26_product_data.json
 # Or obtain it from the sponsor with a server-side VALIO_AIMO_API_KEY:
 mkdir -p data
 uv run aimo ingest --download --file data/valio_aimo_junction26_product_data.json
-uv run aimo serve
+uv run aimo serve                    # API terminal
+# In separate terminals: uv run aimo worker, and npm run dev --prefix frontend
 ```
 
 For hosted Qwen3 Embedding 8B and shortlist reranking through OpenRouter, follow the [hosted search migration and cutover](docs/hosted-search.md). Existing deployments keep the local model until explicitly migrated and reindexed.
@@ -67,9 +70,9 @@ The first import downloads the pinned `intfloat/multilingual-e5-small` model and
 
 For a quick authored-fixture catalog, use `uv run aimo fixture-catalog` instead of `ingest`. Set `EMBEDDING_BACKEND=fixture` in `.env` only when you also want deterministic fake embeddings; ingestion and serving must use the same setting. The default uses the real model, including for a small fixture catalog. `UPSTREAM_MODE=fixture` is independent: commercial prices/stock remain invented unless explicitly switched to `live` with private credentials. There is no silent live-to-fixture fallback.
 
-Open [chat purchasing](http://localhost:8000/). Username: **buyer**. Read the generated `DEMO_BUYER_PASSWORD` privately from `.env`. Configure `LLM_API_KEY` privately for chat; `LLM_BASE_URL` and `LLM_MODEL` select the conversational provider independently of local embeddings. The browser never receives provider/API keys. `SECURE_COOKIES=false` is for localhost HTTP only. Hosted deployments require HTTPS and `SECURE_COOKIES=true`.
+Run `docker compose --profile app up --build` after setup, then open [chat purchasing](http://localhost:8000/). Username: **buyer**. Read the generated `DEMO_BUYER_PASSWORD` privately from `.env`. Configure `LLM_API_KEY` privately for chat; `LLM_BASE_URL` and `LLM_MODEL` select the conversational provider independently of local embeddings. The browser never receives provider/API keys. `SECURE_COOKIES=false` is for localhost HTTP only. Hosted deployments require HTTPS and `SECURE_COOKIES=true`.
 
-For frontend development, run `npm run dev --prefix frontend` and temporarily set `PUBLIC_BASE_URL=http://localhost:5173` for the backend. Vite proxies `/api`; production serves the built assets from FastAPI. The source of the browser's generated types is Python: `uv run python scripts/export_schema.py && npm run types --prefix frontend`.
+For frontend development, run `npm run dev --prefix frontend` and temporarily set `PUBLIC_BASE_URL=http://localhost:5173` for the backend. Vite proxies `/api`; production serves built assets from the separate frontend container, with Traefik routing API/SSE directly to FastAPI. The source of the browser's generated types is Python: `uv run python scripts/export_schema.py && npm run types --prefix frontend`.
 
 ## Demo and browser interfaces
 
@@ -85,7 +88,7 @@ The CLI authenticates as the buyer and starts chat. Complete recipe clarificatio
 
 Authenticated JSON routes are `/api/conversations`, `/api/conversations/{id}`, `/api/conversations/{id}/messages`, `/api/conversations/{id}/events`, `/api/purchases` and `/api/purchases/{id}/confirm`, plus existing session, approval-detail/decision and purchase-detail APIs. Writes require the buyer session, exact configured Origin and session-bound CSRF token. SSE replays persisted conversation state and sends heartbeats; it does not stream speculative model tokens. Interactive contracts are at `/docs`; generated browser types come from Python. [Credential-free examples](docs/examples/requests.json) show the request bodies.
 
-`/mcp` and every `/api/agent/*` route are removed and return JSON 404. The internal typed agent calls `Service` directly with a server-controlled buyer identity. There is no bearer-token provisioning, MCP client, loopback HTTP, second frontend, queue or separate agent service.
+`/mcp` and every `/api/agent/*` route are removed and return JSON 404. The internal typed agent calls `Service` directly with a server-controlled buyer identity. There is no external bearer-token provisioning or MCP client. A PostgreSQL-backed job queue connects the API to the independent worker.
 
 Apply additive migration `003_chat_purchasing.sql` using the setup role before running the new image. It retains all historical purchasing records and creates zero-autonomous-limit internal agents for existing buyers without broadening their product scope. New demo provisioning needs only `DEMO_BUYER_PASSWORD`. Old private `DEMO_AGENT_TOKEN` settings can be removed from your secret store; historical identity rows must stay. See [upgrade and operational details](docs/chat-purchasing.md).
 
@@ -120,20 +123,25 @@ uv run python scripts/evaluate_search.py  # full catalog, real embeddings; write
 
 Tests require a PostgreSQL role permitted to create `aimo_test`, or an existing database named with `_test` and `TEST_DATABASE_URL` configured. Tests refuse to clear a database without that suffix. Browser tests create mock purchases in the demo database and require fixture commerce. The historical-revision test uses `uv` and `tests/browser_revision_fixture.py` to seed its own repriced purchase; its `DATABASE_URL` must point to the same database as the running server. `/docs` testing needs access to jsDelivr. `BASE_URL` selects a browser-test origin; `DEMO_BASE_URL` selects the chat demo. `AIMO_INTEGRATION=1` enables real-server browser checks; default UI regressions mock route responses. [Current migration verification](docs/chat-purchasing.md#verification-record) records the chat cutover. [Historical gateway validation](docs/validation.md) retains the earlier outcomes and limited 30-case retrieval evaluation.
 
-## One production image, existing cluster
+## Three production images, existing cluster
 
 ```sh
-docker build -t aimo-mvp:local .
-# Same image supports explicit setup/import commands; .env is never baked into it.
-docker compose --profile app run --rm app migrate
-docker compose --profile app run --rm app seed
-docker compose --profile app run --rm app fixture-catalog
-# For a full catalog, use the volume-mounted invocation in deploy/README.md instead.
-docker compose --profile app up -d app
+docker build --target frontend -t aimo:frontend .
+docker build --target api -t aimo:api .
+docker build --target worker -t aimo:worker .
+# Run migrate/seed/import explicitly as shown in Local setup first.
+docker compose --profile app up -d --build
 ```
 
-The Node stage builds assets; the Python runtime contains no Node server. Linux uses CPU-only PyTorch. Model weights are pinned and cached at image build; runtime uses offline model loading. Use `/health/live` for liveness and `/health/ready` for database/index/model readiness, without requiring the supplier to be online.
+The frontend image serves built React assets with Nginx. The API image contains
+FastAPI without PyTorch/model weights. The worker image loads the pinned model
+offline and consumes durable chat jobs. Each app has its own health endpoints.
+API readiness checks schema/catalog compatibility; worker readiness also requires
+model initialization and a recent successful database poll.
 
-[Deployment instructions](deploy/README.md) and Kubernetes manifests target an **existing** database/cluster/TLS setup, with one application replica and a manual ingestion Job. They contain placeholders and have not been deployed to a cluster. No cluster, database operator, paid infrastructure or real supplier order was provisioned.
+[Deployment instructions](deploy/README.md) and [the cutover runbook](docs/separate-apps.md)
+cover independent Kubernetes Deployments, Services, path routing, migration 004,
+and rollback while preserving the existing managed database and purchase history.
+The separate-app rollout is not implied by a successful local build or PR check.
 
 [Preparation and third-party provenance](docs/pre-existing-work.md) must accompany the event submission. Restricted raw data, credentials, downloaded weights and generated browser test artifacts are ignored.

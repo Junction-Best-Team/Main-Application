@@ -12,14 +12,57 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
-  app:
-    build: .
-    env_file: .env
+  api:
+    build: {context: ., target: api}
     environment:
       DATABASE_URL: postgresql://aimo:aimo@db:5432/aimo
-    ports: ["127.0.0.1:8000:8000"]
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
+      APPROVAL_SESSION_SECRET: ${APPROVAL_SESSION_SECRET:-}
+      SECURE_COOKIES: ${SECURE_COOKIES:-false}
+      UPSTREAM_MODE: ${UPSTREAM_MODE:-fixture}
+      VALIO_AIMO_API_KEY: ${VALIO_AIMO_API_KEY:-}
+      EMBEDDING_BACKEND: ${EMBEDDING_BACKEND:-sentence_transformers}
     depends_on:
       db: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready')"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    profiles: [app]
+  worker:
+    build: {context: ., target: worker}
+    environment:
+      DATABASE_URL: postgresql://aimo:aimo@db:5432/aimo
+      UPSTREAM_MODE: ${UPSTREAM_MODE:-fixture}
+      VALIO_AIMO_API_KEY: ${VALIO_AIMO_API_KEY:-}
+      EMBEDDING_BACKEND: ${EMBEDDING_BACKEND:-sentence_transformers}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://openrouter.ai/api/v1}
+      LLM_MODEL: ${LLM_MODEL:-openai/gpt-4.1-mini}
+      SEARCH_API_KEY: ${SEARCH_API_KEY:-}
+      SEARCH_TIMEOUT_SECONDS: ${SEARCH_TIMEOUT_SECONDS:-15}
+      SEARCH_MAX_ATTEMPTS: ${SEARCH_MAX_ATTEMPTS:-2}
+      EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-32}
+      EMBEDDING_WORKERS: ${EMBEDDING_WORKERS:-4}
+      RERANK_ENABLED: ${RERANK_ENABLED:-true}
+      RERANK_CANDIDATES: ${RERANK_CANDIDATES:-30}
+    depends_on:
+      db: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health/ready')"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+    stop_grace_period: 120s
+    profiles: [app]
+  frontend:
+    build: {context: ., target: frontend}
+    ports: ["127.0.0.1:8000:8080"]
+    volumes:
+      - ./frontend/nginx.compose.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      api: {condition: service_healthy}
     profiles: [app]
 volumes:
   postgres:

@@ -1,21 +1,27 @@
-"""Provider/tool boundary tests use no database, model weights, or real provider."""
+"""Person 2's deterministic acceptance tests; provider and Service are explicit fakes."""
 
 import json
+import time
+from copy import deepcopy
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from uuid import uuid4
 
 import httpx
 import pytest
 
-from aimo import agent as internal
+from aimo import agent
+from aimo.agent_provider import AssistantReply, ChatProvider
+from aimo.agent_tools import ToolSession
 from aimo.chat_schemas import MealPlan
-from aimo.db import Problem
+from aimo.db import Problem, fingerprint
+from aimo.fixtures import fixture_facts
+from aimo.schemas import ProposalResponse
 
 
-# This module exercises the provider boundary, not the PostgreSQL business layer.
 @pytest.fixture(scope="session", autouse=True)
 def database():
-    yield
+    yield  # This module never uses the database.
 
 
 @pytest.fixture(autouse=True)
@@ -25,328 +31,703 @@ def reset_buyers():
 
 @pytest.fixture
 def identity():
-    return {"id": "server-agent", "role": "agent", "buyer_id": "hotel", "active": True,
-            "_turn_id": str(uuid4())}
+    return {
+        "id": "internal-agent",
+        "buyer_id": "hotel",
+        "role": "agent",
+        "active": True,
+        "_turn_id": str(uuid4()),
+    }
 
 
 @pytest.fixture
-def cfg(monkeypatch):
-    config = SimpleNamespace(llm_api_key="private-test-key", llm_base_url="https://provider.test/v1",
-                             llm_model="test-model", llm_timeout_seconds=20,
-                             llm_max_tool_rounds=6)
-    monkeypatch.setattr(internal, "settings", lambda: config)
-    return config
+def config(monkeypatch):
+    cfg = SimpleNamespace(
+        llm_api_key="private-provider-key",
+        llm_base_url="https://provider.test/v1",
+        llm_model="test-model",
+        llm_timeout_seconds=20,
+        llm_max_tool_rounds=12,
+    )
+    monkeypatch.setattr(agent, "settings", lambda: cfg)
+    return cfg
 
 
-class FakeService:
-    def __init__(self):
-        self.calls = []
-        self.proposal = {"proposal_id": str(uuid4()), "policy_outcome": "approval_required",
-                         "reasons": [{"message": "Outside the buyer's standing product scope."}]}
-
-    def get_product(self, identity, product_id):
-        self.calls.append(("product", identity, product_id))
-        return {"id": product_id, "name": product_id, "base_unit": "KG"}
-
-    def get_purchase_policy(self, identity):
-        self.calls.append(("policy", identity))
-        return {"rules": {"destinations": ["hotel-helsinki"], "approved_product_ids": ["milk"]}}
-
-    def search_products(self, identity, request):
-        self.calls.append(("search", identity, request))
-        return {"products": [{"id": request.query, "name": request.query}]}
-
-    def prepare_order(self, identity, request):
-        self.calls.append(("prepare", identity, request))
-        return self.proposal
-
-    def get_proposal(self, identity, proposal_id):
-        self.calls.append(("proposal", identity, proposal_id))
-        if str(proposal_id) != self.proposal["proposal_id"]:
-            raise Problem("NOT_FOUND", "Proposal not found.", 404)
-        return self.proposal
+NAMES = ["pasta", "eggs", "pork", "cheese", "pepper"]
+AMOUNTS = ["20", "12", "6", "4", "0.2"]
+HISTORY = [{"role": "user", "content": "Ingredients for 200 portions of carbonara."}]
 
 
-def tool(name, arguments):
-    return {"id": str(uuid4()), "type": "function",
-            "function": {"name": name, "arguments": json.dumps(arguments)}}
-
-
-def reply(*calls, text=None):
-    return {"role": "assistant", "content": text, **({"tool_calls": list(calls)} if calls else {})}
-
-
-def scripted(monkeypatch, replies):
-    seen = []
-    sequence = iter(replies)
-
-    def completion(client, cfg, messages, definitions, deadline):
-        seen.append(json.loads(json.dumps({"messages": messages, "tools": definitions})))
-        return next(sequence)
-
-    monkeypatch.setattr(internal, "_completion", completion)
-    return seen
-
-
-def ingredients(matched=True):
-    return [{"name": name, "amount": amount, "unit": "KG",
-             **({"product_id": name} if matched else {})}
-            for name, amount in [("pasta", "20"), ("eggs", "12"), ("pork", "6"),
-                                 ("cheese", "4"), ("pepper", "0.2")]]
-
-
-def plan(matched=True):
-    return {"title": "Carbonara", "portions": 200, "ingredients": ingredients(matched),
-            "notes": ["Recipe estimate; verify portions and dietary needs."]}
+def meal(matched=True):
+    return {
+        "title": "Carbonara",
+        "portions": 200,
+        "ingredients": [
+            {"name": name, "amount": amount, "unit": "KG", "product_id": name if matched else None}
+            for name, amount in zip(NAMES, AMOUNTS)
+        ],
+        "notes": ["Basis: 4 portions scaled by 50. Totals shown; recipe estimate for review."],
+    }
 
 
 def purchase():
-    return {"request_id": "200 portions of carbonara", "destination": "hotel-helsinki",
-            "delivery_date": "2026-11-16", "budget_gross": "1000",
-            "lines": [{"product_id": i["product_id"], "amount": i["amount"], "unit": i["unit"]}
-                      for i in ingredients()]}
+    return {
+        "request_id": "carbonara-200",
+        "destination": "hotel-helsinki",
+        "delivery_date": "2026-11-16",
+        "budget_gross": "1000",
+        "lines": [
+            {"product_id": name, "unit": "KG", "amount": amount}
+            for name, amount in zip(NAMES, AMOUNTS)
+        ],
+    }
 
 
-def invoke(registry, name, payload):
-    return registry.invoke(name, json.dumps(payload))
+def product(name):
+    result = deepcopy(fixture_facts()[0])
+    result.update(id=name, name=name, sales_unit="KG", base_unit="KG", units={"KG": "1"})
+    result["provenance"]["product_id"] = name
+    return result
 
 
-def test_carbonara_clarification_to_actual_products_and_verified_basket(monkeypatch, cfg, identity):
-    service = FakeService()
-    first = scripted(monkeypatch, [reply(tool("get_purchase_policy", {})), reply(
-        text="What delivery date, dietary requirements and budget should I use? "
-             "May I use hotel-helsinki as the destination?"
-    )])
-    history = [{"role": "user", "content": "I need ingredients for 200 portions of carbonara."}]
-    clarification = internal.run_turn(identity, history, service)
+def proposal(identity, pid=None, outcome="approval_required"):
+    expiry = datetime.now(timezone.utc) + timedelta(minutes=15)
+    return {
+        "proposal_id": pid or str(uuid4()),
+        "revision": 1,
+        "current_revision": 1,
+        "committed_revision": None,
+        "current_proposal_url": "/purchases/example",
+        "policy_version": 1,
+        "policy_outcome": outcome,
+        "approval_status": "pending",
+        "order_status": "not_placed",
+        "reasons": [
+            {"code": "SCOPE", "message": "Outside standing scope.", "severity": "exception"}
+        ],
+        "expires_at": expiry,
+        "next_action": {"type": "wait"},
+        "buyer_id": identity["buyer_id"],
+        "agent_id": identity["id"],
+        "request": purchase(),
+        "snapshot": {
+            "lines": [],
+            "currency": "EUR",
+            "net_total": "100",
+            "gross_total": "114",
+            "tax_total": "14",
+            "deposits_gross": "0",
+            "charges_gross": "0",
+            "charges_basis": "authored fixture",
+            "mode": "fixture",
+            "observed_at": expiry.isoformat(),
+            "reasons": [],
+        },
+    }
+
+
+class FakeService:
+    def __init__(self, identity):
+        self.calls = []
+        self.saved = proposal(identity)
+        self.proposals = {self.saved["proposal_id"]: self.saved}
+
+    def get_product(self, identity, product_id):
+        self.calls.append(("product", deepcopy(identity), product_id))
+        return product(product_id)
+
+    def get_purchase_policy(self, identity):
+        self.calls.append(("policy", deepcopy(identity)))
+        return {
+            "buyer_id": identity["buyer_id"],
+            "agent_id": identity["id"],
+            "policy_version": 1,
+            "rules": {
+                "currency": "EUR",
+                "autonomous_limit": "0",
+                "destinations": ["hotel-helsinki"],
+                "substitution": "requires_approval",
+                "overbuy": "requires_approval",
+                "whole_sales_units": True,
+                "approved_product_ids": ["milk"],
+            },
+            "spend_basis": "gross payable",
+            "editable": False,
+        }
+
+    def prepare_order(self, identity, request):
+        self.calls.append(("prepare", deepcopy(identity), request))
+        return self.saved
+
+    def get_proposal(self, identity, proposal_id):
+        self.calls.append(("proposal", deepcopy(identity), proposal_id))
+        if str(proposal_id) not in self.proposals:
+            raise Problem("NOT_FOUND", "Proposal not found.", 404)
+        return self.proposals[str(proposal_id)]
+
+
+def call(name, args=None):
+    return {
+        "id": str(uuid4()),
+        "type": "function",
+        "function": {"name": name, "arguments": json.dumps(args or {})},
+    }
+
+
+def reply(*calls, text=None):
+    return {"role": "assistant", "content": text, "tool_calls": list(calls)}
+
+
+def scripted(monkeypatch, responses):
+    sequence = iter(responses)
+    seen = []
+
+    def complete(self, history, tools, deadline):
+        seen.append(deepcopy({"messages": history, "tools": tools}))
+        response = next(sequence)
+        if isinstance(response, Exception):
+            raise response
+        return AssistantReply.model_validate(response)
+
+    monkeypatch.setattr(ChatProvider, "complete", complete)
+    return seen
+
+
+def prepared_script():
+    return [
+        reply(*[call("get_product", {"product_id": name}) for name in NAMES]),
+        reply(call("publish_meal_plan", meal())),
+        reply(call("prepare_order", purchase())),
+    ]
+
+
+def invoke(session, name, args):
+    return session.invoke(name, json.dumps(args))
+
+
+def matched_session(identity, service):
+    session = ToolSession(identity, service)
+    for name in NAMES:
+        invoke(session, "get_product", {"product_id": name})
+    invoke(session, "publish_meal_plan", meal())
+    return session
+
+
+def test_carbonara_clarifies_then_returns_a_verified_full_basket(monkeypatch, config, identity):
+    service = FakeService(identity)
+    events = []
+    seen = scripted(
+        monkeypatch,
+        [
+            reply(call("get_purchase_policy")),
+            reply(
+                text="Which delivery date, destination, dietary requirements and budget should I use?"
+            ),
+        ],
+    )
+    clarification = agent.run_turn(identity, HISTORY, service, on_progress=events.append)
     assert clarification.proposal_id is None
     assert "delivery date" in clarification.text
-    assert len(first) == 2
-    assert not any(call[0] == "prepare" for call in service.calls)
-    history += [{"role": "assistant", "content": clarification.text},
-                {"role": "user", "content": "Nov 16, hotel-helsinki, no dietary restrictions, "
-                                            "1000 EUR. Use the proposed traditional recipe."}]
-    seen = scripted(monkeypatch, [
-        reply(tool("publish_meal_plan", plan(False)),
-              *[tool("search_products", {"query": i["name"]}) for i in ingredients()]),
-        reply(*[tool("get_product", {"product_id": i["product_id"]}) for i in ingredients()]),
-        reply(tool("publish_meal_plan", plan())),
-        reply(tool("prepare_order", purchase())),
-        reply(text="Your matched recipe and basket are ready for review."),
-    ])
-    result = internal.run_turn(identity, history, service)
-    assert result.meal_plan.portions == 200
-    assert len(result.meal_plan.ingredients) == 5
-    assert result.proposal_id == service.proposal["proposal_id"]
-    assert "Confirm purchase button" in result.text
-    assert "No supplier order" in result.text
+    assert not any(c[0] == "prepare" for c in service.calls)
+    prompt = seen[0]["messages"][0]["content"]
+    assert all(
+        word in prompt for word in ("base servings", "count-to-weight", "untrusted", "scope")
+    )
+
+    history = HISTORY + [
+        {"role": "assistant", "content": clarification.text},
+        {
+            "role": "user",
+            "content": "Nov 16, hotel-helsinki, no dietary "
+            "restrictions, 1000 EUR. Use traditional carbonara.",
+        },
+    ]
+    scripted(monkeypatch, prepared_script() + [reply(text="The full matched basket is ready.")])
+    turn = agent.run_turn(identity, history, service, on_progress=events.append)
+    assert turn.meal_plan == MealPlan(**meal())
+    assert turn.proposal_id == service.saved["proposal_id"]
+    assert "Confirm purchase button" in turn.text
+    assert "No supplier order" in turn.text
+    assert all(c[1] == identity for c in service.calls)
     prepared = [c for c in service.calls if c[0] == "prepare"]
     assert len(prepared) == 1
-    assert prepared[0][1] == identity
-    assert prepared[0][2].idempotency_key.startswith("chat-")
-    assert set(call[0] for call in service.calls) <= {"search", "policy", "product", "prepare"}
-    assert all(call[1]["buyer_id"] == identity["buyer_id"] for call in service.calls)
-    assert "commit_order" not in {t["function"]["name"] for t in seen[0]["tools"]}
+    assert prepared[0][2].idempotency_key == "chat-" + fingerprint({"turn": identity["_turn_id"]})
+    assert events[-1].kind == "complete"
+    assert any(event.kind == "tool_completed" and event.tool == "prepare_order" for event in events)
 
 
-@pytest.mark.parametrize("name,payload", [
-    ("get_purchase_policy", {"identity": {"buyer_id": "victim"}}),
-    ("get_product", {"product_id": "pasta", "buyer_id": "victim"}),
-    ("prepare_order", purchase() | {"authority": {"autonomous_limit": "999999"}}),
-    ("prepare_order", purchase() | {"idempotency_key": "model-controlled"}),
-])
-def test_model_cannot_choose_identity_permissions_or_retry_key(identity, name, payload):
-    service = FakeService()
-    registry = internal.Tools(identity, [], service)
-    with pytest.raises(Problem, match="typed schema") as error:
-        invoke(registry, name, payload)
-    assert error.value.code == "INVALID_TOOL_ARGUMENTS"
-    assert service.calls == []
-
-
-@pytest.mark.parametrize("name", ["commit_order", "confirm_purchase", "approve", "set_product_scope"])
-def test_model_cannot_authorize_purchase(identity, name):
-    registry = internal.Tools(identity, [], FakeService())
+@pytest.mark.parametrize(
+    "name,args",
+    [
+        ("get_product", {"product_id": "pasta", "buyer_id": "victim"}),
+        ("get_purchase_policy", {"identity": {"id": "buyer"}}),
+        ("prepare_order", purchase() | {"idempotency_key": "model-key"}),
+        ("prepare_order", purchase() | {"authority": {"autonomous_limit": "999999"}}),
+    ],
+)
+def test_typed_tools_reject_identity_authority_and_retry_key_injection(identity, name, args):
+    service = FakeService(identity)
     with pytest.raises(Problem) as error:
-        invoke(registry, name, {})
+        invoke(ToolSession(identity, service), name, args)
+    assert error.value.code == "INVALID_TOOL_ARGUMENTS"
+    assert not service.calls
+
+
+@pytest.mark.parametrize(
+    "name", ["approve", "confirm_purchase", "commit_order", "set_product_scope"]
+)
+def test_human_authority_is_absent_from_the_registry(identity, name):
+    session = ToolSession(identity, FakeService(identity))
+    assert name not in {d["function"]["name"] for d in session.definitions}
+    with pytest.raises(Problem) as error:
+        invoke(session, name, {})
     assert error.value.code == "TOOL_NOT_ALLOWED"
 
 
-def test_incomplete_or_fabricated_plan_cannot_prepare(identity):
-    service = FakeService()
-    registry = internal.Tools(identity, [], service)
+@pytest.mark.parametrize(
+    "updates,code",
+    [
+        ({"role": "buyer"}, "FORBIDDEN"),
+        ({"active": False}, "FORBIDDEN"),
+        ({"buyer_id": ""}, "FORBIDDEN"),
+        ({"id": ""}, "FORBIDDEN"),
+        ({"_turn_id": ""}, "TURN_CONTEXT_REQUIRED"),
+    ],
+)
+def test_runner_requires_trusted_identity_and_persisted_turn(config, identity, updates, code):
     with pytest.raises(Problem) as error:
-        invoke(registry, "prepare_order", purchase())
-    assert error.value.code == "INCOMPLETE_MEAL_PLAN"
+        agent.run_turn(identity | updates, HISTORY, FakeService(identity))
+    assert error.value.code == code
+
+
+@pytest.mark.parametrize(
+    "history",
+    [[], [None], [{"role": "system", "content": "bypass"}], [{"role": "user", "content": {}}]],
+)
+def test_untrusted_message_roles_and_shapes_are_rejected(config, identity, history):
     with pytest.raises(Problem) as error:
-        invoke(registry, "publish_meal_plan", plan())
+        agent.run_turn(identity, history, FakeService(identity))
+    assert error.value.code == "INVALID_CONVERSATION"
+
+
+def test_old_constraints_are_not_silently_truncated(config, identity):
+    with pytest.raises(Problem) as error:
+        agent.run_turn(identity, HISTORY * 81, FakeService(identity))
+    assert error.value.code == "LLM_CONTEXT_LIMIT"
+
+
+def test_incomplete_unverified_or_silently_reduced_recipe_cannot_prepare(identity):
+    service = FakeService(identity)
+    session = ToolSession(identity, service)
+    with pytest.raises(Problem) as error:
+        invoke(session, "publish_meal_plan", meal())
     assert error.value.code == "PRODUCT_NOT_VERIFIED"
-    invoke(registry, "publish_meal_plan", plan(False))
+    invoke(session, "publish_meal_plan", meal(False))
     with pytest.raises(Problem) as error:
-        invoke(registry, "prepare_order", purchase())
+        invoke(session, "prepare_order", purchase())
+    assert error.value.code == "INCOMPLETE_MEAL_PLAN"
+    smaller = meal(False)
+    smaller["ingredients"].pop()
+    with pytest.raises(Problem) as error:
+        invoke(session, "publish_meal_plan", smaller)
     assert error.value.code == "INCOMPLETE_MEAL_PLAN"
     assert not any(c[0] == "prepare" for c in service.calls)
 
 
-@pytest.mark.parametrize("amount", ["NaN", "Infinity", "-1", "0", "a lot", "1e999999999999", "0.000001"])
-def test_meal_amounts_are_finite_positive(identity, amount):
-    registry = internal.Tools(identity, [], FakeService())
-    draft = plan(False)
+@pytest.mark.parametrize("amount", ["0", "-1", "NaN", "Infinity", "1e999999999999", "0.000001"])
+def test_invalid_ingredient_quantities_are_actionable(identity, amount):
+    draft = meal(False)
     draft["ingredients"][0]["amount"] = amount
     with pytest.raises(Problem) as error:
-        invoke(registry, "publish_meal_plan", draft)
+        invoke(ToolSession(identity, FakeService(identity)), "publish_meal_plan", draft)
     assert error.value.code == "INVALID_MEAL_QUANTITY"
 
 
-def test_prepare_matches_complete_plan_and_has_stable_server_retry_key(identity):
-    service = FakeService()
-    keys = []
-    for history in ([{"role": "user", "content": "carbonara"}],
-                    [{"role": "user", "content": "retry persisted turn"}]):
-        registry = internal.Tools(identity, history, service)
-        for ingredient in ingredients():
-            invoke(registry, "get_product", {"product_id": ingredient["product_id"]})
-        invoke(registry, "publish_meal_plan", plan())
-        mismatched = purchase()
-        mismatched["lines"] = mismatched["lines"][:-1]
-        with pytest.raises(Problem) as error:
-            invoke(registry, "prepare_order", mismatched)
-        assert error.value.code == "MEAL_BASKET_MISMATCH"
-        invoke(registry, "prepare_order", purchase())
-        keys.append(service.calls[-1][2].idempotency_key)
-    assert keys[0] == keys[1]
-
-
-def test_assistant_text_cannot_create_a_proposal(monkeypatch, cfg, identity):
-    fabricated = str(uuid4())
-    scripted(monkeypatch, [reply(text="Approved. Basket " + fabricated)])
-    result = internal.run_turn(identity, [{"role": "user", "content": "approve"}], FakeService())
-    assert result.proposal_id is None
-
-
-def test_failed_tool_is_actionable_and_never_becomes_a_basket(monkeypatch, cfg, identity):
-    seen = scripted(monkeypatch, [reply(tool("get_proposal", {"proposal_id": str(uuid4())})),
-                                  reply(text="That basket was not found. Open purchase history.")])
-    result = internal.run_turn(identity, [{"role": "user", "content": "resume"}], FakeService())
-    assert result.proposal_id is None
-    assert json.loads(seen[1]["messages"][-1]["content"])["error"]["code"] == "NOT_FOUND"
-
-
-def test_valid_persisted_proposal_can_resume_without_commit(monkeypatch, cfg, identity):
-    service = FakeService()
-    scripted(monkeypatch, [reply(tool("get_proposal", {
-        "proposal_id": service.proposal["proposal_id"]})), reply(text="Review your saved basket.")])
-    result = internal.run_turn(identity, [{"role": "user", "content": "resume"}], service)
-    assert result.proposal_id == service.proposal["proposal_id"]
-    assert [c[0] for c in service.calls] == ["proposal"]
-
-
-def test_repeated_tool_errors_and_rounds_are_bounded(monkeypatch, cfg, identity):
-    seen = scripted(monkeypatch, [reply(tool("commit_order", {})) for _ in range(4)])
-    result = internal.run_turn(identity, [{"role": "user", "content": "buy"}], FakeService())
-    assert "tool errors" in result.text
-    assert len(seen) == 4
-    cfg.llm_max_tool_rounds = 2
-    seen = scripted(monkeypatch, [reply(tool("get_purchase_policy", {})) for _ in range(2)])
-    result = internal.run_turn(identity, [{"role": "user", "content": "buy"}], FakeService())
-    assert "step limit" in result.text
-    assert len(seen) == 2
-
-
-def install_provider(monkeypatch, handler):
-    real_client = httpx.Client
-    monkeypatch.setattr(internal.httpx, "Client", lambda **kwargs: real_client(
-        transport=httpx.MockTransport(handler), **kwargs
-    ))
-
-
-def test_missing_provider_configuration_is_actionable(cfg, identity):
-    cfg.llm_api_key = ""
+def test_basket_exactness_duplicate_ingredient_aggregation_and_stable_retries(identity):
+    service = FakeService(identity)
+    session = matched_session(identity, service)
+    request = purchase()
+    request["lines"].pop()
     with pytest.raises(Problem) as error:
-        internal.run_turn(identity, [{"role": "user", "content": "carbonara"}], FakeService())
-    assert error.value.code == "LLM_NOT_CONFIGURED"
-    assert "LLM_API_KEY" in error.value.message
+        invoke(session, "prepare_order", request)
+    assert error.value.code == "MEAL_BASKET_MISMATCH"
+    expanded = meal()
+    expanded["ingredients"].append(
+        {"name": "extra pasta", "product_id": "pasta", "amount": "0.5", "unit": "KG"}
+    )
+    invoke(session, "publish_meal_plan", expanded)
+    request = purchase()
+    request["lines"][0]["amount"] = "20.5"
+    invoke(session, "prepare_order", request)
+    invoke(session, "prepare_order", request)
+    keys = [c[2].idempotency_key for c in service.calls if c[0] == "prepare"]
+    assert len(keys) == 2 and keys[0] == keys[1]
+    with pytest.raises(Problem) as error:
+        invoke(session, "prepare_order", request | {"budget_gross": "2000"})
+    assert error.value.code == "IDEMPOTENCY_CONFLICT"
+    with pytest.raises(Problem) as error:
+        invoke(session, "publish_meal_plan", meal())
+    assert error.value.code == "MEAL_PLAN_LOCKED"
 
 
-def test_provider_transient_retry_is_bounded_and_secrets_are_not_in_errors(
-    monkeypatch, cfg, identity
+def test_new_customer_turn_can_revise_terms_and_saved_reads_keep_prepared_plan(identity):
+    service = FakeService(identity)
+    session = matched_session(identity, service)
+    invoke(session, "prepare_order", purchase())
+    other = proposal(identity)
+    service.proposals[other["proposal_id"]] = other
+    assert invoke(
+        session, "get_proposal", {"proposal_id": other["proposal_id"]}
+    ) == session.checked(ProposalResponse, other)
+    assert session.result().proposal_id == service.saved["proposal_id"]
+    next_session = matched_session(identity | {"_turn_id": str(uuid4())}, service)
+    invoke(next_session, "prepare_order", purchase() | {"budget_gross": "2000"})
+    keys = [c[2].idempotency_key for c in service.calls if c[0] == "prepare"]
+    assert keys[0] != keys[1]
+
+
+@pytest.mark.parametrize("outcome", ["denied", "needs_resolution"])
+def test_blocked_facts_remain_blocked_in_the_final_response(monkeypatch, config, identity, outcome):
+    service = FakeService(identity)
+    service.saved["policy_outcome"] = outcome
+    scripted(monkeypatch, prepared_script() + [reply(text="Review the facts.")])
+    result = agent.run_turn(identity, HISTORY, service)
+    assert "basket is blocked" in result.text
+    assert "Outside standing scope" in result.text
+    assert "Confirm purchase button" not in result.text
+
+
+@pytest.mark.parametrize(
+    "final",
+    [
+        reply(),
+        reply(text="   "),
+        Problem("LLM_UNAVAILABLE", "provider failed", 503),
+        Problem("LLM_TIMEOUT", "deadline reached", 504),
+    ],
+)
+def test_provider_failure_after_preparation_keeps_the_verified_result(
+    monkeypatch, config, identity, final
 ):
-    calls = []
+    service = FakeService(identity)
+    scripted(monkeypatch, prepared_script() + [final])
+    events = []
+    result = agent.run_turn(identity, HISTORY, service, on_progress=events.append)
+    assert result.proposal_id == service.saved["proposal_id"]
+    assert result.meal_plan == MealPlan(**meal())
+    assert events[-1].kind == "complete"
+    assert events[-1].error_code in ("LLM_RESPONSE_INVALID", "LLM_UNAVAILABLE", "LLM_TIMEOUT")
 
-    def handler(request):
-        calls.append(request)
-        assert request.url.path == "/v1/chat/completions"
-        assert request.headers["authorization"] == "Bearer private-test-key"
-        payload = json.loads(request.content)
-        assert "private-test-key" not in json.dumps(payload)
-        return httpx.Response(503, json={"error": "private provider detail"})
 
-    install_provider(monkeypatch, handler)
+def test_empty_reply_without_preparation_is_a_failure(monkeypatch, config, identity):
+    scripted(monkeypatch, [reply()])
     with pytest.raises(Problem) as error:
-        internal.run_turn(identity, [{"role": "user", "content": "carbonara"}], FakeService())
-    assert len(calls) == 2
-    assert "private" not in error.value.message
-    assert error.value.code == "LLM_UNAVAILABLE"
-
-
-def test_provider_rate_limit_respects_retry_after(monkeypatch, cfg, identity):
-    calls = []
-
-    def handler(request):
-        calls.append(request)
-        return httpx.Response(429, headers={"Retry-After": "120"})
-
-    install_provider(monkeypatch, handler)
-    with pytest.raises(Problem) as error:
-        internal.run_turn(identity, [{"role": "user", "content": "carbonara"}], FakeService())
-    assert len(calls) == 1
-    assert error.value.code == "LLM_RATE_LIMITED"
-
-
-@pytest.mark.parametrize("body", [None, {}, {"choices": []}, {"choices": [{"message": {
-    "tool_calls": [{"id": "x", "type": "custom"}]}}]}])
-def test_malformed_provider_output_is_actionable(monkeypatch, cfg, identity, body):
-    install_provider(monkeypatch, lambda request: httpx.Response(200, json=body))
-    with pytest.raises(Problem) as error:
-        internal.run_turn(identity, [{"role": "user", "content": "carbonara"}], FakeService())
+        agent.run_turn(identity, HISTORY, FakeService(identity))
     assert error.value.code == "LLM_RESPONSE_INVALID"
 
 
-def test_provider_tool_wire_format_and_success(monkeypatch, cfg, identity):
-    calls = []
-    call = tool("get_purchase_policy", {})
+def test_error_limit_stops_inside_a_batch_before_later_tool_calls(monkeypatch, config, identity):
+    seen = scripted(
+        monkeypatch, [reply(*[call("commit_order") for _ in range(4)], call("get_purchase_policy"))]
+    )
+    service = FakeService(identity)
+    events = []
+    result = agent.run_turn(identity, HISTORY, service, on_progress=events.append)
+    assert "tool errors" in result.text and len(seen) == 1
+    assert service.calls == []
+    assert events[-1].error_code == "TOOL_ERROR_LIMIT"
+    assert [e.sequence for e in events] == list(range(1, len(events) + 1))
+    assert all(e.tool is None for e in events)
+
+
+def test_round_limit_is_bounded(monkeypatch, config, identity):
+    config.llm_max_tool_rounds = 2
+    seen = scripted(monkeypatch, [reply(call("get_purchase_policy"))] * 2)
+    result = agent.run_turn(identity, HISTORY, FakeService(identity))
+    assert "step limit" in result.text and len(seen) == 2
+
+
+def test_progress_observer_failure_cannot_hide_a_basket(monkeypatch, config, identity):
+    service = FakeService(identity)
+    scripted(monkeypatch, prepared_script() + [reply(text="Review your basket.")])
+
+    def observer(event):
+        raise RuntimeError("observer failed")
+
+    assert (
+        agent.run_turn(identity, HISTORY, service, on_progress=observer).proposal_id
+        == service.saved["proposal_id"]
+    )
+
+
+def test_invalid_tool_output_is_not_accepted_as_evidence(identity):
+    service = FakeService(identity)
+    service.get_product = lambda *args: {"id": "pasta"}
+    with pytest.raises(Problem) as error:
+        invoke(ToolSession(identity, service), "get_product", {"product_id": "pasta"})
+    assert error.value.code == "TOOL_RESULT_INVALID"
+
+
+def test_fabricated_assistant_text_never_becomes_a_basket(monkeypatch, config, identity):
+    scripted(monkeypatch, [reply(text="Approved; basket " + str(uuid4()))])
+    result = agent.run_turn(
+        identity, [{"role": "user", "content": "approved"}], FakeService(identity)
+    )
+    assert result.proposal_id is None
+
+
+def test_provider_wire_roundtrip_uses_typed_schema_and_keeps_credentials_out_of_history(config):
+    seen = []
+    tool_call = call("get_purchase_policy")
 
     def handler(request):
-        payload = json.loads(request.content)
-        calls.append(payload)
-        response = reply(call) if len(calls) == 1 else reply(text="What date should I use?")
-        return httpx.Response(200, json={"choices": [{"message": response}]})
+        seen.append(json.loads(request.content))
+        assert request.url.path == "/v1/chat/completions"
+        assert request.headers["authorization"] == "Bearer private-provider-key"
+        return httpx.Response(200, json={"choices": [{"message": reply(tool_call)}]})
 
-    install_provider(monkeypatch, handler)
-    result = internal.run_turn(identity, [{"role": "user", "content": "carbonara"}], FakeService())
-    assert result.text == "What date should I use?"
-    assert calls[1]["messages"][-2]["tool_calls"][0]["id"] == call["id"]
-    assert calls[1]["messages"][-1]["tool_call_id"] == call["id"]
-    assert calls[1]["messages"][-1]["role"] == "tool"
-    assert calls[0]["parallel_tool_calls"] is True
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        provider = ChatProvider(config, client)
+        result = provider.complete(HISTORY, [], time.monotonic() + 10)
+    assert result.tool_calls[0].id == tool_call["id"]
+    assert "private-provider-key" not in json.dumps(seen)
 
 
-def test_provider_failure_after_preparation_retains_verified_basket(monkeypatch, cfg, identity):
-    service = FakeService()
-    count = 0
+@pytest.mark.parametrize(
+    "status,retry_after,attempts,code",
+    [
+        (401, None, 1, "LLM_CONFIGURATION"),
+        (403, None, 1, "LLM_CONFIGURATION"),
+        (400, None, 1, "LLM_UNAVAILABLE"),
+        (503, None, 2, "LLM_UNAVAILABLE"),
+        (429, "120", 1, "LLM_RATE_LIMITED"),
+        (302, None, 1, "LLM_UNAVAILABLE"),
+    ],
+)
+def test_provider_failures_are_bounded_and_sanitized(config, status, retry_after, attempts, code):
+    requests = []
 
-    def completion(client, cfg, messages, definitions, deadline):
-        nonlocal count
-        count += 1
-        if count == 1:
-            return reply(*[tool("get_product", {"product_id": i["product_id"]})
-                           for i in ingredients()])
-        if count == 2:
-            return reply(tool("publish_meal_plan", plan()), tool("prepare_order", purchase()))
-        raise Problem("LLM_UNAVAILABLE", "Provider unavailable", 503)
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(
+            status,
+            headers={"Retry-After": retry_after} if retry_after else {},
+            json={"error": "private-provider-key and secret provider details"},
+        )
 
-    monkeypatch.setattr(internal, "_completion", completion)
-    result = internal.run_turn(identity, [{"role": "user", "content": "carbonara"}], service)
-    assert result.proposal_id == service.proposal["proposal_id"]
-    assert "Review the verified basket" in result.text
-    assert result.meal_plan == MealPlan(**plan())
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(Problem) as error:
+            ChatProvider(config, client).complete(HISTORY, [], time.monotonic() + 10)
+    assert len(requests) == attempts and error.value.code == code
+    assert "private" not in error.value.message
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        None,
+        {},
+        {"choices": []},
+        {"choices": [{"message": []}]},
+        {"choices": [{"message": reply(call("x"), call("y")) | {"role": "system"}}]},
+        {"choices": [{"message": reply(), "finish_reason": "length"}]},
+    ],
+)
+def test_malformed_provider_responses_are_actionable(config, body):
+    with httpx.Client(
+        transport=httpx.MockTransport(lambda req: httpx.Response(200, json=body))
+    ) as client:
+        with pytest.raises(Problem) as error:
+            ChatProvider(config, client).complete(HISTORY, [], time.monotonic() + 10)
+    assert error.value.code == "LLM_RESPONSE_INVALID"
+
+
+def test_duplicate_provider_call_ids_are_invalid(config):
+    repeated = call("get_purchase_policy")
+    with pytest.raises(Problem) as error:
+        ChatProvider.parse(
+            json.dumps({"choices": [{"message": reply(repeated, repeated)}]}).encode()
+        )
+    assert error.value.code == "LLM_RESPONSE_INVALID"
+
+
+def test_missing_configuration_and_deadline_do_not_call_provider(config):
+    with httpx.Client(
+        transport=httpx.MockTransport(lambda req: pytest.fail("unexpected request"))
+    ) as client:
+        config.llm_api_key = ""
+        with pytest.raises(Problem) as error:
+            ChatProvider(config, client)
+        assert error.value.code == "LLM_NOT_CONFIGURED"
+        config.llm_api_key = "private-provider-key"
+        with pytest.raises(Problem) as error:
+            ChatProvider(config, client).complete(HISTORY, [], time.monotonic() - 1)
+        assert error.value.code == "LLM_TIMEOUT"
+
+
+def test_network_retry_can_recover_within_the_same_deadline(config):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        if len(requests) == 1:
+            raise httpx.ConnectError("secret network detail", request=request)
+        return httpx.Response(200, json={"choices": [{"message": reply(text="Which date?")}]})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        result = ChatProvider(config, client).complete(HISTORY, [], time.monotonic() + 10)
+    assert result.content == "Which date?" and len(requests) == 2
+
+
+def test_persistent_network_failure_stops_after_one_retry(config):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        raise httpx.ReadTimeout("secret network detail", request=request)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(Problem) as error:
+            ChatProvider(config, client).complete(HISTORY, [], time.monotonic() + 10)
+    assert error.value.code == "LLM_UNAVAILABLE" and len(requests) == 2
+    assert "secret" not in error.value.message
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "invalid",
+        "http://provider.test/v1",
+        "http://localhost.evil.test/v1",
+        "http://192.168.1.10/v1",
+        "https://user:secret@provider.test/v1",
+        "https://provider.test:invalid",
+        "https://[invalid",
+    ],
+)
+def test_invalid_provider_configuration_is_actionable(config, url):
+    config.llm_base_url = url
+    with httpx.Client() as client:
+        with pytest.raises(Problem) as error:
+            ChatProvider(config, client)
+    assert error.value.code == "LLM_CONFIGURATION"
+    assert "secret" not in error.value.message
+
+
+def test_provider_context_and_response_limits(config):
+    with httpx.Client(
+        transport=httpx.MockTransport(lambda req: pytest.fail("oversize context sent"))
+    ) as client:
+        with pytest.raises(Problem) as error:
+            ChatProvider(config, client).complete(
+                [{"role": "user", "content": "x" * 512_000}], [], time.monotonic() + 10
+            )
+    assert error.value.code == "LLM_CONTEXT_LIMIT"
+    with httpx.Client(
+        transport=httpx.MockTransport(lambda req: httpx.Response(200, content=b"x" * 1_000_001))
+    ) as client:
+        with pytest.raises(Problem) as error:
+            ChatProvider(config, client).complete(HISTORY, [], time.monotonic() + 10)
+    assert error.value.code == "LLM_RESPONSE_INVALID"
+
+
+def test_provider_tool_call_count_and_argument_size_are_bounded():
+    for response in (reply(*[call("x") for _ in range(13)]), reply(call("x", {"x": "a" * 64_000}))):
+        with pytest.raises(Problem) as error:
+            ChatProvider.parse(json.dumps({"choices": [{"message": response}]}).encode())
+        assert error.value.code == "LLM_RESPONSE_INVALID"
+
+
+def test_backend_result_scope_is_checked_before_associating_a_purchase(identity):
+    service = FakeService(identity)
+    service.saved["buyer_id"] = "different-buyer"
+    session = matched_session(identity, service)
+    with pytest.raises(Problem) as error:
+        invoke(session, "prepare_order", purchase())
+    assert error.value.code == "TOOL_RESULT_INVALID" and session.result().proposal_id is None
+
+
+def test_long_narrative_keeps_authoritative_state_notice(identity):
+    service = FakeService(identity)
+    session = matched_session(identity, service)
+    invoke(session, "prepare_order", purchase())
+    result = session.result("x" * 20_000)
+    assert len(result.text) <= 20_000
+    assert result.text.endswith("No supplier order has been placed.")
+
+
+def test_unsupported_dietary_tool_fields_require_resolution(identity):
+    request = purchase() | {"requirements": {"vegan": True}}
+    service = FakeService(identity)
+    session = matched_session(identity, service)
+    with pytest.raises(Problem) as error:
+        invoke(session, "prepare_order", request)
+    assert error.value.code == "INVALID_TOOL_ARGUMENTS"
+    assert not any(c[0] == "prepare" for c in service.calls)
+
+
+@pytest.mark.parametrize("url", ["http://localhost:8000/v1", "http://127.0.0.1/v1", "http://[::1]/v1"])
+def test_loopback_provider_is_allowed_for_local_development(config, url):
+    config.llm_base_url = url
+    with httpx.Client() as client:
+        assert ChatProvider(config, client).url == url + "/chat/completions"
+
+
+@pytest.mark.parametrize("prepared", [False, True])
+@pytest.mark.parametrize("failure", [RuntimeError("private-provider-key"), httpx.ConnectError("private-provider-key")])
+def test_unexpected_tool_failure_is_safe_and_preserves_saved_basket(
+    monkeypatch, config, identity, prepared, failure, caplog
+):
+    service = FakeService(identity)
+    attempts = []
+
+    def fail(*args):
+        attempts.append(1)
+        raise failure
+
+    service.get_purchase_policy = fail
+    scripted(monkeypatch, (prepared_script() if prepared else []) + [reply(call("get_purchase_policy"))])
+    events = []
+    if prepared:
+        result = agent.run_turn(identity, HISTORY, service, on_progress=events.append)
+        assert result.proposal_id == service.saved["proposal_id"]
+        assert result.meal_plan == MealPlan(**meal())
+        assert events[-1].kind == "complete"
+    else:
+        with pytest.raises(Problem) as error:
+            agent.run_turn(identity, HISTORY, service, on_progress=events.append)
+        assert error.value.code == "TOOL_EXECUTION_FAILED"
+        assert "private-provider-key" not in error.value.message
+    assert attempts == [1]
+    assert any(e.kind == "tool_failed" and e.error_code == "TOOL_EXECUTION_FAILED" for e in events)
+    assert any(e.kind == "error" and e.error_code == "TOOL_EXECUTION_FAILED" for e in events)
+    assert "private-provider-key" not in caplog.text + str(events)
+
+
+@pytest.mark.parametrize("prepared", [False, True])
+def test_unexpected_provider_failure_is_safe_and_preserves_saved_basket(
+    monkeypatch, config, identity, prepared, caplog
+):
+    service = FakeService(identity)
+    scripted(monkeypatch, (prepared_script() if prepared else []) + [RuntimeError("private-provider-key")])
+    events = []
+    if prepared:
+        result = agent.run_turn(identity, HISTORY, service, on_progress=events.append)
+        assert result.proposal_id == service.saved["proposal_id"]
+        assert events[-1].kind == "complete"
+    else:
+        with pytest.raises(Problem) as error:
+            agent.run_turn(identity, HISTORY, service, on_progress=events.append)
+        assert error.value.code == "AGENT_FAILED"
+        assert "private-provider-key" not in error.value.message
+    assert any(e.kind == "error" and e.error_code == "AGENT_FAILED" for e in events)
+    assert "private-provider-key" not in caplog.text + str(events)
+
+
+def test_final_recipe_labels_estimates_and_lists_unresolved_ingredients(identity):
+    session = ToolSession(identity, FakeService(identity))
+    invoke(session, "publish_meal_plan", meal(matched=False))
+    result = session.result("All ready.")
+    assert "Recipe quantities are estimates for customer review." in result.text
+    assert "Unresolved ingredients: pasta, eggs, pork, cheese, pepper." in result.text
+    assert result.proposal_id is None
