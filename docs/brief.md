@@ -1,3 +1,5 @@
+> Current product update, 2026-11-14: [Chat purchasing migration](chat-purchasing.md) supersedes the external-agent/MCP transport and standalone approval-inbox entry point in this original baseline. Its quantity, policy, approval, isolation, audit and mock-order controls remain required. The transport descriptions below document the original design.
+
 # Valio Aimo — implementation plan
 
 Updated **14 November 2026 (Europe/Helsinki)** with the agreed scope and the discussion after the first draft. This records the agreed design at handoff. The MVP implementation and actual validation are now described in [README](../README.md) and [validation](validation.md); authenticated live Valio integration and cluster deployment remain unverified.

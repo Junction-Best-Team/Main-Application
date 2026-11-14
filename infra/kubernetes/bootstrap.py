@@ -28,6 +28,10 @@ with connection() as conn:
         sql.SQL("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {}").format(role)
     )
     conn.execute(sql.SQL("REVOKE ALL ON TABLE schema_migrations FROM {}").format(role))
+    # Provisioning authority never belongs to ordinary serving/agent code.
+    conn.execute(sql.SQL(
+        "REVOKE INSERT, UPDATE, DELETE ON buyers,identities,policies,internal_agents FROM {}"
+    ).format(role))
 
 # Import with the same restricted role and pinned model used by the app.
 os.environ["DATABASE_URL"] = runtime_url

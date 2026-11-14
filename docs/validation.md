@@ -1,4 +1,6 @@
-# Implementation validation — 14 November 2026
+# Historical gateway implementation validation — 14 November 2026
+
+These records describe the external-agent gateway before the chat purchasing migration. Current checks and their limits are recorded in [Chat purchasing migration](chat-purchasing.md#verification-record): 139 backend tests, nine browser checks, image/restart, Terraform and local SSE checks. Retain the dated results below as historical evidence.
 
 Implemented on `codex/valio-aimo-mvp` in an isolated worktree, originally based on main `76296c1`. The original checkout remained clean on `codex/valio-aimo-plan` during implementation. PR #2 was closed **without merging**; this implementation includes the agreed brief while preserving PR #3's reference work. PR #4 now targets the shared integration branch, `develop`.
 

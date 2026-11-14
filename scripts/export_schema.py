@@ -1,4 +1,4 @@
-"""Regenerate the browser contract from the same models used by HTTP and MCP."""
+"""Regenerate the browser contract from the same models used by authenticated browser APIs."""
 
 import json
 from pathlib import Path

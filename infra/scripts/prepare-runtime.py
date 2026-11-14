@@ -72,7 +72,6 @@ def main():
             "bootstrap_credentials": {
                 "database_url": outputs["bootstrap_database_url"],
                 "database_user": outputs["database_user"],
-                "agent_token": secrets.token_urlsafe(32),
                 "buyer_password": secrets.token_urlsafe(24),
             },
         }

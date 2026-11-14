@@ -59,7 +59,8 @@ class PrivateRuntimeInputsTest(unittest.TestCase):
         inputs = json.loads((self.runtime / "runtime.auto.tfvars.json").read_text())
         self.assertEqual(inputs["app_replicas"], 0)
         self.assertIsNone(inputs["bootstrap_generation"])
-        self.assertGreaterEqual(len(inputs["bootstrap_credentials"]["agent_token"]), 24)
+        self.assertNotIn("agent_token", inputs["bootstrap_credentials"])
+        self.assertGreaterEqual(len(inputs["bootstrap_credentials"]["buyer_password"]), 12)
 
     def test_existing_credentials_are_never_overwritten(self):
         existing = self.runtime / "runtime.auto.tfvars.json"

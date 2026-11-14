@@ -321,6 +321,5 @@ class RevisedProposalResponse(ProposalResponse):
 class CommitResponse(
     RootModel[Annotated[OrderResponse | RevisedProposalResponse, Field(discriminator="status")]]
 ):
-    # Both alternatives are objects. Keep the existing flat wire format in HTTP and MCP;
-    # FastMCP otherwise wraps a bare union in an extra {"result": ...} envelope.
+    # Preserve the flat, status-discriminated browser confirmation result.
     model_config = ConfigDict(json_schema_extra={"type": "object"})

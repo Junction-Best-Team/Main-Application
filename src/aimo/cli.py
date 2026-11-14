@@ -4,7 +4,7 @@ import os
 import secrets
 from pathlib import Path
 
-from aimo.auth import digest, hasher
+from aimo.auth import hasher
 from aimo.db import connection, fingerprint, js
 from aimo.schemas import PolicyRules
 
@@ -29,11 +29,9 @@ def seed():
     from dotenv import load_dotenv
 
     load_dotenv()
-    token, password = os.getenv("DEMO_AGENT_TOKEN"), os.getenv("DEMO_BUYER_PASSWORD")
-    if not token or not password or len(token) < 24 or len(password) < 12:
-        raise ValueError(
-            "Set private DEMO_AGENT_TOKEN (24+) and DEMO_BUYER_PASSWORD (12+) before seed"
-        )
+    password = os.getenv("DEMO_BUYER_PASSWORD")
+    if not password or len(password) < 12:
+        raise ValueError("Set private DEMO_BUYER_PASSWORD (12+) before seed")
     rules = {
         "currency": "EUR",
         "autonomous_limit": "1500.00",
@@ -52,7 +50,20 @@ def seed():
         )
         c.execute(
             "INSERT INTO identities VALUES('demo-agent','demo-hotel','agent',true,%s,%s) ON CONFLICT DO NOTHING",
-            (digest(token), js({"currency": "EUR", "autonomous_limit": "1500.00"})),
+            (
+                "!retained-demo-agent-no-bearer-login",
+                js({"currency": "EUR", "autonomous_limit": "1500.00"}),
+            ),
+        )
+        c.execute(
+            """INSERT INTO identities(id,buyer_id,role,active,credential_hash,authority)
+            SELECT 'internal:' || md5(id),id,'agent',true,'!internal-no-bearer-login',
+            '{"currency":"EUR","autonomous_limit":"0"}'::jsonb FROM buyers
+            WHERE id='demo-hotel' ON CONFLICT DO NOTHING"""
+        )
+        c.execute(
+            """INSERT INTO internal_agents SELECT buyer_id,id FROM identities
+            WHERE id='internal:' || md5('demo-hotel') ON CONFLICT DO NOTHING"""
         )
         c.execute(
             "INSERT INTO identities VALUES('buyer','demo-hotel','approver',true,%s,%s) ON CONFLICT DO NOTHING",
@@ -70,7 +81,7 @@ def seed():
 
 
 def set_product_scope(buyer_id, product_ids):
-    """Privileged provisioning only; no HTTP/MCP policy-editing surface."""
+    """Privileged provisioning only; no browser/agent policy-editing surface."""
     with connection() as c:
         buyer = c.execute("SELECT * FROM buyers WHERE id=%s FOR UPDATE", (buyer_id,)).fetchone()
         if not buyer:
@@ -102,7 +113,6 @@ def configure():
         Path(".env.example")
         .read_text()
         .replace("APPROVAL_SESSION_SECRET=", "APPROVAL_SESSION_SECRET=" + secrets.token_urlsafe(48))
-        .replace("DEMO_AGENT_TOKEN=", "DEMO_AGENT_TOKEN=" + secrets.token_urlsafe(32))
         .replace("DEMO_BUYER_PASSWORD=", "DEMO_BUYER_PASSWORD=" + secrets.token_urlsafe(24))
     )
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
