@@ -234,3 +234,58 @@ def test_openapi_declares_every_schedule_route_and_model(http):
     names = set(spec["components"]["schemas"])
     assert {"ScheduleResponse", "ScheduleDetail", "ScheduleList", "ScheduleTerms"} <= names
     assert {"ScheduleCreateRequest", "ScheduleReplaceRequest", "SubstituteCandidates"} <= names
+
+
+def test_a_refusal_carries_structured_details(http, placed_order):
+    headers = login(http)
+    terms = terms_of(http, headers, placed_order)
+    stale = create(http, headers, placed_order, terms | {"terms_fingerprint": "0" * 64})
+    assert stale.status_code == 409
+    error = stale.json()["error"]
+    assert error["code"] == "SCHEDULE_TERMS_CHANGED"
+    assert error["details"]["terms"]["terms_fingerprint"] == terms["terms_fingerprint"]
+    assert error["details"]["terms"]["lines"]
+
+
+def test_a_basket_that_needs_approval_names_why_in_details(http, service, buyer, request_data):
+    from aimo import auth, conversations
+    from aimo.schemas import CommitRequest, PrepareRequest
+
+    headers = login(http)
+    request_data["lines"] = [{"product_id": "464398", "amount": "10", "unit": "L"}]
+    p = service.prepare_order(
+        auth.internal_agent(buyer), PrepareRequest.model_validate(request_data)
+    )
+    receipt = conversations.confirm(
+        buyer,
+        p["proposal_id"],
+        CommitRequest(proposal_id=p["proposal_id"], revision=1, idempotency_key=str(uuid4())),
+        service,
+    )
+    order = {"order_id": receipt["order_id"]}
+    terms = terms_of(http, headers, order)
+    refused = create(http, headers, order, terms)
+    assert refused.status_code == 422
+    error = refused.json()["error"]
+    assert error["code"] == "SCHEDULE_NOT_REORDERABLE"
+    reasons = error["details"]["blocking_reasons"]
+    assert reasons and all({"code", "message"} <= set(r) for r in reasons)
+
+
+def test_the_schedule_list_filters_by_status_over_http(http, placed_order):
+    headers = login(http)
+    terms = terms_of(http, headers, placed_order)
+    one = create(http, headers, placed_order, terms).json()
+    two = create(http, headers, placed_order, terms).json()
+    assert (
+        http.post(f"/api/schedules/{two['id']}/pause", headers=headers, json={}).status_code == 200
+    )
+
+    def listed(query):
+        return {s["id"] for s in http.get("/api/schedules" + query).json()["items"]}
+
+    assert listed("") == {one["id"], two["id"]}
+    assert listed("?status=paused") == {two["id"]}
+    assert listed("?status=active,paused") == {one["id"], two["id"]}
+    bad = http.get("/api/schedules?status=nope")
+    assert bad.status_code == 422 and bad.json()["error"]["code"] == "INVALID_SCHEDULE_STATUS"

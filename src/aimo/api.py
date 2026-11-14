@@ -117,8 +117,11 @@ def create_app(service=None):
     @app.exception_handler(Problem)
     async def problem_handler(request, exc):
         event("http.problem", error_code=exc.code, status=exc.status, retry_after=exc.retry_after)
+        error = {"code": exc.code, "message": exc.message}
+        if exc.public_details is not None:
+            error["details"] = jsonable_encoder(exc.public_details)
         return JSONResponse(
-            {"error": {"code": exc.code, "message": exc.message}},
+            {"error": error},
             status_code=exc.status,
             headers={"Retry-After": str(exc.retry_after)} if exc.retry_after is not None else None,
         )
@@ -495,9 +498,11 @@ def create_app(service=None):
     def schedule_list(
         offset: int = Query(0, ge=0, le=10000),
         limit: int = Query(20, ge=1, le=50),
+        status: str | None = Query(None, description="Comma list of schedule statuses"),
         identity=Depends(buyer),
     ):
-        return schedules.list_schedules(identity, offset, limit)
+        wanted = tuple(x.strip() for x in status.split(",") if x.strip()) if status else ()
+        return schedules.list_schedules(identity, offset, limit, wanted)
 
     # Registered before /api/schedules/{schedule_id}, or "substitute-candidates" is parsed as an id.
     @app.get("/api/schedules/substitute-candidates", response_model=SubstituteCandidates)

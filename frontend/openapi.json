@@ -1110,6 +1110,24 @@
               "default": 20,
               "title": "Limit"
             }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma list of schedule statuses",
+              "title": "Status"
+            },
+            "description": "Comma list of schedule statuses"
           }
         ],
         "responses": {

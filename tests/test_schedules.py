@@ -460,3 +460,72 @@ def test_the_same_key_with_another_title_conflicts(buyer, service, placed_order)
     schedules.create(buyer, body, service)
     other = create_body(placed_order, terms, title="Two", idempotency_key=body.idempotency_key)
     refused("IDEMPOTENCY_CONFLICT", schedules.create, buyer, other, service)
+
+
+# --- restart from another order, status filter ------------------------------------------------
+
+
+def test_a_restart_from_another_order_drops_rules_for_products_it_no_longer_has(
+    buyer, service, request_data, placed_order
+):
+    from test_scheduler_engine import widen_scope
+
+    from aimo import conversations
+    from aimo.schedule_schemas import ScheduleEditPreviewRequest
+    from aimo.schemas import CommitRequest, PrepareRequest
+
+    widen_scope("464398", "463380")
+    rules = {"464306": {"accepted_substitutes": ["463380"], "price_range_pct": "5"}}
+    terms = schedules.preview(buyer, preview_body(placed_order, line_rules=rules), service)
+    old = schedules.create(buyer, create_body(placed_order, terms, line_rules=rules), service)
+    request_data["lines"] = [{"product_id": "464398", "amount": "10", "unit": "L"}]
+    request_data["idempotency_key"] = str(uuid4())
+    p = service.prepare_order(
+        auth.internal_agent(buyer), PrepareRequest.model_validate(request_data)
+    )
+    receipt = conversations.confirm(
+        buyer,
+        p["proposal_id"],
+        CommitRequest(proposal_id=p["proposal_id"], revision=1, idempotency_key=str(uuid4())),
+        service,
+    )
+    # the old rules belong to the old product: omitted rules are kept only where they still apply
+    edit = ScheduleEditPreviewRequest(source_order_id=receipt["order_id"])
+    terms = schedules.preview_edit(buyer, old["id"], edit, service)
+    assert [line["product_id"] for line in terms["lines"]] == ["464398"]
+    new = schedules.replace(
+        buyer,
+        old["id"],
+        ScheduleReplaceRequest.model_validate(
+            {
+                "source_order_id": receipt["order_id"],
+                "agreed_terms_fingerprint": terms["terms_fingerprint"],
+                "idempotency_key": str(uuid4()),
+            }
+        ),
+        service,
+    )
+    assert new["lines"][0]["accepted_substitutes"] == []
+    # rules sent explicitly for a product that is not a line are still refused
+    explicit = ScheduleEditPreviewRequest(source_order_id=receipt["order_id"], line_rules=rules)
+    err = refused("INVALID_LINE_RULE", schedules.preview_edit, buyer, old["id"], explicit, service)
+    assert err.status == 422
+
+
+def test_the_schedule_list_can_be_filtered_by_status(buyer, service, placed_order):
+    active = make(buyer, service, placed_order)
+    paused = make(buyer, service, placed_order)
+    schedules.pause(buyer, paused["id"])
+    cancelled = make(buyer, service, placed_order)
+    schedules.cancel(buyer, cancelled["id"])
+
+    def ids(*statuses):
+        return {s["id"] for s in schedules.list_schedules(buyer, 0, 20, statuses)["items"]}
+
+    assert ids() == {active["id"], paused["id"], cancelled["id"]}
+    assert ids("active") == {active["id"]}
+    assert ids("active", "paused") == {active["id"], paused["id"]}
+    err = refused("INVALID_SCHEDULE_STATUS", schedules.list_schedules, buyer, 0, 20, ("nope",))
+    assert err.status == 422
+    page = schedules.list_schedules(buyer, 0, 1, ("active", "paused"))
+    assert len(page["items"]) == 1 and page["next_offset"] == 1  # filtered before paging

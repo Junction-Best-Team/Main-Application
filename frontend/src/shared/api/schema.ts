@@ -2665,6 +2665,8 @@ export interface operations {
             query?: {
                 offset?: number;
                 limit?: number;
+                /** @description Comma list of schedule statuses */
+                status?: string | null;
             };
             header?: never;
             path?: never;

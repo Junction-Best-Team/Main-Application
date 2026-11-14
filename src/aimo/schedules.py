@@ -84,12 +84,14 @@ def delivery_offset(order):
     return max(1, min(60, (asked - placed).days))
 
 
-def check_line_rules(c, rules_in, request, scope):
+def check_line_rules(c, rules_in, request, scope, keep_known=False):
     """Per-ingredient accepted substitutes: real, not withdrawn, other than the line itself and
     inside the buyer's approved product scope (standing product authority, POL-004/POL-012)."""
     lines = {line["product_id"] for line in request["lines"]}
     rules = {}
     for product_id, rule in (rules_in or {}).items():
+        if keep_known and product_id not in lines:
+            continue  # carried over from the old schedule: it no longer has this product
         subs = list(dict.fromkeys(rule.accepted_substitutes))
         found = load_products(c, subs) if subs else {}
         if (
@@ -106,7 +108,16 @@ def check_line_rules(c, rules_in, request, scope):
     return rules
 
 
-def build_terms(identity, service, order_id, recurrence, first_run_date, line_rules, title=None):
+def build_terms(
+    identity,
+    service,
+    order_id,
+    recurrence,
+    first_run_date,
+    line_rules,
+    title=None,
+    keep_known=False,
+):
     if first_run_date < scheduler.helsinki_today():
         raise Problem("INVALID_FIRST_RUN_DATE", "The first run date is in the past.", 422)
     rule = scheduler.normalize_recurrence(recurrence.model_dump(exclude_none=True))
@@ -129,7 +140,7 @@ def build_terms(identity, service, order_id, recurrence, first_run_date, line_ru
     with connection() as c:
         _, policy, _, approvers = context(c, identity)
         scope = policy["rules"].get("approved_product_ids")
-        rules = check_line_rules(c, line_rules, request, scope)
+        rules = check_line_rules(c, line_rules, request, scope, keep_known)
         names = load_products(c, [s for r in rules.values() for s in r["accepted_substitutes"]])
     evaluated = evaluate_purchase(
         probe, snapshot, policy["rules"], [a["authority"] for a in approvers]
@@ -302,13 +313,23 @@ def owned(c, identity, schedule_id, lock=False):
     return row
 
 
-def list_schedules(identity, offset, limit):
+STATUSES = ("active", "paused", "stopped", "cancelled", "expired", "superseded")
+
+
+def list_schedules(identity, offset, limit, statuses=()):
+    """The customer's schedules, newest first; `statuses` filters before paging (empty: all)."""
+    wanted = list(dict.fromkeys(statuses))
+    if any(item not in STATUSES for item in wanted):
+        raise Problem(
+            "INVALID_SCHEDULE_STATUS", f"Status must be one of {', '.join(STATUSES)}.", 422
+        )
     with connection() as c:
         context(c, identity)
         rows = c.execute(
             """SELECT * FROM scheduled_authorizations WHERE buyer_id=%s
+            AND (cardinality(%s::text[])=0 OR status=ANY(%s::text[]))
             ORDER BY created_at DESC,id LIMIT %s OFFSET %s""",
-            (identity["buyer_id"], limit + 1, offset),
+            (identity["buyer_id"], wanted, wanted, limit + 1, offset),
         ).fetchall()
         return {
             "items": [response(c, r) for r in rows[:limit]],
@@ -401,10 +422,14 @@ def agree(terms, agreed_fingerprint):
             "SCHEDULE_NOT_REORDERABLE",
             "This order needs a decision each time and cannot be scheduled as it is.",
             422,
+            public_details={"blocking_reasons": terms["blocking_reasons"]},
         )
     if terms["terms_fingerprint"] != agreed_fingerprint:
         raise Problem(
-            "SCHEDULE_TERMS_CHANGED", "Prices or products changed; review the new terms.", 409
+            "SCHEDULE_TERMS_CHANGED",
+            "Prices or products changed; review the new terms.",
+            409,
+            public_details={"terms": public_terms(terms)},
         )
 
 
@@ -449,6 +474,7 @@ def edited(old, body):
         "first_run_date": body.first_run_date or max(today, old["next_run_date"] or today),
         "line_rules": rules,
         "title": body.title or old["title"],
+        "keep_known": body.line_rules is None,  # carried-over rules only where they still apply
     }
 
 
