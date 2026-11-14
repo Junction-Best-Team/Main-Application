@@ -167,6 +167,9 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
                     f"Only {e['available_sales_quantity']} {p['sales_unit']} available; revise or select suitable substitutes.",
                     pid,
                 )
+                # BAS-008: numeric shortfall in sales units. Set only when short, so the quantity
+                # of a covered line (and its fingerprint) is exactly what it was before.
+                q["shortfall"] = str(count - D(e["available_sales_quantity"]))
             if e["net"] is None or e["gross"] is None:
                 complete = False
             else:

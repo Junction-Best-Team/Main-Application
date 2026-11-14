@@ -312,15 +312,10 @@ def test_short_stock_is_reported_as_a_reason_with_the_available_amount(agent, re
     assert snapshot["lines"][0]["quantity"]["sales_quantity"] == "10"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="BAS-004 gap: a stock shortfall exists only as free text, not as a numeric field",
-)
 def test_shortfall_is_a_numeric_field_on_the_line(agent, request_data):
     lines = [{"product_id": "464306", "amount": "10", "unit": "L"}]
     line = prepare(Service(ShortStock()), agent, request_data, lines)["snapshot"]["lines"][0]
-    # 10 packs wanted, 3 available: 7 packs short. Field name is a proposal for the owner.
+    # 10 packs wanted, 3 available: 7 packs short (BAS-008: `shortfall`, in sales units).
     assert line["quantity"].get("shortfall") == "7", f"quantity keys: {sorted(line['quantity'])}"
 
 

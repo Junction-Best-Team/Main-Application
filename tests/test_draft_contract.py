@@ -176,10 +176,6 @@ def test_lookup_is_split_into_batches_within_the_supplier_limit():
 # --- BAS-008: numeric shortfall per basket line ----------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="BAS-008 Draft: a short line carries only the INSUFFICIENT_STOCK text, no numeric shortfall",
-)
 def test_line_reports_numeric_shortfall_when_stock_is_below_the_need(agent, request_data):
     client = FixtureClient()
     client.stock["464306"] = "3"
@@ -191,7 +187,7 @@ def test_line_reports_numeric_shortfall_when_stock_is_below_the_need(agent, requ
     quantity = snapshot["lines"][0]["quantity"]
     expected = Decimal(quantity["sales_quantity"]) - 3  # need in sales units minus available
     assert expected > 0
-    # The field name is pending; `shortfall` (decimal string, in sales units) is the assumption.
+    # BAS-008 (Approved): `shortfall`, a decimal string in sales units like `sales_quantity`.
     assert quantity.get("shortfall") is not None, "line has no numeric shortfall field"
     assert Decimal(quantity["shortfall"]) == expected
 
@@ -298,3 +294,15 @@ def test_line_gross_and_deposits_are_unknown_when_the_deposit_has_no_price(agent
     assert shown["net"] is None and shown["tax"] is None
     assert "DEPOSIT_UNRESOLVED" in {r["code"] for r in snapshot["reasons"]}
     assert proposal["policy_outcome"] == "needs_resolution"
+
+
+def test_shortfall_is_absent_when_stock_covers_the_need_and_keeps_old_fingerprints(
+    agent, request_data
+):
+    """No `shortfall` key on a covered line: earlier proposals hash the same quantity dict."""
+    request_data["lines"] = [line("464306", "10", "L")]
+    request_data["idempotency_key"] = str(uuid4())
+    quantity = Service(FixtureClient()).prepare_order(agent, PrepareRequest(**request_data))[
+        "snapshot"
+    ]["lines"][0]["quantity"]
+    assert "shortfall" not in quantity

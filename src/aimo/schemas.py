@@ -116,6 +116,8 @@ class QuantityCalculation(Model):
     basis: list[str]
     source_step: str
     effective_step: str | None = None
+    # Sales units still missing when stock is below sales_quantity; absent when stock covers it.
+    shortfall: str | None = None
 
 
 class SnapshotLine(Model):
