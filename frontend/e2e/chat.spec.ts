@@ -857,11 +857,11 @@ for (const width of [1440, 390]) {
       page.getByRole("heading", { name: "Welcome, demo-hotel" }),
     ).toBeVisible();
     await expect(
-      page.getByText("Active Delivery Schedule · Placeholder"),
+      page.getByText("Delivery schedule is not available yet."),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "View All Schedules" }),
-    ).toBeDisabled();
+      page.getByRole("heading", { name: "Recent Past Orders" }),
+    ).toBeVisible();
     if (width < 768) {
       await page.getByRole("button", { name: "Open menu" }).click();
       const menu = page.getByRole("dialog", { name: "Menu", exact: true });
