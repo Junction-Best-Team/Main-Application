@@ -7,33 +7,54 @@ import {
 } from "../../../shared/components/DesignPrimitives";
 import { DESIGN_PLACEHOLDERS as MOCK } from "../../../shared/lib/designPlaceholders";
 import { useAuth } from "../../auth/useAuth";
-import { useAcceptedOrders } from "../hooks/useAcceptedOrders";
+import { useOrders } from "../hooks/useOrders";
 import { usePurchaseDetail } from "../hooks/usePurchaseDetail";
 import { isAccepted } from "../model/acceptedOrders";
-import { PurchaseList } from "../components/PurchaseList";
+import {
+  ORDER_FILTERS,
+  placedItemFromProposal,
+  type OrderFilter,
+} from "../model/orders";
+import { OrdersList } from "../components/OrdersList";
 import { PurchaseReview } from "../components/PurchaseReview";
 import { ErrorMessage } from "../../../shared/components/ErrorMessage";
 export function PurchasesPage() {
   const { proposalId } = useParams();
   const { session } = useAuth();
   const {
-    orders: fetched,
+    items: fetched,
     loading,
     error,
     nextOffset,
     refresh,
     showMore,
-  } = useAcceptedOrders();
+    cancel,
+    cancelling,
+    notices,
+    dismissNotice,
+  } = useOrders();
   const detail = usePurchaseDetail({ proposalId });
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState<OrderFilter>("all");
   const scrolled = useRef<string | null>(null);
+  const placedTarget = detail.p && isAccepted(detail.p) ? detail.p : null;
+  // A deep link to a placed order older than the loaded pages still shows its row.
   const orders =
-    detail.p &&
-    isAccepted(detail.p) &&
-    !fetched.some((p) => p.proposal_id === detail.p?.proposal_id)
-      ? [detail.p, ...fetched]
+    placedTarget &&
+    !fetched.some(
+      (o) =>
+        o.status === "placed" && o.proposal_id === placedTarget.proposal_id,
+    )
+      ? [placedItemFromProposal(placedTarget), ...fetched]
       : fetched;
-  const targetAccepted = detail.p && isAccepted(detail.p);
+  const shown =
+    filter === "all" ? orders : orders.filter((o) => o.status === filter);
+  const filterLabel = ORDER_FILTERS.find((f) => f.value === filter)?.label;
+  // A cancellation notice belongs on its row; when the row is gone it is shown above the list.
+  const strayNotices = Object.entries(notices).filter(
+    ([id]) => !orders.some((o) => o.proposal_id === id),
+  );
+  const targetAccepted = Boolean(placedTarget);
   useEffect(() => {
     if (proposalId && targetAccepted)
       setExpanded((prev) => new Set([...prev, proposalId]));
@@ -110,7 +131,7 @@ export function PurchasesPage() {
             />
           </div>
           <div className="flex flex-wrap items-center gap-space-sm">
-            {[m.periodLabel, m.sortLabel, m.statusLabel].map((label) => (
+            {[m.periodLabel, m.sortLabel].map((label) => (
               <InertButton
                 key={label}
                 label={label}
@@ -120,6 +141,27 @@ export function PurchasesPage() {
               </InertButton>
             ))}
           </div>
+        </div>
+        <div
+          role="group"
+          aria-label="Filter orders by status"
+          className="mx-auto mt-space-md flex max-w-6xl flex-wrap gap-space-sm"
+        >
+          {ORDER_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              aria-pressed={filter === f.value}
+              onClick={() => setFilter(f.value)}
+              className={`cursor-pointer rounded-full border px-space-md py-2 font-label text-label-md ${
+                filter === f.value
+                  ? "border-primary bg-primary text-on-primary"
+                  : "border-outline-variant bg-surface-pure text-primary hover:bg-surface-container-high"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
         </div>
       </section>
 
@@ -133,24 +175,56 @@ export function PurchasesPage() {
               {error}
             </div>
           )}
-          <PurchaseList orders={orders} expanded={expanded} toggle={toggle} />
+          {strayNotices.map(([id, message]) => (
+            <div
+              key={id}
+              role="alert"
+              className="flex items-center justify-between gap-space-md rounded-lg bg-error-container p-space-md text-on-error-container"
+            >
+              <span>{message}</span>
+              <button
+                type="button"
+                onClick={() => dismissNotice(id)}
+                className="cursor-pointer border-0 bg-transparent font-label text-label-md text-on-error-container underline"
+              >
+                Dismiss
+              </button>
+            </div>
+          ))}
+          <OrdersList
+            items={shown}
+            expanded={expanded}
+            toggle={toggle}
+            known={placedTarget}
+            cancelling={cancelling}
+            notices={notices}
+            onCancel={cancel}
+          />
           {loading && (
             <p
               role="status"
               className="m-0 py-space-lg text-center text-secondary"
             >
-              Loading past orders…
+              Loading orders…
             </p>
           )}
           {!loading && !error && orders.length === 0 && (
             <section className="rounded-xl bg-surface-pure p-space-xl text-center">
               <h2 className="m-0 font-headline text-headline-sm text-primary">
-                No past orders yet
+                No orders yet
               </h2>
               <p className="text-secondary">
-                Orders you approve in a request will appear here.
+                Orders you request, place or schedule will appear here.
               </p>
             </section>
+          )}
+          {!loading && orders.length > 0 && shown.length === 0 && (
+            <p className="m-0 py-space-lg text-center text-secondary">
+              No {filterLabel?.toLowerCase()} orders loaded
+              {nextOffset !== null
+                ? " yet. Show more orders to look further."
+                : "."}
+            </p>
           )}
           {!loading && nextOffset !== null && (
             <button

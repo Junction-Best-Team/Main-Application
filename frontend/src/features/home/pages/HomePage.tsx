@@ -1,23 +1,22 @@
 import { Link } from "react-router-dom";
 import { currency, dateTime } from "../../../shared/lib/format";
-import { placedAt } from "../../purchases/model/acceptedOrders";
-import { useAcceptedOrders } from "../../purchases/hooks/useAcceptedOrders";
+import { useOrders } from "../../purchases/hooks/useOrders";
 import { useAuth } from "../../auth/useAuth";
 import { DESIGN_PLACEHOLDERS as MOCK } from "../../../shared/lib/designPlaceholders";
-import { Icon, InertButton } from "../../../shared/components/DesignPrimitives";
-
-const statusTone: Record<string, string> = {
-  Shipping: "bg-status-fresh-green/30 text-primary",
-  "Needs Approval": "bg-error-container text-on-error-container",
-  Confirmed: "bg-surface-container-highest text-primary",
-};
+import { Icon } from "../../../shared/components/DesignPrimitives";
+import { StandingOrdersCard } from "../components/StandingOrdersCard";
 
 const rowClass =
   "group flex items-center justify-between gap-space-sm rounded-lg bg-surface-container-low p-space-sm no-underline";
 
 export function HomePage() {
   const { session } = useAuth();
-  const { orders, error, loading } = useAcceptedOrders(3);
+  const {
+    items: placed,
+    error,
+    loading,
+  } = useOrders({ status: "placed", want: 3 });
+  const orders = placed.slice(0, 3);
   const m = MOCK.home;
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-col gap-space-lg px-margin-sm py-space-lg md:gap-space-xl md:px-margin md:py-space-xl">
@@ -60,62 +59,7 @@ export function HomePage() {
       </section>
 
       <div className="grid grid-cols-1 gap-space-lg lg:grid-cols-2">
-        <section
-          aria-labelledby="home-schedule"
-          className="flex flex-col gap-space-sm rounded-xl bg-surface-pure p-space-lg shadow-level-2"
-        >
-          <div className="flex items-center justify-between gap-space-sm">
-            <h3
-              id="home-schedule"
-              className="m-0 flex items-center gap-space-xs font-headline text-headline-sm text-primary"
-            >
-              <Icon name="calendar_clock" className="text-wholesale-teal" />
-              Active Delivery Schedule · Placeholder
-            </h3>
-            <InertButton
-              label={m.scheduleViewAll}
-              className="font-label text-label-md text-wholesale-teal"
-            >
-              {m.scheduleViewAll}
-            </InertButton>
-          </div>
-          <ul className="m-0 flex list-none flex-col gap-space-xs p-0">
-            {m.schedules.map((s) => (
-              <li key={s.title}>
-                <InertButton label={s.title} className="block w-full text-left">
-                  <span className={rowClass}>
-                    <span className="flex min-w-0 items-start gap-space-sm">
-                      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-secondary-container text-on-secondary-container">
-                        <Icon name={s.icon} className="text-[20px]" />
-                      </span>
-                      <span className="flex min-w-0 flex-col">
-                        <span className="truncate font-label text-label-lg text-deep-ocean-navy">
-                          {s.title}
-                        </span>
-                        <span className="font-label text-label-sm text-secondary">
-                          {s.cadence} •{" "}
-                          <span className="font-semibold text-on-surface">
-                            {s.next}
-                          </span>
-                        </span>
-                      </span>
-                    </span>
-                    <span className="flex shrink-0 flex-col items-end gap-1">
-                      <span
-                        className={`rounded px-2 py-0.5 font-label text-label-sm font-semibold ${statusTone[s.status] ?? ""}`}
-                      >
-                        {s.status}
-                      </span>
-                      <span className="font-label text-label-md font-bold text-deep-ocean-navy">
-                        {s.total}
-                      </span>
-                    </span>
-                  </span>
-                </InertButton>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <StandingOrdersCard />
 
         <section
           aria-labelledby="home-recent"
@@ -150,15 +94,15 @@ export function HomePage() {
               Loading past orders…
             </p>
           )}
-          {orders?.length === 0 && (
+          {!loading && !error && orders.length === 0 && (
             <p className="m-0 text-secondary">
               No past orders yet. Orders you approve in a request will appear
               here.
             </p>
           )}
           <ul className="m-0 flex list-none flex-col gap-space-xs p-0">
-            {orders?.map((p) => (
-              <li key={p.proposal_id}>
+            {orders.map((p, index) => (
+              <li key={p.order_id ?? p.proposal_id ?? index}>
                 <Link
                   to={`/purchases/${p.proposal_id}`}
                   className={`${rowClass} hover:bg-surface-container`}
@@ -169,20 +113,19 @@ export function HomePage() {
                     </span>
                     <span className="flex min-w-0 flex-col">
                       <span className="truncate font-label text-label-lg text-deep-ocean-navy">
-                        {p.request.request_id}
+                        {p.title}
                       </span>
                       <span className="font-label text-label-sm text-on-surface-variant">
-                        Accepted (demo) • {dateTime(placedAt(p))}
+                        Accepted (demo) • {dateTime(p.updated_at)}
                       </span>
                     </span>
                   </span>
                   <span className="flex shrink-0 flex-col items-end">
                     <span className="font-headline text-headline-sm font-bold leading-tight text-primary">
-                      {currency(p.snapshot.gross_total)}
+                      {currency(p.gross_total, p.currency ?? "EUR")}
                     </span>
                     <span className="font-label text-label-sm text-secondary">
-                      {p.snapshot.lines.length}{" "}
-                      {p.snapshot.lines.length === 1 ? "item" : "items"}
+                      {p.line_count} {p.line_count === 1 ? "item" : "items"}
                     </span>
                   </span>
                 </Link>

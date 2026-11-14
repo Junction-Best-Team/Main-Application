@@ -1,11 +1,18 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { components } from "../src/shared/api/schema";
-import type { Conversation, Proposal } from "../src/shared/api/types";
+import type {
+  Conversation,
+  OrderListItem,
+  Proposal,
+  Session,
+} from "../src/shared/api/types";
+import { ordersPage, schedule } from "./support/schedulerFixtures";
 
-const session = {
+const session: Session = {
   username: "buyer",
   buyer_id: "demo-hotel",
   csrf_token: "test-csrf",
+  role: "approver",
 };
 const conversationId = "fa0d5e73-f5a5-4594-a1c5-e4c1a24eebae";
 const proposalId = "b7b7dc8d-8e75-4f79-ac23-649ed1e5fd96";
@@ -95,6 +102,17 @@ const proposal: Proposal = {
   history: [],
   can_decide: true,
 };
+const placedOrder: OrderListItem = {
+  status: "placed",
+  title: "Carbonara for 200",
+  proposal_id: proposalId,
+  order_id: "accepted-order",
+  paused: false,
+  line_count: 1,
+  gross_total: "114.00",
+  currency: "EUR",
+  updated_at: timestamp,
+};
 async function mockSession(page: Page, signedIn = true) {
   const currentSession = session;
   let authenticated = signedIn;
@@ -116,6 +134,12 @@ async function mockSession(page: Page, signedIn = true) {
     route.fulfill({ json: proposal }),
   );
   await page.route("**/api/purchases?*", (route) =>
+    route.fulfill({ json: { items: [], next_offset: null } }),
+  );
+  await page.route("**/api/orders?*", (route) =>
+    route.fulfill({ json: ordersPage([]) }),
+  );
+  await page.route("**/api/schedules?*", (route) =>
     route.fulfill({ json: { items: [], next_offset: null } }),
   );
   await page.route("**/api/conversations?*", (route) =>
@@ -407,7 +431,7 @@ test("history retains completed purchases and reports an actionable refresh erro
 }) => {
   await mockSession(page);
   let fail = false;
-  await page.route("**/api/purchases?*", (route) =>
+  await page.route("**/api/orders?*", (route) =>
     route.fulfill(
       fail
         ? {
@@ -419,19 +443,7 @@ test("history retains completed purchases and reports an actionable refresh erro
               },
             },
           }
-        : {
-            json: {
-              items: [
-                {
-                  ...proposal,
-                  approval_status: "approved",
-                  order_status: "accepted_mock",
-                  order_id: "saved-order",
-                },
-              ],
-              next_offset: null,
-            },
-          },
+        : { json: ordersPage([placedOrder]) },
     ),
   );
   await page.goto("/approvals");
@@ -439,10 +451,11 @@ test("history retains completed purchases and reports an actionable refresh erro
   await expect(
     page.getByRole("heading", { name: "Past Orders" }),
   ).toBeVisible();
-  await expect(page.locator(".purchase-row")).toContainText("Accepted (demo)");
+  await expect(page.locator(".purchase-row")).toContainText("Placed");
   fail = true;
   await page.getByRole("button", { name: "Refresh purchases" }).click();
   await expect(page.getByRole("alert")).toContainText("Refresh to retry");
+  await expect(page.locator(".purchase-row")).toContainText("Placed");
 });
 
 test("unfinished server turns restore the request and retry key on another browser", async ({
@@ -661,16 +674,19 @@ for (const width of [1440, 390]) {
   test(`designer Home and navigation work at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
     await mockSession(page);
+    await page.route("**/api/schedules?*", (route) =>
+      route.fulfill({ json: { items: [schedule], next_offset: null } }),
+    );
     await page.goto("/");
     await expect(
       page.getByRole("heading", { name: "Welcome, demo-hotel" }),
     ).toBeVisible();
+    const standing = page.getByRole("region", { name: "Standing orders" });
+    await expect(standing).toContainText("Breakfast dairy");
+    await expect(standing).not.toContainText("Placeholder");
     await expect(
-      page.getByText("Active Delivery Schedule · Placeholder"),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "View All Schedules" }),
-    ).toBeDisabled();
+      standing.getByRole("link", { name: "View all standing orders" }),
+    ).toHaveAttribute("href", "/schedules");
     if (width < 768) {
       await page.getByRole("button", { name: "Open menu" }).click();
       const menu = page.getByRole("dialog", { name: "Menu", exact: true });
@@ -805,7 +821,7 @@ for (const width of [1440, 390]) {
   });
 }
 
-test("Past Orders fills sparse API pages, expands rows and resolves an older deep link", async ({
+test("Past Orders pages the order list, expands placed rows and resolves an older deep link", async ({
   page,
 }) => {
   await mockSession(page);
@@ -816,7 +832,7 @@ test("Past Orders fills sparse API pages, expands rows and resolves an older dee
     can_decide: false,
   };
   const offsets: number[] = [];
-  await page.route("**/api/purchases?*", (route) => {
+  await page.route("**/api/orders?*", (route) => {
     const offset = Number(
       new URL(route.request().url()).searchParams.get("offset"),
     );
@@ -824,8 +840,11 @@ test("Past Orders fills sparse API pages, expands rows and resolves an older dee
     return route.fulfill({
       json:
         offset === 0
-          ? { items: [proposal], next_offset: 20 }
-          : { items: [accepted], next_offset: null },
+          ? ordersPage(
+              [{ ...placedOrder, status: "pending", order_id: null }],
+              20,
+            )
+          : ordersPage([placedOrder], null),
     });
   });
   await page.route(`**/api/purchases/${proposalId}`, (route) =>
@@ -833,9 +852,12 @@ test("Past Orders fills sparse API pages, expands rows and resolves an older dee
   );
   await page.goto("/purchases");
   await expect(page.locator(".purchase-row")).toHaveCount(1);
-  expect(offsets).toContain(20);
-  const row = page.locator(".purchase-row");
-  await expect(row).toContainText("Accepted (demo)");
+  await page.getByRole("button", { name: "Show more orders" }).click();
+  await expect(page.locator(".purchase-row")).toHaveCount(2);
+  // React StrictMode may repeat the first request in development.
+  expect([...new Set(offsets)]).toEqual([0, 20]);
+  const row = page.locator(".purchase-row").nth(1);
+  await expect(row).toContainText("Placed");
   await row
     .getByRole("button", { name: "Order details: Carbonara for 200" })
     .click();
