@@ -55,7 +55,7 @@ keys, sign-in/deep links, explicit confirmation, revised terms requiring another
 click, historical closed approvals, purchase history/refresh failures and
 server-side unfinished-turn recovery (including an interrupted SSE snapshot),
 unresolved recipe quantities and saved-recipe/free-form basket evidence, and
-Assistant preferences (`e2e/preferences.spec.ts`: scopes, empty/error states,
+Memory (`e2e/preferences.spec.ts`: scopes, empty/error states,
 typed create/edit, revision conflicts, forget, session expiry, safe text,
 navigation and mobile). They
 prove UI behavior against authored responses, not live provider, database or

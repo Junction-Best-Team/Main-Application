@@ -12,8 +12,8 @@ export type Draft = Record<string, string | boolean>;
 export type FieldErrors = Record<string, string>;
 
 export const SCOPE_NAMES = {
-  self: "My preferences",
-  buyer: "Buyer preferences",
+  self: "Personal",
+  buyer: "Shared with buyer",
 } as const;
 
 export type GroupId = "defaults" | "purchasing" | "assistant";

@@ -2,7 +2,7 @@
 
 The chat assistant remembers facts, defaults, preferences and workflow instructions
 that a customer **explicitly** asks it to keep. Customers manage it in chat or on
-the **Assistant preferences** screen (`/settings/preferences`, see
+the **Memory** screen (`/settings/preferences`, see
 [Browser screen](#browser-screen)). Code: `src/aimo/memory.py` (the one
 storage/validation service), `src/aimo/memory_schemas.py` (contracts), migration
 `012_buyer_user_memory.sql`, tools in `agent_tools.py`, prompt in `agent.py`, the
@@ -170,14 +170,15 @@ Response (`MemoryMutationResponse`): `status`, `memory_id`, `revision`, `memory`
 (also for another user's or buyer's item), 409 `MEMORY_EXISTS`,
 `MEMORY_REVISION_CONFLICT`, `MEMORY_LIMIT`, `IDEMPOTENCY_CONFLICT`, 422 validation,
 `MEMORY_VALUE_INVALID`, `MEMORY_SENSITIVE_DATA`. Generated browser types:
-`frontend/openapi.json`, `frontend/src/api-types.ts`.
+`frontend/openapi.json`, `frontend/src/shared/api/schema.ts`.
 
 ## Browser screen
 
-`/settings/preferences` (`frontend/src/features/preferences/`) lists *My
-preferences* (`scope=self`) and *Buyer preferences* (`scope=buyer`) in separate
-tabs, grouped as Defaults, Purchasing preferences and How the assistant
-responds. It offers only the keys above, as typed fields (portions, destination,
+`/settings/preferences` (`frontend/src/features/preferences/`) is the **Memory**
+page. Its *Personal* (`scope=self`) and *Shared with buyer* (`scope=buyer`) tabs
+show compact rows with Edit and Forget actions. Updated timestamps and source
+conversation links expand under Details. A single Add memory action offers only
+the keys above, as typed fields (portions, destination,
 dietary flags, reply length/language, pack size, product preference, note,
 instruction); family topics are derived from the ingredient or text, never typed
 by the customer. Writes use the session CSRF token, the item's revision and an

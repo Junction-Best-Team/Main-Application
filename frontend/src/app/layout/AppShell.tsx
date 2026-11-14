@@ -267,7 +267,7 @@ function AccountBlock({ onNavigate }: { onNavigate?: () => void }) {
         }`}
       >
         <Icon name="tune" className="text-[18px]" />
-        Assistant preferences
+        Memory
       </Link>
       <button
         type="button"

@@ -46,7 +46,10 @@ expiry. Native EventSource is opened in `chat/api/chatApi.ts` and managed by
 
 Use `../../ui/DESIGN.md` and desktop/mobile references as the visual source.
 Keep reusable tokens in `src/styles/theme.css`. Hanken Grotesk is the body and
-heading face; Space Grotesk is for labels/data. Pair lime actions with navy text.
+heading face; Space Grotesk is for labels/data. These fonts and Material Symbols
+are bundled from locked Fontsource packages by `src/main.tsx`; local dev and
+production do not request Google Fonts. Distributed notices are in
+`public/font-licenses/`. Pair lime actions with navy text.
 
 Apply utilities to the extracted components and remove their obsolete rules
 from base defaults in `theme.css`. Utilities occupy the last cascade layer. Keep global imports
