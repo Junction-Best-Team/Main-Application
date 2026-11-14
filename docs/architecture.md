@@ -2,7 +2,9 @@
 
 This describes the implemented chat product. The [chat purchasing migration](chat-purchasing.md)
 supersedes the external-agent/MCP entry points in the [original brief](brief.md).
-GitHub renders both Mermaid diagrams directly; edit their text here when the architecture changes.
+GitHub renders the Mermaid diagrams directly; edit their text here when the architecture changes.
+The OpenRouter search profile below is implemented but requires an explicit catalog import and
+cutover. Deploying the code alone keeps the existing local E5 profile active.
 
 ## System overview
 
@@ -17,14 +19,16 @@ flowchart TB
         Conversations["Conversation persistence<br/>Turn leases and retry recovery"]
         Agent["Internal meal-purchasing agent<br/>Typed tools bound to buyer identity"]
         Service["Shared purchasing Service"]
-        Search["Hybrid catalog search<br/>Full-text + vector ranking"]
+        Search["Hybrid catalog search<br/>Structured filters + full-text + vector ranking"]
         Workflow["Purchase workflow<br/>Quantity/evidence validation, confirmation, commit"]
         Policy["Deterministic policy evaluation<br/>Scope, limits, exceptions, authority"]
-        Embeddings["Local pinned embedding model"]
+        Embeddings["Embedding adapter<br/>One configured profile for import and queries"]
+        LocalModel["Pinned local E5 model<br/>Existing default: 384 dimensions"]
         Supplier["Supplier connector<br/>Authored fixtures by default"]
         API --> Conversations --> Agent --> Service
         API -->|"Customer confirmation and purchase review"| Workflow
         Service --> Search --> Embeddings
+        Embeddings -->|"Local profile"| LocalModel
         Service --> Workflow --> Policy
         Service --> Supplier
         Workflow -->|"Fresh commercial evidence"| Supplier
@@ -38,6 +42,12 @@ flowchart TB
 
     LLM["External conversational LLM provider"]
     Agent <-->|"Server-side provider calls"| LLM
+    subgraph HostedSearch["OpenRouter search APIs: opt-in, separate SEARCH_API_KEY"]
+        RemoteEmbeddings["Qwen3 Embedding 8B<br/>4096-dimensional vectors"]
+        Reranker["Qwen3 Reranker 8B<br/>Reorders existing candidates"]
+    end
+    Embeddings <-->|"Hosted profile: product text or query"| RemoteEmbeddings
+    Search <-->|"Up to 30 filtered candidates by default"| Reranker
     Valio["External Valio API<br/>Optional live price / availability"]
     Supplier <-->|"Live mode only"| Valio
 
@@ -48,11 +58,16 @@ flowchart TB
 ```
 
 - **Runtime:** one backend serves the frontend and runs the agent, search and purchasing modules.
-  The embedding model runs locally in the process. The conversational LLM is a separate provider;
-  its credentials stay on the server.
+  The default E5 model runs in-process. The hosted profile calls OpenRouter for embeddings and
+  reranking; it needs no GPU or separate model server. Search uses `SEARCH_API_KEY`, independently
+  of the conversational model's `LLM_*` settings. All credentials stay on the server.
 - **Data:** PostgreSQL stores both the derived catalog index and durable business records.
   Catalog ingestion is an explicit operator command, never a request/startup hook. Fixture
   embeddings and a small fixture catalog are available for testing independently of supplier mode.
+- **Search:** exact product ID/GTIN matches stay local. Descriptive hosted searches combine keyword
+  and exact cosine ranking in pgvector, then rerank a filtered shortlist. Dietary exclusions are
+  enforced before reranking; model scores never prove suitability. An embedding failure returns
+  an error; a reranker outage returns filtered hybrid results with `rerank_status=unavailable`.
 - **Authority:** the backend binds tool calls to a trusted internal identity. The agent can plan,
   search and prepare; its tool registry has no approval or commit operation. Policy and identity
   provisioning are privileged setup operations, with no runtime policy editor.
@@ -62,6 +77,48 @@ flowchart TB
 Optional Kubernetes hosting uses one application Deployment plus a PostgreSQL endpoint and an
 occasional ingestion/setup Job. Infrastructure configuration does not establish that it has been
 deployed; see the [deployment guide](../deploy/README.md) and [Terraform runbook](../infra/README.md).
+
+## Hosted catalog ingestion and cutover
+
+PostgreSQL stores normalized product facts as JSONB, searchable text/`tsvector`, and one embedding
+per product and catalog generation. Migration 004 allows old 384-dimensional and new
+4096-dimensional generations to coexist, with a database dimension check. Search reads only the
+active generation. Exact vector ranking does not use an HNSW index; the old unused index is removed.
+
+```mermaid
+sequenceDiagram
+    actor Operator
+    participant App as Serving app
+    participant Importer as Explicit ingestion command / Job
+    participant Embeddings as OpenRouter / Qwen3 Embedding 8B
+    participant DB as PostgreSQL + pgvector
+
+    Operator->>DB: Apply migration 004 using schema-owner credentials
+    Operator->>App: Deploy new code with existing E5 profile
+    Operator->>Importer: Run ingest --stage with OpenRouter profile
+    Importer->>Importer: Verify snapshot hash, count and IDs, then normalize facts
+    Importer->>DB: Look up cached text hashes for the embedding profile
+    loop Missing embeddings: 32 texts per batch, at most 4 batches in flight
+        Importer->>Embeddings: Embed source-backed product text
+        Embeddings-->>Importer: 4096-dimensional vectors
+        Importer->>Importer: Validate model, indexes, dimensions and finite values
+        Importer->>DB: Commit completed batch to reusable embedding cache
+    end
+    Importer->>DB: Atomically store complete staged catalog generation
+    Note over App,DB: Existing active catalog stays available during staging<br/>Interrupted imports resume from completed cached batches
+    Operator->>App: Stop serving for coordinated cutover
+    Operator->>Importer: Run activate-catalog with new profile and generation ID
+    Importer->>DB: Validate generation, switch active pointer and retain previous catalog
+    Operator->>App: Configure matching OpenRouter profile and key, then restart
+    Operator->>App: Verify readiness and real Finnish/English searches
+```
+
+The import is an operator action, never a deployment/startup hook or continuous sync. Only changed
+text needs new embeddings within the same profile; switching models requires a new compatible
+catalog. The reranker runs at search time, not during ingestion. Readiness checks the database,
+profile and key presence without making paid API calls. Rollback selects the retained previous
+generation and matching serving profile. See the [hosted search runbook](hosted-search.md) for
+commands, failure handling, measured quality/latency and rollout details.
 
 ## Purchase and confirmation sequence
 
@@ -132,6 +189,7 @@ constraints prevent duplicate acceptance; persisted conversations and receipts s
 | Provider loop and allowed typed tools | [agent.py](../src/aimo/agent.py), [chat_schemas.py](../src/aimo/chat_schemas.py) |
 | Shared purchasing entry points | [service.py](../src/aimo/service.py) |
 | Catalog normalization, ingestion and hybrid search | [catalog.py](../src/aimo/catalog.py), [ingest.py](../src/aimo/ingest.py), [search.py](../src/aimo/search.py) |
+| OpenRouter embeddings, reranking and response validation | [search_provider.py](../src/aimo/search_provider.py) |
 | Commercial evidence and quantity snapshots | [upstream.py](../src/aimo/upstream.py), [purchases.py](../src/aimo/purchases.py) |
 | Policy decisions and durable purchase workflow | [approval_policy.py](../src/aimo/approval_policy.py), [approval_workflow.py](../src/aimo/approval_workflow.py) |
 | Purchasing contracts and database schema | [schemas.py](../src/aimo/schemas.py), [migrations](../migrations) |
