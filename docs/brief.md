@@ -1,3 +1,5 @@
+> Deployment update: the owner’s 2026-11-14 [separate-app request](separate-apps.md) supersedes the single-image deployment count below. Product behavior and purchasing controls remain unchanged.
+
 > Current product update, 2026-11-14: [Chat purchasing migration](chat-purchasing.md) supersedes the external-agent/MCP transport and standalone approval-inbox entry point in this original baseline. Its quantity, policy, approval, isolation, audit and mock-order controls remain required. The transport descriptions below document the original design.
 
 # Valio Aimo — implementation plan

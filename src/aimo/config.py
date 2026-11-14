@@ -23,7 +23,6 @@ class Settings(BaseSettings):
     embedding_model_revision: str = ""
     embedding_backend: Literal["sentence_transformers", "fixture"] = "sentence_transformers"
     catalog_generations_to_keep: int = Field(default=2, ge=1, le=10)
-    frontend_dist: str = "frontend/dist"
     proposal_ttl_seconds: int = 900
     # Conversational provider configuration is independent of local embeddings.
     llm_api_key: str = ""

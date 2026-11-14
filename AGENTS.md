@@ -40,3 +40,11 @@ The explicit implementation handoff selects the PR #2 brief for this MVP. PR #2 
 ## Chat purchasing cutover (2026-11-14)
 
 The explicit product migration in `docs/chat-purchasing.md` overrides the earlier external-agent/MCP and standalone inbox entry points above. The existing React app is the customer chat product; the authenticated FastAPI app runs typed internal tools directly against Service. Customer confirmation must be a persisted authenticated exact-revision action; retain purchasing controls, historical records and mock-order labels. Do not merge, deploy, apply Terraform or enable the release switch for this task.
+
+## Separate applications (2026-11-14)
+
+The owner explicitly requested independent frontend, API and worker apps/pods, in
+a new worktree and PR. `docs/separate-apps.md` supersedes the earlier single-image
+packaging and synchronous chat execution. Preserve purchasing controls and history.
+The earlier no-deployment restriction applied to the chat cutover task; this new
+scope includes deployment preparation. All task PRs still target `develop`.

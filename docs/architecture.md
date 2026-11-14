@@ -8,60 +8,31 @@ GitHub renders both Mermaid diagrams directly; edit their text here when the arc
 
 ```mermaid
 flowchart TB
-    Buyer["Buyer in browser"]
-    UI["React + TypeScript<br/>Chat, basket review, purchase history"]
-    Buyer <--> UI
-
-    subgraph App["One FastAPI application / production image"]
-        API["Authenticated JSON API + SSE<br/>Serves built React assets"]
-        Conversations["Conversation persistence<br/>Turn leases and retry recovery"]
-        Agent["Internal meal-purchasing agent<br/>Typed tools bound to buyer identity"]
-        Service["Shared purchasing Service"]
-        Search["Hybrid catalog search<br/>Full-text + vector ranking"]
-        Workflow["Purchase workflow<br/>Quantity/evidence validation, confirmation, commit"]
-        Policy["Deterministic policy evaluation<br/>Scope, limits, exceptions, authority"]
-        Embeddings["Local pinned embedding model"]
-        Supplier["Supplier connector<br/>Authored fixtures by default"]
-        API --> Conversations --> Agent --> Service
-        API -->|"Customer confirmation and purchase review"| Workflow
-        Service --> Search --> Embeddings
-        Service --> Workflow --> Policy
-        Service --> Supplier
-        Workflow -->|"Fresh commercial evidence"| Supplier
-    end
-
-    UI <-->|"Same-origin session + CSRF<br/>JSON requests / persisted-state SSE"| API
-    DB[("PostgreSQL + pgvector<br/>Catalog and vectors; policies and identities;<br/>conversations, revisions, confirmations,<br/>approvals, mock orders and audit")]
-    Conversations <--> DB
-    Search <--> DB
-    Workflow <--> DB
-
-    LLM["External conversational LLM provider"]
-    Agent <-->|"Server-side provider calls"| LLM
-    Valio["External Valio API<br/>Optional live price / availability"]
-    Supplier <-->|"Live mode only"| Valio
-
-    Importer["Explicit catalog ingestion command / Job<br/>Same application image, runs to completion"]
-    Catalog["Private catalog snapshot<br/>or authenticated Valio download"]
-    Catalog --> Importer --> DB
-    Importer --> Embeddings
+    Buyer[Buyer browser] --> Ingress[Traefik HTTPS]
+    Ingress -->|Pages and assets| Frontend[aimo-frontend: React / Nginx pod]
+    Ingress -->|JSON and SSE| API[aimo-api: FastAPI pod]
+    API -->|Durable turns / sessions / purchases| DB[(Managed PostgreSQL + pgvector)]
+    Worker[aimo-worker: queue consumer pod] -->|Claim jobs / save results| DB
+    Worker --> Agent[Typed agent and purchasing tools]
+    Agent --> Search[Local embedding model and hybrid search]
+    Search --> DB
+    Agent --> Provider[External conversational LLM]
+    Agent --> Supplier[Supplier lookup or explicit fixtures]
+    API -->|Customer confirmation and commercial revalidation| Supplier
+    Importer[Explicit worker-image ingestion Job] --> DB
 ```
 
-- **Runtime:** one backend serves the frontend and runs the agent, search and purchasing modules.
-  The embedding model runs locally in the process. The conversational LLM is a separate provider;
-  its credentials stay on the server.
-- **Data:** PostgreSQL stores both the derived catalog index and durable business records.
-  Catalog ingestion is an explicit operator command, never a request/startup hook. Fixture
-  embeddings and a small fixture catalog are available for testing independently of supplier mode.
-- **Authority:** the backend binds tool calls to a trusted internal identity. The agent can plan,
-  search and prepare; its tool registry has no approval or commit operation. Policy and identity
-  provisioning are privileged setup operations, with no runtime policy editor.
-- **Ordering:** even with live prices/availability, acceptance is a persistent **mock order**.
-  There is no supplier checkout or stock reservation. `/mcp` and `/api/agent/*` are removed.
+Frontend, API and worker each have their own image, Deployment, pod and Service.
+API requests persist chat jobs; the worker consumes them independently, and SSE
+returns saved conversation snapshots. The worker owns the local embedding model
+and LLM key. The API owns browser session signing and exact customer confirmation.
+The frontend receives no application credentials. PostgreSQL remains outside the
+cluster as the existing managed database.
 
-Optional Kubernetes hosting uses one application Deployment plus a PostgreSQL endpoint and an
-occasional ingestion/setup Job. Infrastructure configuration does not establish that it has been
-deployed; see the [deployment guide](../deploy/README.md) and [Terraform runbook](../infra/README.md).
+The agent can plan, search and prepare; its tool registry has no approval or
+commit operation. Policy/identity provisioning remain privileged setup operations.
+Even with live price/availability, orders are persistent **mocks**, without supplier
+checkout or stock reservation. See [cutover and recovery](separate-apps.md).
 
 ## Purchase and confirmation sequence
 
@@ -69,14 +40,17 @@ deployed; see the [deployment guide](../deploy/README.md) and [Terraform runbook
 sequenceDiagram
     actor Buyer as Buyer in React UI
     participant API as FastAPI / conversations
+    participant Worker as Independent worker
     participant Agent as Internal typed agent
     participant Service as Purchasing Service / workflow
     participant Supplier as Supplier connector
     participant DB as PostgreSQL
 
     Buyer->>API: Send message with stable retry key
-    API->>DB: Persist message and reserve bounded turn
-    API->>Agent: Run with trusted buyer identity and saved context
+    API->>DB: Persist message and queued turn
+    API-->>Buyer: Accepted conversation, busy=true
+    Worker->>DB: Claim turn with bounded lease
+    Worker->>Agent: Run with trusted buyer identity and saved context
     Note over Buyer,Agent: Clarify portions, date, destination, dietary needs and budget
     Agent->>Service: Read policy, search and load actual products
     Service->>DB: Read catalog, quantity evidence and policy
@@ -89,9 +63,10 @@ sequenceDiagram
     Service->>Service: Validate quantities, costs, evidence and policy
     Service->>DB: Save immutable proposal revision and any approval request
     Service-->>Agent: Proposal, outcome and reasons
-    Agent-->>API: Reply, meal plan and actual proposal reference
-    API->>DB: Persist completed assistant response
-    API-->>Buyer: Saved chat state and basket review
+    Agent-->>Worker: Reply, meal plan and actual proposal reference
+    Worker->>DB: Persist completed assistant response
+    API->>DB: Read persisted conversation
+    API-->>Buyer: SSE chat state and basket review
     Note over Buyer,Service: denied / needs_resolution remain blocked<br/>Approval cannot repair missing facts
 
     Buyer->>API: Click Confirm purchase for exact proposal revision
@@ -128,6 +103,7 @@ constraints prevent duplicate acceptance; persisted conversations and receipts s
 | --- | --- |
 | Browser screens and generated API types | [frontend/src](../frontend/src) |
 | HTTP routes, sessions, Origin/CSRF and SSE | [api.py](../src/aimo/api.py), [auth.py](../src/aimo/auth.py) |
+| Queue claiming and worker health | [worker.py](../src/aimo/worker.py) |
 | Conversation recovery and customer confirmation | [conversations.py](../src/aimo/conversations.py) |
 | Provider loop and allowed typed tools | [agent.py](../src/aimo/agent.py), [chat_schemas.py](../src/aimo/chat_schemas.py) |
 | Shared purchasing entry points | [service.py](../src/aimo/service.py) |
