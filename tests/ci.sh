@@ -72,7 +72,7 @@ PY
   uv run python - <<'PY'
 from aimo.db import connection
 with connection() as c:
-    c.execute("TRUNCATE buyers, login_attempts RESTART IDENTITY CASCADE")
+    c.execute("TRUNCATE buyers, login_attempts, purged_proposals RESTART IDENTITY CASCADE")
 PY
   aimo_cli seed
   aimo_cli fixture-catalog >/dev/null

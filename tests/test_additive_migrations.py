@@ -392,7 +392,8 @@ def test_database_catalog_shows_the_guard_on_each_immutable_table():
             "SELECT c.relname AS tbl, t.tgenabled AS enabled, t.tgtype AS tgtype "
             "FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid "
             "JOIN pg_proc p ON p.oid=t.tgfoid "
-            "WHERE p.proname='immutable_record' AND NOT t.tgisinternal"
+            "WHERE p.proname IN ('immutable_record','immutable_unless_purging') "
+            "AND NOT t.tgisinternal"
         ).fetchall()
     by_table = {r["tbl"]: r for r in rows}
     assert set(IMMUTABLE) <= set(by_table), set(IMMUTABLE) - set(by_table)
@@ -401,6 +402,38 @@ def test_database_catalog_shows_the_guard_on_each_immutable_table():
         assert row["enabled"] == "O", table
         assert row["tgtype"] & (1 | 2 | 8 | 16) == (1 | 2 | 8 | 16), table
         assert not row["tgtype"] & 4, table
+
+
+def test_018_swaps_the_guard_of_exactly_four_tables_for_the_purge_aware_function():
+    """CNF-021: DELETE is allowed only under the local purge flag and only without an order.
+
+    The review of migration 018 in code form: the function refuses every UPDATE, checks the flag
+    AND that neither orders nor proposals.order_id exist for the row's proposal, and is attached to
+    exactly the four history tables that hold per-proposal rows. (The scanner above does not see
+    `DROP TRIGGER IF EXISTS`, so this test pins what 018 does.)
+    """
+    text = strip_comments((MIGRATIONS / "018_purge_unfinished_proposals.sql").read_text())
+    body = re.search(
+        r"CREATE\s+FUNCTION\s+immutable_unless_purging\(\).*?\$\$(.*?)\$\$", text, re.S | re.I
+    )
+    assert body, "018 must define immutable_unless_purging"
+    code = " ".join(body.group(1).split())
+    assert "TG_OP = 'DELETE'" in code and "aimo.purge_unfinished" in code
+    assert "FROM orders" in code and "p.order_id IS NOT NULL" in code
+    assert "RAISE EXCEPTION 'immutable history; append a new record instead'; END" in code
+    swapped = re.findall(
+        r"CREATE\s+TRIGGER\s+(\w+)\s+BEFORE\s+UPDATE\s+OR\s+DELETE\s+ON\s+(\w+)\s+"
+        r"FOR\s+EACH\s+ROW\s+EXECUTE\s+FUNCTION\s+immutable_unless_purging\(\)",
+        text,
+        re.I,
+    )
+    assert sorted(t for _, t in swapped) == [
+        "audit_events",
+        "customer_confirmations",
+        "meal_authorization_withdrawals",
+        "proposal_revisions",
+    ]
+    assert "immutable_record()" in text  # purged_proposals itself keeps the plain guard
 
 
 def test_every_packaged_migration_is_in_the_ledger_under_its_original_name():

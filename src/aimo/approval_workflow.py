@@ -638,3 +638,163 @@ def get_order(identity, oid):
             raise Problem("NOT_FOUND", "Order not found.", 404)
         proposal(c, order["proposal_id"], identity)
         return order["receipt"]
+
+
+# --- CNF-021: remove proposals and approvals that never became orders ---------------------------
+
+# A proposal is unfinished when it has no order and the expiry of its current revision is older
+# than the cutoff. Rows are locked with SKIP LOCKED, under the buyer lock, like every purchasing
+# transaction, so a commit racing the cleanup is serialized by the same lock.
+_UNFINISHED = """FROM proposals p
+ JOIN proposal_revisions r ON r.proposal_id=p.id AND r.revision=p.current_revision
+ WHERE p.buyer_id=%s AND p.order_id IS NULL
+ AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.proposal_id=p.id)
+ AND r.expires_at < %s"""
+
+
+def purge_batch(c, proposal_ids, older_than):
+    """Remove these proposals if they still have no order; the caller holds the buyer lock.
+
+    Writes one purged_proposals record per proposal, deletes children first, unlinks the recipe
+    plan (it becomes reusable) and the chat messages (their text stays), then the revisions and
+    the proposal. The history triggers allow these DELETEs only under the local flag and only
+    for a proposal with no order. Returns counts per table.
+    """
+    c.execute("SET LOCAL aimo.purge_unfinished = 'on'")
+    ids = [
+        r["id"]
+        for r in c.execute(
+            """SELECT p.id FROM proposals p WHERE p.id = ANY(%s::uuid[]) AND p.order_id IS NULL
+            AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.proposal_id=p.id)
+            ORDER BY p.id FOR UPDATE""",
+            ([str(i) for i in proposal_ids],),
+        ).fetchall()
+    ]
+    counts = dict.fromkeys(
+        (
+            "proposals",
+            "proposal_revisions",
+            "approvals",
+            "audit_events",
+            "customer_confirmations",
+            "meal_authorization_withdrawals",
+            "prepare_requests",
+            "recipe_plans_unlinked",
+            "conversation_messages_unlinked",
+        ),
+        0,
+    )
+    if not ids:
+        return counts
+    days = round(older_than.total_seconds() / 86400)
+    c.execute(
+        """INSERT INTO purged_proposals(proposal_id,buyer_id,created_at,last_revision,
+        last_outcome,last_expires_at,period_days)
+        SELECT p.id,p.buyer_id,p.created_at,p.current_revision,r.policy_outcome,r.expires_at,%s
+        FROM proposals p JOIN proposal_revisions r
+        ON r.proposal_id=p.id AND r.revision=p.current_revision WHERE p.id = ANY(%s)""",
+        (days, ids),
+    )
+    for table, key in (
+        ("meal_authorization_withdrawals", "meal_authorization_withdrawals"),
+        ("customer_confirmations", "customer_confirmations"),
+        ("approvals", "approvals"),
+        ("audit_events", "audit_events"),
+        ("prepare_requests", "prepare_requests"),
+    ):
+        counts[key] = c.execute(f"DELETE FROM {table} WHERE proposal_id = ANY(%s)", (ids,)).rowcount
+    counts["recipe_plans_unlinked"] = c.execute(
+        "UPDATE recipe_plans SET proposal_id=NULL, locked=false WHERE proposal_id = ANY(%s)", (ids,)
+    ).rowcount
+    counts["conversation_messages_unlinked"] = c.execute(
+        "UPDATE conversation_messages SET proposal_id=NULL WHERE proposal_id = ANY(%s)", (ids,)
+    ).rowcount
+    counts["proposal_revisions"] = c.execute(
+        "DELETE FROM proposal_revisions WHERE proposal_id = ANY(%s)", (ids,)
+    ).rowcount
+    counts["proposals"] = c.execute("DELETE FROM proposals WHERE id = ANY(%s)", (ids,)).rowcount
+    return counts
+
+
+def purge_unfinished_proposals(older_than, *, as_of=None, dry_run=False, batch_size=100, conn=None):
+    """Remove unfinished proposals whose current revision expired more than `older_than` ago.
+
+    `as_of` defaults to now. Short transactions of `batch_size` proposals per buyer (no network
+    call, no human wait); `dry_run` only counts. With `conn` everything runs on that connection
+    and the caller commits (used to run it as the restricted runtime role). Orders and anything
+    on an ordered proposal are never selected. Returns the summed counts.
+    """
+    cutoff = (as_of or now()) - older_than
+    totals = {"dry_run": dry_run, "cutoff": cutoff.isoformat()}
+
+    def add(counts):
+        for key, value in counts.items():
+            totals[key] = totals.get(key, 0) + value
+
+    def run(c):
+        buyers = [
+            r["buyer_id"]
+            for r in c.execute(
+                f"SELECT DISTINCT p.buyer_id {_UNFINISHED.replace('p.buyer_id=%s', 'TRUE')} "
+                "ORDER BY 1",
+                (cutoff,),
+            ).fetchall()
+        ]
+        return buyers
+
+    def one_batch(c, buyer_id):
+        c.execute("SELECT id FROM buyers WHERE id=%s FOR UPDATE", (buyer_id,))
+        ids = [
+            r["id"]
+            for r in c.execute(
+                f"SELECT p.id {_UNFINISHED} ORDER BY p.id LIMIT %s FOR UPDATE OF p SKIP LOCKED",
+                (buyer_id, cutoff, batch_size),
+            ).fetchall()
+        ]
+        if not ids:
+            return 0
+        if dry_run:
+            return None
+        counts = purge_batch(c, ids, older_than)
+        add(counts)
+        return counts["proposals"]
+
+    if dry_run:
+        with _use(conn) as c:
+            total = c.execute(
+                f"SELECT count(*) AS n {_UNFINISHED.replace('p.buyer_id=%s', 'TRUE')}", (cutoff,)
+            ).fetchone()["n"]
+            revisions = c.execute(
+                f"SELECT count(*) AS n FROM proposal_revisions WHERE proposal_id IN "
+                f"(SELECT p.id {_UNFINISHED.replace('p.buyer_id=%s', 'TRUE')})",
+                (cutoff,),
+            ).fetchone()["n"]
+        totals.update(proposals=total, proposal_revisions=revisions)
+        return totals
+    totals.update(proposals=0)
+    with _use(conn) as c:
+        buyers = run(c)
+    for buyer_id in buyers:
+        while True:
+            with _use(conn) as c:
+                removed = one_batch(c, buyer_id)
+            if not removed:
+                break
+    return totals
+
+
+class _use:
+    """Use the given connection as is (caller commits), or a pooled one in its own transaction."""
+
+    def __init__(self, conn):
+        self.conn, self.cm = conn, None
+
+    def __enter__(self):
+        if self.conn is not None:
+            return self.conn
+        self.cm = connection()
+        return self.cm.__enter__()
+
+    def __exit__(self, *exc):
+        if self.cm is not None:
+            return self.cm.__exit__(*exc)

@@ -48,7 +48,7 @@ def database():
 @pytest.fixture(autouse=True)
 def reset_buyers():
     with connection() as c:
-        c.execute("TRUNCATE buyers,login_attempts RESTART IDENTITY CASCADE")
+        c.execute("TRUNCATE buyers,login_attempts,purged_proposals RESTART IDENTITY CASCADE")
     seed()
 
 

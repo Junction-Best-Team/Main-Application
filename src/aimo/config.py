@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     # Blank uses the system temporary directory; the Job mounts a bounded emptyDir there.
     catalog_work_dir: str = ""
     proposal_ttl_seconds: int = 900
+    # CNF-021: days after a proposal's current revision expired before an unfinished (never ordered)
+    # proposal and its approvals may be removed by `aimo purge-proposals`.
+    unfinished_proposal_retention_days: int = Field(default=30, ge=1, le=3650)
     # Conversational provider configuration is independent of local embeddings.
     llm_api_key: str = ""
     llm_base_url: str = "https://openrouter.ai/api/v1"

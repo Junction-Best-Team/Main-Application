@@ -42,6 +42,11 @@ MANIFEST: dict[str, list[tuple[str, ...]]] = {
         ("column", "catalog_generations", "source_product_count"),
         ("view", "catalog_protected_products"),
     ],
+    "018_purge_unfinished_proposals.sql": [
+        ("table", "purged_proposals"),
+        ("trigger", "purged_proposals", "immutable_purged_proposals"),
+        ("trigger", "audit_events", "immutable_audit"),
+    ],
 }
 
 _RELATION = "SELECT to_regclass(%s) IS NOT NULL"

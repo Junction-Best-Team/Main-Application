@@ -47,6 +47,7 @@ DROPS = [
         "013_catalog_sync_withdrawals.sql",
     ),
     ("DROP VIEW catalog_protected_products", "013_catalog_sync_withdrawals.sql"),
+    ("DROP TABLE purged_proposals", "018_purge_unfinished_proposals.sql"),
 ]
 
 
