@@ -189,3 +189,8 @@ Reused the existing guardrail classifier, bounded context builders and synthetic
 evaluation harness. Added authored community-lasagna planning and unsupported-claim
 cases; fixture tests do not measure classifier accuracy. No new dependency, model,
 dataset or asset was introduced.
+
+The owner clarified the product scope and refusal style: accept food, products and
+nearby topics; decline clearly unrelated requests in simple language. Extended the
+same synthetic evaluation with workout, food-before-exercise, storage, kitchen-supply
+and community-serving cases. No new external material was used.

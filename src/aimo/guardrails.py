@@ -31,7 +31,7 @@ from aimo.db import Problem, fingerprint
 from aimo.google_api import GoogleAPIError, google_api_request
 from aimo.observability import event, operation
 
-POLICY_VERSION = "guard-2026-11-14.4"
+POLICY_VERSION = "guard-2026-11-14.5"
 # Fixed OpenRouter Decisions endpoint and Jev model; the key is the chat LLM_API_KEY.
 DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions"
 MODEL = "typesafe/jev-1.14"
@@ -99,11 +99,13 @@ class GuardResult:
 
 
 SCOPE = (
-    "A food-service purchasing assistant for an authenticated business customer. It helps "
-    "with meal planning, recipes and cooking questions, ingredient quantities and scaling, "
-    "finding food products in the supplier catalog, prices, budgets, delivery dates and "
-    "destinations, and the customer's own baskets, purchases and orders. Purchases need "
-    "the customer's separate confirmation button."
+    "A food and food-service product assistant for an authenticated customer. Help broadly "
+    "with food, drinks, recipes, cooking, nutrition, dietary preferences, ingredients, "
+    "meal planning, quantities, shopping, supplier products and kitchen supplies, "
+    "storage, serving, menus, catering and food-related community or business events. "
+    "Related or adjacent questions are welcome even without an immediate purchase or "
+    "a catalog match. Also help with prices, budgets, delivery and the customer's own "
+    "baskets and orders. Purchases need the customer's separate confirmation button."
 )
 
 INPUT_CHECKS = {
@@ -131,14 +133,22 @@ INPUT_CHECKS = {
     ),
     "in_scope": Check(
         "`latest_customer_message` is within `assistant_scope`, taking "
-        "`earlier_customer_messages` into account.",
-        "It is about meal planning, recipes, cooking, ingredients and quantities, catalog "
-        "food products, prices, budgets, delivery, or the customer's own baskets and orders; "
+        "`earlier_customer_messages` into account. Interpret the scope generously: accept "
+        "food, products and related or nearby topics. No immediate purchase is required. "
+        "Only reject a clearly unrelated request; a food word alone does not make an "
+        "otherwise unrelated task relevant.",
+        "It is about food, drinks, recipes, cooking, nutrition, dietary preferences, "
+        "ingredients, quantities, products, kitchen supplies, storage, serving, shopping, "
+        "menus, catering, food-related events, prices, budgets, delivery or own orders; "
+        "or has a reasonable connection to these, such as meals before a workout or "
+        "feeding guests at game night; "
         "or it asks to remember, change or forget the customer's purchasing preferences, "
         "defaults or how the assistant should reply; or it is a greeting, thanks, a "
         "clarification answer or a short follow-up.",
-        "It asks for something unrelated to food purchasing, such as general knowledge, "
-        "programming, essays, news, travel, or medical, legal or financial advice.",
+        "It clearly asks for unrelated help, such as an exercise/workout routine, "
+        "unrelated programming, trivia, essays, news, travel, medical diagnosis, legal "
+        "or financial advice. Earlier food discussion does not make a new standalone "
+        "unrelated request relevant.",
         risk_is_true=False,
         on_fail=Verdict.OUT_OF_SCOPE,
         uncertain_passes=True,
@@ -325,28 +335,10 @@ def catalog_check(key):
     )
 
 
-INPUT_BLOCKED_REPLY = (
-    "I can't change my rules, reveal internal configuration, or approve, confirm or place "
-    "orders from chat. I can plan meals, find catalog products and prepare a basket for "
-    "you to review and confirm yourself.\n\n"
-    "En voi muuttaa toimintasääntöjäni, paljastaa sisäisiä asetuksia enkä hyväksyä tai "
-    "tehdä tilauksia keskustelussa. Voin suunnitella aterioita, etsiä tuotteita ja "
-    "valmistella ostoskorin, jonka tarkistat ja vahvistat itse."
-)
-OUT_OF_SCOPE_REPLY = (
-    "I can help with meal planning, recipes, ingredient quantities, catalog products, "
-    "budgets, delivery and your purchases. What would you like to plan?\n\n"
-    "Autan ateriasuunnittelussa, resepteissä, ainesosamäärissä, tuotteissa, budjetissa, "
-    "toimituksissa ja ostoksissasi. Mitä haluaisit suunnitella?"
-)
-OUTPUT_FALLBACK = (
-    "I couldn't verify my reply or recipe draft against the purchase records, so they "
-    "aren't shown. Any status below comes directly from those records."
-)
-OUTPUT_FALLBACK_EMPTY = (
-    "I couldn't safely show that answer. You can continue with meal planning: "
-    "choosing a recipe, scaling portions, or finding ingredients."
-)
+INPUT_BLOCKED_REPLY = "I can't help with that. I can help with food, products and meal planning."
+OUT_OF_SCOPE_REPLY = INPUT_BLOCKED_REPLY
+OUTPUT_FALLBACK = "I can't help with that."
+OUTPUT_FALLBACK_EMPTY = OUTPUT_FALLBACK
 PREPARE_NOTICE = (
     "No new basket was prepared because the request check did not pass. Confirm the "
     "delivery destination, date, budget, dietary needs and items in a new message."

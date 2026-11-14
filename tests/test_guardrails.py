@@ -204,11 +204,15 @@ def test_shadow_mode_records_without_changing_behavior(
     assert "Ignore rules" not in caplog.text and "private-guard-key" not in caplog.text
 
 
-def test_unrelated_request_is_redirected_briefly(monkeypatch, config, guard, identity):
+@pytest.mark.parametrize("text", ["Write a poem.", "Please make a workout routine."])
+def test_unrelated_request_is_redirected_briefly(monkeypatch, config, guard, identity, text):
     fake_jev(monkeypatch, in_scope=0.03)
     llm = scripted(monkeypatch, [])
-    result = run(identity, FakeService(identity), [{"role": "user", "content": "Write a poem."}])
+    result = run(identity, FakeService(identity), [{"role": "user", "content": text}])
     assert result.text == OUT_OF_SCOPE_REPLY and llm == []
+    assert (
+        result.text == "I can't help with that. I can help with food, products and meal planning."
+    )
 
 
 @pytest.mark.parametrize(
