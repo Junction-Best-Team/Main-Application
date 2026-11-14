@@ -198,6 +198,46 @@
         }
       }
     },
+    "/api/purchases/{proposal_id}": {
+      "get": {
+        "summary": "Current Purchase",
+        "operationId": "current_purchase_api_purchases__proposal_id__get",
+        "parameters": [
+          {
+            "name": "proposal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Proposal Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/approvals/{approval_id}/decision": {
       "post": {
         "summary": "Decision",
@@ -285,7 +325,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
               }
             }
           },
@@ -338,7 +380,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ProductResponse"
+                }
               }
             }
           },
@@ -382,7 +426,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyResponse"
+                }
               }
             }
           },
@@ -436,7 +482,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/LookupResponse"
+                }
               }
             }
           },
@@ -602,7 +650,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CommitResponse"
+                }
               }
             }
           },
@@ -656,7 +706,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
               }
             }
           },
@@ -676,6 +728,148 @@
   },
   "components": {
     "schemas": {
+      "CommercialEvidence": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "title": "Product Id"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "net": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net"
+          },
+          "gross": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gross"
+          },
+          "tax_rate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Rate"
+          },
+          "available_sales_quantity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Sales Quantity"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/Reason"
+            },
+            "type": "array",
+            "title": "Reasons"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Observed At"
+          },
+          "source": {
+            "$ref": "#/components/schemas/CommercialSource"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "product_id",
+          "currency",
+          "net",
+          "gross",
+          "tax_rate",
+          "available_sales_quantity",
+          "expires_at",
+          "reasons",
+          "mode",
+          "observed_at",
+          "source"
+        ],
+        "title": "CommercialEvidence"
+      },
+      "CommercialSource": {
+        "properties": {
+          "price": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/JsonValue"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "availability": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/JsonValue"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Availability"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "price",
+          "availability"
+        ],
+        "title": "CommercialSource"
+      },
       "CommitRequest": {
         "properties": {
           "proposal_id": {
@@ -703,6 +897,25 @@
           "idempotency_key"
         ],
         "title": "CommitRequest"
+      },
+      "CommitResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/OrderResponse"
+          },
+          {
+            "$ref": "#/components/schemas/RevisedProposalResponse"
+          }
+        ],
+        "type": "object",
+        "title": "CommitResponse",
+        "discriminator": {
+          "propertyName": "status",
+          "mapping": {
+            "accepted_mock": "#/components/schemas/OrderResponse",
+            "revised": "#/components/schemas/RevisedProposalResponse"
+          }
+        }
       },
       "DecisionRequest": {
         "properties": {
@@ -769,6 +982,7 @@
         ],
         "title": "InboxResponse"
       },
+      "JsonValue": {},
       "LineRequest-Input": {
         "properties": {
           "product_id": {
@@ -907,6 +1121,78 @@
         ],
         "title": "LookupRequest"
       },
+      "LookupResponse": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "products": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CommercialEvidence"
+            },
+            "type": "object",
+            "title": "Products"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "mode",
+          "products"
+        ],
+        "title": "LookupResponse"
+      },
+      "Measure": {
+        "properties": {
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "known",
+              "unknown",
+              "conflicting"
+            ],
+            "title": "Status"
+          },
+          "basis": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Basis"
+          },
+          "name_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name Hint"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "value",
+          "status",
+          "basis"
+        ],
+        "title": "Measure"
+      },
       "NextAction": {
         "properties": {
           "type": {
@@ -917,7 +1203,8 @@
               "revise_request",
               "request_fresh_proposal",
               "stop",
-              "complete"
+              "complete",
+              "view_current_proposal"
             ],
             "title": "Type"
           },
@@ -951,6 +1238,401 @@
         ],
         "title": "NextAction"
       },
+      "OrderResponse": {
+        "properties": {
+          "order_id": {
+            "type": "string",
+            "title": "Order Id"
+          },
+          "proposal_id": {
+            "type": "string",
+            "title": "Proposal Id"
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          },
+          "policy_version": {
+            "type": "integer",
+            "title": "Policy Version"
+          },
+          "status": {
+            "type": "string",
+            "const": "accepted_mock",
+            "title": "Status"
+          },
+          "policy_outcome": {
+            "type": "string",
+            "enum": [
+              "ready_to_commit",
+              "approval_required"
+            ],
+            "title": "Policy Outcome"
+          },
+          "approval_status": {
+            "type": "string",
+            "enum": [
+              "not_required",
+              "approved"
+            ],
+            "title": "Approval Status"
+          },
+          "order_status": {
+            "type": "string",
+            "const": "accepted_mock",
+            "title": "Order Status"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/Reason"
+            },
+            "type": "array",
+            "title": "Reasons"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "next_action": {
+            "$ref": "#/components/schemas/NextAction"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "upstream_order_placed": {
+            "type": "boolean",
+            "const": false,
+            "title": "Upstream Order Placed"
+          },
+          "inventory_reserved": {
+            "type": "boolean",
+            "const": false,
+            "title": "Inventory Reserved"
+          },
+          "buyer_id": {
+            "type": "string",
+            "title": "Buyer Id"
+          },
+          "gross_total": {
+            "type": "string",
+            "title": "Gross Total"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "evidence_mode": {
+            "type": "string",
+            "title": "Evidence Mode"
+          },
+          "accepted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Accepted At"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "order_id",
+          "proposal_id",
+          "revision",
+          "policy_version",
+          "status",
+          "policy_outcome",
+          "approval_status",
+          "order_status",
+          "reasons",
+          "expires_at",
+          "next_action",
+          "label",
+          "upstream_order_placed",
+          "inventory_reserved",
+          "buyer_id",
+          "gross_total",
+          "currency",
+          "evidence_mode",
+          "accepted_at",
+          "explanation"
+        ],
+        "title": "OrderResponse"
+      },
+      "PolicyResponse": {
+        "properties": {
+          "buyer_id": {
+            "type": "string",
+            "title": "Buyer Id"
+          },
+          "agent_id": {
+            "type": "string",
+            "title": "Agent Id"
+          },
+          "policy_version": {
+            "type": "integer",
+            "title": "Policy Version"
+          },
+          "rules": {
+            "$ref": "#/components/schemas/PolicyRules"
+          },
+          "spend_basis": {
+            "type": "string",
+            "title": "Spend Basis"
+          },
+          "editable": {
+            "type": "boolean",
+            "const": false,
+            "title": "Editable"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "buyer_id",
+          "agent_id",
+          "policy_version",
+          "rules",
+          "spend_basis",
+          "editable"
+        ],
+        "title": "PolicyResponse"
+      },
+      "PolicyRules": {
+        "properties": {
+          "currency": {
+            "type": "string",
+            "const": "EUR",
+            "title": "Currency"
+          },
+          "autonomous_limit": {
+            "type": "string",
+            "title": "Autonomous Limit"
+          },
+          "destinations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Destinations"
+          },
+          "substitution": {
+            "type": "string",
+            "enum": [
+              "allowed",
+              "requires_approval",
+              "forbidden"
+            ],
+            "title": "Substitution"
+          },
+          "overbuy": {
+            "type": "string",
+            "enum": [
+              "allowed",
+              "requires_approval",
+              "forbidden"
+            ],
+            "title": "Overbuy"
+          },
+          "whole_sales_units": {
+            "type": "boolean",
+            "title": "Whole Sales Units"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "currency",
+          "autonomous_limit",
+          "destinations",
+          "substitution",
+          "overbuy",
+          "whole_sales_units"
+        ],
+        "title": "PolicyRules"
+      },
+      "ProductResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Names"
+          },
+          "sales_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sales Unit"
+          },
+          "base_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Unit"
+          },
+          "units": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Units"
+          },
+          "order_step": {
+            "type": "string",
+            "title": "Order Step"
+          },
+          "measures": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Measure"
+            },
+            "type": "object",
+            "title": "Measures"
+          },
+          "claims": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Claims"
+          },
+          "allergens": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "CONTAINS",
+                "MAY_CONTAIN"
+              ]
+            },
+            "type": "object",
+            "title": "Allergens"
+          },
+          "free_from": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Free From"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          },
+          "gtin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gtin"
+          },
+          "variable_weight": {
+            "type": "boolean",
+            "title": "Variable Weight"
+          },
+          "allergen_conflicts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allergen Conflicts"
+          },
+          "conflicts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Conflicts"
+          },
+          "deposits": {
+            "items": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "type": "array",
+            "title": "Deposits",
+            "description": "Original supplier deposit declarations."
+          },
+          "substitutions": {
+            "items": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "type": "array",
+            "title": "Substitutions",
+            "description": "Original supplier substitution declarations."
+          },
+          "category": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "country_of_origin": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "deleted": {
+            "type": "boolean",
+            "title": "Deleted"
+          },
+          "packaging": {
+            "items": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "type": "array",
+            "title": "Packaging",
+            "description": "Original supplier packaging evidence."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "names",
+          "sales_unit",
+          "base_unit",
+          "units",
+          "order_step",
+          "measures",
+          "claims",
+          "allergens",
+          "free_from",
+          "provenance",
+          "gtin",
+          "variable_weight",
+          "allergen_conflicts",
+          "conflicts",
+          "deposits",
+          "substitutions",
+          "category",
+          "country_of_origin",
+          "deleted",
+          "packaging"
+        ],
+        "title": "ProductResponse"
+      },
       "ProposalResponse": {
         "properties": {
           "proposal_id": {
@@ -960,6 +1642,25 @@
           "revision": {
             "type": "integer",
             "title": "Revision"
+          },
+          "current_revision": {
+            "type": "integer",
+            "title": "Current Revision"
+          },
+          "committed_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed Revision"
+          },
+          "current_proposal_url": {
+            "type": "string",
+            "title": "Current Proposal Url"
           },
           "policy_version": {
             "type": "integer",
@@ -1064,6 +1765,9 @@
         "required": [
           "proposal_id",
           "revision",
+          "current_revision",
+          "committed_revision",
+          "current_proposal_url",
           "policy_version",
           "policy_outcome",
           "approval_status",
@@ -1077,6 +1781,25 @@
           "snapshot"
         ],
         "title": "ProposalResponse"
+      },
+      "Provenance": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "product_id": {
+            "type": "string",
+            "title": "Product Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "product_id"
+        ],
+        "title": "Provenance"
       },
       "PurchaseRequest-Input": {
         "properties": {
@@ -1459,6 +2182,276 @@
         "type": "object",
         "title": "Requirements"
       },
+      "RevisedProposalResponse": {
+        "properties": {
+          "proposal_id": {
+            "type": "string",
+            "title": "Proposal Id"
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          },
+          "current_revision": {
+            "type": "integer",
+            "title": "Current Revision"
+          },
+          "committed_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed Revision"
+          },
+          "current_proposal_url": {
+            "type": "string",
+            "title": "Current Proposal Url"
+          },
+          "policy_version": {
+            "type": "integer",
+            "title": "Policy Version"
+          },
+          "policy_outcome": {
+            "type": "string",
+            "enum": [
+              "ready_to_commit",
+              "approval_required",
+              "denied",
+              "needs_resolution"
+            ],
+            "title": "Policy Outcome"
+          },
+          "approval_status": {
+            "type": "string",
+            "title": "Approval Status"
+          },
+          "order_status": {
+            "type": "string",
+            "title": "Order Status"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/Reason"
+            },
+            "type": "array",
+            "title": "Reasons"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "next_action": {
+            "$ref": "#/components/schemas/NextAction"
+          },
+          "approval_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Id"
+          },
+          "approval_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Url"
+          },
+          "order_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Id"
+          },
+          "buyer_id": {
+            "type": "string",
+            "title": "Buyer Id"
+          },
+          "agent_id": {
+            "type": "string",
+            "title": "Agent Id"
+          },
+          "request": {
+            "$ref": "#/components/schemas/PurchaseRequest-Output"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/PurchaseSnapshot"
+          },
+          "history": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "History"
+          },
+          "can_decide": {
+            "type": "boolean",
+            "title": "Can Decide",
+            "default": false
+          },
+          "status": {
+            "type": "string",
+            "const": "revised",
+            "title": "Status"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "proposal_id",
+          "revision",
+          "current_revision",
+          "committed_revision",
+          "current_proposal_url",
+          "policy_version",
+          "policy_outcome",
+          "approval_status",
+          "order_status",
+          "reasons",
+          "expires_at",
+          "next_action",
+          "buyer_id",
+          "agent_id",
+          "request",
+          "snapshot",
+          "status"
+        ],
+        "title": "RevisedProposalResponse"
+      },
+      "SearchCandidate": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Names"
+          },
+          "sales_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sales Unit"
+          },
+          "base_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Unit"
+          },
+          "units": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Units"
+          },
+          "order_step": {
+            "type": "string",
+            "title": "Order Step"
+          },
+          "measures": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Measure"
+            },
+            "type": "object",
+            "title": "Measures"
+          },
+          "claims": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Claims"
+          },
+          "allergens": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "CONTAINS",
+                "MAY_CONTAIN"
+              ]
+            },
+            "type": "object",
+            "title": "Allergens"
+          },
+          "free_from": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Free From"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "match_is_suitability_proof": {
+            "type": "boolean",
+            "const": false,
+            "title": "Match Is Suitability Proof"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "names",
+          "sales_unit",
+          "base_unit",
+          "units",
+          "order_step",
+          "measures",
+          "claims",
+          "allergens",
+          "free_from",
+          "provenance",
+          "score",
+          "match_is_suitability_proof"
+        ],
+        "title": "SearchCandidate"
+      },
       "SearchRequest": {
         "properties": {
           "query": {
@@ -1484,6 +2477,48 @@
           "query"
         ],
         "title": "SearchRequest"
+      },
+      "SearchResponse": {
+        "properties": {
+          "products": {
+            "items": {
+              "$ref": "#/components/schemas/SearchCandidate"
+            },
+            "type": "array",
+            "title": "Products"
+          },
+          "generation": {
+            "type": "string",
+            "title": "Generation"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "keyword",
+              "semantic",
+              "hybrid"
+            ],
+            "title": "Strategy"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "products",
+          "generation",
+          "model",
+          "strategy",
+          "note"
+        ],
+        "title": "SearchResponse"
       },
       "SessionResponse": {
         "properties": {

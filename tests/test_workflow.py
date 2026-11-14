@@ -72,6 +72,47 @@ def test_independent_inbox_and_agent_resume(service, agent, buyer, mission):
     assert service.get_purchase_policy(agent)["rules"]["autonomous_limit"] == "1500.00"
 
 
+@pytest.mark.parametrize("eligible_approver", [True, False])
+def test_reduced_agent_authority_revises_without_policy_change(
+    service, agent, buyer, request_data, eligible_approver
+):
+    p = service.prepare_order(agent, PurchaseRequest(**request_data))
+    assert p["snapshot"]["gross_total"] == "17.00"
+    with connection() as c:
+        c.execute("SELECT id FROM buyers WHERE id='demo-hotel' FOR UPDATE")
+        c.execute(
+            "UPDATE identities SET authority=%s WHERE id='demo-agent'",
+            (js({"currency": "EUR", "autonomous_limit": "10"}),),
+        )
+        if not eligible_approver:
+            c.execute("UPDATE identities SET active=false WHERE id='buyer'")
+    stale = service.get_proposal(agent, p["proposal_id"])
+    assert stale["approval_status"] == "authority_changed"
+    assert stale["next_action"]["type"] != "commit"
+    fresh = service.commit_order(agent, commit(p))
+    assert fresh["status"] == "revised" and fresh["revision"] == 2
+    assert fresh["policy_version"] == p["policy_version"]
+    assert fresh["snapshot"]["gross_total"] == "17.00"
+    assert any(r["code"] == "AUTONOMOUS_LIMIT_EXCEEDED" for r in fresh["reasons"])
+    expect_code("STALE_REVISION", lambda: service.commit_order(agent, commit(p)))
+    with connection() as c:
+        assert c.execute("SELECT count(*) n FROM orders").fetchone()["n"] == 0
+    resumed = Service().get_proposal(agent, p["proposal_id"])
+    if eligible_approver:
+        assert resumed["policy_outcome"] == "approval_required"
+        assert resumed["approval_status"] == "pending"
+        assert resumed["next_action"]["type"] == "wait"
+        assert workflow.list_approvals(buyer)["items"][0]["approval_id"] == fresh["approval_id"]
+        expect_code("APPROVAL_REQUIRED", lambda: service.commit_order(agent, commit(fresh)))
+        decide(buyer, fresh)
+        assert service.commit_order(agent, commit(fresh))["status"] == "accepted_mock"
+    else:
+        assert resumed["policy_outcome"] == "needs_resolution"
+        assert resumed["approval_id"] is None
+        assert resumed["next_action"]["type"] == "revise_request"
+        expect_code("COMMIT_BLOCKED", lambda: service.commit_order(agent, commit(fresh)))
+
+
 @pytest.mark.parametrize(
     "patch,outcome,code",
     [
@@ -138,7 +179,20 @@ def test_changed_price_creates_revision_and_invalidates_approval(
     expect_code("STALE_REVISION", lambda: service.commit_order(agent, commit(p)))
     expect_code("APPROVAL_REQUIRED", lambda: service.commit_order(agent, commit(fresh)))
     decide(buyer, fresh)
-    assert service.commit_order(agent, commit(fresh))["status"] == "accepted_mock"
+    receipt = service.commit_order(agent, commit(fresh))
+    assert receipt["status"] == "accepted_mock"
+    historical = workflow.approval_detail(buyer, p["approval_id"])
+    assert historical["snapshot"]["gross_total"] == "1700.00"
+    assert historical["approval_status"] == "superseded"
+    assert historical["order_status"] == "not_placed" and historical["order_id"] is None
+    assert historical["can_decide"] is False
+    assert historical["next_action"]["type"] == "view_current_proposal"
+    assert historical["current_revision"] == historical["committed_revision"] == 2
+    assert historical["current_proposal_url"].endswith(f"/purchases/{p['proposal_id']}")
+    current = service.get_proposal(buyer, p["proposal_id"])
+    assert current["snapshot"]["gross_total"] == "1870.00"
+    assert current["order_id"] == receipt["order_id"]
+    assert current["order_status"] == "accepted_mock"
 
 
 def test_stock_change_blocks_old_revision(service, connector, agent, buyer, mission):
@@ -159,7 +213,9 @@ def test_rejection_expiry_and_revocation(service, agent, buyer, mission, monkeyp
     decide(buyer, p2)
     with connection() as c:
         c.execute("UPDATE identities SET active=false WHERE id='buyer'")
-    expect_code("COMMIT_BLOCKED", lambda: service.commit_order(agent, commit(p2)))
+    revised = service.commit_order(agent, commit(p2))
+    assert revised["status"] == "revised" and revised["policy_outcome"] == "needs_resolution"
+    expect_code("COMMIT_BLOCKED", lambda: service.commit_order(agent, commit(revised)))
     p3 = service.prepare_order(agent, mission)
     monkeypatch.setattr(workflow, "now", lambda: now() + timedelta(hours=1))
     expect_code("PROPOSAL_EXPIRED", lambda: service.commit_order(agent, commit(p3)))

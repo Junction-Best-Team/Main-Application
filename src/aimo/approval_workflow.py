@@ -6,11 +6,13 @@ No network call or human wait occurs while these locks are held.
 from decimal import Decimal
 from uuid import uuid4
 
+from pydantic import ValidationError
+
 from aimo.approval_policy import can_approve, evaluate_purchase
 from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, js, now
 from aimo.purchases import build_snapshot, context, material_fingerprint
-from aimo.schemas import CommitRequest, DecisionRequest, PurchaseRequest
+from aimo.schemas import AgentAuthority, CommitRequest, DecisionRequest, PurchaseRequest
 
 
 def audit(c, pid, actor, event, detail):
@@ -78,15 +80,52 @@ def append_revision(
     )
 
 
+def evaluation_changed(revision, evaluated):
+    return any(revision[key] != evaluated[key] for key in evaluated)
+
+
 def render(c, p, r, a, identity):
     current = now()
     status = a["status"] if a else "not_required"
     buyer, policy, actor, approvers = context(c, identity)
-    if not p["order_id"]:
+    historical = r["revision"] != p["current_revision"]
+    order = (
+        c.execute("SELECT id,revision FROM orders WHERE id=%s", (p["order_id"],)).fetchone()
+        if p["order_id"]
+        else None
+    )
+    committed = order is not None and order["revision"] == r["revision"]
+    if historical:
+        status = "superseded"
+    elif not committed:
         if r["expires_at"] <= current:
             status = "expired"
         elif policy["version"] != r["policy_version"]:
             status = "policy_changed"
+        elif status != "rejected":
+            # Buyer views must evaluate the purchasing agent, not the approver's authority.
+            purchasing_agent = c.execute(
+                "SELECT authority,active FROM identities WHERE id=%s AND buyer_id=%s",
+                (p["agent_id"], p["buyer_id"]),
+            ).fetchone()
+            try:
+                authority = AgentAuthority.model_validate(
+                    purchasing_agent["authority"]
+                    if purchasing_agent and purchasing_agent["active"]
+                    else {}
+                ).model_dump(mode="json")
+            except ValidationError:
+                status = "authority_changed"
+            else:
+                evaluated = evaluate_purchase(
+                    r["request"],
+                    r["snapshot"],
+                    policy["rules"],
+                    authority,
+                    [x["authority"] for x in approvers],
+                )
+                if evaluation_changed(r, evaluated):
+                    status = "authority_changed"
     if status == "approved" and not p["order_id"]:
         decision_actor = next((x for x in approvers if x["id"] == a["actor_id"]), None)
         if not decision_actor or not can_approve(
@@ -99,7 +138,9 @@ def render(c, p, r, a, identity):
     eligible = r["policy_outcome"] == "ready_to_commit" or (
         r["policy_outcome"] == "approval_required" and status == "approved"
     )
-    if p["order_id"]:
+    if historical:
+        action = {"type": "view_current_proposal", "tool": "get_proposal"}
+    elif committed:
         action = {"type": "complete", "tool": "get_order"}
     elif status in ("expired", "superseded", "policy_changed", "authority_changed"):
         action = {"type": "request_fresh_proposal", "tool": "prepare_order"}
@@ -125,16 +166,19 @@ def render(c, p, r, a, identity):
     return {
         "proposal_id": str(p["id"]),
         "revision": r["revision"],
+        "current_revision": p["current_revision"],
+        "committed_revision": order["revision"] if order else None,
+        "current_proposal_url": f"{settings().public_base_url}/purchases/{p['id']}",
         "policy_version": r["policy_version"],
         "policy_outcome": r["policy_outcome"],
         "approval_status": status,
-        "order_status": "accepted_mock" if p["order_id"] else "not_placed",
+        "order_status": "accepted_mock" if committed else "not_placed",
         "reasons": r["reasons"],
         "expires_at": r["expires_at"],
         "next_action": action,
         "approval_id": str(a["id"]) if a else None,
         "approval_url": f"{settings().public_base_url}/approvals/{a['id']}" if a else None,
-        "order_id": str(p["order_id"]) if p["order_id"] else None,
+        "order_id": str(order["id"]) if committed else None,
         "buyer_id": buyer["id"],
         "agent_id": p["agent_id"],
         "request": r["request"],
@@ -354,7 +398,16 @@ def commit_order(identity, request: CommitRequest, connector):
         if r["expires_at"] <= now():
             raise Problem("PROPOSAL_EXPIRED", "Prepare a fresh proposal.")
         fresh_fp = material_fingerprint(r["request"], snapshot, policy["version"])
-        if fresh_fp != r["fingerprint"]:
+        evaluated = evaluate_purchase(
+            r["request"],
+            snapshot,
+            policy["rules"],
+            actor["authority"],
+            [x["authority"] for x in approvers],
+        )
+        # Commercial terms can be identical while effective purchasing authority changes.
+        # Persist the new decision and any approval in this same locked transaction.
+        if fresh_fp != r["fingerprint"] or evaluation_changed(r, evaluated):
             append_revision(
                 c,
                 p["id"],

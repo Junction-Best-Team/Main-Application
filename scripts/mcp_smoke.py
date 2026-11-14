@@ -47,6 +47,8 @@ async def main():
                 )
                 assert not search.isError
                 assert search.structuredContent["products"][0]["id"] == "464306"
+                product = await session.call_tool("get_product", {"product_id": "464306"})
+                assert not product.isError and product.structuredContent["id"] == "464306"
                 purchase = {
                     "request_id": "MCP autonomous smoke",
                     "destination": "hotel-helsinki",
@@ -57,6 +59,23 @@ async def main():
                 assert not p.isError, p
                 proposal = p.structuredContent
                 assert proposal["policy_outcome"] == "ready_to_commit"
+                lookup = await session.call_tool(
+                    "check_price_and_availability",
+                    {
+                        "request": {
+                            "product_ids": ["464306"],
+                            "delivery_date": purchase["delivery_date"],
+                        }
+                    },
+                )
+                assert not lookup.isError and "464306" in lookup.structuredContent["products"]
+                resumed = await session.call_tool(
+                    "get_proposal", {"proposal_id": proposal["proposal_id"]}
+                )
+                assert (
+                    not resumed.isError
+                    and resumed.structuredContent["revision"] == proposal["revision"]
+                )
                 payload = {
                     "proposal_id": proposal["proposal_id"],
                     "revision": proposal["revision"],

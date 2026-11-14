@@ -1,4 +1,3 @@
-from typing import Any
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -10,10 +9,16 @@ from aimo.config import settings
 from aimo.db import Problem
 from aimo.schemas import (
     CommitRequest,
+    CommitResponse,
     LookupRequest,
+    LookupResponse,
+    OrderResponse,
+    PolicyResponse,
+    ProductResponse,
     ProposalResponse,
     PurchaseRequest,
     SearchRequest,
+    SearchResponse,
 )
 from aimo.service import Service
 
@@ -48,24 +53,26 @@ def build_mcp(service: Service):
             raise ValueError(f"{e.code}: {e.message}") from None
 
     @mcp.tool(structured_output=True)
-    async def search_products(request: SearchRequest, ctx: Context) -> dict[str, Any]:
+    async def search_products(request: SearchRequest, ctx: Context) -> SearchResponse:
         """Discover candidates using hybrid retrieval and explicit dietary evidence; no live stock claim."""
-        return await call(ctx, "search_products", request)
+        return SearchResponse.model_validate(await call(ctx, "search_products", request))
 
     @mcp.tool(structured_output=True)
-    async def get_product(product_id: str, ctx: Context) -> dict[str, Any]:
+    async def get_product(product_id: str, ctx: Context) -> ProductResponse:
         """Inspect supported product attributes, packaging and evidence provenance."""
-        return await call(ctx, "get_product", product_id)
+        return ProductResponse.model_validate(await call(ctx, "get_product", product_id))
 
     @mcp.tool(structured_output=True)
-    async def get_purchase_policy(ctx: Context) -> dict[str, Any]:
+    async def get_purchase_policy(ctx: Context) -> PolicyResponse:
         """Read the calling agent's effective versioned policy. Cannot edit authority."""
-        return await call(ctx, "get_purchase_policy")
+        return PolicyResponse.model_validate(await call(ctx, "get_purchase_policy"))
 
     @mcp.tool(structured_output=True)
-    async def check_price_and_availability(request: LookupRequest, ctx: Context) -> dict[str, Any]:
+    async def check_price_and_availability(request: LookupRequest, ctx: Context) -> LookupResponse:
         """Look up current commercial evidence for at most 50 shortlisted IDs and a delivery date."""
-        return await call(ctx, "check_price_and_availability", request)
+        return LookupResponse.model_validate(
+            await call(ctx, "check_price_and_availability", request)
+        )
 
     @mcp.tool(structured_output=True)
     async def prepare_order(request: PurchaseRequest, ctx: Context) -> ProposalResponse:
@@ -78,13 +85,13 @@ def build_mcp(service: Service):
         return ProposalResponse.model_validate(await call(ctx, "get_proposal", proposal_id))
 
     @mcp.tool(structured_output=True)
-    async def commit_order(request: CommitRequest, ctx: Context) -> dict[str, Any]:
+    async def commit_order(request: CommitRequest, ctx: Context) -> CommitResponse:
         """Revalidate and atomically create a mock receipt, or return a revised proposal. Retry with the same key."""
-        return await call(ctx, "commit_order", request)
+        return CommitResponse.model_validate(await call(ctx, "commit_order", request))
 
     @mcp.tool(structured_output=True)
-    async def get_order(order_id: UUID, ctx: Context) -> dict[str, Any]:
+    async def get_order(order_id: UUID, ctx: Context) -> OrderResponse:
         """Retrieve an authorized persistent mock receipt; no real supplier order or reservation exists."""
-        return await call(ctx, "get_order", order_id)
+        return OrderResponse.model_validate(await call(ctx, "get_order", order_id))
 
     return mcp

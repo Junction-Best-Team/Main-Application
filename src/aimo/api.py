@@ -1,9 +1,11 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+from secrets import token_urlsafe
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Header, Query, Request, Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from aimo import approval_workflow as workflow
@@ -13,16 +15,27 @@ from aimo.db import Problem, connection
 from aimo.mcp_adapter import build_mcp
 from aimo.schemas import (
     CommitRequest,
+    CommitResponse,
     DecisionRequest,
     InboxResponse,
     LoginRequest,
     LookupRequest,
+    LookupResponse,
+    OrderResponse,
+    PolicyResponse,
+    ProductResponse,
     ProposalResponse,
     PurchaseRequest,
     SearchRequest,
+    SearchResponse,
     SessionResponse,
 )
 from aimo.service import Service
+
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+    "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+)
 
 
 def create_app(service=None):
@@ -35,8 +48,31 @@ def create_app(service=None):
         async with mcp.session_manager.run():
             yield
 
-    app = FastAPI(title="Valio Aimo purchasing gateway", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(
+        title="Valio Aimo purchasing gateway",
+        version="0.1.0",
+        lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+    )
     app.state.service = service
+
+    @app.get("/docs", include_in_schema=False)
+    def docs():
+        nonce = token_urlsafe(32)
+        html = get_swagger_ui_html(
+            openapi_url=app.openapi_url,
+            title=f"{app.title} — API documentation",
+            swagger_favicon_url="data:,",
+            swagger_ui_parameters={"validatorUrl": None},
+        ).body.decode()
+        policy = CONTENT_SECURITY_POLICY.replace(
+            "script-src 'self'", f"script-src 'self' 'nonce-{nonce}'"
+        ).replace("style-src 'self'", "style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'")
+        return HTMLResponse(
+            html.replace("<script", f'<script nonce="{nonce}"'),
+            headers={"Content-Security-Policy": policy, "Cache-Control": "no-store"},
+        )
 
     @app.exception_handler(Problem)
     async def problem_handler(request, exc):
@@ -60,9 +96,8 @@ def create_app(service=None):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
-        )
+        if request.url.path != "/docs" or response.status_code != 200:
+            response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
         if request.url.path.startswith(("/api", "/mcp")):
             response.headers["Cache-Control"] = "no-store"
         return response
@@ -145,6 +180,10 @@ def create_app(service=None):
     def detail(approval_id: UUID, identity=Depends(buyer)):
         return workflow.approval_detail(identity, approval_id)
 
+    @app.get("/api/purchases/{proposal_id}", response_model=ProposalResponse)
+    def current_purchase(proposal_id: UUID, identity=Depends(buyer)):
+        return workflow.get_proposal(identity, proposal_id)
+
     @app.post("/api/approvals/{approval_id}/decision", response_model=ProposalResponse)
     def decision(
         approval_id: UUID, body: DecisionRequest, request: Request, identity=Depends(buyer)
@@ -154,19 +193,19 @@ def create_app(service=None):
         )
         return workflow.record_human_decision(identity, approval_id, body)
 
-    @app.post("/api/agent/search_products")
+    @app.post("/api/agent/search_products", response_model=SearchResponse)
     def search(body: SearchRequest, identity=Depends(agent)):
         return service.search_products(identity, body)
 
-    @app.get("/api/agent/products/{product_id}")
+    @app.get("/api/agent/products/{product_id}", response_model=ProductResponse)
     def product(product_id: str, identity=Depends(agent)):
         return service.get_product(identity, product_id)
 
-    @app.get("/api/agent/purchase-policy")
+    @app.get("/api/agent/purchase-policy", response_model=PolicyResponse)
     def policy(identity=Depends(agent)):
         return service.get_purchase_policy(identity)
 
-    @app.post("/api/agent/check_price_and_availability")
+    @app.post("/api/agent/check_price_and_availability", response_model=LookupResponse)
     def lookup(body: LookupRequest, identity=Depends(agent)):
         return service.check_price_and_availability(identity, body)
 
@@ -178,11 +217,11 @@ def create_app(service=None):
     def proposal(proposal_id: UUID, identity=Depends(agent)):
         return service.get_proposal(identity, proposal_id)
 
-    @app.post("/api/agent/commit_order")
+    @app.post("/api/agent/commit_order", response_model=CommitResponse)
     def commit(body: CommitRequest, identity=Depends(agent)):
         return service.commit_order(identity, body)
 
-    @app.get("/api/agent/orders/{order_id}")
+    @app.get("/api/agent/orders/{order_id}", response_model=OrderResponse)
     def order(order_id: UUID, identity=Depends(agent)):
         return service.get_order(identity, order_id)
 
@@ -195,6 +234,7 @@ def create_app(service=None):
     @app.get("/login", include_in_schema=False)
     @app.get("/approvals", include_in_schema=False)
     @app.get("/approvals/{approval_id}", include_in_schema=False)
+    @app.get("/purchases/{proposal_id}", include_in_schema=False)
     def frontend():
         if not (dist / "index.html").exists():
             return JSONResponse(

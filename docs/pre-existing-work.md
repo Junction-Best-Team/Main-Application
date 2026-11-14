@@ -42,6 +42,7 @@ Reference: [Junction general terms](https://www.hackjunction.com/terms-of-servic
 | Seller gateway, normalization, ingestion/search, policy/workflow, eight HTTP/MCP tools, buyer inbox, PostgreSQL migrations, mock adapter, tests and packaging | 2026-11-14 | Implemented with Codex during this task, starting from main `76296c1`; agreed behavior from PR #2 head `b0d1ee3`. No earlier application implementation was copied. PR #3's findings/draft are retained and attributed separately. |
 | Authored miniature fixture projections and invented commercial responses | 2026-11-14 | `src/aimo/fixtures.py` and `FixtureClient`; selected known product shapes exercise reported cases, but are not full catalog records or captured live responses. `demo-deposit` is a wholly fictional material. Real source records are verified privately by `scripts/verify_catalog.py`. |
 | Buyer UI | 2026-11-14 | Original React/CSS interface; system fonts, no third-party photos or downloaded visual assets. Styled text marks this as the challenge demo; it is not an official supplier checkout. |
+| PR #4 review fixes | 2026-11-14 | Codex changes to authority reevaluation, historical/current purchase views, documentation CSP and shared response contracts, with regression tests. Built on PR head `cd16b09`; no new services or dependencies. Swagger continues using FastAPI's jsDelivr assets, with nonced scripts on the documentation route. |
 
 ### Integrated dependencies and model
 
