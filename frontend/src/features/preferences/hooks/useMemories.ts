@@ -14,28 +14,28 @@ const initial: ScopeState = { items: null, loading: false, error: "" };
 /** Readable messages for the memory API's stable error codes. */
 const MESSAGES: Record<string, string> = {
   MEMORY_REVISION_CONFLICT:
-    "This preference changed elsewhere since you opened it. Load the latest version before saving.",
+    "This memory changed elsewhere since you opened it. Load the latest version before saving.",
   MEMORY_NOT_FOUND:
-    "This preference no longer exists. It may have been removed elsewhere.",
+    "This memory no longer exists. It may have been removed elsewhere.",
   MEMORY_EXISTS:
-    "A preference for this is already saved here. Edit the existing one instead.",
+    "A memory for this is already saved here. Edit the existing one instead.",
   MEMORY_LIMIT:
-    "This list already holds the maximum of 50 preferences. Remove one first.",
+    "This list already holds the maximum of 50 memories. Remove one first.",
   MEMORY_SENSITIVE_DATA:
-    "Preferences can't store passwords, keys, tokens, account or payment details.",
+    "Memories can't store passwords, keys, tokens, account or payment details.",
   IDEMPOTENCY_CONFLICT:
     "This change clashed with an earlier attempt. Reload the page and try again.",
   ORIGIN_REJECTED:
     "Your browser session couldn't be verified. Reload the page.",
   CSRF_REJECTED: "Your browser session couldn't be verified. Reload the page.",
-  AUTHORITY_REVOKED: "Your account can no longer manage preferences.",
+  AUTHORITY_REVOKED: "Your account can no longer manage memories.",
 };
 
 export function memoryErrorMessage(e: unknown): string {
   if (e instanceof ApiError && e.code && MESSAGES[e.code])
     return MESSAGES[e.code];
   if (e instanceof ApiError) return e.message;
-  return "The preference service couldn't be reached. Check your connection and try again.";
+  return "The memory service couldn't be reached. Check your connection and try again.";
 }
 
 /**
@@ -84,7 +84,7 @@ export function useMemories() {
           [scope]: {
             ...s[scope],
             loading: false,
-            error: `Preferences couldn't be loaded. ${memoryErrorMessage(e)}`,
+            error: `Memories couldn't be loaded. ${memoryErrorMessage(e)}`,
           },
         }));
         return null;

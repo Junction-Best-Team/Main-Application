@@ -66,9 +66,9 @@ export function useAcceptedOrders(pageSize = 5) {
     return invalidate;
   }, [refresh, invalidate]);
   useRefresh(refresh);
-  const showMore = () =>
-    nextOffset === null || loading
-      ? Promise.resolve()
-      : fetchPage(nextOffset, orders, orders.length + pageSize);
+  const showMore = useCallback(() => {
+    if (nextOffset === null || loading) return Promise.resolve();
+    return fetchPage(nextOffset, orders, orders.length + pageSize);
+  }, [nextOffset, loading, fetchPage, orders, pageSize]);
   return { orders, nextOffset, loading, error, refresh, showMore };
 }

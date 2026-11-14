@@ -25,7 +25,7 @@ export const DESIGN_PLACEHOLDERS = {
       phone: "+358 10 381 00",
     },
   },
-  /** Past Orders screen (inert toolbar and account chips). */
+  /** Past Orders screen (search/filter labels and account chips). */
   pastOrders: {
     account: {
       label: "Customer Account",
