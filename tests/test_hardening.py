@@ -57,7 +57,7 @@ def commit(p):
     ],
 )
 def test_undeclared_replacement_cannot_bypass_buyer_scope(
-    service, agent, buyer, request_data, rule, allow, outcome
+    service, agent, buyer, request_data, rule, allow, outcome, confirm_terms
 ):
     policy(substitution=rule)
     request_data.update(
@@ -66,6 +66,8 @@ def test_undeclared_replacement_cannot_bypass_buyer_scope(
     p = service.prepare_order(agent, PrepareRequest(**request_data))
     assert p["policy_outcome"] == outcome
     assert p["request"]["lines"][0]["substitutes_for"] is None
+    if outcome == "approval_required":
+        confirm_terms(p)  # the confirmation alone is not an exception approval
     with pytest.raises(Problem) as error:
         service.commit_order(agent, commit(p))
     assert error.value.code == (
@@ -117,7 +119,9 @@ def test_pack_ceiling_uses_exact_rationals(amount, step, whole, expected, excess
     assert Decimal(q["excess"]) == Decimal(excess)
 
 
-def test_prepare_retries_are_atomic_and_survive_restart(service, agent, buyer, mission):
+def test_prepare_retries_are_atomic_and_survive_restart(
+    service, agent, buyer, mission, confirm_terms
+):
     with ThreadPoolExecutor(max_workers=8) as executor:
         results = list(executor.map(lambda _: service.prepare_order(agent, mission), range(8)))
     assert len({p["proposal_id"] for p in results}) == len({p["approval_id"] for p in results}) == 1
@@ -136,6 +140,7 @@ def test_prepare_retries_are_atomic_and_survive_restart(service, agent, buyer, m
     with pytest.raises(Problem) as error:
         restarted.prepare_order(agent, mission.model_copy(update={"destination": "other"}))
     assert error.value.code == "IDEMPOTENCY_CONFLICT"
+    confirm_terms(p)
     workflow.record_human_decision(
         buyer, p["approval_id"], DecisionRequest(revision=1, decision="approve")
     )
@@ -274,7 +279,6 @@ def test_forwarded_client_addresses_only_from_trusted_ingress(peer, expected):
     app = ProxyHeadersMiddleware(echo, trusted_hosts="10.20.0.0/24")
     client = TestClient(app, client=(peer, 123))
     assert client.get("/", headers={"X-Forwarded-For": "198.51.100.7"}).json()["client"] == expected
-
 
 
 def test_pool_reuses_connection_and_rolls_back_failed_work(monkeypatch):
