@@ -292,3 +292,27 @@ def test_the_conversation_message_roles_include_system(buyer):
                 "INSERT INTO conversation_messages(conversation_id,turn_id,role,text) VALUES(%s,%s,'tool','x')",
                 (cid, tid),
             )
+
+
+# --- TRUNCATE of the scheduler history -------------------------------------------------------
+
+HISTORY_TABLES = (
+    "scheduled_authorizations",
+    "scheduled_runs",
+    "scheduled_run_events",
+    "scheduled_authorization_events",
+    "order_request_cancellations",
+)
+
+
+@pytest.mark.parametrize("table", HISTORY_TABLES)
+def test_the_scheduler_history_refuses_truncate_unless_the_reset_is_deliberate(table):
+    from aimo.config import settings
+
+    with psycopg.connect(settings().database_url) as raw:
+        with pytest.raises(psycopg.errors.RaiseException, match="immutable history"):
+            raw.execute(f"TRUNCATE {table} CASCADE")
+        raw.rollback()
+        raw.execute("SET LOCAL aimo.allow_history_truncate = 'on'")
+        raw.execute(f"TRUNCATE {table} CASCADE")  # a deliberate reset, rolled back below
+        raw.rollback()

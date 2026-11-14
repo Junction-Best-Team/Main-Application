@@ -155,3 +155,23 @@ CREATE TRIGGER immutable_order_request_cancellations
 ALTER TABLE conversation_messages DROP CONSTRAINT conversation_messages_role_check;
 ALTER TABLE conversation_messages ADD CONSTRAINT conversation_messages_role_check
  CHECK (role IN ('user','assistant','system'));
+
+-- 6. History cannot be erased by TRUNCATE either, unless the transaction says a reset is deliberate
+--    (the same flag WS-D's immutable_truncate_guard uses: aimo.allow_history_truncate = 'on').
+CREATE FUNCTION scheduler_truncate_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF current_setting('aimo.allow_history_truncate', true) IS DISTINCT FROM 'on' THEN
+  RAISE EXCEPTION 'immutable history; erasing it needs aimo.allow_history_truncate = on';
+ END IF;
+ RETURN NULL;
+END; $$;
+CREATE TRIGGER scheduler_truncate BEFORE TRUNCATE ON scheduled_authorizations
+ FOR EACH STATEMENT EXECUTE FUNCTION scheduler_truncate_guard();
+CREATE TRIGGER scheduler_truncate BEFORE TRUNCATE ON scheduled_runs
+ FOR EACH STATEMENT EXECUTE FUNCTION scheduler_truncate_guard();
+CREATE TRIGGER scheduler_truncate BEFORE TRUNCATE ON scheduled_run_events
+ FOR EACH STATEMENT EXECUTE FUNCTION scheduler_truncate_guard();
+CREATE TRIGGER scheduler_truncate BEFORE TRUNCATE ON scheduled_authorization_events
+ FOR EACH STATEMENT EXECUTE FUNCTION scheduler_truncate_guard();
+CREATE TRIGGER scheduler_truncate BEFORE TRUNCATE ON order_request_cancellations
+ FOR EACH STATEMENT EXECUTE FUNCTION scheduler_truncate_guard();
