@@ -10,6 +10,15 @@ supplier facts were fixtures. Live provider smoke was **skipped** because
 `LLM_API_KEY` was absent. No new schema, route, migration, frontend, dependency or
 deployment change. See [agent verification and limits](internal-agent.md#verification).
 
+Subsequent owner-authorized OpenRouter configuration: the private local `.env`
+and GitHub repository secret/variables were set without exposing the key. The
+required-config live smoke **passed**, making two real OpenRouter completions with
+one authored read-only tool result. The backend suite still passes **174 tests**;
+**23 infrastructure helper tests**, Actionlint, shell syntax and Terraform format
+checks cover the added future-release Secret wiring. No actual deployment,
+Terraform apply or cluster Secret update was performed. Earlier skipped-provider
+records describe the initial rebuild before credentials were supplied.
+
 Implemented on `codex/valio-aimo-mvp` in an isolated worktree, originally based on main `76296c1`. The original checkout remained clean on `codex/valio-aimo-plan` during implementation. PR #2 was closed **without merging**; this implementation includes the agreed brief while preserving PR #3's reference work. PR #4 now targets the shared integration branch, `develop`.
 
 ## Second PR #4 review — correctness and runtime hardening

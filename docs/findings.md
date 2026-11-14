@@ -22,6 +22,12 @@ Owner decisions use `D-<nnn>` and quote the owner's words verbatim.
 - Evidence: `tests/test_agent.py` (66 passing cases) and `tests/test_agent_integration.py`, within the full 174-test PostgreSQL/pgvector suite. `scripts/smoke_agent_provider.py` reported skipped because `LLM_API_KEY` was not configured; no live-provider success is claimed.
 - Impact: Person 1 can retain the existing three-argument runner call and optionally consume typed progress; Person 3 retains domain arithmetic and authorization. Backend retry recovery still uses the existing `chat-` plus turn-fingerprint preparation key. No shared schema or deployment change is needed.
 
+### F-AGENT-002: OpenRouter live function calling and release credential wiring
+- Date: 2026-11-14   Track: 2   Status: verified (local/provider and GitHub storage); deployment pending
+- Finding: The owner's OpenRouter credential was stored only in ignored local configuration and GitHub `LLM_API_KEY`; provider variables select `https://openrouter.ai/api/v1` and `openai/gpt-4.1-mini`. The live smoke passed two completions and a read-only fixture-policy tool round trip. The existing release workflow previously did not transfer LLM settings to runtime; it now passes the secret and merges only provider fields through kubectl stdin on a future authorized deployment.
+- Evidence: `scripts/smoke_agent_provider.py --require-config` returned `status=passed`, `provider=live`, `completions=2`; GitHub secret-name/variable readback confirmed storage. Backend 174 tests and infrastructure helper 23 tests passed; no credential value is recorded in tracked files or test evidence.
+- Impact: Local LLM connectivity is proven. GitHub Secret storage alone does not change running Pods: release wiring must be integrated and an authorized deployment must load the settings. Orders remain mock; no cluster modification or release activation was performed here.
+
 ## Infrastructure
 
 ### F-INFRA-001: Optional Terraform hosting and portable deployment

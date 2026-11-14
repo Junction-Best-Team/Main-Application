@@ -27,6 +27,12 @@ scripted responses. No new framework, dependency, model weights or visual asset.
 Live-provider validation was skipped without configured credentials. See
 [internal agent](internal-agent.md) and [validation](validation.md).
 
+The owner then selected OpenRouter and supplied a private key. Codex configured
+ignored local settings and GitHub secret/variables, verified two live completions
+with an authored read-only policy result, and added future-release Secret wiring
+with helper tests. No credentials, live customer data, supplier purchase or
+deployment artifact was copied into source control.
+
 During the event on 2026-11-14, Codex prepared Terraform infrastructure at the owner's request: a DigitalOcean adapter, portable Kubernetes/Helm deployment, explicit database/catalog setup Job, plan-only tests and a runbook. It builds on PR #2's design and targets PR #4's image/CLI contract; it does not copy the application implementation. No cloud infrastructure was applied. The ingress reuses the upstream Traefik Helm chart 42.4.0 (MIT); Terraform providers are locked in each stack. See [infra/README.md](../infra/README.md).
 
 | Material/version | Source URL | Licence or usage restrictions | Role in the project | Attribution/disclosure needed |

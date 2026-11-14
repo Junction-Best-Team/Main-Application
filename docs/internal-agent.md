@@ -82,5 +82,16 @@ uv run python scripts/smoke_agent_provider.py --require-config
 It makes at most two completions (each with one possible transient retry), using
 one authored read-only policy result, without a database/supplier/purchase call.
 The default command prints `skipped` without credentials; `--require-config`
-exits nonzero. This session had no `LLM_API_KEY`, so no live-provider success is
-claimed. Deployment remains an operator task.
+exits nonzero. The initial rebuild had no configured key and skipped this check.
+
+The owner subsequently selected OpenRouter. Defaults/local configuration now use
+`https://openrouter.ai/api/v1` and `openai/gpt-4.1-mini`. The private key is stored
+in the ignored local `.env` (mode 0600) and repository secret `LLM_API_KEY`;
+`LLM_BASE_URL` and `LLM_MODEL` are repository variables. The live smoke then
+**passed two completions** with an authored read-only policy result. This verifies
+provider authentication and a tool round trip, not a live supplier purchase.
+
+Release wiring passes these settings into the existing runtime Secret before an
+authorized deployment; image builds and ordinary PR tests never need the key.
+The same-image deployment path restarts Pods to load refreshed settings. No
+deployment, release activation or cluster Secret mutation ran in this session.
