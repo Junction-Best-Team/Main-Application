@@ -92,7 +92,7 @@ export function ChatPage() {
   const busy = sending || conversation?.busy;
 
   return (
-    <main className="mx-auto flex w-full max-w-[1720px] flex-col gap-space-md p-margin-sm md:flex-row md:items-start md:gap-space-lg md:p-space-lg">
+    <main className="mx-auto flex w-full max-w-[1720px] flex-col gap-space-md p-margin-sm pb-48 md:flex-row md:items-start md:gap-space-lg md:p-space-lg">
       <div className="flex min-w-0 flex-1 flex-col gap-space-md">
         <header className="flex items-center gap-space-md">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary-container text-on-primary shadow-sm">
@@ -323,8 +323,7 @@ export function ChatPage() {
           Demo ordering only. No real supplier orders or stock reservations. Signed in as {session?.buyer_id}.
         </p>
       </div>
-      {/* #86 mounts the Overview panel here: desktop right-hand column, mobile bottom drawer. */}
-      <div data-testid="overview-slot" className="md:sticky md:top-space-lg md:w-80 md:shrink-0 lg:w-96" />
+      {/* Overview: right-hand column on desktop, fixed bottom drawer on mobile. */}
       <OverviewPanel conversation={conversation} />
     </main>
   );

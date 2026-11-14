@@ -91,11 +91,22 @@ test("existing conversations stay reachable from the request screen", async ({ p
   await expect(page.getByRole("log", { name: "Conversation messages" }).getByText(/usual oat products/)).toBeVisible();
 });
 
-test("the conversation leaves a labelled region for the Overview panel", async ({ page }, info) => {
+test("the Overview panel sits beside the conversation on desktop and docks to the bottom on mobile", async ({ page }, info) => {
   await signIn(page, "/conversations/conv-carbonara");
-  await expect(page.getByTestId("overview-slot")).toBeAttached();
+  const panel = page.getByRole("complementary", { name: "Overview" });
+  await expect(panel.getByRole("heading", { name: "Overview" })).toBeVisible();
+  const log = (await page.getByRole("log", { name: "Conversation messages" }).boundingBox())!;
+  const box = (await panel.boundingBox())!;
   if (!isMobile(info)) {
-    const box = await page.getByRole("log", { name: "Conversation messages" }).boundingBox();
-    expect(box!.width).toBeLessThan(1000); // column, not the full 1440 viewport
+    expect(log.width).toBeLessThan(1000); // column, not the full 1440 viewport
+    expect(box.x).toBeGreaterThanOrEqual(log.x + log.width); // a column to the right, not overlapping
+    expect(box.x + box.width).toBeLessThanOrEqual(1440);
+  } else {
+    expect(box.y + box.height).toBeGreaterThan(844 / 2); // docked in the lower half of the viewport
+    // Scrolled to the end, the composer clears the collapsed drawer.
+    await page.getByRole("button", { name: "Send Order Request" }).scrollIntoViewIfNeeded();
+    await page.evaluate(() => window.scrollTo(0, document.scrollingElement!.scrollHeight));
+    const send = (await page.getByRole("button", { name: "Send Order Request" }).boundingBox())!;
+    expect(send.y + send.height).toBeLessThanOrEqual((await panel.boundingBox())!.y);
   }
 });

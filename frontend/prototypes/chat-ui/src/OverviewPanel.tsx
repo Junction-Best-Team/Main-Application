@@ -7,9 +7,9 @@ import { store } from "./store";
 import { MOCK } from "./mock";
 import { Icon, InertButton } from "./placeholders";
 
-// The Overview panel: the only place a buyer approves a purchase. A right-hand
-// column on desktop, an expandable bottom drawer below 768px. It shows the
-// proposal staged in the current conversation and runs the exact-revision
+// The Overview panel: the only place a buyer approves a purchase. A sticky
+// right-hand column in the Request screen's flex row on desktop, an
+// expandable fixed bottom drawer below 768px. It shows the proposal staged in the current conversation and runs the exact-revision
 // confirm / reject (see confirmFlow.ts).
 
 const BLOCKED_OUTCOMES = ["denied", "needs_resolution"];
@@ -262,8 +262,7 @@ export function OverviewPanel({ conversation }: { conversation: Conversation | n
   return (
     <aside
       aria-label="Overview"
-      data-overview-panel
-      className="fixed inset-x-3 bottom-24 z-30 flex max-h-[70vh] flex-col overflow-y-auto rounded-2xl border border-border-subtle bg-surface-pure p-space-md shadow-level-3 md:inset-x-auto md:bottom-16 md:right-0 md:top-[86px] md:max-h-none md:w-[380px] md:rounded-none md:border-y-0 md:border-r-0 md:shadow-none"
+      className="fixed inset-x-3 bottom-28 z-30 flex max-h-[70vh] flex-col overflow-y-auto rounded-2xl border border-border-subtle bg-surface-pure p-space-md shadow-level-3 md:sticky md:inset-x-auto md:bottom-auto md:top-[88px] md:z-auto md:max-h-[calc(100vh-160px)] md:w-80 md:shrink-0 md:rounded-xl md:shadow-sm lg:w-96"
     >
       <div className="flex items-center justify-between gap-space-sm border-b border-border-subtle pb-space-sm">
         <h2 className="m-0 font-headline text-headline-sm font-bold text-primary">Overview</h2>
