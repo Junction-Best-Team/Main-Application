@@ -27,9 +27,19 @@ Owner decisions use `D-<nnn>` and quote the owner's words verbatim.
 - Impact: The existing `AGENTS.md` and `CLAUDE.md` were kept and extended with Data and secrets, Findings and History sections.
 
 ### D-003: The agent contract is fixed in source code
-- Date: 2026-11-14   Track: 3 (affects 2, 4)   Status: verified (decision); design is a draft in `docs/drafts/type1-architecture.md`
+- Date: 2026-11-14   Track: 3 (affects 2, 4)   Status: verified (decision); applies to the MVP, extended for the full product by D-004; design is a draft in `docs/drafts/type1-architecture.md`
 - Decision: "For the mandate, I would like this to behave as a contract, which is the behavior of how the MCP will behave with the agent. I want it to be fixed in the code, and be unchangable without source code changes."
 - Impact: What the agent may do alone is a frozen constant in source, with no endpoint, tool or setting that changes it. Every policy decision and audit event records the contract hash. The human realm only approves or rejects held orders; it cannot edit limits. Production path: replace the constant with a buyer-signed mandate.
+
+### D-004: Two-part contract; client-editable in the full product
+- Date: 2026-11-14   Track: 3 (affects 2, 4)   Status: verified (decision); design is a draft in `docs/drafts/type1-architecture.md` section 6
+- Decision: "In the full feature list, I would like for the contract to be editable by the client only, as part of some sort of settings, but only specific elements. there would be a distribution part of the contract, and a client part of the contract"
+- Impact: The contract has a distribution part (Aimo-owned, changed by code release) and a client part (customer-owned). The client part may contain only fields the distribution part lists as client-editable, inside its bounds. The effective contract is the stricter of the two. In the MVP both parts are still frozen constants (D-003).
+
+### D-005: MVP and full design as two parts; customer and agent are separate entities
+- Date: 2026-11-14   Track: all   Status: verified (decision)
+- Decision: "They are technically one device, but two seperate entities. Also, in the architecture for type1, can you write out the elements/contracts as two seperate elements. Requiremnts for MVP, and requiremnets that would make a great product. So we aren't over commiting, but at the same time, we make sure we build a good first product."
+- Impact: The Type1 draft has Part A (MVP) and Part B (full product), with seams so the MVP grows into the full design. The approval request goes to the customer through a channel that does not pass through the agent, and the agent's output contains no approval secret.
 
 ## Data (static files in `data/`)
 
