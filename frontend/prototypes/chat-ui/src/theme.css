@@ -1,9 +1,8 @@
-/* No preflight: existing screens keep their current look until restyled.
-   The old stylesheet sits in the lowest cascade layer so Tailwind utilities
-   always win over its element rules (button, a, h1, ...) on restyled screens. */
-@layer legacy, theme, utilities;
-@import "./style.css" layer(legacy);
+/* Tailwind v4 with preflight; every screen is styled with utilities. Only
+   true globals live in the base layer at the bottom of this file. */
+@layer theme, base, utilities;
 @import "tailwindcss/theme" layer(theme);
+@import "tailwindcss/preflight" layer(base);
 @import "tailwindcss/utilities" layer(utilities);
 
 /* All tokens from ui/DESIGN.md (source of truth over per-screen HTML configs). */
@@ -128,15 +127,42 @@
   --breakpoint-md: 768px;
 }
 
-.material-symbols-outlined {
-  font-family: "Material Symbols Outlined";
-  font-weight: normal;
-  font-style: normal;
-  line-height: 1;
-  display: inline-block;
-  white-space: nowrap;
-  letter-spacing: normal;
-  text-transform: none;
-  font-feature-settings: "liga";
-  -webkit-font-smoothing: antialiased;
+
+
+@layer base {
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-on-surface);
+    font-family: var(--font-body);
+  }
+  /* Tailwind v4 preflight leaves buttons with the default cursor. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  /* Material Symbols icon font (Google Fonts), set up as the font's docs ask;
+     in the base layer so utilities (size, colour, display) override it. */
+  .material-symbols-outlined {
+    font-family: "Material Symbols Outlined";
+    font-weight: normal;
+    font-style: normal;
+    line-height: 1;
+    display: inline-block;
+    white-space: nowrap;
+    letter-spacing: normal;
+    text-transform: none;
+    font-feature-settings: "liga";
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Keyboard focus ring for every control; DESIGN.md focus colour
+     (#005670), no glow. Utilities can still override it per component. */
+  :focus-visible {
+    outline: 2px solid var(--color-wholesale-teal);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      scroll-behavior: auto !important;
+    }
+  }
 }

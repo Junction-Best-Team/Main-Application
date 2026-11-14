@@ -12,11 +12,7 @@ import { PurchasesPage } from "./PurchasesPage";
 function Guard({ children }: { children: React.ReactNode }) {
   const { session } = useStoreState();
   const location = useLocation();
-  return (
-    session ? children : (
-      <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />
-    )
-  );
+  return session ? children : <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
 }
 
 // Old approval links: resolve the approval to its purchase, then show it in Past Orders.
@@ -69,9 +65,13 @@ function Shell() {
           element={
             <>
               <NoticeBar />
-              <main className="workspace">
-                <h1>Page not found</h1>
-                <Link to="/">Go to Home</Link>
+              <main className="mx-auto flex max-w-[1320px] flex-col gap-space-sm px-[18px] py-7 md:px-10 md:py-12">
+                <h1 className="font-headline text-headline-lg-mobile text-primary md:text-headline-lg">
+                  Page not found
+                </h1>
+                <Link to="/" className="font-bold text-wholesale-teal hover:underline">
+                  Go to Home
+                </Link>
               </main>
             </>
           }
