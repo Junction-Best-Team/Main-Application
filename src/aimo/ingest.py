@@ -45,12 +45,40 @@ def ingest_file(path: Path, expected_count=17546, expected_sha=CATALOG_SHA256, *
     records = json.loads(content, parse_float=Decimal)
     if not isinstance(records, list) or len(records) != expected_count:
         raise ValueError("Snapshot count differs; incomplete imports are not published")
+    for index, record in enumerate(records):
+        if (
+            not isinstance(record, dict)
+            or not isinstance(record.get("id"), str)
+            or not record["id"]
+        ):
+            raise ValueError(
+                f"Malformed catalog record #{index}: expected an object with a non-empty string id"
+            )
     if len({p["id"] for p in records}) != len(records):
         raise ValueError("Duplicate product identifiers")
     source = f"{path.name}; sha256:{actual}"
     # Retain withdrawal facts for exact lookup/denial; discovery filters them out.
-    facts = [normalize(p, source) for p in records]
+    facts = [_normalize_record(index, p, source) for index, p in enumerate(records)]
     return publish(facts, source, actual, activate=activate)
+
+
+def _normalize_record(index, raw, source):
+    """Normalize one supplier record; any structural defect names the record, never a bare KeyError."""
+    where = f"Malformed catalog record #{index} (id {raw['id']})"
+    try:
+        facts = normalize(raw, source)
+        step = Decimal(facts["order_step"])
+        if not all(Decimal(size).is_finite() for size in facts["units"].values()):
+            raise ValueError("non-finite unit size")
+    except KeyError as error:
+        raise ValueError(f"{where}: missing field {error.args[0]!r}") from None
+    except (TypeError, AttributeError, ArithmeticError, ValueError) as error:
+        raise ValueError(
+            f"{where}: unexpected value or structure ({type(error).__name__})"
+        ) from None
+    if not step.is_finite() or step < 0:
+        raise ValueError(f"{where}: allowedLotSize must be a finite number of at least 0")
+    return facts
 
 
 def publish(facts, source, source_hash, *, activate=True):
