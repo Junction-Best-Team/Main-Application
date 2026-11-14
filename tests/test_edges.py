@@ -184,11 +184,19 @@ def test_expired_session_row_is_refused():
 # --- health and static frontend ------------------------------------------------------------------
 
 
-def test_ready_reports_model_and_upstream_mode():
+def test_ready_is_a_bare_status_and_names_neither_the_model_nor_the_supplier_mode():
     with TestClient(api.create_app(Service())) as http:
-        body = http.get("/health/ready").json()
-    assert body["status"] == "ready"
-    assert body["upstream_mode"] == "fixture" and body["model"] == "fixture-hash-v1:384"
+        response = http.get("/health/ready")
+    assert response.status_code == 200 and response.json() == {"status": "ready"}
+    assert "fixture" not in response.text and "model" not in response.text
+
+
+def test_a_failing_ready_names_neither_the_model_nor_the_schema(monkeypatch):
+    monkeypatch.setattr(search, "model_key", lambda: "some-other-model@rev")
+    with TestClient(api.create_app(Service())) as http:
+        response = http.get("/health/ready")
+    assert response.status_code == 503
+    assert "some-other-model" not in response.text and "fixture-hash" not in response.text
 
 
 def test_ready_fails_when_the_serving_model_differs_from_the_catalog(monkeypatch):

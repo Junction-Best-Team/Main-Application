@@ -18,6 +18,10 @@ Add any starter code or earlier prototypes separately. Describe which parts exis
 
 ## Reused code, data, models, and assets
 
+The voice entry button uses an SVG waveform authored during the event on
+2026-11-14 from the owner's circular waveform reference image. It adds no asset
+or icon dependency and retains the composer introduced by merged PR #162.
+
 During the event on 2026-11-14, Codex added the recipe illustration tool using
 the portable Google helper from PR #129 and Cloudinary's documented signed
 upload API. The tool, durable ledger, chat display and failure tests were written
@@ -162,6 +166,16 @@ tokens and fonts; no prototype store, fixtures, handwritten API types, assets
 or dependencies were imported. Routes, hooks and purchase authority stay with
 the existing production implementation.
 
+## Voice interface — 2026-11-14
+
+At the owner's request, voice mode reuses PR #132's native HTTPX Google helper,
+shared server-side Google credential, existing chat queue, typed tools and Nordic
+UI tokens. The PCM microphone worklet, WebSocket bridge and browser fixtures were
+authored for this feature against Google's documented Gemini 3.8 Live protocol.
+No new dependency, voice recording, model weight or dataset is committed. Live
+transport checks used synthetic text, locally synthesized test speech and stub
+tool replies; they did not execute purchasing tools or use customer audio.
+
 ## Complete designer UI integration — 2026-11-14
 
 Adapted PR #102 (5f550d2) presentational markup for the shell, Home, Request,
@@ -194,7 +208,6 @@ The owner clarified the product scope and refusal style: accept food, products a
 nearby topics; decline clearly unrelated requests in simple language. Extended the
 same synthetic evaluation with workout, food-before-exercise, storage, kitchen-supply
 and community-serving cases. No new external material was used.
-
 
 ## Google dataset cutover — 2026-11-14
 

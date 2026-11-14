@@ -32,3 +32,9 @@ Branch `p3/ws-c`, base `origin/develop` `17579d8`, merged `p3/ws-d` (`b192f85`);
 - Open: POL-008 enforcement; the TRUNCATE guard (designed, needs migration number 012/013 plus a one-line `SET LOCAL` in `tests/conftest.py` and `tests/ci.sh`; the runtime role itself holds no TRUNCATE); `004_worker_queue.sql` history rewrite decision.
 - Deferred by the owner: POL-007 (policy editing, needs a runtime grant), POL-011, POL-012.
 - Merge notes: `p3/ws-b` conflicts only in the `purchases.py` import lines; WS-C is last in merge order.
+
+## Follow-up on PR #133 (`p3/policy-basket-1`, based on `p3/otto-fixes` a7e42ee)
+- `032eb7b` cap 100 everywhere with the guardrail limits (MEA-013, Q-67); `5d68e84` variable-weight price shown as an estimate (BAS-007, Q-68); `3456a45` 30,000 kg per order (MEA-011, Q-70). Findings: F-BASKET-001.
+- PR #133 already delivered POL-008's mechanism (constraints record, `CONSTRAINT_LOOSENED`, JSON on the revision's request) following `evidence/ws-c/pol-008-design.md`; nothing fills the record in production (#75, Q-97), so POL-008 stays Partly.
+- Carry forward: the per-portion bound (`recipes.MAX_QUANTITY_PER_PORTION`) from #133 is kept until the owner answers Q-96; the classifier's latency for large states needs a run of `scripts/evaluate_guardrails.py` with a key; `frontend/src/shared/api/schema.ts` was edited by hand for the two optional estimate fields (no `node_modules` here), so person 1 should regenerate it.
+- `a0952cd` per-portion bound removed (Q-96); `d5ef0ee` 1 kg per litre in the order weight (Q-98); `3d59964` POL-008 producer for chat, migration `021_turn_constraints.sql` (Q-97). The scheduler half is a patch for `p3/scheduler-design`, verified on a scratch merge (52 scheduler tests pass; the three new ones fail without it).

@@ -12,6 +12,7 @@ from aimo.db import Problem, connection, fingerprint, js
 from aimo.numeric import fraction_text
 from aimo.purchases import context, load_products
 from aimo.recipe_schemas import Recipe
+from aimo.schemas import MAX_BASKET_LINES
 from aimo.search import vector
 
 
@@ -115,17 +116,12 @@ def get_recipe(identity, request):
     }
 
 
-# MEA-011: the most one portion of a recipe may need, in the unit the plan uses. These are
-# deliberately generous sanity bounds (a corrupt base quantity, not a menu rule); the owner may
-# retune them. They apply to recipe-scaled plans only: a direct order such as 600 L of milk is
-# not a recipe and carries no per-portion meaning.
-MAX_QUANTITY_PER_PORTION = {"KG": Fraction(5), "L": Fraction(5), "piece": Fraction(50)}
-
-
 def scaled_plan(recipe, portions):
-    if len(recipe.ingredients) > 1000:
+    if len(recipe.ingredients) > MAX_BASKET_LINES:
         raise Problem(
-            "RECIPE_TOO_LARGE", "This recipe exceeds the 1000-ingredient purchasing limit.", 422
+            "RECIPE_TOO_LARGE",
+            f"This recipe exceeds the {MAX_BASKET_LINES}-ingredient purchasing limit.",
+            422,
         )
     ingredients = []
     for item in recipe.ingredients:
@@ -146,14 +142,6 @@ def scaled_plan(recipe, portions):
             if unit in factors:
                 factor, unit = factors[unit]
                 value *= factor
-                if value > MAX_QUANTITY_PER_PORTION[unit] * portions:
-                    raise Problem(
-                        "QUANTITY_PER_PORTION_EXCEEDED",
-                        f"{item.name} needs more than {MAX_QUANTITY_PER_PORTION[unit]} {unit} per "
-                        "portion, which is not plausible. Review the recipe quantity and base "
-                        "servings.",
-                        422,
-                    )
                 # MEA-012: round UP to four decimal places (never down); exact values are unchanged.
                 value = Fraction(ceil(value * 10_000), 10_000)
                 amount = fraction_text(value)

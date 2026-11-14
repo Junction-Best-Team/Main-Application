@@ -80,6 +80,10 @@ spec:
         - name: api
           image: registry.example.invalid/aimo:api-REPLACE_WITH_COMMIT
           args: [serve]
+          env:
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef: {name: aimo-worker-runtime, key: GEMINI_API_KEY, optional: true}
           envFrom:
             - configMapRef: {name: aimo-config}
             - secretRef: {name: aimo-runtime}

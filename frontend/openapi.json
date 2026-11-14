@@ -929,6 +929,46 @@
         }
       }
     },
+    "/api/conversations/{conversation_id}/voice-session": {
+      "post": {
+        "summary": "Voice Session",
+        "operationId": "voice_session_api_conversations__conversation_id__voice_session_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceSession"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/conversations/{conversation_id}/events": {
       "get": {
         "summary": "Conversation Events",
@@ -1251,7 +1291,7 @@
           "retry_message": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/MessageRequest"
+                "$ref": "#/components/schemas/RetryMessage"
               },
               {
                 "type": "null"
@@ -1614,7 +1654,7 @@
                   "$ref": "#/components/schemas/Contribution"
                 },
                 "type": "array",
-                "maxItems": 30,
+                "maxItems": 100,
                 "minItems": 1
               },
               {
@@ -1676,7 +1716,7 @@
               "$ref": "#/components/schemas/Ingredient"
             },
             "type": "array",
-            "maxItems": 1000,
+            "maxItems": 100,
             "minItems": 1,
             "title": "Ingredients"
           },
@@ -2078,6 +2118,54 @@
         ],
         "title": "MemoryUpdate"
       },
+      "MessageConstraints": {
+        "properties": {
+          "budget_gross": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget Gross",
+            "description": "Hard budget in euros, gross; the basket may not exceed it."
+          },
+          "lactose_free": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lactose Free",
+            "description": "Require lactose-free products."
+          },
+          "milk_free": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Milk Free",
+            "description": "Require milk-free products."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "MessageConstraints",
+        "description": "Hard limits the customer sets on a message (POL-008); false withdraws an earlier toggle."
+      },
       "MessageRequest": {
         "properties": {
           "text": {
@@ -2091,6 +2179,17 @@
             "maxLength": 120,
             "minLength": 8,
             "title": "Idempotency Key"
+          },
+          "constraints": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MessageConstraints"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional hard limits set by the customer (budget, dietary toggles). They stay in force for the rest of the conversation until a later message changes them."
           }
         },
         "additionalProperties": false,
@@ -2619,7 +2718,7 @@
               "$ref": "#/components/schemas/LineRequest"
             },
             "type": "array",
-            "maxItems": 1000,
+            "maxItems": 100,
             "minItems": 1,
             "title": "Lines"
           },
@@ -2755,6 +2854,18 @@
             },
             "type": "array",
             "title": "Reasons"
+          },
+          "totals_are_estimates": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totals Are Estimates",
+            "description": "True when any line is priced by variable weight, so the totals are estimates. Absent otherwise."
           }
         },
         "additionalProperties": false,
@@ -2992,6 +3103,77 @@
         "additionalProperties": false,
         "type": "object",
         "title": "Requirements"
+      },
+      "RetryConstraints": {
+        "properties": {
+          "budget_gross": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget Gross"
+          },
+          "lactose_free": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lactose Free"
+          },
+          "milk_free": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Milk Free"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RetryConstraints",
+        "description": "The limits of an unfinished message, in the shape the client sends them back."
+      },
+      "RetryMessage": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "title": "Idempotency Key"
+          },
+          "constraints": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RetryConstraints"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text",
+          "idempotency_key"
+        ],
+        "title": "RetryMessage",
+        "description": "An unfinished message the client can send again with the same key and the same limits."
       },
       "RevisedProposalResponse": {
         "properties": {
@@ -3287,6 +3469,18 @@
               }
             ],
             "title": "Contributions"
+          },
+          "price_is_estimate": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Is Estimate",
+            "description": "True for a variable-weight product: the final weight and price settle at delivery (BAS-007). Absent otherwise."
           }
         },
         "additionalProperties": false,
@@ -3345,6 +3539,37 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VoiceSession": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "websocket_url": {
+            "type": "string",
+            "title": "Websocket Url"
+          },
+          "setup": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Setup"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "token",
+          "expires_at",
+          "websocket_url",
+          "setup"
+        ],
+        "title": "VoiceSession"
       }
     }
   }
