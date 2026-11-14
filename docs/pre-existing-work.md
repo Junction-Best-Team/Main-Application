@@ -145,3 +145,15 @@ production feature folders. Actual account and purchase data use existing API
 modules/hooks and generated types. Static schedule/hub/account-manager examples
 and disabled controls are labelled placeholders. No prototype store, fake login,
 scenario switcher, dependencies or backend/schema changes were imported.
+
+On 2026-11-14, the owner requested buyer policy settings. Reused the production
+React feature structure, Nordic Wholesale Commerce tokens/fonts, browser session
+and CSRF handling, immutable policy versions and purchasing revalidation. Added
+policy-manager permissions and a browser Settings form; removed the product-scope
+CLI. Browser tests use authored policy fixtures. No new dependencies, supplier
+datasets, models or visual assets were introduced.
+
+The policy settings branch was rebased onto the complete designer UI integration.
+Settings now uses the real Account Settings entry in the shared sidebar/mobile menu
+and retains the new Tailwind preflight instead of restoring the removed header or
+legacy stylesheet. Reused the existing schema readiness probes for migration 014.

@@ -12,6 +12,7 @@ at `5f550d2`. The complete customer UI is adapted into production folders.
 | Overview: right column, mobile drawer, totals, actions, receipt/closed states        | `purchases/components/OverviewPanel`, `StagedOverview`, `PurchaseDecisionPanel`       |
 | Accepted-only Past Orders, pagination and expandable/deep-linked rows                | `purchases/pages/PurchasesPage`, `components/PurchaseList`, `hooks/useAcceptedOrders` |
 | Login                                                                                | `auth/pages/LoginPage`, existing session API/provider                                 |
+| Purchasing settings                                                                  | `settings/` feature, real Account Settings links in desktop sidebar and mobile menu   |
 | Tokens, fonts, preflight; old stylesheet removed                                     | `styles/theme.css`, `index.html`                                                      |
 
 Actual account/conversation/purchase data use existing API modules and generated
