@@ -119,3 +119,51 @@ run "separate_apps" {
     error_message = "Worker must not receive session signing keys; API must not receive provider keys."
   }
 }
+
+run "migration_secret_is_separate_from_runtime_and_bootstrap" {
+  command = plan
+  variables {
+    migration_credentials = {
+      database_url  = "postgresql://synthetic-owner@postgres.test/aimo?sslmode=verify-full&sslrootcert=/etc/aimo-db/ca.crt"
+      database_user = "aimo_runtime"
+    }
+  }
+  assert {
+    condition     = length(kubernetes_secret_v1.migration) == 1 && length(kubernetes_job_v1.bootstrap) == 0
+    error_message = "Persistent release credentials must not cause bootstrap/import to run."
+  }
+  assert {
+    condition     = kubernetes_secret_v1.migration[0].metadata[0].name == "aimo-migration" && kubernetes_secret_v1.migration[0].data.DATABASE_URL == var.migration_credentials.database_url
+    error_message = "The dedicated migration Secret must contain the schema-owner URL."
+  }
+  assert {
+    condition     = kubernetes_secret_v1.runtime.data.DATABASE_URL == var.database_url && kubernetes_secret_v1.worker.data.DATABASE_URL == var.database_url
+    error_message = "API and worker must retain restricted runtime URLs."
+  }
+  assert {
+    condition = alltrue([
+      for component in ["api", "worker"] : (
+        length(kubernetes_deployment_v1.apps[component].spec[0].template[0].spec[0].container[0].env_from) == 2 &&
+        kubernetes_deployment_v1.apps[component].spec[0].template[0].spec[0].container[0].env_from[1].secret_ref[0].name != "aimo-migration"
+      )
+    ])
+    error_message = "Application pods must not reference migration credentials."
+  }
+}
+
+run "reject_migration_credentials_without_tls" {
+  command = plan
+  variables {
+    migration_credentials = {
+      database_url  = "postgresql://synthetic-owner@postgres.test/aimo"
+      database_user = "aimo_runtime"
+    }
+  }
+  expect_failures = [var.migration_credentials]
+}
+
+run "reject_owner_credentials_in_runtime_map" {
+  command = plan
+  variables { runtime_secrets = { BOOTSTRAP_DATABASE_URL = "synthetic-forbidden-url" } }
+  expect_failures = [var.runtime_secrets]
+}

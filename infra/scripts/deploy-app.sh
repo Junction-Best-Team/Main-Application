@@ -31,6 +31,10 @@ for component in "${components[@]}"; do
   test -n "$old"
   previous+=("$old")
 done
+# Always migrate, including same-image releases. Fail before installing the
+# rollout recovery trap or changing any application image.
+python3 "$(dirname "$0")/migrate-release.py"
+
 rollback() {
   trap - ERR
   echo 'Release failed; restoring all changed components.' >&2
