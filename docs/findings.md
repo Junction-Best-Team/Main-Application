@@ -14,6 +14,14 @@ Entry format:
 
 Owner decisions use `D-<nnn>` and quote the owner's words verbatim.
 
+## Internal agent
+
+### F-AGENT-001: Person 2 rebuild uses persisted turns and canonical Service contracts
+- Date: 2026-11-14   Track: 2   Status: verified
+- Finding: The rebuilt runner requires the server's persisted turn ID, validates canonical tool inputs/outputs and retains the matching prepared plan/proposal after provider failures. Progress callbacks are optional metadata; browser SSE remains persisted snapshots. The model has no confirmation or commit operation.
+- Evidence: `tests/test_agent.py` (66 passing cases) and `tests/test_agent_integration.py`, within the full 174-test PostgreSQL/pgvector suite. `scripts/smoke_agent_provider.py` reported skipped because `LLM_API_KEY` was not configured; no live-provider success is claimed.
+- Impact: Person 1 can retain the existing three-argument runner call and optionally consume typed progress; Person 3 retains domain arithmetic and authorization. Backend retry recovery still uses the existing `chat-` plus turn-fingerprint preparation key. No shared schema or deployment change is needed.
+
 ## Infrastructure
 
 ### F-INFRA-001: Optional Terraform hosting and portable deployment

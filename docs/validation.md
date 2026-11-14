@@ -2,6 +2,14 @@
 
 These records describe the external-agent gateway before the chat purchasing migration. Current checks and their limits are recorded in [Chat purchasing migration](chat-purchasing.md#verification-record): 139 backend tests, nine browser checks, image/restart, Terraform and local SSE checks. Retain the dated results below as historical evidence.
 
+The subsequent Person 2 agent rebuild on `develop` `f13b75b` passed Ruff, **66
+agent/provider tests** and **174 full backend tests** in dedicated PostgreSQL
+`aimo_person_two_rebuild_test`, including the provider HTTP protocol and real
+purchasing/confirmation/receipt flow. Provider responses, catalog, embeddings and
+supplier facts were fixtures. Live provider smoke was **skipped** because
+`LLM_API_KEY` was absent. No new schema, route, migration, frontend, dependency or
+deployment change. See [agent verification and limits](internal-agent.md#verification).
+
 Implemented on `codex/valio-aimo-mvp` in an isolated worktree, originally based on main `76296c1`. The original checkout remained clean on `codex/valio-aimo-plan` during implementation. PR #2 was closed **without merging**; this implementation includes the agreed brief while preserving PR #3's reference work. PR #4 now targets the shared integration branch, `develop`.
 
 ## Second PR #4 review — correctness and runtime hardening
