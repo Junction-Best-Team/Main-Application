@@ -133,6 +133,7 @@ timeouts; the budget cannot interrupt a synchronous tool already running.
 | Policy and planning | `get_purchase_policy`, `publish_meal_plan` |
 | Proposal preparation and history | `prepare_order`, `get_proposal`, `get_order` |
 | Recipes, when enabled | `search_recipes`, `get_recipe`, `scale_recipe`, `get_recipe_plan`, `match_ingredient` |
+| Optional recipe illustrations | `generate_recipe_image` (Google generation, signed Cloudinary upload) |
 
 There is no approval, confirmation, commitment or policy-editing tool. Typed validation,
 buyer scope, quantity checks and purchasing state transitions remain authoritative in every
@@ -141,6 +142,11 @@ buyer scope, quantity checks and purchasing state transitions remain authoritati
 A semantic allow never bypasses deterministic checks. Output rejection preserves the saved
 proposal and trusted status while replacing unsupported narrative and withholding the plan.
 See [guardrails](guardrails.md) for boundary-specific failure handling and coverage limits.
+
+Recipe illustrations use the worker's private Google and Cloudinary credentials.
+The generation ledger prevents another generation on retry; a hosted URL and
+dimensions persist with the reply. These public illustrations are optional visual
+aids, separate from recipe/catalog and purchase evidence. See [recipe images](recipe-images.md).
 
 ## Database and recipe state
 

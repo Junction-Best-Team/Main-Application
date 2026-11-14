@@ -59,7 +59,8 @@ specific generation request will succeed under the account's quota.
 
 Responses stay in Google's native JSON format. Preserve complete returned content
 parts, including thought signatures, when replaying tool turns. Generated images
-still need storage and frontend rendering; this helper does not upload to Cloudinary.
+use the [recipe illustration tool](recipe-images.md) for Cloudinary storage and chat
+rendering; the portable helper itself does not upload or render images.
 
 Catch `GoogleAPIError` and inspect `code`/`status_code`. Errors never echo provider
 bodies, credentials or prompt text. The helper does not log content. Redirects are

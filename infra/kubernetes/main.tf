@@ -39,7 +39,7 @@ resource "kubernetes_secret_v1" "runtime" {
     name      = "aimo-runtime"
     namespace = kubernetes_namespace_v1.aimo.metadata[0].name
   }
-  data = merge({ for key, value in var.runtime_secrets : key => value if !contains(["LLM_API_KEY", "SEARCH_API_KEY"], key) }, {
+  data = merge({ for key, value in var.runtime_secrets : key => value if !contains(["LLM_API_KEY", "SEARCH_API_KEY", "GEMINI_API_KEY", "CLOUDINARY_URL"], key) }, {
     DATABASE_URL            = var.database_url
     APPROVAL_SESSION_SECRET = var.session_secret
   })
@@ -83,6 +83,8 @@ resource "kubernetes_secret_v1" "worker" {
   }
   data = merge({ for key, value in var.runtime_secrets : key => value if contains([
     "LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL", "VALIO_AIMO_API_KEY",
+    "GEMINI_API_KEY", "CLOUDINARY_URL", "RECIPE_IMAGES_ENABLED", "RECIPE_IMAGE_MODEL",
+    "RECIPE_IMAGE_TIMEOUT_SECONDS", "RECIPE_IMAGE_HOURLY_LIMIT",
     "SEARCH_API_KEY", "EMBEDDING_BACKEND", "EMBEDDING_MODEL", "EMBEDDING_MODEL_REVISION",
     "SEARCH_TIMEOUT_SECONDS", "SEARCH_MAX_ATTEMPTS", "EMBEDDING_BATCH_SIZE",
     "EMBEDDING_WORKERS", "RERANK_ENABLED", "RERANK_CANDIDATES"
@@ -91,7 +93,7 @@ resource "kubernetes_secret_v1" "worker" {
   })
   # Releases own only these fields; Terraform retains all other Secret settings.
   lifecycle {
-    ignore_changes = [data["LLM_API_KEY"], data["LLM_BASE_URL"], data["LLM_MODEL"]]
+    ignore_changes = [data["LLM_API_KEY"], data["LLM_BASE_URL"], data["LLM_MODEL"], data["GEMINI_API_KEY"], data["CLOUDINARY_URL"]]
   }
 }
 

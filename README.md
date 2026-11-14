@@ -180,6 +180,9 @@ The optional [shared Google API helper](docs/google-api.md) provides native chat
 image, embedding and decision calls with a server-side `GEMINI_API_KEY`. It does
 not change the app's active providers.
 
+The [recipe illustration tool](docs/recipe-images.md) generates an optional Google
+image, hosts it on Cloudinary, and saves it beside the assistant's text in chat.
+
 See [recipe planning](docs/recipes.md) for versioned UniTools ingestion, independent
 recipe embeddings/search, server-scaled saved plans, reviewed product matching and
 complete-basket checks. Recipe tools are always available to the chat agent; import

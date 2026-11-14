@@ -100,5 +100,28 @@ class UnchangedSecretTest(unittest.TestCase):
         self.assertNotIn("synthetic-secret", str(error.exception))
 
 
+class ImageSecretTest(unittest.TestCase):
+    def test_image_only_release_preserves_chat_and_other_secret_fields(self):
+        env = {"NAMESPACE": "junction", "GEMINI_API_KEY": "synthetic-google",
+               "CLOUDINARY_URL": "cloudinary://key:synthetic-cloud@demo"}
+        output = io.StringIO()
+        with patch.object(helper.subprocess, "run", side_effect=[
+            SimpleNamespace(returncode=0, stdout='{}'), SimpleNamespace(returncode=0),
+        ]) as run, contextlib.redirect_stdout(output):
+            self.assertTrue(helper.sync(env))
+        desired = json.loads(run.call_args.kwargs["input"])["stringData"]
+        self.assertEqual(set(desired), {"GEMINI_API_KEY", "CLOUDINARY_URL"})
+        self.assertNotIn("synthetic-google", " ".join(run.call_args.args[0]) + output.getvalue())
+        self.assertNotIn("synthetic-cloud", " ".join(run.call_args.args[0]) + output.getvalue())
+
+    def test_partial_image_configuration_fails_before_cluster_access(self):
+        for fields in ({"GEMINI_API_KEY": "synthetic-google"},
+                       {"CLOUDINARY_URL": "cloudinary://key:secret@demo"}):
+            with self.subTest(fields=list(fields)), patch.object(helper.subprocess, "run") as run:
+                with self.assertRaises(SystemExit):
+                    helper.sync({"NAMESPACE": "junction"} | fields)
+                run.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

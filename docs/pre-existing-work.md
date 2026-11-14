@@ -18,6 +18,14 @@ Add any starter code or earlier prototypes separately. Describe which parts exis
 
 ## Reused code, data, models, and assets
 
+During the event on 2026-11-14, Codex added the recipe illustration tool using
+the portable Google helper from PR #129 and Cloudinary's documented signed
+upload API. The tool, durable ledger, chat display and failure tests were written
+during the event. Tests use authored tiny PNG/HTTP/browser fixtures; no provider
+credentials or downloaded recipe photographs are bundled.
+A single live smoke generated a synthetic tomato-pasta illustration and uploaded
+it with the private event accounts; the resulting image is a local ignored QA asset.
+
 During the event on 2026-11-14, Codex added a standalone native Google REST helper
 using the existing HTTPX dependency and Google's documented request formats.
 Tests use authored HTTP fixtures. Small synthetic live checks exercised Carbon,

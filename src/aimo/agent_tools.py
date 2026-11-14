@@ -11,6 +11,7 @@ from pydantic import Field, TypeAdapter, ValidationError
 from aimo import memory
 from aimo.chat_schemas import AgentTurn, MealPlan
 from aimo.db import Problem, fingerprint
+from aimo.image_schemas import RecipeImage, RecipeImageRequest
 from aimo.memory_schemas import MemoryChange, MemoryToolSearch
 from aimo.observability import event, operation
 from aimo.recipe_schemas import (
@@ -87,7 +88,17 @@ class ToolSession:
         self.products = {}
         self.commercial = {}
         self.memory_changes = []
+        self.image = None
         self.registry = {
+            "generate_recipe_image": ToolSpec(
+                RecipeImageRequest,
+                "Generate and host one AI recipe illustration for this customer message. "
+                "Use for a requested picture or when a visual helps explain a discussed dish. "
+                "Send only the dish and its food appearance, no personal/customer details. "
+                "One image per message; never dietary, product or purchase evidence. "
+                "On failure continue with text and do not call again in the same message.",
+                self.generate_recipe_image,
+            ),
             "search_products": ToolSpec(
                 SearchRequest, "Find candidates, not suitability guarantees.", self.search
             ),
@@ -175,6 +186,13 @@ class ToolSession:
         if self.prepared_digest is None:
             self.plan = MealPlan.model_validate(checked)
         return {"meal_plan": checked, "purchase_authorized": False}
+
+    def generate_recipe_image(self, request):
+        if self.image is None:
+            self.image = RecipeImage.model_validate(
+                self.service.generate_recipe_image(self.identity, request)
+            )
+        return {"image": self.image.model_dump(), "illustration_only": True}
 
     def scale_recipe(self, request):
         if self.prepared_digest is not None:
@@ -474,9 +492,17 @@ class ToolSession:
             narrative = narrative[: max(0, 20_000 - len(notice) - 2)].strip()
         text = "\n\n".join(part for part in (narrative, notice) if part)
         return AgentTurn(
-            text=(text or "Review the recipe and resolve missing ingredient evidence.")[:20_000],
+            text=(
+                text
+                or (
+                    "Your recipe illustration is ready."
+                    if self.image
+                    else "Review the recipe and resolve missing ingredient evidence."
+                )
+            )[:20_000],
             meal_plan=plan,
             proposal_id=self.proposal["proposal_id"] if self.proposal else None,
+            image=self.image,
         )
 
 

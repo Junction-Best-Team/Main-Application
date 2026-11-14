@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     proposal_ttl_seconds: int = 900
     # Reusable native Google client; independent of the active chat/search providers.
     gemini_api_key: str = Field(default="", repr=False)
+    cloudinary_url: str = Field(default="", repr=False)
+    recipe_images_enabled: bool = True
+    recipe_image_model: str = "gemini-nano-banana-2.1"
+    recipe_image_timeout_seconds: float = Field(default=45, gt=0, le=60)
+    recipe_image_hourly_limit: int = Field(default=5, ge=1, le=60)
     # Conversational provider configuration is independent of local embeddings.
     llm_api_key: str = ""
     llm_base_url: str = "https://openrouter.ai/api/v1"
