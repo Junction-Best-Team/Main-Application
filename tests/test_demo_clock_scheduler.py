@@ -157,6 +157,12 @@ def test_the_scheduler_follows_each_buyers_own_clock(
 ):
     mine = scheduled(buyer, service, placed_order)
     other = add_second_buyer()["approver"]
+    with connection() as c:  # add_second_buyer makes no scheduler identity; a run needs one
+        c.execute(
+            """INSERT INTO identities(id,buyer_id,role,active,credential_hash,authority)
+            VALUES('scheduler:other','other','scheduler',true,'!scheduler-no-login','{}'::jsonb)"""
+        )
+        c.execute("INSERT INTO scheduler_identities VALUES('other','scheduler:other')")
     data = dict(request_data, idempotency_key=key())
     p = service.prepare_order(auth.internal_agent(other), PrepareRequest.model_validate(data))
     body = CommitRequest(proposal_id=p["proposal_id"], revision=1, idempotency_key=key())

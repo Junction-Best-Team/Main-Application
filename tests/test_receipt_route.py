@@ -30,7 +30,12 @@ def test_the_stored_receipt_is_returned_for_an_ordered_proposal(service, buyer, 
         assert response.status_code == 200, response.text
         stored = response.json()
         # The route serializes through OrderResponse (timestamps as ...Z), same as the confirm route.
-        assert stored == OrderResponse.model_validate(receipt).model_dump(mode="json")
+        derived = {"delivery_date", "destination", "fulfilment"}  # added on read (JNP3-FUL)
+        assert {k: v for k, v in stored.items() if k not in derived} == {
+            k: v
+            for k, v in OrderResponse.model_validate(receipt).model_dump(mode="json").items()
+            if k not in derived
+        }
         assert stored["label"] == "Accepted by demo order service"
         assert stored["upstream_order_placed"] is False and stored["inventory_reserved"] is False
         # It is a read: a second GET changes nothing and returns the same body.
