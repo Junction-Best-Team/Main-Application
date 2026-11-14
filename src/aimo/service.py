@@ -1,5 +1,5 @@
 from aimo import approval_workflow as workflow
-from aimo import meal_authorization, search, upstream
+from aimo import meal_authorization, recipe_images, search, upstream
 from aimo.db import connection
 from aimo.observability import operation
 from aimo.purchases import context, load_products
@@ -9,6 +9,10 @@ from aimo.schemas import CommitRequest, LookupRequest, PrepareRequest, SearchReq
 class Service:
     def __init__(self, connector=None):
         self.connector = connector or upstream.client()
+
+    @operation("service.generate_recipe_image")
+    def generate_recipe_image(self, identity, request):
+        return recipe_images.generate(identity, request)
 
     @operation("service.search_products")
     def search_products(self, identity, request: SearchRequest):

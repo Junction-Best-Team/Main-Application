@@ -46,7 +46,7 @@ from aimo.schemas import (
 from aimo.service import Service
 
 CONTENT_SECURITY_POLICY = (
-    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://res.cloudinary.com; "
     "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 )
 

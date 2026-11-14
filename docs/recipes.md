@@ -14,9 +14,9 @@ before rollout; recipe import remains an explicit operator action.
    For manual local setup use `aimo migrate` with the migration/setup role.
    Schema migration performs no download, seed, embedding or dataset import.
 2. With the worker image/code and the same embedding profile as serving, run the
-   explicit importer. For Qwen3 Embedding 8B + Reranker 8B, use the configured
-   OpenRouter provider merged in PR #34. This feature reuses that provider;
-   it does not add another credential, model service or ingestion daemon.
+   explicit importer. The default now uses Gemini Embedding 2 with the shared
+   server-side `GEMINI_API_KEY`. Existing installations must reimport both recipe
+   and product vectors during the [Google cutover](google-models.md).
 3. Add reviewed recipe-form/quantity overrides and matching product evidence for
    recipes intended for purchasing. Discovery alone does not establish readiness
    for an executable basket.

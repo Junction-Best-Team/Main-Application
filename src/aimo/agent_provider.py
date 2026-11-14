@@ -1,4 +1,4 @@
-"""Bounded OpenAI-compatible function calling, independent of purchasing logic."""
+"""Chat transport selection and typed replies, independent of purchasing logic."""
 
 import json
 import logging
@@ -35,6 +35,7 @@ class AssistantReply(BaseModel):
     # Opaque provider reasoning/signatures must survive the next tool round unchanged.
     # Never persisted to conversation history, rendered to customers or logged.
     reasoning_details: list[dict] | None = Field(default=None, repr=False)
+    google_parts: list[dict] | None = Field(default=None, repr=False)
 
     @model_validator(mode="after")
     def unique_call_ids(self):
@@ -49,6 +50,8 @@ class AssistantReply(BaseModel):
             result["tool_calls"] = [call.model_dump() for call in self.tool_calls]
         if self.reasoning_details is not None:
             result["reasoning_details"] = self.reasoning_details
+        if self.google_parts is not None:
+            result["google_parts"] = self.google_parts
         return result
 
 
@@ -63,6 +66,15 @@ def check_deadline(deadline):
             "LLM_TIMEOUT", "The assistant reached its time limit. Retry this message.", 504
         )
     return remaining
+
+
+def chat_provider(config, client):
+    """Select a transport explicitly; never fall back when a provider fails."""
+    if getattr(config, "llm_provider", "openrouter") == "google":
+        from aimo.google_chat import GoogleChatProvider
+
+        return GoogleChatProvider(config, client)
+    return ChatProvider(config, client)
 
 
 class ChatProvider:

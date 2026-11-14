@@ -129,6 +129,106 @@ async function mockSession(page: Page, signedIn = true) {
   );
 }
 
+for (const width of [1440, 1024, 390, 320]) {
+  test(`recipe illustration persists beside text at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await mockSession(page);
+    const imageUrl =
+      "https://res.cloudinary.com/test-cloud/image/upload/v123/recipe.png";
+    const saved: Conversation = {
+      ...blankConversation,
+      messages: [
+        {
+          id: 2,
+          role: "assistant",
+          text: "Here is an illustration of the tomato pasta.",
+          created_at: timestamp,
+          image: { url: imageUrl, width: 1024, height: 768 },
+        },
+      ],
+    };
+    await page.route(imageUrl, (route) =>
+      route.fulfill({
+        contentType: "image/svg+xml",
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="768"><rect width="1024" height="768" fill="#c7e8f6"/><text x="64" y="384" font-size="48">Recipe image fixture</text></svg>',
+      }),
+    );
+    await page.route(`**/api/conversations/${conversationId}`, (route) =>
+      route.fulfill({ json: saved }),
+    );
+    await page.goto(`/conversations/${conversationId}`);
+    const image = page.getByRole("img", {
+      name: "AI-generated recipe illustration",
+    });
+    await expect(image).toBeVisible();
+    await expect
+      .poll(() => image.evaluate((node: HTMLImageElement) => node.naturalWidth))
+      .toBeGreaterThan(0);
+    await expect(
+      page.getByText("Here is an illustration of the tomato pasta."),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "AI-generated illustration · Actual presentation may vary.",
+      ),
+    ).toBeVisible();
+    await expect(image).toHaveAttribute("referrerpolicy", "no-referrer");
+    const bounds = await image.boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(bounds!.width / bounds!.height).toBeCloseTo(4 / 3, 2);
+    expect(bounds!.x).toBeGreaterThanOrEqual(0);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await page.reload();
+    await expect(image).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath("recipe-image.png"),
+      fullPage: true,
+    });
+  });
+}
+
+test("an expired hosted image leaves the recipe text readable", async ({
+  page,
+}) => {
+  await mockSession(page);
+  const saved: Conversation = {
+    ...blankConversation,
+    messages: [
+      {
+        id: 2,
+        role: "assistant",
+        text: "Cook the pasta and add tomato sauce.",
+        created_at: timestamp,
+        image: {
+          url: "https://res.cloudinary.com/test-cloud/image/upload/v123/expired.png",
+          width: 1024,
+          height: 768,
+        },
+      },
+    ],
+  };
+  await page.route("https://res.cloudinary.com/**", (route) =>
+    route.fulfill({ status: 404 }),
+  );
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: saved }),
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  await expect(
+    page.getByText("This illustration is currently unavailable."),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Cook the pasta and add tomato sauce."),
+  ).toBeVisible();
+});
+
 test("request starts a meal conversation and keeps messages through refresh", async ({
   page,
 }) => {

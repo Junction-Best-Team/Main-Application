@@ -49,6 +49,10 @@ MANIFEST: dict[str, list[tuple[str, ...]]] = {
         ("trigger", "policy_changes", "immutable_policy_changes"),
         ("function", "save_buyer_policy(text,integer,jsonb)"),
     ],
+    "015_recipe_images.sql": [
+        ("column", "conversation_messages", "image"),
+        ("table", "recipe_image_jobs"),
+    ],
     "018_purge_unfinished_proposals.sql": [
         ("table", "purged_proposals"),
         ("trigger", "purged_proposals", "immutable_purged_proposals"),

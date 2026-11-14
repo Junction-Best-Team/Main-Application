@@ -4,10 +4,10 @@
 
 locals {
   catalog_sync_enabled = var.catalog_sync.enabled
-  # Supplier download, embedding profile and (hosted) embedding credentials only. No
-  # browser session key, conversational LLM key, admin URL or seed credentials.
+  # Supplier download, embedding profile and shared Google/legacy search credential.
+  # No browser session key, Cloudinary key, legacy chat key or seed credentials.
   catalog_sync_secret_keys = [
-    "VALIO_AIMO_API_KEY", "SEARCH_API_KEY", "EMBEDDING_BACKEND", "EMBEDDING_MODEL",
+    "VALIO_AIMO_API_KEY", "GEMINI_API_KEY", "SEARCH_API_KEY", "EMBEDDING_BACKEND", "EMBEDDING_MODEL",
     "EMBEDDING_MODEL_REVISION", "SEARCH_TIMEOUT_SECONDS", "SEARCH_MAX_ATTEMPTS",
     "EMBEDDING_BATCH_SIZE", "EMBEDDING_WORKERS",
   ]

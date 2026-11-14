@@ -1048,6 +1048,16 @@
               }
             ],
             "title": "Proposal Id"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecipeImage"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -2890,6 +2900,36 @@
           "severity"
         ],
         "title": "Reason"
+      },
+      "RecipeImage": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "maxLength": 2048,
+            "pattern": "^https://res\\.cloudinary\\.com/[A-Za-z0-9_-]+/image/upload/[A-Za-z0-9_.,/-]+$",
+            "title": "Url"
+          },
+          "width": {
+            "type": "integer",
+            "maximum": 8192.0,
+            "minimum": 1.0,
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "maximum": 8192.0,
+            "minimum": 1.0,
+            "title": "Height"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "url",
+          "width",
+          "height"
+        ],
+        "title": "RecipeImage"
       },
       "Requirements": {
         "properties": {
