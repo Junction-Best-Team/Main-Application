@@ -1,5 +1,5 @@
 import type { FormEvent } from "react";
-import { Icon, InertButton } from "../../../shared/components/DesignPrimitives";
+import { Icon } from "../../../shared/components/DesignPrimitives";
 import { DESIGN_PLACEHOLDERS as MOCK } from "../../../shared/lib/designPlaceholders";
 import { useVoiceMode } from "../hooks/useVoiceMode";
 type Props = {
@@ -20,6 +20,7 @@ export function ChatComposer({
 }: Props) {
   const voice = useVoiceMode();
   const disabled = Boolean(busy) || voice.active;
+  const hasDraft = Boolean(text.trim());
   const sendLabel = busy
     ? "Working…"
     : error && text
@@ -45,60 +46,41 @@ export function ChatComposer({
         disabled={disabled}
         className="h-11 min-w-0 flex-1 rounded-lg bg-transparent p-space-sm font-body text-body-md text-on-surface placeholder:text-outline focus-visible:outline-2 focus-visible:outline-primary-container"
       />
-      <div className="flex shrink-0 items-center gap-space-xs">
-        <div className="flex items-center text-on-surface-variant md:gap-space-xs">
-          <InertButton
-            label="Attach file"
-            className="flex h-11 w-7 items-center justify-center md:w-8"
-          >
-            <Icon name="attach_file" className="text-[20px] md:text-[24px]" />
-          </InertButton>
-          <button
-            type="button"
-            aria-label="Start voice mode"
-            onClick={() => voice.start(conversationId)}
-            disabled={disabled || Boolean(text.trim())}
-            title={
-              text.trim()
-                ? "Send or clear your draft before starting voice"
-                : "Start voice mode"
-            }
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface-pure text-on-surface transition-colors hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <svg
-              aria-hidden="true"
-              focusable="false"
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-            >
-              <path d="M4 10v4M8 5v14M12 8v8M16 3v18M20 9v6" />
-            </svg>
-          </button>
-          <InertButton
-            label="Scan barcode"
-            className="flex h-11 w-7 items-center justify-center md:w-8"
-          >
-            <Icon
-              name="barcode_scanner"
-              className="text-[20px] md:text-[24px]"
-            />
-          </InertButton>
-        </div>
+      {/* One action at a time: send while there is a draft, otherwise voice mode. */}
+      {hasDraft ? (
         <button
           type="submit"
           aria-label={sendLabel}
           title={sendLabel}
-          disabled={disabled || !text.trim()}
+          disabled={disabled}
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary-container text-on-primary disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Icon name="arrow_forward" className="text-[22px]" />
         </button>
-      </div>
+      ) : (
+        <button
+          type="button"
+          aria-label="Start voice mode"
+          title="Start voice mode"
+          onClick={() => voice.start(conversationId)}
+          disabled={disabled}
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface-pure text-on-surface transition-colors hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <svg
+            aria-hidden="true"
+            focusable="false"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          >
+            <path d="M4 10v4M8 5v14M12 8v8M16 3v18M20 9v6" />
+          </svg>
+        </button>
+      )}
     </form>
   );
 }

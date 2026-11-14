@@ -411,12 +411,7 @@ for (const [width, height] of [
       .toBeGreaterThan(0);
     const composerBounds = await composer.boundingBox();
     expect(composerBounds!.height).toBeLessThanOrEqual(48);
-    for (const name of [
-      "Attach file",
-      "Start voice mode",
-      "Scan barcode",
-      "Send Order Request",
-    ]) {
+    const expectBesideComposer = async (name: string) => {
       const button = page.getByRole("button", { name, exact: true });
       const bounds = await button.boundingBox();
       expect(bounds!.y + bounds!.height / 2).toBeCloseTo(
@@ -426,8 +421,15 @@ for (const [width, height] of [
       expect(bounds!.x).toBeGreaterThanOrEqual(
         composerBounds!.x + composerBounds!.width,
       );
+    };
+    // Attach and barcode were removed; voice and send take turns in one slot.
+    for (const name of ["Attach file", "Scan barcode"]) {
+      await expect(page.getByRole("button", { name })).toHaveCount(0);
     }
     const voice = page.getByRole("button", { name: "Start voice mode" });
+    const send = page.getByRole("button", { name: "Send Order Request" });
+    await expectBesideComposer("Start voice mode");
+    await expect(send).toHaveCount(0);
     await expect(voice).toBeEnabled();
     expect(await voice.boundingBox()).toMatchObject({ width: 44, height: 44 });
     await expect(voice).toHaveCSS("border-radius", "9999px");
@@ -441,15 +443,18 @@ for (const [width, height] of [
     await expect.poll(() => history.evaluate((node) => node.scrollTop)).toBe(0);
     expect(await composer.boundingBox()).toEqual(composerBounds);
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    await composer.fill("   ");
+    await expect(voice).toBeVisible();
+    await expect(send).toHaveCount(0);
     await composer.fill("Please continue");
-    await expect(voice).toBeDisabled();
-    await page.getByRole("button", { name: "Send Order Request" }).click();
+    await expect(voice).toHaveCount(0);
+    await expectBesideComposer("Send Order Request");
+    await send.click();
     await expect(
       page.getByText("Latest reply", { exact: true }),
     ).toBeInViewport();
-    await expect(
-      page.getByRole("button", { name: "Send Order Request" }),
-    ).toBeInViewport();
+    await expect(send).toHaveCount(0);
+    await expect(voice).toBeInViewport();
     expect(
       await page.evaluate(() => document.documentElement.scrollHeight),
     ).toBeLessThanOrEqual(height);
@@ -1066,8 +1071,8 @@ for (const width of [1440, 390]) {
       page.getByRole("heading", { name: "Aimo Kitchen Assistant" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Attach file" }),
-    ).toBeDisabled();
+      page.getByRole("button", { name: "Start voice mode" }),
+    ).toBeEnabled();
     await expect(
       page.getByRole("complementary", { name: "Overview" }),
     ).toContainText("Nothing staged");
