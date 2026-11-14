@@ -2,9 +2,7 @@ name: Main source branch
 
 # Required status check on `main`: only `develop` may be merged into it.
 on:
-  # Use the trusted default-branch workflow so a PR cannot edit its own guard.
-  # Keep this metadata-only: never check out or execute code from the PR.
-  pull_request_target:
+  pull_request:
     branches: [main]
     types: [opened, reopened, synchronize, edited]
 
