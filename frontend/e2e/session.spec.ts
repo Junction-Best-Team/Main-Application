@@ -3,44 +3,24 @@ import { expect, test, type Page } from "@playwright/test";
 // Buyer session path: sign in, failed-login error, session restore on reload,
 // sign out. Mocked at the browser<->API edge, matching chat.spec.ts prior art.
 // The real contract (cookie session + CSRF token, status codes, error shape)
-// is verified separately against the running backend; see docs/pre-existing-work.md.
+// is verified separately against the running backend; see docs/pre-existing-work.md
+// and docs/findings.md (F-CHAT-002).
 
 const session = {
   username: "buyer",
   buyer_id: "demo-hotel",
   csrf_token: "test-csrf-token",
 };
+const unauthenticated = {
+  error: { code: "UNAUTHENTICATED", message: "Sign in to continue your purchase." },
+};
 
-async function mockUnauthenticated(page: Page) {
-  await page.route("**/api/session", (route) =>
-    route.fulfill({
-      status: 401,
-      json: {
-        error: {
-          code: "UNAUTHENTICATED",
-          message: "Sign in to continue your purchase.",
-        },
-      },
-    }),
-  );
-  await page.route("**/api/conversations?*", (route) =>
-    route.fulfill({ json: { items: [], next_offset: null } }),
-  );
-}
-
-async function mockAuthenticated(page: Page) {
-  let authenticated = true;
+async function mockSession(page: Page, signedIn = false) {
+  let authenticated = signedIn;
   await page.route("**/api/session", (route) =>
     route.fulfill({
       status: authenticated ? 200 : 401,
-      json: authenticated
-        ? session
-        : {
-            error: {
-              code: "UNAUTHENTICATED",
-              message: "Sign in to continue your purchase.",
-            },
-          },
+      json: authenticated ? session : unauthenticated,
     }),
   );
   await page.route("**/api/conversations?*", (route) =>
@@ -58,7 +38,7 @@ async function mockAuthenticated(page: Page) {
 test("bad credentials show a clear error and keep the buyer on sign-in", async ({
   page,
 }) => {
-  await mockUnauthenticated(page);
+  await mockSession(page);
   await page.route("**/api/login", async (route) => {
     await route.fulfill({
       status: 401,
@@ -85,7 +65,7 @@ test("bad credentials show a clear error and keep the buyer on sign-in", async (
 });
 
 test("sign-in succeeds and yields a usable session", async ({ page }) => {
-  await mockUnauthenticated(page);
+  await mockSession(page);
   const loginBodies: Array<Record<string, unknown>> = [];
   await page.route("**/api/login", async (route) => {
     loginBodies.push(route.request().postDataJSON());
@@ -107,7 +87,7 @@ test("sign-in succeeds and yields a usable session", async ({ page }) => {
 });
 
 test("a valid session restores automatically on reload", async ({ page }) => {
-  await mockAuthenticated(page);
+  await mockSession(page, true);
   await page.goto("/");
   await expect(
     page.getByRole("heading", { name: "What are we cooking?" }),
@@ -124,7 +104,7 @@ test("a valid session restores automatically on reload", async ({ page }) => {
 test("sign-out clears the session and a later reload requires login again", async ({
   page,
 }) => {
-  const { logoutCalls } = await mockAuthenticated(page);
+  const { logoutCalls } = await mockSession(page, true);
   await page.goto("/");
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
   await page.getByRole("button", { name: "Sign out" }).click();
