@@ -1,8 +1,6 @@
 name: CI
 
-# Cheap checks (components, Python lint, frontend, Terraform) run on every pull request and push.
-# The heavy backend part (4 test shards and the API sweep, each with its own PostgreSQL) runs only
-# when code is going to main (pull request into main, push to main) or on a manual run.
+# Backend tests and the API sweep share one environment; frontend builds run in parallel.
 # Keep the existing check names for repository rules. The component check now only
 # detects infrastructure changes. CI gate blocks releases unless every applicable job passes.
 
@@ -67,34 +65,9 @@ jobs:
     uses: ./.github/workflows/terraform.yml
 
   backend:
-    # Required check name. Always runs; the tests and the sweep are the two jobs below.
     name: Python lint and tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      UV_NO_SYNC: '1'
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/python-env
-      - name: Lint Python
-        run: .venv/bin/ruff check src tests scripts
-
-  backend-tests:
-    # Heavy part 1 of 2, in parallel shards: tests/test_*.py sorted by name, file i goes to shard
-    # (i mod 4) + 1. Every shard has its own PostgreSQL; shards share nothing.
-    name: Backend tests (shard ${{ matrix.shard }} of 4)
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && github.base_ref == 'main') ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -113,47 +86,6 @@ jobs:
       TEST_DATABASE_URL: postgresql://aimo:aimo@localhost:5432/aimo_test
       EMBEDDING_BACKEND: fixture
       UPSTREAM_MODE: fixture
-      UV_NO_SYNC: '1'
-      SHARD: ${{ matrix.shard }}
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/python-env
-      - name: Test backend shard against PostgreSQL and fixture data
-        shell: bash
-        run: |
-          mapfile -t files < <(LC_ALL=C ls tests/test_*.py | LC_ALL=C sort | awk -v shard="$SHARD" 'NR % 4 == shard % 4')
-          echo "Shard $SHARD of 4: ${#files[@]} test files"
-          [[ "${#files[@]}" -gt 0 ]]
-          .venv/bin/pytest -q "${files[@]}"
-
-  backend-sweep:
-    # Heavy part 2 of 2: the black-box sweep of the buyer-facing API against its own PostgreSQL.
-    name: Backend API sweep
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && github.base_ref == 'main') ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_USER: aimo
-          POSTGRES_PASSWORD: aimo
-          POSTGRES_DB: aimo_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U aimo -d aimo_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      EMBEDDING_BACKEND: fixture
-      UPSTREAM_MODE: fixture
       CI_DATABASE_URL: postgresql://aimo:aimo@localhost:5432/aimo_ci
       UV_NO_SYNC: '1'
       SWEEP_ARGS: --strict
@@ -162,6 +94,10 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/python-env
+      - name: Lint Python
+        run: .venv/bin/ruff check src tests scripts
+      - name: Test backend against PostgreSQL and fixture data
+        run: .venv/bin/pytest -q
       - name: Black-box sweep of the buyer-facing API (sign-in, CSRF, conversations, purchases)
         run: tests/ci.sh --skip-unit
 
@@ -188,7 +124,7 @@ jobs:
 
   gate:
     name: CI gate
-    needs: [components, backend, backend-tests, backend-sweep, frontend, terraform]
+    needs: [components, backend, frontend, terraform]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -196,10 +132,6 @@ jobs:
       - name: Require every applicable check to pass
         env:
           REQUIRED_RESULTS: ${{ needs.components.result }} ${{ needs.backend.result }} ${{ needs.frontend.result }}
-          # The heavy backend jobs are required exactly when they are scheduled to run (same condition
-          # as their `if:`); otherwise they must have been skipped. Cancelled or failed never passes.
-          HEAVY_REQUIRED: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
-          HEAVY_RESULTS: ${{ needs.backend-tests.result }} ${{ needs.backend-sweep.result }}
           TERRAFORM_CHANGED: ${{ needs.components.outputs.terraform }}
           TERRAFORM_RESULT: ${{ needs.terraform.result }}
         run: |
@@ -207,11 +139,6 @@ jobs:
             echo "Required checks did not all pass: $REQUIRED_RESULTS"
             exit 1
           fi
-          case "$HEAVY_REQUIRED" in
-            true) [[ "$HEAVY_RESULTS" == 'success success' ]] || { echo "Backend tests and sweep must pass: $HEAVY_RESULTS"; exit 1; } ;;
-            false) [[ "$HEAVY_RESULTS" == 'skipped skipped' ]] || { echo "Backend tests and sweep must be skipped here: $HEAVY_RESULTS"; exit 1; } ;;
-            *) echo 'Missing or invalid heavy-check condition'; exit 1 ;;
-          esac
           case "$TERRAFORM_CHANGED" in
             true) [[ "$TERRAFORM_RESULT" == success ]] ;;
             false) [[ "$TERRAFORM_RESULT" == skipped ]] ;;
