@@ -2,6 +2,8 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    /** The application's stable error code, when the server sends one. */
+    public code?: string,
   ) {
     super(message);
   }
@@ -20,6 +22,7 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
         (r.status === 422
           ? "Check the submitted values."
           : "The service could not complete this request. Try again."),
+      typeof body.error?.code === "string" ? body.error.code : undefined,
     );
   }
   return r.status === 204 ? (undefined as T) : r.json();

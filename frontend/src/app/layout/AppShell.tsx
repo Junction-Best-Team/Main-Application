@@ -219,9 +219,10 @@ function Avatar() {
   );
 }
 
-/** Account switcher + settings (inert) and the real Sign out action. */
-function AccountBlock() {
+/** Account switcher (inert), assistant preferences and the real Sign out action. */
+function AccountBlock({ onNavigate }: { onNavigate?: () => void }) {
   const { session, logout } = useAuth();
+  const { pathname } = useLocation();
   return (
     <div className="flex shrink-0 flex-col gap-space-xs bg-surface-container-low p-space-sm">
       <InertButton
@@ -244,13 +245,21 @@ function AccountBlock() {
           className="text-[18px] text-on-surface-variant"
         />
       </InertButton>
-      <InertButton
-        label="Account Settings"
-        className="flex items-center gap-space-sm px-space-md py-space-sm font-label text-label-md text-on-surface-variant"
+      <Link
+        to="/settings/preferences"
+        onClick={onNavigate}
+        aria-current={
+          pathname.startsWith("/settings/preferences") ? "page" : undefined
+        }
+        className={`flex items-center gap-space-sm rounded-lg px-space-md py-space-sm font-label text-label-md no-underline hover:no-underline ${
+          pathname.startsWith("/settings")
+            ? "bg-secondary-container text-primary"
+            : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+        }`}
       >
-        <Icon name="manage_accounts" className="text-[18px]" />
-        Account Settings
-      </InertButton>
+        <Icon name="tune" className="text-[18px]" />
+        Assistant preferences
+      </Link>
       <button
         type="button"
         onClick={logout}
@@ -447,7 +456,7 @@ function MobileMenu({
           <HubBadge />
           <NavLinks conversations={conversations} onNavigate={onClose} />
         </div>
-        <AccountBlock />
+        <AccountBlock onNavigate={onClose} />
       </div>
     </div>
   );
