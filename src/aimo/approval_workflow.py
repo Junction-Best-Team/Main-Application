@@ -481,6 +481,48 @@ def authorize_commit(r, a, approvers, snapshot, evaluation):
         )
 
 
+def require_commit_authority(c, identity, p, r, snapshot, evaluated, approvers):
+    """Who may commit, by role. Every role has its own branch and an unknown one is refused.
+
+    agent:     no agent can authorize a purchase; it needs a customer confirmation recorded
+               against this exact revision and fingerprint. Blocked outcomes skip the check and
+               are refused as COMMIT_BLOCKED by authorize_commit.
+    scheduler: only against a valid scheduled authorization (aimo.scheduler).
+    approver:  the human customer; the confirmation is that approver's own action.
+    """
+    role = identity["role"]
+    if role == "agent":
+        if evaluated["policy_outcome"] not in ("ready_to_commit", "approval_required"):
+            return
+        confirmations = c.execute(
+            """SELECT actor_id FROM customer_confirmations
+            WHERE proposal_id=%s AND revision=%s AND fingerprint=%s""",
+            (p["id"], r["revision"], r["fingerprint"]),
+        ).fetchall()
+        confirmed_ids = {item["actor_id"] for item in confirmations}
+        if not any(
+            candidate["id"] in confirmed_ids
+            and can_approve(
+                candidate["authority"],
+                Decimal(snapshot["gross_total"]),
+                snapshot["currency"],
+                evaluated["required_exceptions"],
+            )
+            for candidate in approvers
+        ):
+            raise Problem(
+                "CUSTOMER_CONFIRMATION_REQUIRED",
+                "Confirm these exact terms in the product.",
+                403,
+            )
+    elif role == "scheduler":
+        from aimo import scheduler
+
+        scheduler.ensure_commit_allowed(c, identity, p, r, snapshot, evaluated)
+    elif role != "approver":
+        raise Problem("FORBIDDEN", "This identity role cannot commit a purchase.", 403)
+
+
 def commit_order(identity, request: CommitRequest, connector):
     with connection() as c:
         context(c, identity)
@@ -542,34 +584,7 @@ def commit_order(identity, request: CommitRequest, connector):
                 "status": "revised",
                 **render(c, *proposal(c, p["id"], identity), identity),
             }
-        # Any agent role can prepare, but no agent can authorize a purchase: it needs a
-        # customer confirmation recorded against this exact revision and fingerprint. Blocked
-        # outcomes skip this gate and are refused as COMMIT_BLOCKED by authorize_commit below.
-        if identity["role"] == "agent" and evaluated["policy_outcome"] in (
-            "ready_to_commit",
-            "approval_required",
-        ):
-            confirmations = c.execute(
-                """SELECT actor_id FROM customer_confirmations
-                WHERE proposal_id=%s AND revision=%s AND fingerprint=%s""",
-                (p["id"], r["revision"], r["fingerprint"]),
-            ).fetchall()
-            confirmed_ids = {item["actor_id"] for item in confirmations}
-            if not any(
-                candidate["id"] in confirmed_ids
-                and can_approve(
-                    candidate["authority"],
-                    Decimal(snapshot["gross_total"]),
-                    snapshot["currency"],
-                    evaluated["required_exceptions"],
-                )
-                for candidate in approvers
-            ):
-                raise Problem(
-                    "CUSTOMER_CONFIRMATION_REQUIRED",
-                    "Confirm these exact terms in the product.",
-                    403,
-                )
+        require_commit_authority(c, identity, p, r, snapshot, evaluated, approvers)
         authorize_commit(r, a, approvers, snapshot, evaluated)
         oid = uuid4()
         receipt = {
