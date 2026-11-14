@@ -212,6 +212,12 @@ nearby topics; decline clearly unrelated requests in simple language. Extended t
 same synthetic evaluation with workout, food-before-exercise, storage, kitchen-supply
 and community-serving cases. No new external material was used.
 
+## Chat activity header — 2026-11-15
+
+Reused the existing persisted activity events, server-owned labels, expandable
+history and authored browser fixtures. Kept the latest step visible between tool
+calls; no new dependencies, models, assets or datasets were introduced.
+
 ## Simplified memory screen — 2026-11-14
 
 Adapted the owner-approved in-chat Memory mockup into the existing preferences

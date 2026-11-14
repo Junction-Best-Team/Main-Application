@@ -45,7 +45,14 @@ for (const width of [1440, 390, 320]) {
       ],
       purchases: [],
       busy: true,
-      activity: { turn_id: tid, state: "running", events: initialEvents },
+      activity: {
+        turn_id: tid,
+        state: "running",
+        events: [
+          ...initialEvents,
+          { sequence: 3, kind: "tool_completed", label: "Searching recipes" },
+        ],
+      },
     };
     await page.route(`**/api/conversations/${cid}`, (route) =>
       route.fulfill({ json: snapshot }),
@@ -63,7 +70,14 @@ for (const width of [1440, 390, 320]) {
     });
     await page.goto(`/conversations/${cid}`);
     const activity = page.getByRole("region", { name: "Aimo activity" });
-    await expect(activity.getByRole("status")).toHaveText("Searching recipes…");
+    await expect(activity.getByRole("status")).toHaveText(
+      "Searching recipes · Done",
+    );
+    await expect(activity.getByText("1 step", { exact: true })).toBeVisible();
+    await expect(activity.locator("details")).not.toHaveAttribute("open");
+    await page.screenshot({
+      path: testInfo.outputPath(`latest-step-${width}.png`),
+    });
     await expect(
       page.getByRole("button", { name: "Start voice mode" }),
     ).toBeDisabled();
@@ -156,6 +170,81 @@ for (const width of [1440, 390, 320]) {
     await expect(steps.getByRole("listitem")).toHaveCount(3);
   });
 }
+
+test("activity header follows the latest saved step between tool calls", async ({
+  page,
+}) => {
+  await page.route("**/api/session", (route) =>
+    route.fulfill({
+      json: { username: "buyer", buyer_id: "demo-hotel", csrf_token: "test" },
+    }),
+  );
+  await page.route("**/api/conversations?*", (route) =>
+    route.fulfill({ json: { items: [], next_offset: null } }),
+  );
+  let events: ActivityEvent = [initialEvents[0]];
+  await page.route(`**/api/conversations/${cid}`, (route) =>
+    route.fulfill({
+      json: {
+        id: cid,
+        title: "Lunch",
+        created_at: timestamp,
+        updated_at: timestamp,
+        messages: [],
+        purchases: [],
+        busy: true,
+        activity: { turn_id: tid, state: "running", events },
+      } satisfies Conversation,
+    }),
+  );
+  await page.route(`**/api/conversations/${cid}/events`, (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: ": heartbeat\n\n",
+    }),
+  );
+  await page.goto(`/conversations/${cid}`);
+  const activity = page.getByRole("region", { name: "Aimo activity" });
+  await expect(activity.getByRole("status")).toHaveText(
+    "Checking your request…",
+  );
+
+  events = productEvents.slice(0, -1);
+  await page.reload();
+  await expect(activity.getByRole("status")).toHaveText(
+    "Searching products · Couldn't finish",
+  );
+
+  events = Array.from({ length: 15 }, (_, i) => [
+    {
+      sequence: i * 2 + 1,
+      kind: "tool_started" as const,
+      label: "Checking prices and availability",
+    },
+    {
+      sequence: i * 2 + 2,
+      kind: "tool_completed" as const,
+      label: "Checking prices and availability",
+    },
+  ]).flat();
+  await page.reload();
+  await expect(activity.getByRole("status")).toHaveText(
+    "Checking prices and availability · Done",
+  );
+  await activity.getByText("15 steps", { exact: true }).click();
+  await expect(activity.getByRole("listitem")).toHaveCount(15);
+  await activity.getByText("15 steps", { exact: true }).click();
+  await expect(activity.getByRole("list")).not.toBeVisible();
+
+  events = [
+    ...events,
+    { sequence: 31, kind: "complete", label: "Finishing the response" },
+  ];
+  await page.reload();
+  await expect(activity.getByRole("status")).toHaveText(
+    "Finishing the response…",
+  );
+});
 
 test("interrupted activity stops moving and never marks an unfinished tool done", async ({
   page,
