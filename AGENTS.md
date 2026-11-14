@@ -1,6 +1,6 @@
 # Shared agent instructions
 
-Four-person Junction hackathon repository. Preparation files only; challenge and stack are undecided.
+Four-person Junction hackathon repository. Preparation and design files only; the Valio Aimo implementation plan is in `docs/brief.md`, and the planned stack is in `README.md`. Application code is not implemented yet.
 
 - Use `README.md` for the stack, run/build commands, and Git conventions; use `docs/brief.md` for the agreed product behavior and interfaces. TBD means undecided.
 - Keep changes small and focused on the assigned feature. Coordinate shared API, schema, dependency, and deployment changes with teammates.
