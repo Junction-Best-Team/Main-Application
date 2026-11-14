@@ -14,7 +14,9 @@ from typing import Any, Literal
 import httpx
 
 GOOGLE_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
-GoogleOperation = Literal["generate_content", "embed_content", "decide", "list_models"]
+GoogleOperation = Literal[
+    "generate_content", "embed_content", "decide", "list_models", "create_live_token"
+]
 
 
 class GoogleAPIError(RuntimeError):
@@ -36,18 +38,22 @@ def google_api_request(
     timeout: float = 30,
     max_response_bytes: int = 32 * 1024 * 1024,
 ) -> dict[str, Any]:
-    """Call Google's API for chat/tools/images, embeddings, decisions, or model discovery.
+    """Call Google's API for generation, embeddings, decisions, discovery, or Live tokens.
 
     ``payload`` uses Google's native JSON fields; for ``list_models`` it contains
     query parameters such as pageSize/pageToken. Pass an explicit key or export
     GEMINI_API_KEY. This standalone module never reads .env or imports app config.
+    Live token payloads use the native REST ``bidiGenerateContentSetup`` field;
+    streaming audio itself uses the Live WebSocket endpoint, not this helper.
 
     A supplied client stays open and can reuse its connection pool. Redirects are
     disabled even for supplied clients, so credentials stay on Google's host.
     There are no automatic retries: a timed-out generation may already be billed.
     Timeout is an HTTPX per-operation timeout, not an overall application deadline.
     """
-    if operation not in ("generate_content", "embed_content", "decide", "list_models"):
+    if operation not in (
+        "generate_content", "embed_content", "decide", "list_models", "create_live_token"
+    ):
         raise ValueError("Unsupported Google API operation")
     if not math.isfinite(timeout) or timeout <= 0:
         raise ValueError("timeout must be positive and finite")
@@ -64,6 +70,11 @@ def google_api_request(
             raise ValueError("list_models accepts only pageSize and pageToken")
         method, path = "GET", "/models"
         content = None
+    elif operation == "create_live_token":
+        if model is not None:
+            raise ValueError("Constrain the Live model inside payload.bidiGenerateContentSetup")
+        method, path = "POST", "/auth_tokens"
+        content = json.dumps(body, allow_nan=False).encode("utf-8")
     else:
         name = model.removeprefix("models/") if model else ""
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,159}", name):

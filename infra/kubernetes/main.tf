@@ -72,6 +72,8 @@ resource "kubernetes_config_map_v1" "runtime" {
     UPSTREAM_MODE             = var.upstream_mode
     VALIO_AIMO_BASE_URL       = "https://junction26.valioaimo.fi"
     EMBEDDING_BACKEND         = "google"
+    VOICE_ENABLED             = "true"
+    VOICE_MODEL               = "gemini-3.8-live"
     # Model name/revision use the application's shared image/runtime pin.
     HF_HUB_OFFLINE         = "1"
     TOKENIZERS_PARALLELISM = "false"
@@ -172,6 +174,21 @@ resource "kubernetes_deployment_v1" "apps" {
             for_each = each.key == "frontend" ? [] : [1]
             content {
               secret_ref { name = each.key == "worker" ? kubernetes_secret_v1.worker.metadata[0].name : kubernetes_secret_v1.runtime.metadata[0].name }
+            }
+          }
+          # API mints short-lived voice tokens using only the existing Google key.
+          # Do not share the worker's other provider or Cloudinary credentials.
+          dynamic "env" {
+            for_each = each.key == "api" ? [1] : []
+            content {
+              name = "GEMINI_API_KEY"
+              value_from {
+                secret_key_ref {
+                  name     = kubernetes_secret_v1.worker.metadata[0].name
+                  key      = "GEMINI_API_KEY"
+                  optional = true
+                }
+              }
             }
           }
           resources {

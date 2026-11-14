@@ -248,7 +248,7 @@ for (const [width, height] of [
     expect(composerBounds!.height).toBeLessThanOrEqual(48);
     for (const name of [
       "Attach file",
-      "Voice input",
+      "Start voice mode",
       "Scan barcode",
       "Send Order Request",
     ]) {
@@ -262,6 +262,12 @@ for (const [width, height] of [
         composerBounds!.x + composerBounds!.width,
       );
     }
+    const voice = page.getByRole("button", { name: "Start voice mode" });
+    await expect(voice).toBeEnabled();
+    expect(await voice.boundingBox()).toMatchObject({ width: 44, height: 44 });
+    await expect(voice).toHaveCSS("border-radius", "9999px");
+    await expect(voice.locator('svg[aria-hidden="true"]')).toHaveCount(1);
+    await page.screenshot({ path: testInfo.outputPath("voice-composer.png") });
     await expect(
       page.getByText("Send Order Request", { exact: true }),
     ).toHaveCount(0);
@@ -271,6 +277,7 @@ for (const [width, height] of [
     expect(await composer.boundingBox()).toEqual(composerBounds);
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
     await composer.fill("Please continue");
+    await expect(voice).toBeDisabled();
     await page.getByRole("button", { name: "Send Order Request" }).click();
     await expect(
       page.getByText("Latest reply", { exact: true }),
