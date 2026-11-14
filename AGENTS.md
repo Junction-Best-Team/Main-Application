@@ -30,7 +30,7 @@ Four-person Junction hackathon repository. The implemented Valio Aimo MVP is des
 
 ## Checks
 
-`tests/ci.sh` runs lint, the pytest suite and a black-box sweep of the buyer-facing API (`tests/README.md`; the assistant's tools are covered by `tests/test_agent*.py`); `--browser` adds the Playwright tests and `--live` repeats the sweep against the real Valio API. `CI_COVERAGE=1 tests/ci.sh` then `uv run python tests/coverage_report.py` measures Python coverage and enforces the `fail_under` gate in `pyproject.toml`; CI does the same across its parallel jobs. `tests/TEST-GUIDE.md` explains what each test checks.
+`tests/ci.sh` runs lint, the pytest suite and a black-box sweep of the buyer-facing API (`tests/README.md`; the assistant's tools are covered by `tests/test_agent*.py`); `--live` first validates a read-only Valio price/availability lookup, then runs the HTTP sweep. The sweep never submits an authenticated chat turn. `CI_COVERAGE=1 tests/ci.sh` then `uv run python tests/coverage_report.py` measures Python coverage and enforces the `fail_under` gate in `pyproject.toml`; CI does the same across its parallel jobs. `tests/TEST-GUIDE.md` explains what each test checks.
 
 ## Scope and history
 

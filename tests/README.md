@@ -5,7 +5,7 @@ One command runs the checks locally. GitHub Actions (`.github/workflows/ci.yml`)
 ```sh
 tests/ci.sh                          # lint + pytest + tool sweep, hermetic (no API key needed)
 tests/ci.sh --skip-unit              # only the sweep (the CI "API sweep" job)
-tests/ci.sh --live                   # sweep against the real Valio API (needs VALIO_AIMO_API_KEY)
+tests/ci.sh --live                   # read-only Valio lookup, then HTTP sweep (needs API key)
 SWEEP_ARGS=--strict tests/ci.sh      # a skipped check counts as a failure
 ```
 
@@ -44,11 +44,12 @@ Fixture upstream and fixture embeddings only; never the live API. Descriptions a
 | `test_workflow_races.py` | Changes injected between a commit's lookup and its locked re-check (policy, revision, expiry), duplicate commits, agents deciding, closed approvals, authority drift |
 | `test_edges.py` | Policy branches, session/CSRF edge cases, internal-agent resolution, product scope, `/health/ready` states, static frontend serving, search index and model errors |
 | `test_agent.py`, `test_agent_integration.py`, `test_conversations.py`, `test_hardening.py`, `test_retries.py` | Teammates' tests (PRs #4 and #15): the internal assistant with a scripted provider, persistent conversations and confirmation, security and performance hardening, supplier retry rules |
+| `test_sweep.py` | No provider invocation or stored messages during the standalone sweep; both live supplier endpoints queried; missing keys, rejected requests and unresolved evidence fail; `--live` without a key exits before server startup |
 | `test_upstream_mode.py` | `UPSTREAM_MODE=auto` uses live with a key and labelled fixtures without; `fixture` ignores a key; `live` without a key fails closed |
 
 ## API sweep (`tests/sweep/run_sweep.py`)
 
-Uses only the public HTTP surface, like the browser. It needs no LLM provider and no Valio key (the server runs with `LLM_API_KEY` empty). The purchasing tools run only inside an LLM-driven chat turn, so they are covered by the scripted-provider pytest suites, not by the sweep. The mode actually used is read from the server and printed (`upstream commercial data in this run: FIXTURE|LIVE`).
+Uses only the public HTTP surface, like the browser. It needs no LLM provider and no Valio key (the server runs with `LLM_API_KEY` empty). The purchasing tools run only inside an LLM-driven chat turn, so they are covered by the scripted-provider pytest suites, not by the sweep. The configured upstream mode is read from the server and printed; it is not proof of supplier connectivity. The sweep never sends an authenticated chat message, including against a server with an LLM configured.
 
 | Check | Verifies |
 | --- | --- |
@@ -58,12 +59,12 @@ Uses only the public HTTP surface, like the browser. It needs no LLM provider an
 | CSRF and Origin enforced | Creating a conversation is refused without a token, with a wrong token and from a foreign Origin, and creates nothing |
 | create conversation (+ retry) | Same idempotency key returns the same conversation; reuse for a different body is refused |
 | list and get conversation | Listed, fetched, empty; unknown id is 404 |
-| message without provider | A message needs CSRF; with no LLM configured it fails with a 503 `LLM` error and stores no assistant reply |
+| message CSRF enforced | A message without CSRF is refused and stores no messages; no authenticated chat turn is sent |
 | purchases and approvals | Lists open; unknown proposal and approval are 404 |
 | confirm and decide controls | Confirming a purchase and deciding an approval need CSRF; unknown ids are 404 |
 | logout | The old cookie is refused afterwards |
 
-A check that cannot run is reported as `SKIP` with its reason, never as a pass (for example, the message check skips if a provider is configured on that server). Live price and stock are no longer exercised by the sweep; `tests/ci.sh --live` now only runs the sweep with `UPSTREAM_MODE=live`.
+A check that cannot run is reported as `SKIP` with its reason, never as a pass. `tests/ci.sh --live` first runs `tests/sweep/check_live.py`: a read-only lookup through `ValioClient` and the existing response validator. Missing credentials, supplier failures, and unresolved price or availability fail the command before the HTTP sweep starts. It creates no proposal or order.
 
 ## Frontend: no UI tests in CI
 
@@ -95,7 +96,7 @@ Known gaps: nothing exercises the purchasing tools over HTTP end to end (they si
 ## Modes, and what a pass means
 
 - **Hermetic (default).** Own database `aimo_ci`, authored fixture catalog, fixture price and stock. Proves the code works; says nothing about Valio's real data.
-- **Live (`--live`).** `UPSTREAM_MODE=live`, so it fails closed without `VALIO_AIMO_API_KEY`. The key exists and teammates have it. Run with your `.env` database and the full catalog ingested. Live stock for the default fixture product `464306` is an unknown-quantity sentinel (F-MVP-007); the buyer-facing sweep does not depend on it.
+- **Live (`--live`).** Requires `VALIO_AIMO_API_KEY`, your `.env` database and an ingested catalog. The live probe checks product `463380` for delivery in two days (Helsinki date). To choose another product, date or buyer, run `uv run python tests/sweep/check_live.py --product 463380 --delivery-date YYYY-MM-DD --buyer buyer` directly. Unknown-quantity stock, including the observed sentinel for `464306`, fails validation. Passing proves a read-only price/availability lookup; it does not prove checkout or reserve stock.
 - The buyer password and API key are never printed or logged.
 
 ## Coverage

@@ -131,7 +131,7 @@ Runs against a live server process with the fixture catalog and no LLM provider 
 | `CSRF and Origin enforced` | Create a conversation with no token, a wrong token, and a foreign Origin | 403 each time and no conversation named "csrf probe" exists afterwards | State changes without CSRF protection |
 | `create conversation (+ retry)` | Create with a key; repeat the identical request; reuse the key with a different title | Same id both times; the conflicting reuse is refused (any 4xx) | Duplicate conversations from a retry; a key reused for something else |
 | `list and get conversation` | List, fetch, fetch an unknown id | Present in the list; empty messages and purchases; unknown is 404 | Lost or leaking conversations |
-| `message without provider` | Send a message without CSRF; then with CSRF while no LLM key is configured | 403; then 503 with an `LLM` error code and no assistant message stored. SKIP if a provider is configured (never spends it) | A pretend assistant answer when no model is available |
+| `message CSRF enforced` | Send only a message without CSRF | 403 and no messages stored; never submits an authenticated chat turn | Unexpected model usage by a standalone sweep |
 | `purchases and approvals` | List both; fetch an unknown purchase and an unknown approval | 200 with an `items` list; 404 | Broken list endpoints |
 | `confirm and decide controls` | Confirm and decide an unknown proposal without CSRF, then with it | 403; then 404 | Confirming or deciding without CSRF; accepting an unknown proposal |
 | `logout` | Log out, then call a protected endpoint with the old cookie | 204; then 401 | A session surviving logout |
@@ -165,7 +165,7 @@ Each item is traced to code I read.
 **Real supplier behaviour**
 - The live client `ValioClient.post` is now exercised over a mock transport (`test_upstream_client.py`, `test_retries.py`): headers, retries and back-off, Retry-After, permanent 4xx rejection, malformed JSON, missing credentials. It has never been run against the real API by CI, and `tests/ci.sh --live` is the only real check.
 - Fixture replies are generated to be internally consistent (`FixtureClient.lookup`): fresh timestamp, price validity 2020 to 2099, stock for any unknown id 5000. So `UPSTREAM_CLOCK_STALE` and `UPSTREAM_CLOCK_UNKNOWN` are never tested, and real-world oddities exist only as the 12 hand-made mutations in `test_evidence.py::test_supplier_regressions`.
-- Live stock is described in the README as an unknown-quantity placeholder for the default product; the approval flow is therefore not exercised against live stock (README "Known gaps"; sweep SKIPs).
+- Live stock is described in the README as an unknown-quantity placeholder for the default product; the live probe uses `463380` instead and rejects unresolved evidence; the approval flow remains untested against live stock.
 
 **Policy rules**
 - Policy branches were extended in `test_edges.py` (currency outside authority, missing authority, product scope unconfigured, outside-scope substitution, an unknown exception rule). Not checked by name: `SUBSTITUTION_FORBIDDEN`, `LACTOSE_FREE_UNVERIFIED`, `MILK_FREE_UNVERIFIED` (unverified: re-grep before relying on this).
@@ -208,7 +208,7 @@ Each item is traced to code I read.
 | Test | Why |
 | --- | --- |
 | `test_http.py::test_input_validation_and_api_errors` (`/health/live`) | Repeated by `tests/ci.sh`, which polls `/health/live` before running anything |
-| Sweep `message without provider` | SKIPs when a provider is configured, so on such a server it checks nothing; CI never configures one |
+| Sweep `message CSRF enforced` | Checks CSRF rejection only; missing-provider behavior is covered by backend tests |
 | `test_workflow.py::test_stock_change_blocks_old_revision` | Asserts only the new revision's outcome and no approval id. Does not check the old approval or that commit is blocked |
 | `test_workflow.py::test_competing_decisions_and_commit` | Result depends on thread timing. Assertions allow several valid orderings; it would catch only a flagrant contradiction |
 | `test_upstream_mode.py::test_auto_with_key_uses_live_client`, `test_explicit_fixture_ignores_a_configured_key` | Check only class type; no behaviour |

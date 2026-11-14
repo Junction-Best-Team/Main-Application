@@ -79,6 +79,8 @@ PY
 else
   step "Sweep setup: live mode with your .env (full catalog must already be ingested)"
   export UPSTREAM_MODE=live
+  step "Read-only live supplier price and availability check"
+  uv run python tests/sweep/check_live.py
 fi
 
 export SECURE_COOKIES=false PUBLIC_BASE_URL="$BASE" DEMO_BASE_URL="$BASE" LLM_API_KEY=""

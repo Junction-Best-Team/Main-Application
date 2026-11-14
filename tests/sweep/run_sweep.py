@@ -8,8 +8,8 @@ serves the chat and purchase endpoints end to end". It needs no LLM, no Valio ke
 The internal assistant's tools (search_products, get_product, get_purchase_policy,
 check_price_and_availability, prepare_order, get_proposal, saved receipts) run only inside a chat
 turn driven by a paid LLM provider, so they are exercised by the scripted-provider pytest suites
-(tests/test_agent*.py), not here. The sweep checks that a chat turn without a provider fails with
-an honest error rather than a pretend answer.
+(tests/test_agent*.py), not here. The sweep checks message CSRF rejection only; it never submits
+an authenticated chat turn, even when the target server has an LLM provider configured.
 
     uv run python tests/sweep/run_sweep.py                 # DEMO_BASE_URL or http://localhost:8000
     uv run python tests/sweep/run_sweep.py --strict        # a SKIP counts as a failure
@@ -153,26 +153,16 @@ class Sweep:
         need(missing.status_code == 404, f"unknown conversation gave {missing.status_code}")
         return "listed; fetched; unknown id is 404"
 
-    def message_without_provider_fails_honestly(self):
+    def message_csrf_enforced(self):
         if not self.conversation:
             raise Skip("no conversation was created")
         url = f"/api/conversations/{self.conversation}/messages"
         body = {"text": "I need milk.", "idempotency_key": "sweep-msg-" + str(uuid4())}
         refused = self.http.post(url, json=body, headers={"Origin": self.base})
         need(refused.status_code == 403, f"message without CSRF gave {refused.status_code}")
-        r = self.http.post(url, json=body, headers=self.headers())
-        if r.status_code == 200:
-            raise Skip("an LLM provider is configured on this server; the sweep never spends it")
-        need(
-            r.status_code in (502, 503) and "LLM" in r.text,
-            f"expected an honest provider error, got {r.status_code}: {r.text[:160]}",
-        )
         detail = self.http.get(f"/api/conversations/{self.conversation}").json()
-        need(
-            all(m["role"] != "assistant" for m in detail["messages"]),
-            "an assistant reply was invented without a provider",
-        )
-        return f"HTTP {r.status_code} provider error, no pretend assistant message"
+        need(detail["messages"] == [], "a refused message created data")
+        return "message without CSRF refused; no chat turn submitted or stored"
 
     def purchases_and_approvals(self):
         for path in ("/api/purchases", "/api/approvals"):
@@ -220,7 +210,7 @@ class Sweep:
             ("CSRF and Origin enforced", self.csrf_enforced),
             ("create conversation (+ retry)", self.conversation_create_and_retry),
             ("list and get conversation", self.conversation_list_and_get),
-            ("message without provider", self.message_without_provider_fails_honestly),
+            ("message CSRF enforced", self.message_csrf_enforced),
             ("purchases and approvals", self.purchases_and_approvals),
             ("confirm and decide controls", self.confirmation_and_decision_controls),
             ("logout", self.logout_closes_the_session),
@@ -243,7 +233,7 @@ def main():
         print(f"{status:4}  {name:<{width}}  {detail}")
     counts = {s: sum(1 for _, x, _ in sweep.results if x == s) for s in ("PASS", "SKIP", "FAIL")}
     print(f"\n{counts['PASS']} passed, {counts['SKIP']} skipped, {counts['FAIL']} failed")
-    print(f"upstream commercial data in this run: {sweep.mode.upper()}")
+    print(f"configured upstream mode: {sweep.mode.upper()} (HTTP sweep does not query the supplier)")
     bad = counts["FAIL"] or (args.strict and counts["SKIP"])
     sys.exit(1 if bad else 0)
 
