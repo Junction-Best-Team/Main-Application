@@ -59,6 +59,8 @@ resource "kubernetes_config_map_v1" "runtime" {
     namespace = kubernetes_namespace_v1.aimo.metadata[0].name
   }
   data = {
+    LLM_PROVIDER              = "google"
+    GUARDRAIL_PROVIDER        = "google"
     LLM_BASE_URL              = var.llm_base_url
     LLM_MODEL                 = var.llm_model
     LLM_TIMEOUT_SECONDS       = "45"
@@ -69,7 +71,7 @@ resource "kubernetes_config_map_v1" "runtime" {
     SECURE_COOKIES            = "true"
     UPSTREAM_MODE             = var.upstream_mode
     VALIO_AIMO_BASE_URL       = "https://junction26.valioaimo.fi"
-    EMBEDDING_BACKEND         = "sentence_transformers"
+    EMBEDDING_BACKEND         = "google"
     # Model name/revision use the application's shared image/runtime pin.
     HF_HUB_OFFLINE         = "1"
     TOKENIZERS_PARALLELISM = "false"
@@ -82,7 +84,7 @@ resource "kubernetes_secret_v1" "worker" {
     namespace = kubernetes_namespace_v1.aimo.metadata[0].name
   }
   data = merge({ for key, value in var.runtime_secrets : key => value if contains([
-    "LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL", "VALIO_AIMO_API_KEY",
+    "LLM_API_KEY", "LLM_PROVIDER", "GUARDRAIL_PROVIDER", "LLM_BASE_URL", "LLM_MODEL", "VALIO_AIMO_API_KEY",
     "GEMINI_API_KEY", "CLOUDINARY_URL", "RECIPE_IMAGES_ENABLED", "RECIPE_IMAGE_MODEL",
     "RECIPE_IMAGE_TIMEOUT_SECONDS", "RECIPE_IMAGE_HOURLY_LIMIT",
     "SEARCH_API_KEY", "EMBEDDING_BACKEND", "EMBEDDING_MODEL", "EMBEDDING_MODEL_REVISION",
@@ -93,7 +95,7 @@ resource "kubernetes_secret_v1" "worker" {
   })
   # Releases own only these fields; Terraform retains all other Secret settings.
   lifecycle {
-    ignore_changes = [data["LLM_API_KEY"], data["LLM_BASE_URL"], data["LLM_MODEL"], data["GEMINI_API_KEY"], data["CLOUDINARY_URL"]]
+    ignore_changes = [data["LLM_API_KEY"], data["LLM_PROVIDER"], data["GUARDRAIL_PROVIDER"], data["LLM_BASE_URL"], data["LLM_MODEL"], data["GEMINI_API_KEY"], data["CLOUDINARY_URL"]]
   }
 }
 

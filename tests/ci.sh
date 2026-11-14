@@ -64,7 +64,7 @@ with psycopg.connect(urlunsplit(url._replace(path="/postgres")), autocommit=True
     if not c.execute("SELECT 1 FROM pg_database WHERE datname=%s", (name,)).fetchone():
         c.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
 PY
-  export EMBEDDING_BACKEND=fixture UPSTREAM_MODE=fixture VALIO_AIMO_API_KEY="" LLM_API_KEY=""
+  export EMBEDDING_BACKEND=fixture UPSTREAM_MODE=fixture VALIO_AIMO_API_KEY="" LLM_API_KEY="" GEMINI_API_KEY=""
   export DEMO_BUYER_PASSWORD="ci-buyer-$(head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
   export APPROVAL_SESSION_SECRET="ci-session-$(head -c 36 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
   aimo_cli migrate
@@ -83,7 +83,7 @@ else
   uv run python tests/sweep/check_live.py
 fi
 
-export SECURE_COOKIES=false PUBLIC_BASE_URL="$BASE" DEMO_BASE_URL="$BASE" LLM_API_KEY=""
+export SECURE_COOKIES=false PUBLIC_BASE_URL="$BASE" DEMO_BASE_URL="$BASE" LLM_API_KEY="" GEMINI_API_KEY=""
 
 step "Start server on ${BASE}"
 if [ "${CI_COVERAGE:-0}" = 1 ]; then

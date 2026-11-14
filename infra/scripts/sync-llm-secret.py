@@ -28,10 +28,16 @@ def sync(environ=None):
         _ = url.port
     except ValueError:
         valid_url = False
-    if not namespace.strip() or (key.strip() and (not model.strip() or not valid_url)):
+    if not namespace.strip() or (not google.strip() and key.strip() and (not model.strip() or not valid_url)):
         raise SystemExit("Set NAMESPACE, LLM_API_KEY, a valid HTTPS LLM_BASE_URL and LLM_MODEL.")
-    desired = {"LLM_API_KEY": key, "LLM_BASE_URL": base_url, "LLM_MODEL": model} if key.strip() else {}
-    if google.strip() or cloudinary.strip():
+    desired = {"LLM_API_KEY": key, "LLM_BASE_URL": base_url, "LLM_MODEL": model} if key.strip() and not google.strip() else {}
+    if google.strip():
+        # This release switches the active provider to Google. Old OpenRouter
+        # model variables must not be submitted to Google's native endpoint.
+        native_model = model if model.startswith("gemini-") else "gemini-4-carbon"
+        desired.update(GEMINI_API_KEY=google, LLM_PROVIDER="google",
+                       GUARDRAIL_PROVIDER="google", LLM_MODEL=native_model)
+    if cloudinary.strip():
         try:
             image_url = urlsplit(cloudinary)
             valid_cloudinary = image_url.scheme == "cloudinary" and image_url.hostname and image_url.username and image_url.password and not (image_url.path or image_url.port or image_url.query or image_url.fragment)
@@ -39,7 +45,7 @@ def sync(environ=None):
             valid_cloudinary = False
         if not google.strip() or not valid_cloudinary:
             raise SystemExit("Supply both GEMINI_API_KEY and a valid CLOUDINARY_URL for images.")
-        desired.update(GEMINI_API_KEY=google, CLOUDINARY_URL=cloudinary)
+        desired.update(CLOUDINARY_URL=cloudinary)
     try:
         current = subprocess.run([
             "kubectl", "-n", namespace, "get", "secret", "aimo-worker-runtime", "-o", "json",

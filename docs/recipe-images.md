@@ -50,8 +50,9 @@ sensitive content. Temporary hackathon accounts/credits must be retained or
 replaced before their expiry for images to remain available.
 
 Illustrations are not source recipe photographs or proof of ingredients,
-allergens, portion sizes, product availability or purchasing authority. No model,
-embedding, guardrail or purchase policy is changed by this tool.
+allergens, portion sizes, product availability or purchasing authority. The image
+tool does not change purchasing policy. Chat, guardrails and embeddings now also
+use Google through separate adapters; see [model configuration](google-models.md).
 
 Provider contracts: [Google images](https://aistudio.google.com/docs/image-generation),
 [Cloudinary signed upload](https://cloudinary.com/documentation/image_upload_api_reference#upload_method),

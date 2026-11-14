@@ -49,6 +49,10 @@ MANIFEST: dict[str, list[tuple[str, ...]]] = {
         ("trigger", "policy_changes", "immutable_policy_changes"),
         ("function", "save_buyer_policy(text,integer,jsonb)"),
     ],
+    "015_recipe_images.sql": [
+        ("column", "conversation_messages", "image"),
+        ("table", "recipe_image_jobs"),
+    ],
 }
 
 _RELATION = "SELECT to_regclass(%s) IS NOT NULL"

@@ -234,14 +234,18 @@ def test_persisted_purchase_context_is_minimised(monkeypatch, service, buyer, re
     assert all(m["role"] in ("user", "assistant") for m in seen)
 
 
-def test_guard_enforces_by_default_with_one_setting():
+def test_guard_enforces_by_default_with_google_provider():
     from aimo.config import Settings
 
     fields = Settings.model_fields
     assert fields["guardrail_mode"].default == "enforce"
-    assert [f for f in fields if f.startswith(("guardrail_", "chat_max_"))] == ["guardrail_mode"]
+    assert fields["guardrail_provider"].default == "google"
+    assert [f for f in fields if f.startswith(("guardrail_", "chat_max_"))] == [
+        "guardrail_provider",
+        "guardrail_mode",
+    ]
     example = open(os.path.join(os.path.dirname(__file__), "..", ".env.example")).read()
     assert "GUARDRAIL_MODE=enforce" in example
     assert [
         line for line in example.splitlines() if line.startswith(("GUARDRAIL_", "CHAT_MAX"))
-    ] == ["GUARDRAIL_MODE=enforce"]
+    ] == ["GUARDRAIL_PROVIDER=google", "GUARDRAIL_MODE=enforce"]

@@ -4,7 +4,7 @@ Three independently deployed apps serve chat purchasing: a React/Nginx frontend,
 
 The current [product migration](docs/chat-purchasing.md) overrides the external-agent entry points in the [original brief](docs/brief.md). The underlying purchasing controls remain. [Infrastructure](infra/README.md) is optional and operator-managed; this migration does not apply Terraform, deploy or enable releases.
 
-See the [architecture diagrams](docs/architecture.md) for the system overview, purchase confirmation flow and code map. The assistant keeps explicitly saved buyer-shared and personal preferences across conversations; see [buyer and user memory](docs/memory.md) (`/api/memories`, migration 012). Memory never grants purchasing authority. [Agent guardrails](docs/guardrails.md) separates deterministic controls from the TypeSafe Jev checks, which enforce by default using the OpenRouter `LLM_API_KEY` (`GUARDRAIL_MODE=enforce|shadow|off`).
+See the [architecture diagrams](docs/architecture.md) for the system overview, purchase confirmation flow and code map. The assistant keeps explicitly saved buyer-shared and personal preferences across conversations; see [buyer and user memory](docs/memory.md) (`/api/memories`, migration 012). Memory never grants purchasing authority. [Agent guardrails](docs/guardrails.md) separates deterministic controls from the Gemini Decision 1 checks, which enforce by default using the server-side `GEMINI_API_KEY` (`GUARDRAIL_MODE=enforce|shadow|off`).
 
 ## Working in parallel
 
@@ -66,13 +66,13 @@ uv run aimo serve                    # API terminal
 # In separate terminals: uv run aimo worker, and npm run dev --prefix frontend
 ```
 
-For hosted Qwen3 Embedding 8B and shortlist reranking through OpenRouter, follow the [hosted search migration and cutover](docs/hosted-search.md). Existing deployments keep the local model until explicitly migrated and reindexed.
+Google is the default for embeddings and shortlist ranking. Existing installations need the [Google model and index cutover](docs/google-models.md); changing configuration cannot reuse old vectors. The [OpenRouter profile](docs/hosted-search.md) remains an explicit legacy option.
 
-The first import downloads the pinned `intfloat/multilingual-e5-small` model and embeds the catalog on CPU. Subsequent imports reuse unchanged text embeddings. Publication is atomic: failures leave the old generation active. Updated snapshots require an explicitly verified `--expected-count` and `--expected-sha256`. There is no import on requests or startup. `aimo ingest` always builds a new generation, while `aimo sync-catalog` skips a snapshot whose hash, embedding profile, import profile and complete row count already match the active catalog. Only one ingestion run (either command) can hold the database lock at a time. Imports retain withdrawal markers for explicit purchase denial while excluding withdrawn products from discovery. Publication retains the active and previous generation's product/vector rows by default (`CATALOG_GENERATIONS_TO_KEEP=2`). Generation metadata, reusable embedding cache and immutable purchase snapshots remain. Semantic retrieval ranks the filtered active generation exactly, avoiding filtered approximate-index recall loss at this MVP catalog size.
+Imports use Gemini Embedding 2 through the private `GEMINI_API_KEY`; uncached documents consume Google quota/credits. Subsequent imports reuse unchanged text embeddings. Publication is atomic: failures leave the old generation active. Updated snapshots require an explicitly verified `--expected-count` and `--expected-sha256`. There is no import on requests or startup. `aimo ingest` always builds a new generation, while `aimo sync-catalog` skips a snapshot whose hash, embedding profile, import profile and complete row count already match the active catalog. Only one ingestion run (either command) can hold the database lock at a time. Imports retain withdrawal markers for explicit purchase denial while excluding withdrawn products from discovery. Publication retains the active and previous generation's product/vector rows by default (`CATALOG_GENERATIONS_TO_KEEP=2`). Generation metadata, reusable embedding cache and immutable purchase snapshots remain. Semantic retrieval ranks the filtered active generation exactly, avoiding filtered approximate-index recall loss at this MVP catalog size.
 
 For a quick authored-fixture catalog, use `uv run aimo fixture-catalog` instead of `ingest`. Set `EMBEDDING_BACKEND=fixture` in `.env` only when you also want deterministic fake embeddings; ingestion and serving must use the same setting. The default uses the real model, including for a small fixture catalog. `UPSTREAM_MODE=fixture` is independent: commercial prices/stock remain invented unless explicitly switched to `live` with private credentials. There is no silent live-to-fixture fallback.
 
-Run `docker compose --profile app up --build` after setup, then open [chat purchasing](http://localhost:8000/). Username: **buyer**. Read the generated `DEMO_BUYER_PASSWORD` privately from `.env`. Configure `LLM_API_KEY` privately for chat; `LLM_BASE_URL` and `LLM_MODEL` select the conversational provider independently of local embeddings. The default main model is `anthropic/claude-sonnet-5.5` via OpenRouter. The browser never receives provider/API keys. `SECURE_COOKIES=false` is for localhost HTTP only. Hosted deployments require HTTPS and `SECURE_COOKIES=true`. See [operational logging](docs/logging.md) for request/turn correlation, safe error diagnostics, model settings and existing-deployment overrides.
+Run `docker compose --profile app up --build` after setup, then open [chat purchasing](http://localhost:8000/). Username: **buyer**. Read the generated `DEMO_BUYER_PASSWORD` privately from `.env`. Configure `GEMINI_API_KEY` privately for chat, semantic checks and search. The default chat model is `gemini-4-carbon`; `LLM_PROVIDER=google`, `GUARDRAIL_PROVIDER=google` and `EMBEDDING_BACKEND=google` select the native Google adapters. The browser never receives provider/API keys. `SECURE_COOKIES=false` is for localhost HTTP only. Hosted deployments require HTTPS and `SECURE_COOKIES=true`. See [operational logging](docs/logging.md) for request/turn correlation, safe error diagnostics, model settings and existing-deployment overrides.
 
 For frontend development, run `npm run dev --prefix frontend` and temporarily set `PUBLIC_BASE_URL=http://localhost:5173` for the backend. Vite proxies `/api`; production serves built assets from the separate frontend container, with Traefik routing API/SSE directly to FastAPI. The source of the browser's generated types is Python: `uv run python scripts/export_schema.py && npm run types --prefix frontend`.
 
@@ -176,9 +176,11 @@ schema/grant Job, its one-time Secret provisioning, and image rollback limitatio
 
 ### Recipe planning
 
-The optional [shared Google API helper](docs/google-api.md) provides native chat,
-image, embedding and decision calls with a server-side `GEMINI_API_KEY`. It does
-not change the app's active providers.
+The [shared Google API helper](docs/google-api.md) now powers chat (Gemini 4 Carbon),
+guardrails and relevance ranking (Gemini Decision 1), product/recipe embeddings
+(Gemini Embedding 2), and images. One server-side `GEMINI_API_KEY` authenticates
+directly to Google. Existing installations need the coordinated
+[model and index cutover](docs/google-models.md) before rollout.
 
 The [recipe illustration tool](docs/recipe-images.md) generates an optional Google
 image, hosts it on Cloudinary, and saves it beside the assistant's text in chat.
@@ -188,5 +190,5 @@ recipe embeddings/search, server-scaled saved plans, reviewed product matching a
 complete-basket checks. Recipe tools are always available to the chat agent; import
 recipes explicitly after migrations (until then they report `RECIPES_NOT_READY`).
 Purchasing through a recipe additionally needs reviewed forms and product evidence.
-Qwen recipe search reuses PR #34's hosted provider. Dataset import is separate from
+Recipe search uses the configured Google embedding profile. Dataset import is separate from
 the release migration Job and from product-catalog ingestion.

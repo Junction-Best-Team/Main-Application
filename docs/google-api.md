@@ -70,10 +70,11 @@ may already have incurred cost. Caller-supplied clients remain open; use a conte
 manager for connection pooling. This is a synchronous helper; use it in workers
 or a threadpool rather than blocking an async request handler.
 
-This adds a reusable client only. Chat, Jev guardrails, embeddings, reranking,
-purchasing controls and deployment settings keep their existing providers.
-Switching them requires separate adapters/evaluation; embedding changes require
-reindexing products and recipes. Hackathon credentials are temporary.
+The helper remains portable. Application adapters now use it for Google chat,
+semantic checks, embeddings, relevance ranking and images. See the
+[model/index cutover](google-models.md) before switching an existing installation;
+products and recipes must be reindexed. Purchasing authority stays in deterministic
+application code. Hackathon credentials are temporary.
 
 Official contracts: [generateContent](https://aistudio.google.com/docs/text-generation),
 [image generation](https://aistudio.google.com/docs/image-generation),

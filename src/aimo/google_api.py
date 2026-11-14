@@ -1,7 +1,7 @@
 """Portable Google Gemini REST helper. Requires only httpx and the standard library.
 
 Native responses (including function-call thought signatures and image bytes) are
-returned unchanged. This module does not switch any application provider.
+returned unchanged. Application provider selection belongs to its adapters.
 """
 
 import json

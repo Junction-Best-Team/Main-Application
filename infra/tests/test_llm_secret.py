@@ -101,7 +101,7 @@ class UnchangedSecretTest(unittest.TestCase):
 
 
 class ImageSecretTest(unittest.TestCase):
-    def test_image_only_release_preserves_chat_and_other_secret_fields(self):
+    def test_google_release_selects_native_chat_and_decisions_without_exposing_keys(self):
         env = {"NAMESPACE": "junction", "GEMINI_API_KEY": "synthetic-google",
                "CLOUDINARY_URL": "cloudinary://key:synthetic-cloud@demo"}
         output = io.StringIO()
@@ -110,17 +110,28 @@ class ImageSecretTest(unittest.TestCase):
         ]) as run, contextlib.redirect_stdout(output):
             self.assertTrue(helper.sync(env))
         desired = json.loads(run.call_args.kwargs["input"])["stringData"]
-        self.assertEqual(set(desired), {"GEMINI_API_KEY", "CLOUDINARY_URL"})
+        self.assertEqual(desired, {"GEMINI_API_KEY": "synthetic-google",
+                                  "CLOUDINARY_URL": "cloudinary://key:synthetic-cloud@demo",
+                                  "LLM_PROVIDER": "google", "GUARDRAIL_PROVIDER": "google",
+                                  "LLM_MODEL": "gemini-4-carbon"})
         self.assertNotIn("synthetic-google", " ".join(run.call_args.args[0]) + output.getvalue())
         self.assertNotIn("synthetic-cloud", " ".join(run.call_args.args[0]) + output.getvalue())
 
     def test_partial_image_configuration_fails_before_cluster_access(self):
-        for fields in ({"GEMINI_API_KEY": "synthetic-google"},
-                       {"CLOUDINARY_URL": "cloudinary://key:secret@demo"}):
+        for fields in ({"CLOUDINARY_URL": "cloudinary://key:secret@demo"},):
             with self.subTest(fields=list(fields)), patch.object(helper.subprocess, "run") as run:
                 with self.assertRaises(SystemExit):
                     helper.sync({"NAMESPACE": "junction"} | fields)
                 run.assert_not_called()
+
+    def test_google_without_images_does_not_require_cloudinary(self):
+        with patch.object(helper.subprocess, "run", side_effect=[
+            SimpleNamespace(returncode=0, stdout='{}'), SimpleNamespace(returncode=0),
+        ]) as run:
+            self.assertTrue(helper.sync({"NAMESPACE": "junction", "GEMINI_API_KEY": "synthetic-google"}))
+        desired = json.loads(run.call_args.kwargs["input"])["stringData"]
+        self.assertEqual(desired["LLM_PROVIDER"], "google")
+        self.assertNotIn("CLOUDINARY_URL", desired)
 
 
 if __name__ == "__main__":

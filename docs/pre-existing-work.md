@@ -142,6 +142,17 @@ hackathon: reused the existing backend tests, API sweep, frontend build and
 infrastructure checks, removed coverage gating/artifact jobs and shared the
 backend setup. No new dependency, dataset, model or asset was introduced.
 
+## Native Google provider cutover — 2026-11-14
+
+At the owner's request, PR #132 reuses the portable HTTPX Google helper and the
+existing typed agent, Decisions checks, ingestion caches and versioned catalog
+cutover. New adapters select Google's Gemini 4 Carbon, Gemini Decision 1 and
+Gemini Embedding 2; no model weights or datasets are committed. The existing
+authored guardrail cases were rerun against Decision 1, with a compact result
+artifact retained for review. Live transport checks used synthetic food text and
+stub tool results only. Legacy local-model weights become an explicit worker
+build option; no new dependency or customer asset is introduced by this cutover.
+
 ## Production screen styling port — 2026-11-14
 
 Reused the visual language from designer PR #102 and `ui/DESIGN.md` in the

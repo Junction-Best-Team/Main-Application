@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
-from aimo.agent_provider import ChatProvider, check_deadline, encode
+from aimo.agent_provider import chat_provider, check_deadline, encode
 from aimo.agent_tools import ToolSession
 from aimo.chat_schemas import AgentTurn
 from aimo.config import settings
@@ -258,7 +258,7 @@ def run_turn(
 
     try:
         with httpx.Client(follow_redirects=False) as client:
-            provider = ChatProvider(cfg, client)
+            provider = chat_provider(cfg, client)
             guard = Guardrails(identity["_turn_id"], messages, client, deadline)
             session.guard = guard
             # User -> LLM: enforcement can answer with a server-authored reply and no model call.
