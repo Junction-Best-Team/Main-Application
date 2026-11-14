@@ -85,6 +85,15 @@ class Service:
     def match_ingredient(self, identity, request):
         return self.recipe_operation("match_ingredient", identity, request)
 
+    def match_ingredients(self, identity, request):
+        from aimo import recipe_batch
+        from aimo.config import settings
+        from aimo.db import Problem
+
+        if not settings().recipe_planning_enabled:
+            raise Problem("RECIPES_DISABLED", "Recipe planning has not been enabled.", 503)
+        return recipe_batch.match_ingredients(identity, request)
+
     def get_proposal(self, identity, proposal_id):
         return workflow.get_proposal(identity, proposal_id)
 
