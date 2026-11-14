@@ -295,7 +295,7 @@ test("purchase deep links survive sign-in and confirmation requires an explicit 
     {
       proposal_id: proposalId,
       revision: 1,
-      idempotency_key: `customer-confirm-${proposalId}-1`,
+      idempotency_key: expect.stringMatching(new RegExp(`^customer-confirm-${proposalId}-1-[a-f0-9]{24}$`)),
     },
   ]);
   await expect(
