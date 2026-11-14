@@ -201,3 +201,51 @@ def test_recipe_backed_prepare_holds_no_buyer_or_plan_lock_during_the_supplier_c
     monkeypatch.setattr(connector, "lookup", lookup)
     prepared = service.prepare_order(actor, request_for(plan))
     assert seen == [0] and prepared["revision"] == 1
+
+
+# --- JNP3-CNF-008 with a real clock: nothing is patched, the proposal really expires ------------
+
+
+def test_a_proposal_that_really_expires_refreshes_without_its_old_confirmation(
+    request, tmp_path, buyer, actor, service, monkeypatch
+):
+    import time
+
+    request.getfixturevalue("meal_products")
+    *_, versions = import_fixture(tmp_path)
+    plan = match_all(actor, scale_recipe(actor, ref(versions)))
+    monkeypatch.setattr(settings(), "proposal_ttl_seconds", 2)
+    first = service.prepare_order(actor, request_for(plan))
+    body = CommitRequest(proposal_id=first["proposal_id"], revision=1, idempotency_key=str(uuid4()))
+    real_commit = service.commit_order
+
+    def supplier_down(*args):
+        raise Problem("SUPPLIER_UNAVAILABLE", "down", 503)
+
+    monkeypatch.setattr(service, "commit_order", supplier_down)
+    assert code_of(lambda: conversations.confirm(buyer, first["proposal_id"], body, service)) == (
+        "SUPPLIER_UNAVAILABLE"
+    )
+    monkeypatch.setattr(service, "commit_order", real_commit)
+    assert count("customer_confirmations") == 1
+    time.sleep(2.3)  # the real clock passes the 2 second expiry; no monkeypatched time anywhere
+    assert service.get_proposal(actor, first["proposal_id"])["approval_status"] == "expired"
+    assert code_of(lambda: conversations.confirm(buyer, first["proposal_id"], body, service)) == (
+        "DECISION_CLOSED"
+    )
+    monkeypatch.setattr(settings(), "proposal_ttl_seconds", 900)
+    later = actor | {"_turn_id": str(uuid4())}
+    fresh = service.prepare_order(
+        later, request_for(get_plan(later, PlanReference(plan_id=plan["recipe_plan_id"])))
+    )
+    assert fresh["proposal_id"] == first["proposal_id"] and fresh["revision"] == 2
+    with connection() as c:
+        rows = c.execute("SELECT revision FROM customer_confirmations").fetchall()
+        old = c.execute("SELECT status FROM approvals WHERE revision=1").fetchone()
+    assert [r["revision"] for r in rows] == [1] and old["status"] == "superseded"
+    assert code_of(lambda: service.commit_order(actor, new_key(body))) == (
+        "CUSTOMER_CONFIRMATION_REQUIRED"
+    )
+    receipt = conversations.confirm(buyer, first["proposal_id"], new_key(body), service)
+    assert receipt["revision"] == 2 and receipt["status"] == "accepted_mock"
+    assert count("orders") == 1
