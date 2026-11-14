@@ -40,6 +40,9 @@ def record_progress(turn, progress):
         "error": "Response interrupted",
     }.get(progress.kind, TOOL_LABELS.get(progress.tool, "Using a tool"))
     item = ChatActivityEvent(sequence=progress.sequence, kind=progress.kind, label=label)
+    update_draft = progress.draft_updated and (
+        progress.draft is None or progress.draft.turn_id == str(turn["id"])
+    )
     with connection() as c:
         c.execute(
             """UPDATE conversation_turns SET progress=progress || %s::jsonb,
@@ -47,7 +50,7 @@ def record_progress(turn, progress):
             WHERE id=%s AND attempt=%s AND state='running' AND lease_until>%s
             AND jsonb_array_length(progress)<600
             AND COALESCE((progress->-1->>'sequence')::int,0)<%s""",
-            (js([item.model_dump()]), progress.draft_updated,
+            (js([item.model_dump()]), update_draft,
              js(progress.draft.model_dump(mode="json")) if progress.draft else None,
              turn["id"], turn["attempt"], now(), item.sequence),
         )

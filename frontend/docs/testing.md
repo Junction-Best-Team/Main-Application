@@ -81,3 +81,8 @@ for the exact-revision/explicit-action behavior regressions.
 Generated browser screenshots and Playwright results are local artifacts.
 Report the commands that passed and distinguish mocked browser coverage from
 live integration. Do not claim a production deployment from local checks.
+
+Draft-cart cases in `e2e/chat.spec.ts` stream an empty chat through unresolved ingredients,
+selected products, checked unit prices, refresh and prepared-basket confirmation at
+1440/390/320px. Drafts expose no confirmation control; fixture prices remain labelled.
+Use a dedicated Vite port with `BASE_URL` when another checkout has a local server.

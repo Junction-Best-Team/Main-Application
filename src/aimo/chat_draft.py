@@ -17,7 +17,13 @@ def cart_snapshot(session, *, plan_visible):
         evidence = session.commercial.get(pid)
         price = None
         # Display a checked price per SALES unit, not a guessed ingredient/line total.
-        if matched and evidence and pid in session.commercial_dates:
+        if (
+            matched
+            and evidence
+            and pid in session.commercial_dates
+            and evidence.get("mode") in ("fixture", "live")
+            and not any(r["severity"] in ("unresolved", "denied") for r in evidence["reasons"])
+        ):
             checked = (
                 DraftPrice.model_validate(
                     {

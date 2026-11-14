@@ -1007,3 +1007,8 @@ def test_selected_recipe_streams_unmatched_matched_and_checked_prices(monkeypatc
     session.commercial_dates = {"pasta": "2026-11-17"}
     assert cart_snapshot(session, plan_visible=True).items[0].price is None
     assert cart_snapshot(session, plan_visible=False) is None
+    session.commercial["pasta"] = evidence | {"reasons": [{
+        "code": "PRICE_OUTSIDE_VALIDITY", "severity": "unresolved",
+        "message": "Not valid for requested delivery", "product_id": "pasta",
+    }]}
+    assert cart_snapshot(session, plan_visible=True).items[0].price is None
