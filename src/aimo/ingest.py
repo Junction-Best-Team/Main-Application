@@ -25,7 +25,7 @@ import psycopg
 
 from aimo.catalog import MASS, VOLUME, normalize, rich_search_text, search_text
 from aimo.config import settings
-from aimo.db import Problem, connection, fingerprint, js
+from aimo.db import Problem, connection, fingerprint, js, now
 from aimo.search import dimensions, document_text, embed, model_key, vector
 
 # The approved static challenge snapshot. Changing either value is an explicit approval of
@@ -36,7 +36,7 @@ CATALOG_PRODUCT_COUNT = 17546
 SNAPSHOT_NAME = "valio_aimo_junction26_product_data.json"
 DOWNLOAD_PATH = "/api/products/download"
 # Bump when stored catalog semantics change in a way the source digest below cannot see.
-IMPORT_PROFILE_VERSION = 1
+IMPORT_PROFILE_VERSION = 2
 # Transaction lock: one publisher/activation at a time (unchanged since the first import).
 PUBLISH_LOCK_KEY = 893017
 # Session lock: one ingestion run (scheduled, manual Job or `aimo ingest`) at a time.
@@ -266,38 +266,98 @@ def read_snapshot(path: Path, expected_count, expected_sha, source_name=None):
         )
     if not records:
         raise CatalogError("SNAPSHOT_EMPTY", "Snapshot contains no products")
-    if not all(isinstance(p, dict) and _valid_id(p.get("id")) for p in records):
-        raise CatalogError("SNAPSHOT_MALFORMED", "Every product needs a nonempty identifier")
+    for index, record in enumerate(records):
+        if (
+            not isinstance(record, dict)
+            or not isinstance(record.get("id"), str)
+            or not record["id"].strip()
+        ):
+            raise CatalogError(
+                "SNAPSHOT_MALFORMED",
+                f"Malformed catalog record #{index}: expected an object with a non-empty string id",
+            )
     if len({p["id"] for p in records}) != len(records):
         raise CatalogError("SNAPSHOT_DUPLICATE_IDS", "Duplicate product identifiers")
     source = f"{source_name or path.name}; sha256:{actual}"
     try:
-        # Retain withdrawal facts for exact lookup/denial; discovery filters them out.
-        facts = [normalize(p, source) for p in records]
-    except (KeyError, TypeError, ValueError, ArithmeticError, AttributeError):
-        raise CatalogError(
-            "SNAPSHOT_MALFORMED", "Product records do not match the supplier schema"
-        ) from None
+        facts = [_normalize_record(index, p, source) for index, p in enumerate(records)]
+    except ValueError as error:
+        raise CatalogError("SNAPSHOT_MALFORMED", str(error)) from None
     return facts, source, actual
-
-
-def _valid_id(value):
-    return isinstance(value, (str, int)) and not isinstance(value, bool) and str(value).strip()
 
 
 # --- import ----------------------------------------------------------------------------------
 
 
 def ingest_file(
-    path: Path, expected_count=CATALOG_PRODUCT_COUNT, expected_sha=CATALOG_SHA256, *, activate=True
+    path: Path,
+    expected_count=CATALOG_PRODUCT_COUNT,
+    expected_sha=CATALOG_SHA256,
+    *,
+    activate=True,
+    carry_withdrawn=True,
 ):
     """Strict explicit import. Always builds a new generation, even for identical data."""
     with ingestion_lock() as lock:
         facts, source, actual = read_snapshot(path, expected_count, expected_sha)
-        return publish(facts, source, actual, activate=activate, lock=lock)
+        if carry_withdrawn:
+            facts += _absent_as_withdrawn(facts)
+        return publish(
+            facts,
+            source,
+            actual,
+            activate=activate,
+            lock=lock,
+            trim_withdrawn=carry_withdrawn,
+            source_product_count=expected_count,
+        )
 
 
-def publish(facts, source, source_hash, *, activate=True, lock=None):
+def _absent_as_withdrawn(facts):
+    """Products of the active catalog missing from a newer snapshot stay as withdrawn (DIS-008).
+
+    The earlier facts are kept unchanged except `deleted`, so exact lookup still returns the product
+    and every purchase check denies it as withdrawn. Their withdrawal date is carried by `publish`.
+    """
+    new_ids = [p["id"] for p in facts]
+    with connection() as c:
+        rows = c.execute(
+            "SELECT p.facts FROM products p JOIN active_catalog a ON a.generation=p.generation "
+            "WHERE NOT (p.id = ANY(%s))",
+            (new_ids,),
+        ).fetchall()
+    return [dict(r["facts"], deleted=True) for r in rows]
+
+
+def _normalize_record(index, raw, source):
+    """Normalize one supplier record; any structural defect names the record, never a bare KeyError."""
+    where = f"Malformed catalog record #{index} (id {raw['id']})"
+    try:
+        facts = normalize(raw, source)
+        step = Decimal(facts["order_step"])
+        if not all(Decimal(size).is_finite() for size in facts["units"].values()):
+            raise ValueError("non-finite unit size")
+    except KeyError as error:
+        raise ValueError(f"{where}: missing field {error.args[0]!r}") from None
+    except (TypeError, AttributeError, ArithmeticError, ValueError) as error:
+        raise ValueError(
+            f"{where}: unexpected value or structure ({type(error).__name__})"
+        ) from None
+    if not step.is_finite() or step < 0:
+        raise ValueError(f"{where}: allowedLotSize must be a finite number of at least 0")
+    return facts
+
+
+def publish(
+    facts,
+    source,
+    source_hash,
+    *,
+    activate=True,
+    lock=None,
+    trim_withdrawn=False,
+    source_product_count=None,
+):
     if not facts or len({p["id"] for p in facts}) != len(facts):
         raise CatalogError("SNAPSHOT_DUPLICATE_IDS", "Empty or duplicate import")
     key = model_key()
@@ -328,13 +388,31 @@ def publish(facts, source, source_hash, *, activate=True, lock=None):
             lock.verify(c)
         c.execute(
             "INSERT INTO catalog_generations(id,source,source_hash,model_key,product_count,"
-            "embedding_dimensions,import_profile) VALUES(%s,%s,%s,%s,%s,%s,%s)",
-            (generation, source, source_hash, key, len(facts), dimensions(), profile),
+            "embedding_dimensions,import_profile,source_product_count) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)",
+            (
+                generation,
+                source,
+                source_hash,
+                key,
+                len(facts),
+                dimensions(),
+                profile,
+                len(facts) if source_product_count is None else source_product_count,
+            ),
         )
+        # The first date a product was withdrawn wins; a product that returns clears it.
+        prior = {
+            r["id"]: r["withdrawn_since"]
+            for r in c.execute(
+                "SELECT p.id, p.withdrawn_since FROM products p JOIN active_catalog a "
+                "ON a.generation=p.generation WHERE p.withdrawn_since IS NOT NULL"
+            )
+        }
+        stamp = now()
         with c.cursor() as cur:
             cur.executemany(
-                "INSERT INTO products(generation,id,gtin,search_text,facts,embedding) "
-                "SELECT %s,%s,%s,%s,%s,embedding FROM embedding_cache WHERE model_key=%s AND text_hash=%s",
+                "INSERT INTO products(generation,id,gtin,search_text,facts,embedding,withdrawn_since) "
+                "SELECT %s,%s,%s,%s,%s,embedding,%s FROM embedding_cache WHERE model_key=%s AND text_hash=%s",
                 [
                     (
                         generation,
@@ -342,6 +420,7 @@ def publish(facts, source, source_hash, *, activate=True, lock=None):
                         p.get("gtin"),
                         document_text(p),
                         js(p),
+                        (prior.get(p["id"]) or stamp) if p["deleted"] else None,
                         key,
                         fingerprint(document_text(p)),
                     )
@@ -352,10 +431,12 @@ def publish(facts, source, source_hash, *, activate=True, lock=None):
                 raise CatalogError("PUBLISH_INCOMPLETE", "Incomplete product import")
         if activate:
             _activate(c, generation)
+        trimmed = _cleanup(c, WITHDRAWN_LIMIT)["removed"] if activate and trim_withdrawn else 0
     return {
         "generation": str(generation),
-        "products": len(facts),
-        "withdrawn_products": sum(bool(p["deleted"]) for p in facts),
+        "products": len(facts) - trimmed,
+        "withdrawn_products": sum(bool(p["deleted"]) for p in facts) - trimmed,
+        "trimmed_withdrawn": trimmed,
         "new_embeddings": generated,
         "reused_embeddings": len(text_by_hash) - generated,
         "active": activate,
@@ -420,11 +501,22 @@ def _activate(c, generation):
         "INSERT INTO active_catalog(singleton,generation) VALUES(true,%s) ON CONFLICT(singleton) DO UPDATE SET generation=excluded.generation",
         (generation,),
     )
+    # Retain rollback generations that differ from the new one. A rerun of an identical snapshot
+    # (same source hash and embedding model) must not consume the only different rollback target.
     c.execute(
         """DELETE FROM products WHERE generation <> %s AND generation NOT IN (
         SELECT id FROM catalog_generations WHERE id <> %s
+        AND NOT (source_hash=(SELECT source_hash FROM catalog_generations WHERE id=%s)
+                 AND model_key=(SELECT model_key FROM catalog_generations WHERE id=%s))
         ORDER BY (id=%s) DESC NULLS LAST,created_at DESC,id DESC LIMIT %s)""",
-        (generation, generation, previous_id, settings().catalog_generations_to_keep - 1),
+        (
+            generation,
+            generation,
+            generation,
+            generation,
+            previous_id,
+            settings().catalog_generations_to_keep - 1,
+        ),
     )
 
 
@@ -475,7 +567,10 @@ def rebuild_reason(state, source_hash, expected_count):
         return "embedding_profile_changed"
     if state["import_profile"] != import_profile():
         return "import_profile_changed"
-    if state["product_count"] != expected_count or state["stored_products"] != expected_count:
+    if (
+        state["source_product_count"] != expected_count
+        or state["stored_products"] != state["product_count"]
+    ):
         return "active_catalog_incomplete"
     return None
 
@@ -511,7 +606,15 @@ def sync_catalog(*, file=None, expected_sha=CATALOG_SHA256, expected_count=CATAL
                     "reused_embeddings": 0,
                 }
             facts, source, actual = read_snapshot(path, expected_count, expected_sha, SNAPSHOT_NAME)
-            result = publish(facts, source, actual, lock=lock)
+            facts += _absent_as_withdrawn(facts)
+            result = publish(
+                facts,
+                source,
+                actual,
+                lock=lock,
+                trim_withdrawn=True,
+                source_product_count=expected_count,
+            )
     return {
         "outcome": "updated",
         "reason": reason,
@@ -558,3 +661,58 @@ def run_sync(**kwargs):
         **result,
         "duration_seconds": round(time.monotonic() - started, 1),
     }, code
+
+
+WITHDRAWN_LIMIT = Decimal("0.10")
+
+
+def cleanup_withdrawn(max_share=None):
+    """Remove withdrawn products from the active catalog that no pending proposal includes.
+
+    `max_share=None` (DIS-011, the manual call) removes every unprotected withdrawn product.
+    With a share such as `WITHDRAWN_LIMIT` (DIS-012, run at the end of an ingestion publish) it
+    removes only the oldest by `withdrawn_since`, one at a time, until withdrawn products are at
+    most that share of the stored products of the active generation (all stored products,
+    including withdrawn, re-counted after each removal), skipping protected products.
+
+    Pending means the proposal can still be committed or refreshed: no order yet, the current
+    revision not rejected, and either live (not denied, not expired) or a saved-recipe proposal,
+    which is refreshed in place even when closed. Product ids come from the stored line snapshot.
+    History is never touched: proposals, orders and receipts keep their own copy of the facts.
+    """
+    with connection() as c:
+        c.execute("SELECT pg_advisory_xact_lock(893017)")
+        return _cleanup(c, max_share)
+
+
+def _cleanup(c, max_share):
+    """Cleanup inside a transaction that already holds the publisher lock."""
+    active = c.execute("SELECT generation FROM active_catalog").fetchone()
+    if not active:
+        return {"removed": 0, "kept_in_use": 0, "removed_ids": []}
+    generation = active["generation"]
+    rows = c.execute(
+        """SELECT id, id IN (SELECT product_id FROM catalog_protected_products)
+        AS protected FROM products
+        WHERE generation=%s AND facts->'deleted'='true'::jsonb
+        ORDER BY withdrawn_since NULLS FIRST, id""",
+        (generation,),
+    ).fetchall()
+    total = c.execute(
+        "SELECT count(*) AS n FROM products WHERE generation=%s", (generation,)
+    ).fetchone()["n"]
+    withdrawn, doomed = len(rows), []
+    for row in rows:
+        if max_share is not None and Decimal(withdrawn) <= Decimal(total) * max_share:
+            break
+        if not row["protected"]:
+            doomed.append(row["id"])
+            withdrawn -= 1
+            total -= 1
+    if doomed:
+        c.execute("DELETE FROM products WHERE generation=%s AND id = ANY(%s)", (generation, doomed))
+        c.execute(
+            "UPDATE catalog_generations SET product_count=product_count-%s WHERE id=%s",
+            (len(doomed), generation),
+        )
+    return {"removed": len(doomed), "kept_in_use": withdrawn, "removed_ids": sorted(doomed)}

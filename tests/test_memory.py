@@ -821,9 +821,8 @@ def test_saved_memory_cannot_bypass_policy_evidence_or_confirmation(
     body = CommitRequest(
         proposal_id=basket["proposal_id"], revision=basket["revision"], idempotency_key=str(uuid4())
     )
-    problem(
-        "CUSTOMER_CONFIRMATION_REQUIRED", service.commit_order, auth.internal_agent(buyer), body
-    )
+    # A denied proposal fails policy before the confirmation gate; memory grants no authority.
+    problem("COMMIT_BLOCKED", service.commit_order, auth.internal_agent(buyer), body)
     with connection() as c:
         assert (
             c.execute("SELECT rules FROM policies WHERE buyer_id='demo-hotel'").fetchall() == before

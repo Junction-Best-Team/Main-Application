@@ -57,7 +57,6 @@ def seed():
         raise ValueError("Set private DEMO_BUYER_PASSWORD (12+) before seed")
     rules = {
         "currency": "EUR",
-        "autonomous_limit": "1500.00",
         "destinations": ["hotel-helsinki"],
         "substitution": "requires_approval",
         "overbuy": "requires_approval",
@@ -75,13 +74,13 @@ def seed():
             "INSERT INTO identities VALUES('demo-agent','demo-hotel','agent',true,%s,%s) ON CONFLICT DO NOTHING",
             (
                 "!retained-demo-agent-no-bearer-login",
-                js({"currency": "EUR", "autonomous_limit": "1500.00"}),
+                js({}),
             ),
         )
         c.execute(
             """INSERT INTO identities(id,buyer_id,role,active,credential_hash,authority)
             SELECT 'internal:' || md5(id),id,'agent',true,'!internal-no-bearer-login',
-            '{"currency":"EUR","autonomous_limit":"0"}'::jsonb FROM buyers
+            '{}'::jsonb FROM buyers
             WHERE id='demo-hotel' ON CONFLICT DO NOTHING"""
         )
         c.execute(
@@ -96,7 +95,7 @@ def seed():
                     {
                         "currency": "EUR",
                         "max_gross": "5000.00",
-                        "exceptions": ["spend", "substitution", "overbuy"],
+                        "exceptions": ["substitution", "overbuy"],
                     }
                 ),
             ),
@@ -113,9 +112,10 @@ def set_product_scope(buyer_id, product_ids):
             "SELECT * FROM policies WHERE buyer_id=%s AND version=%s",
             (buyer_id, buyer["current_policy"]),
         ).fetchone()
-        rules = policy["rules"] | {"approved_product_ids": sorted(set(product_ids))}
+        current = {k: v for k, v in policy["rules"].items() if k != "autonomous_limit"}
+        rules = current | {"approved_product_ids": sorted(set(product_ids))}
         PolicyRules.model_validate(rules)
-        if rules == policy["rules"]:
+        if rules == current:
             return policy["version"]
         version = c.execute(
             "SELECT max(version)+1 AS version FROM policies WHERE buyer_id=%s", (buyer_id,)
