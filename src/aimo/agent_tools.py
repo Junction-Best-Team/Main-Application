@@ -112,6 +112,14 @@ SearchProducts = with_examples(
 )
 ReadProduct = with_examples(ProductRequest, {"product_id": "464306"})
 ReadPolicy = with_examples(EmptyRequest, {})
+GenerateRecipeImage = with_examples(
+    RecipeImageRequest,
+    {
+        "dish": "Spaghetti carbonara",
+        "description": "Creamy spaghetti with crisp pancetta, egg yolk sauce and black pepper "
+        "on a white plate",
+    },
+)
 PriceLookup = with_examples(
     LookupRequest, {"product_ids": ["464306"], "delivery_date": "2030-01-15"}
 )
@@ -263,7 +271,7 @@ class ToolSession:
         self.image = None
         self.registry = {
             "generate_recipe_image": ToolSpec(
-                RecipeImageRequest,
+                GenerateRecipeImage,
                 "Generate and host one AI recipe illustration for this customer message. "
                 "Use for a requested picture or when a visual helps explain a discussed dish. "
                 "Send only the dish and its food appearance, no personal/customer details. "
