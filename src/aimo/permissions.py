@@ -19,6 +19,8 @@ HISTORY_TABLES = (
     "scheduled_run_events",
     "scheduled_authorization_events",
     "order_request_cancellations",
+    # Demo clock: every change of a buyer's simulated time.
+    "demo_clock_events",
 )
 
 

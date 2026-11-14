@@ -13,6 +13,9 @@ approval expiry, price validity, supplier calls, rate limits and audit timestamp
 
 from datetime import date, datetime, time, timedelta, timezone
 
+from aimo import upstream
+from aimo.config import settings
+from aimo.db import Problem, connection
 from aimo.upstream import HELSINKI
 
 # Owner Q-110: the four states and their start times, with D the delivery date (Europe/Helsinki).
@@ -60,3 +63,159 @@ def fulfilment(delivery_date: date, now: datetime, *, clock="real", accepted_at=
         "simulated": True,
         "clock": clock,
     }
+
+
+# --- the per-buyer demo clock -----------------------------------------------------------------------
+
+MAX_JUMP_DAYS = 30  # owner Q-116: per jump
+MAX_TOTAL_DAYS = 400  # per buyer, until a reset
+DAY = 86400
+
+
+def enabled():
+    """On only when the deployment enables it and supplier lookups are not live."""
+    return bool(settings().demo_clock_enabled) and upstream.effective_mode() != "live"
+
+
+def require_enabled():
+    if not enabled():
+        raise Problem("NOT_FOUND", "Not found.", 404)
+
+
+def offset_seconds(buyer_id, c=None):
+    if not enabled():
+        return 0
+    if c is None:
+        with connection() as c:
+            return offset_seconds(buyer_id, c)
+    row = c.execute(
+        "SELECT offset_seconds FROM demo_clock WHERE buyer_id=%s", (buyer_id,)
+    ).fetchone()
+    return row["offset_seconds"] if row else 0
+
+
+def app_now(buyer_id):
+    """The buyer's simulated time: real time plus their offset while the clock is on."""
+    return real_now() + timedelta(seconds=offset_seconds(buyer_id))
+
+
+def label(buyer_id, c=None):
+    """`demo` while the buyer's offset is above zero and the clock is on, else `real`."""
+    return "demo" if offset_seconds(buyer_id, c) > 0 else "real"
+
+
+def _state(real, offset):
+    return {
+        "enabled": True,
+        "real_now": real,
+        "demo_now": real + timedelta(seconds=offset),
+        "offset_seconds": offset,
+        "offset_days": offset // DAY,
+        "max_jump_days": MAX_JUMP_DAYS,
+        "max_total_days": MAX_TOTAL_DAYS,
+    }
+
+
+def state(buyer_id):
+    require_enabled()
+    return _state(real_now(), offset_seconds(buyer_id))
+
+
+def earliest_undelivered(c, buyer_id, now):
+    """The delivery date of the buyer's earliest order that is not delivered at `now`, or None."""
+    rows = c.execute(
+        """SELECT (r.request->>'delivery_date')::date AS delivery_date FROM orders o
+        JOIN proposal_revisions r ON r.proposal_id=o.proposal_id AND r.revision=o.revision
+        WHERE o.buyer_id=%s ORDER BY 1""",
+        (buyer_id,),
+    ).fetchall()
+    for row in rows:
+        if fulfilment(row["delivery_date"], now)["status"] != "delivered":
+            return row["delivery_date"]
+    return None
+
+
+def _replay(c, buyer_id, key, kind, days, to):
+    """The result of an earlier request with this key, or None. The same key for another request
+    is a conflict."""
+    old = c.execute(
+        "SELECT * FROM demo_clock_events WHERE buyer_id=%s AND idempotency_key=%s", (buyer_id, key)
+    ).fetchone()
+    if not old:
+        return None
+    if (old["kind"], old["jump_days"], old["jump_to"]) != (kind, days, to):
+        raise Problem("IDEMPOTENCY_CONFLICT", "This key already moved the clock differently.", 409)
+    return _state(old["real_at"], old["new_offset_seconds"])
+
+
+def _write(c, buyer_id, actor_id, key, kind, days, to, old, new, real):
+    c.execute(
+        """INSERT INTO demo_clock(buyer_id,offset_seconds,updated_at) VALUES(%s,%s,%s)
+        ON CONFLICT(buyer_id) DO UPDATE SET offset_seconds=EXCLUDED.offset_seconds,
+        updated_at=EXCLUDED.updated_at""",
+        (buyer_id, new, real),
+    )
+    c.execute(
+        """INSERT INTO demo_clock_events(buyer_id,actor_id,kind,jump_days,jump_to,old_offset_seconds,
+        new_offset_seconds,real_at,idempotency_key) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+        (buyer_id, actor_id, kind, days, to, old, new, real, key),
+    )
+    return _state(real, new)
+
+
+def advance(buyer_id, actor_id, *, days=None, to=None, idempotency_key):
+    """Move the buyer's clock forward by `days` (1..30) or to 06:00 Helsinki on the delivery date of
+    their earliest undelivered order (`to="delivery_day"`). At most 30 days per jump and 400 days
+    in total; forward only. The same key applies once."""
+    require_enabled()
+    if (days is None) == (to is None):
+        raise Problem("INVALID_JUMP", "Give exactly one of days or to.", 422)
+    if days is not None and (not isinstance(days, int) or not 1 <= days <= MAX_JUMP_DAYS):
+        raise Problem("INVALID_JUMP", f"A jump is 1 to {MAX_JUMP_DAYS} whole days.", 422)
+    if to is not None and to != "delivery_day":
+        raise Problem("INVALID_JUMP", "The only target is delivery_day.", 422)
+    with connection() as c:
+        c.execute("SELECT id FROM buyers WHERE id=%s FOR UPDATE", (buyer_id,))
+        replay = _replay(c, buyer_id, idempotency_key, "advance", days, to)
+        if replay:
+            return replay
+        old = offset_seconds(buyer_id, c)
+        real = real_now()
+        now = real + timedelta(seconds=old)
+        if days is not None:
+            step = days * DAY
+        else:
+            target_day = earliest_undelivered(c, buyer_id, now)
+            if target_day is None:
+                raise Problem("NO_PENDING_DELIVERY", "No order is waiting for delivery.", 409)
+            target = _start(target_day, OUT_FOR_DELIVERY_FROM)
+            if target <= now:
+                raise Problem("DEMO_CLOCK_NOT_FORWARD", "The clock is already there.", 409)
+            step = -((now - target) // timedelta(seconds=1))  # whole seconds, rounded up
+            if step > MAX_JUMP_DAYS * DAY:
+                raise Problem(
+                    "INVALID_JUMP",
+                    f"That delivery day is more than {MAX_JUMP_DAYS} days away; jump in steps.",
+                    422,
+                )
+        if old + step > MAX_TOTAL_DAYS * DAY:
+            raise Problem(
+                "DEMO_CLOCK_LIMIT", f"At most {MAX_TOTAL_DAYS} days in total; reset the clock.", 409
+            )
+        return _write(
+            c, buyer_id, actor_id, idempotency_key, "advance", days, to, old, old + step, real
+        )
+
+
+def reset(buyer_id, actor_id, *, idempotency_key):
+    """Back to real time. Recorded like a jump; the same key applies once."""
+    require_enabled()
+    with connection() as c:
+        c.execute("SELECT id FROM buyers WHERE id=%s FOR UPDATE", (buyer_id,))
+        replay = _replay(c, buyer_id, idempotency_key, "reset", None, None)
+        if replay:
+            return replay
+        old = offset_seconds(buyer_id, c)
+        return _write(
+            c, buyer_id, actor_id, idempotency_key, "reset", None, None, old, 0, real_now()
+        )

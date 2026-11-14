@@ -476,6 +476,37 @@ class OrderResponse(Model):
     explanation: str
 
 
+class DemoClockState(Model):
+    """The buyer's simulated time (demo mode only; the routes answer 404 when it is off)."""
+
+    enabled: Literal[True]
+    real_now: datetime
+    demo_now: datetime
+    offset_seconds: int
+    offset_days: int
+    max_jump_days: int
+    max_total_days: int
+
+
+class DemoClockAdvance(Model):
+    """Exactly one of `days` (1..30) or `to: "delivery_day"` (06:00 Helsinki on the delivery date
+    of the earliest undelivered order)."""
+
+    days: int | None = Field(default=None, ge=1, le=30)
+    to: Literal["delivery_day"] | None = None
+    idempotency_key: str = Field(min_length=8, max_length=120)
+
+    @model_validator(mode="after")
+    def exactly_one(self):
+        if (self.days is None) == (self.to is None):
+            raise ValueError("Give exactly one of days or to")
+        return self
+
+
+class DemoClockReset(Model):
+    idempotency_key: str = Field(min_length=8, max_length=120)
+
+
 class RevisedProposalResponse(ProposalResponse):
     status: Literal["revised"]
 
