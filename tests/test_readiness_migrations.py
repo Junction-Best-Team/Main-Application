@@ -66,6 +66,9 @@ DROPS = [
     ),
     ("DROP TRIGGER immutable_recipe_versions ON recipe_versions", "019_history_immutability.sql"),
     ("DROP TRIGGER immutable_truncate ON orders", "019_history_immutability.sql"),
+    ("DROP TABLE scheduler_identities", "020_scheduled_orders.sql"),
+    ("DROP TABLE order_request_cancellations", "020_scheduled_orders.sql"),
+    ("DROP TRIGGER sched_auth_guard ON scheduled_authorizations", "020_scheduled_orders.sql"),
 ]
 
 

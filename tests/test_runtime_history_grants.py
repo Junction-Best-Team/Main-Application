@@ -27,9 +27,22 @@ APPEND_ONLY = (
     "orders",
     "recipe_plan_revisions",
     "recipe_versions",
+    # WS-E: the scheduler's logs and the cancellations only ever INSERT (scheduler.run_event,
+    # scheduler.auth_event, schedules.event, cancellations.cancel_request) and SELECT.
+    "scheduled_run_events",
+    "scheduled_authorization_events",
+    "order_request_cancellations",
 )
 # The app updates these (status, links, locks) so they keep UPDATE and DELETE as before.
-APP_WRITES = ("proposals", "approvals", "prepare_requests", "recipe_plans", "conversation_messages")
+APP_WRITES = (
+    "proposals",
+    "approvals",
+    "prepare_requests",
+    "recipe_plans",
+    "conversation_messages",
+    "scheduled_authorizations",  # status, next run date, pause (the triggers guard the terms)
+    "scheduled_runs",  # the run's state machine
+)
 
 
 @pytest.fixture

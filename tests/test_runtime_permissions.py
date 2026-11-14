@@ -34,6 +34,8 @@ def test_runtime_can_lock_buyers_and_identities_without_provisioning_rights():
             conn.execute("DELETE FROM release_grants_test")
             assert conn.execute("SELECT id FROM buyers FOR UPDATE").fetchone()
             assert conn.execute("SELECT id FROM identities FOR SHARE").fetchone()
+            # the engine reads the mapping to find the scheduler identity
+            assert conn.execute("SELECT identity_id FROM scheduler_identities").fetchone()
             for statement in (
                 "UPDATE buyers SET id=id",
                 "UPDATE identities SET id=id",
@@ -41,6 +43,11 @@ def test_runtime_can_lock_buyers_and_identities_without_provisioning_rights():
                 "UPDATE identities SET authority=authority",
                 "UPDATE policies SET rules=rules",
                 "UPDATE internal_agents SET identity_id=identity_id",
+                # The scheduler identity mapping is provisioning data too (WS-E).
+                "UPDATE scheduler_identities SET identity_id=identity_id",
+                "INSERT INTO scheduler_identities SELECT buyer_id,identity_id FROM scheduler_identities",
+                "DELETE FROM scheduler_identities",
+                "TRUNCATE scheduler_identities",
                 "INSERT INTO buyers VALUES ('forbidden','123',1)",
                 "DELETE FROM identities",
                 "SELECT * FROM schema_migrations",

@@ -228,43 +228,52 @@ def test_the_cli_refuses_a_period_below_one_day(
     assert error.value.code == 2 and count("proposals") == 1 and count("purged_proposals") == 0
 
 
-PROTECTED = [("scheduled_runs", "proposal_id"), ("order_request_cancellations", "proposal_id"),
-             ("scheduled_runs", "run_proposal_id")]  # fmt: skip
+# The scheduler's own tables (migration 020) keep a foreign key to the proposal they concern.
+REFERENCING = {
+    "order_request_cancellations": (
+        "INSERT INTO order_request_cancellations(proposal_id,buyer_id,reason,cancelled_by) "
+        "VALUES(%(pid)s,'demo-hotel','run_disrupted','buyer')"
+    ),
+    "scheduled_runs": (
+        "INSERT INTO scheduled_runs(id,authorization_id,buyer_id,scheduled_date,delivery_date,"
+        "proposal_id) VALUES(gen_random_uuid(),%(auth)s,'demo-hotel',current_date,"
+        "current_date+1,%(pid)s)"
+    ),
+}
 
 
-@pytest.mark.parametrize(("table", "column"), PROTECTED)
+@pytest.mark.parametrize("table", sorted(REFERENCING))
 def test_a_proposal_a_protected_record_points_at_is_never_purged(
-    service, buyer, actor, request_data, table, column
+    service, buyer, actor, request_data, table
 ):
     """Owner principle: keep history, never delete a run record or a cancellation.
 
-    scheduled_runs and order_request_cancellations (scheduler tables, added elsewhere) keep a
-    foreign key to the proposal they concern. The purge skips such a proposal wherever the
-    referencing column is called, and a dry run does not count it. The tables are created here in a
-    rolled-back transaction, so this also runs where they do not exist yet.
+    scheduled_runs and order_request_cancellations keep a foreign key to the proposal they concern.
+    The purge skips such a proposal, and a dry run does not count it. Everything happens in a
+    rolled-back transaction.
     """
+    source = order(service, buyer, prepare(service, actor, request_data, "10"))
     kept = prepare(service, actor, request_data, "11")
     gone = prepare(service, actor, request_data, "12")
     with psycopg.connect(settings().database_url, row_factory=dict_row) as conn:
         try:
-            conn.execute(
-                sql.SQL(
-                    "CREATE TABLE {} (id serial PRIMARY KEY, {} uuid NOT NULL REFERENCES proposals(id))"
-                ).format(sql.Identifier(table), sql.Identifier(column))
-            )
-            conn.execute(
-                sql.SQL("INSERT INTO {} ({}) VALUES (%s)").format(
-                    sql.Identifier(table), sql.Identifier(column)
-                ),
-                (kept["proposal_id"],),
-            )
+            auth_id = conn.execute(
+                """INSERT INTO scheduled_authorizations(id,buyer_id,created_by,source_order_id,
+                create_key,create_hash,request,agreed_lines,terms_fingerprint,currency,
+                agreed_gross_total,price_ceiling_gross,delivery_offset_days,recurrence,
+                first_run_date,valid_until,next_run_date) VALUES(gen_random_uuid(),'demo-hotel',
+                'buyer',%s,'purge-test','h','{}','[]','f','EUR',10,12,1,'{}',current_date,
+                current_date+365,current_date) RETURNING id""",
+                (source["order_id"],),
+            ).fetchone()["id"]
+            conn.execute(REFERENCING[table], {"pid": kept["proposal_id"], "auth": auth_id})
             late = now() + LATE
             dry = workflow.purge_unfinished_proposals(PERIOD, as_of=late, dry_run=True, conn=conn)
             assert dry["proposals"] == 1
             result = workflow.purge_unfinished_proposals(PERIOD, as_of=late, conn=conn)
             assert result["proposals"] == 1
             remaining = {str(r["id"]) for r in conn.execute("SELECT id FROM proposals").fetchall()}
-            assert remaining == {kept["proposal_id"]}
+            assert kept["proposal_id"] in remaining and gone["proposal_id"] not in remaining
             purged = {
                 str(r["proposal_id"])
                 for r in conn.execute("SELECT proposal_id FROM purged_proposals").fetchall()
@@ -272,7 +281,7 @@ def test_a_proposal_a_protected_record_points_at_is_never_purged(
             assert purged == {gone["proposal_id"]}
         finally:
             conn.rollback()
-    assert count("proposals") == 2 and count("purged_proposals") == 0  # nothing leaked out
+    assert count("proposals") == 3 and count("purged_proposals") == 0  # nothing leaked out
 
 
 def test_as_the_restricted_runtime_role_history_cannot_be_deleted_nor_a_record_forged(
