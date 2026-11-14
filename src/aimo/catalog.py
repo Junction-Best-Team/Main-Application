@@ -121,6 +121,27 @@ def requirement_reasons(p: dict, requirements: Requirements) -> list[dict]:
             )
         elif "AM" not in p["free_from"]:
             add("MILK_FREE_UNVERIFIED", "An explicit milk-free declaration is missing.")
+    for code in requirements.free_from:
+        if code in p["allergen_conflicts"]:
+            continue
+        if code in p["allergens"]:
+            add(
+                "FREE_FROM_REQUIREMENT_VIOLATED",
+                f"Allergen {code} is declared present or may be present.",
+                "denied",
+            )
+        elif code not in p["free_from"]:
+            add("FREE_FROM_UNVERIFIED", f"An explicit {code}-free declaration is missing.")
+    if requirements.country_of_origin:
+        origin = (p.get("country_of_origin") or "").lower()
+        if not origin:
+            add("ORIGIN_UNVERIFIED", "The country of origin is not recorded.")
+        elif origin not in requirements.country_of_origin:
+            add(
+                "ORIGIN_REQUIREMENT_VIOLATED",
+                f"Country of origin {origin} is not among the requested origins.",
+                "denied",
+            )
     return reasons
 
 

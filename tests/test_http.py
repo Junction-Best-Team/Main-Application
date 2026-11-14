@@ -171,7 +171,7 @@ def test_documentation_nonce_and_scoped_csp(http):
 
 
 def test_shared_purchasing_operations_and_both_commit_outcomes(
-    service, agent, connector, request_data
+    service, agent, connector, request_data, confirm_terms
 ):
     from aimo.schemas import CommitRequest, LookupRequest, PrepareRequest, SearchRequest
 
@@ -193,6 +193,7 @@ def test_shared_purchasing_operations_and_both_commit_outcomes(
     revised = service.commit_order(agent, CommitRequest.model_validate(payload))
     assert revised["status"] == "revised" and revised["revision"] == 2
     assert revised["snapshot"]["gross_total"] == "18.70"
+    confirm_terms(revised)
     receipt = service.commit_order(agent, CommitRequest.model_validate(payload | {"revision": 2}))
     assert receipt["status"] == "accepted_mock"
     assert (

@@ -9,6 +9,7 @@ from pydantic import (
     Field,
     JsonValue,
     RootModel,
+    field_validator,
     model_serializer,
     model_validator,
 )
@@ -28,6 +29,41 @@ class Model(BaseModel):
 class Requirements(Model):
     lactose_free: bool = False
     milk_free: bool = False
+    free_from: list[Annotated[str, Field(pattern=r"^[A-Za-z][A-Za-z0-9]{0,3}$")]] = Field(
+        default_factory=list,
+        max_length=8,
+        description=(
+            "Allergen codes (for example AM milk, AE, AW) the product must explicitly declare "
+            "free from. A product with no declaration is excluded, not assumed safe."
+        ),
+    )
+    country_of_origin: list[Annotated[str, Field(pattern=r"^[A-Za-z]{2}$")]] = Field(
+        default_factory=list,
+        max_length=8,
+        description=(
+            "Two-letter origin codes (for example fi, se); the product must match one. "
+            "A product with no recorded origin is excluded."
+        ),
+    )
+
+    @field_validator("free_from")
+    @classmethod
+    def _upper_codes(cls, codes):
+        return list(dict.fromkeys(code.upper() for code in codes))
+
+    @field_validator("country_of_origin")
+    @classmethod
+    def _lower_codes(cls, codes):
+        return list(dict.fromkeys(code.lower() for code in codes))
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_filters(self, handler):
+        # Keeps stored request fingerprints from before these fields existed unchanged.
+        data = handler(self)
+        for name in ("free_from", "country_of_origin"):
+            if not data.get(name):
+                data.pop(name, None)
+        return data
 
 
 class SearchRequest(Model):
@@ -38,7 +74,8 @@ class SearchRequest(Model):
 
 class LookupRequest(Model):
     product_ids: list[str] = Field(min_length=1, max_length=MAX_LOOKUP_IDS)
-    delivery_date: date
+    # Engineering guard, not an owner rule: 0001-01-01 is valid ISO but broke the supplier call path.
+    delivery_date: date = Field(ge=date(2000, 1, 1), le=date(2100, 12, 31))
 
 
 class Contribution(Model):
@@ -339,6 +376,11 @@ class CommercialEvidence(Model):
     mode: str
     observed_at: datetime
     source: CommercialSource
+    # Units (JNP3-TCT-005): net, gross and available_sales_quantity are all per one sales unit.
+    sales_unit: str | None = None
+    base_unit: str | None = None
+    price_basis: Literal["per_sales_unit"] | None = None
+    quantity_unit: str | None = None
 
 
 class LookupResponse(Model):

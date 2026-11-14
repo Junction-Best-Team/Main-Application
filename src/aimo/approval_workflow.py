@@ -413,7 +413,10 @@ def record_human_decision(identity, aid, decision: DecisionRequest):
         return render(c, *proposal(c, p["id"], identity), identity)
 
 
-def prior_result(c, identity, request):
+def prior_result(c, identity, request, *, any_key=False):
+    """Saved receipt for a repeated request. With `any_key` (customer confirmation, CNF-011) an
+    order already placed on this exact revision answers whatever the key; commit keeps its own
+    ALREADY_COMMITTED for a new key."""
     row = c.execute(
         "SELECT * FROM idempotency WHERE buyer_id=%s AND key=%s",
         (identity["buyer_id"], request.idempotency_key),
@@ -429,6 +432,25 @@ def prior_result(c, identity, request):
         return c.execute("SELECT receipt FROM orders WHERE id=%s", (row["order_id"],)).fetchone()[
             "receipt"
         ]
+    if any_key:
+        proposal(c, request.proposal_id, identity)
+        order = c.execute(
+            "SELECT revision,receipt FROM orders WHERE proposal_id=%s AND buyer_id=%s",
+            (request.proposal_id, identity["buyer_id"]),
+        ).fetchone()
+        if order and order["revision"] == request.revision:
+            used = c.execute(
+                "SELECT proposal_id,revision FROM customer_confirmations WHERE buyer_id=%s AND key=%s",
+                (identity["buyer_id"], request.idempotency_key),
+            ).fetchone()
+            if used and (
+                str(used["proposal_id"]) != str(request.proposal_id)
+                or used["revision"] != request.revision
+            ):
+                raise Problem(
+                    "IDEMPOTENCY_CONFLICT", "This confirmation key identifies different terms."
+                )
+            return order["receipt"]
     return None
 
 
@@ -521,10 +543,13 @@ def commit_order(identity, request: CommitRequest, connector):
                 "status": "revised",
                 **render(c, *proposal(c, p["id"], identity), identity),
             }
-        # Internal agents can prepare, but a model can never authorize a purchase.
-        if c.execute(
-            "SELECT 1 FROM internal_agents WHERE identity_id=%s", (identity["id"],)
-        ).fetchone():
+        # Any agent role can prepare, but no agent can authorize a purchase: it needs a
+        # customer confirmation recorded against this exact revision and fingerprint. Blocked
+        # outcomes skip this gate and are refused as COMMIT_BLOCKED by authorize_commit below.
+        if identity["role"] == "agent" and evaluated["policy_outcome"] in (
+            "ready_to_commit",
+            "approval_required",
+        ):
             confirmations = c.execute(
                 """SELECT actor_id FROM customer_confirmations
                 WHERE proposal_id=%s AND revision=%s AND fingerprint=%s""",
