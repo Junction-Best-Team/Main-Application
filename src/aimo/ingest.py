@@ -267,8 +267,15 @@ def read_snapshot(path: Path, expected_count, expected_sha, source_name=None):
     if not records:
         raise CatalogError("SNAPSHOT_EMPTY", "Snapshot contains no products")
     for index, record in enumerate(records):
-        if not isinstance(record, dict) or not isinstance(record.get("id"), str) or not record["id"].strip():
-            raise CatalogError("SNAPSHOT_MALFORMED", f"Malformed catalog record #{index}: expected an object with a non-empty string id")
+        if (
+            not isinstance(record, dict)
+            or not isinstance(record.get("id"), str)
+            or not record["id"].strip()
+        ):
+            raise CatalogError(
+                "SNAPSHOT_MALFORMED",
+                f"Malformed catalog record #{index}: expected an object with a non-empty string id",
+            )
     if len({p["id"] for p in records}) != len(records):
         raise CatalogError("SNAPSHOT_DUPLICATE_IDS", "Duplicate product identifiers")
     source = f"{source_name or path.name}; sha256:{actual}"
@@ -287,14 +294,21 @@ def _valid_id(value):
 
 
 def ingest_file(
-    path: Path, expected_count=CATALOG_PRODUCT_COUNT, expected_sha=CATALOG_SHA256, *, activate=True, carry_withdrawn=True
+    path: Path,
+    expected_count=CATALOG_PRODUCT_COUNT,
+    expected_sha=CATALOG_SHA256,
+    *,
+    activate=True,
+    carry_withdrawn=True,
 ):
     """Strict explicit import. Always builds a new generation, even for identical data."""
     with ingestion_lock() as lock:
         facts, source, actual = read_snapshot(path, expected_count, expected_sha)
         if carry_withdrawn:
             facts += _absent_as_withdrawn(facts)
-        return publish(facts, source, actual, activate=activate, lock=lock, trim_withdrawn=carry_withdrawn)
+        return publish(
+            facts, source, actual, activate=activate, lock=lock, trim_withdrawn=carry_withdrawn
+        )
 
 
 def _absent_as_withdrawn(facts):

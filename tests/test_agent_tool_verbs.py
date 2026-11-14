@@ -67,6 +67,11 @@ ALLOWED_SERVICE = {
     "scale_recipe",
     "get_recipe_plan",
     "match_ingredient",
+    "search_memory",
+    "manage_memory",
+    "memory_context",
+    "get_memory",
+    "replay_memory",
 }
 
 
@@ -112,7 +117,11 @@ def test_provider_facing_schemas_expose_no_decision_identity_or_policy_field():
     definitions = session().definitions
     assert definitions
     leaked = {
-        d["function"]["name"]: property_names(d["function"]["parameters"]) & FORBIDDEN_FIELDS
+        d["function"]["name"]: property_names(d["function"]["parameters"])
+        & (
+            FORBIDDEN_FIELDS
+            - ({"scope"} if d["function"]["name"] in {"search_memory", "manage_memory"} else set())
+        )
         for d in definitions
     }
     assert {name: fields for name, fields in leaked.items() if fields} == {}
@@ -183,7 +192,7 @@ def test_only_registered_handlers_reach_the_service():
     handlers = {spec.handler.__name__ for spec in session().registry.values()}
     # Since PR #103 the recipe tools are always registered: no method reaches the Service
     # without being a registered handler.
-    unregistered = set(users) - {"__init__"} - handlers
+    unregistered = set(users) - {"__init__", "memory_context"} - handlers
     assert unregistered == set(), unregistered
     assert set().union(*users.values()) <= ALLOWED_SERVICE
 

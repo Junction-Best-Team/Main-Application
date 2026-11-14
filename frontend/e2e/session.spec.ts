@@ -12,7 +12,10 @@ const session = {
   csrf_token: "test-csrf-token",
 };
 const unauthenticated = {
-  error: { code: "UNAUTHENTICATED", message: "Sign in to continue your purchase." },
+  error: {
+    code: "UNAUTHENTICATED",
+    message: "Sign in to continue your purchase.",
+  },
 };
 
 async function mockSession(page: Page, signedIn = false) {
