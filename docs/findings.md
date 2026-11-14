@@ -1054,3 +1054,21 @@ Add new findings below, under your track heading.
 
 - Conflict resolution (2026-11-15): integrated `develop` at `7e67f7e`, preserving the simplified purchasing rules and attachment/voice-or-send composer. Adapted account-menu navigation checks to the new Maximum per order field, retained both independent 022 migrations by their full filenames, and regenerated browser contracts. Frontend formatting/lint/TypeScript/build and 389 focused policy/activity/agent/guardrail/migration checks passed.
 - Updated activity regressions for the new composer: voice and text are disabled during streamed work, and voice is enabled again after completion; the obsolete Working button expectation is removed.
+
+### F-MEAL-PLANNING-002: Integrate the activity harness and current develop
+
+- Date: 2026-11-15. Resolved #187 against #179 (`0b8ceaf`) and current `develop`
+  (`02c76cd`). Retained server-scaled recipe estimates, no ingredient-weight
+  questionnaire, shortlist checks, streamed tool activity and the progressive draft
+  cart. Added the `draft_recipe` activity label. The live cart takes precedence over
+  the persisted recipe fallback; preparation switches to the exact-revision basket.
+  Kept attachments, buyer settings and scheduler changes; regenerated browser contracts.
+- Verification: before the scheduler sync, isolated `tests/ci.sh` passed 2,289 tests
+  and all 11 strict API sweep checks. After the sync, 281 focused checks passed,
+  covering agent tools, real conversation persistence, activity fencing, guardrails,
+  scheduler chat/worker integration and migration readiness. Frontend `npm run check`
+  passed after contract regeneration; 85 browser checks passed (two optional backend
+  integration checks skipped), followed by all five activity checks with #179's final
+  composer assertions. Desktop and 320px combined draft-cart captures were inspected.
+  Fixtures are authored estimates and mocked provider/supplier data. No live provider
+  or supplier calls, PR merge, deployment or Terraform operation for this integration.

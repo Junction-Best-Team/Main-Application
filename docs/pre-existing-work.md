@@ -282,3 +282,10 @@ PostgreSQL queue, retry fencing and native Google/OpenRouter adapters. Added pyp
 defusedxml and an explicit Pillow dependency for bounded file parsing; lockfile updated. Tests use
 small authored text, Office archives, PDF pages and image bytes, with mocked model responses;
 no challenge documents, user files, credentials or remote material are committed.
+
+## Seamless meal-planning integration — 2026-11-15
+
+Reused #179's persisted activity observer, reviewed draft-cart projection and UI,
+plus the current develop attachment, settings and scheduler changes. Combined tests
+use the existing synthetic recipe/product fixtures and intercepted browser snapshots;
+no new source material, assets or dependencies beyond the integrated branches.
