@@ -32,7 +32,7 @@ GitHub Actions runs on PRs into `develop` and `main`, and pushes to either branc
 
 Backend and frontend jobs run in parallel, dependency downloads are cached, and a new commit cancels outdated runs. Components are explicitly skipped only while their application code has not been added; incomplete manifests fail the workflow. No model weights, full catalog imports, Docker builds, browser tests, production credentials, or deployments are needed for this pipeline. Run broader demo/browser checks locally when the change warrants them.
 
-Our workflow is **task PR → green CI → self-merge**. Reviews are optional, and the optional `skip-review` label does not bypass CI. GitHub's current plan blocks branch protection for this private repository, so teammates and agents must follow this convention; the merge button is not technically gated. No approval gates or special GitHub board are required. Use the team chat to coordinate.
+Our workflow is **task PR → green CI → self-merge**. Reviews are optional, and the optional `skip-review` label does not bypass CI. The repository is public, and GitHub protects both `develop` and `main`: pull requests and all three CI checks are required, including for administrators; force-pushes and branch deletion are blocked. Human approvals are not required. GitHub does not require updating a PR branch after every base-branch change. No special GitHub board is required. Use the team chat to coordinate.
 
 ## Application setup — fill in once the stack is chosen
 
