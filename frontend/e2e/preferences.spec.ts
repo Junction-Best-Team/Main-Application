@@ -607,3 +607,39 @@ test("mobile layout fits the viewport and tabs work from the keyboard", async ({
     .click();
   await expect(page.getByRole("dialog", { name: "Menu" })).toHaveCount(0);
 });
+
+test("fonts and sidebar icons load without Google Fonts access", async ({
+  page,
+}) => {
+  const externalFontRequests: string[] = [];
+  await page.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, (route) => {
+    externalFontRequests.push(route.request().url());
+    return route.abort();
+  });
+  await mockApi(page);
+  await page.goto("/settings/preferences");
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Memory" }),
+  ).toBeVisible();
+  const loaded = await page.evaluate(async () => {
+    const fonts = await Promise.all([
+      document.fonts.load('400 16px "Hanken Grotesk"'),
+      document.fonts.load('500 16px "Space Grotesk"'),
+      document.fonts.load('400 24px "Material Symbols Outlined Variable"'),
+    ]);
+    return fonts.map(
+      (faces) =>
+        faces.length > 0 && faces.every((face) => face.status === "loaded"),
+    );
+  });
+  expect(loaded).toEqual([true, true, true]);
+  const dashboard = page
+    .getByRole("complementary", { name: "Sidebar" })
+    .locator(".material-symbols-outlined")
+    .filter({ hasText: /^dashboard$/ });
+  const iconWidth = await dashboard.evaluate(
+    (node) => node.getBoundingClientRect().width,
+  );
+  expect(iconWidth).toBeLessThan(40);
+  expect(externalFontRequests).toEqual([]);
+});

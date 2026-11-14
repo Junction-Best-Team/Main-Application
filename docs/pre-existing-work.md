@@ -224,3 +224,14 @@ upstream documentation, with locked dependencies. Reused the existing message
 transcript, design tokens and Playwright route fixtures. Markdown and unsafe
 content examples are authored synthetic fixtures; no supplier or model calls,
 external images or customer messages were used.
+
+## Self-hosted UI fonts — 2026-11-14
+
+At the owner's request, replaced the Google Fonts stylesheet with locked
+Fontsource packages: Hanken Grotesk 5.3.0, Space Grotesk 5.3.0 and Material Symbols
+Outlined Variable 5.3.9. Reused the existing typefaces, icon ligatures and design
+tokens. Setup follows [Fontsource's installation guide](https://fontsource.org/docs/getting-started/install)
+and [Material Symbols guide](https://fontsource.org/docs/getting-started/material-symbols).
+All three distributed packages include SIL OFL 1.1 notices, copied intact to
+`frontend/public/font-licenses/` for distribution with the bundled font assets.
+The earlier ignored preview font cache and example-memory database remain local.
