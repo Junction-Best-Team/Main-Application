@@ -1463,6 +1463,11 @@ export interface components {
              * Format: uuid
              */
             order_id: string;
+            /**
+             * Title
+             * @description The customer's own name; omitted: derived from the past order
+             */
+            title?: string | null;
             recurrence: components["schemas"]["Recurrence"];
             /**
              * First Run Date
@@ -1562,6 +1567,11 @@ export interface components {
          * @description Preview the terms of an existing schedule with optional changes (the edit page).
          */
         ScheduleEditPreviewRequest: {
+            /**
+             * Title
+             * @description Omitted: the schedule keeps its name
+             */
+            title?: string | null;
             recurrence?: components["schemas"]["Recurrence"] | null;
             /** First Run Date */
             first_run_date?: string | null;
@@ -1616,6 +1626,11 @@ export interface components {
              * Format: uuid
              */
             order_id: string;
+            /**
+             * Title
+             * @description The customer's own name; omitted: derived from the past order
+             */
+            title?: string | null;
             recurrence: components["schemas"]["Recurrence"];
             /**
              * First Run Date
@@ -1635,6 +1650,11 @@ export interface components {
          * @description Edit or restart: a new authorization that supersedes the old one.
          */
         ScheduleReplaceRequest: {
+            /**
+             * Title
+             * @description Omitted: the schedule keeps its name
+             */
+            title?: string | null;
             recurrence?: components["schemas"]["Recurrence"] | null;
             /** First Run Date */
             first_run_date?: string | null;

@@ -106,7 +106,7 @@ def check_line_rules(c, rules_in, request, scope):
     return rules
 
 
-def build_terms(identity, service, order_id, recurrence, first_run_date, line_rules):
+def build_terms(identity, service, order_id, recurrence, first_run_date, line_rules, title=None):
     if first_run_date < scheduler.helsinki_today():
         raise Problem("INVALID_FIRST_RUN_DATE", "The first run date is in the past.", 422)
     rule = scheduler.normalize_recurrence(recurrence.model_dump(exclude_none=True))
@@ -137,7 +137,7 @@ def build_terms(identity, service, order_id, recurrence, first_run_date, line_ru
     lines = [agreed_line(line, rules.get(line["product_id"]), names) for line in snapshot["lines"]]
     return {
         "source_order_id": str(order["id"]),
-        "title": str(order["request"].get("request_id") or "Standing order"),
+        "title": title or str(order["request"].get("request_id") or "Standing order"),
         "lines": lines,
         "currency": snapshot["currency"],
         "gross_total": snapshot["gross_total"],
@@ -192,7 +192,13 @@ def public_terms(terms):
 def preview(identity, body: SchedulePreviewRequest, service):
     require_customer(identity)
     terms = build_terms(
-        identity, service, body.order_id, body.recurrence, body.first_run_date, body.line_rules
+        identity,
+        service,
+        body.order_id,
+        body.recurrence,
+        body.first_run_date,
+        body.line_rules,
+        body.title,
     )
     return public_terms(terms)
 
@@ -252,7 +258,7 @@ def response(c, row):
     ]
     return {
         "id": str(row["id"]),
-        "title": order,
+        "title": row["title"] or order,
         "status": row["status"],
         "stop_reason": row["stop_reason"],
         "source_order_id": str(row["source_order_id"]),
@@ -356,9 +362,9 @@ def insert(c, identity, terms, *, key, digest, ceiling, supersedes=None):
     aid = uuid4()
     row = c.execute(
         """INSERT INTO scheduled_authorizations(id,buyer_id,created_by,source_order_id,supersedes_id,
-        create_key,create_hash,request,line_rules,agreed_lines,terms_fingerprint,currency,
+        create_key,create_hash,title,request,line_rules,agreed_lines,terms_fingerprint,currency,
         agreed_gross_total,price_ceiling_gross,delivery_offset_days,recurrence,first_run_date,
-        valid_until,next_run_date) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        valid_until,next_run_date) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         RETURNING *""",
         (
             aid,
@@ -368,6 +374,7 @@ def insert(c, identity, terms, *, key, digest, ceiling, supersedes=None):
             supersedes,
             key,
             digest,
+            terms["title"],
             js(terms["_request"]),
             js(terms["_rules"]),
             js(terms["lines"]),
@@ -404,7 +411,13 @@ def agree(terms, agreed_fingerprint):
 def create(identity, body: ScheduleCreateRequest, service):
     require_customer(identity)
     terms = build_terms(
-        identity, service, body.order_id, body.recurrence, body.first_run_date, body.line_rules
+        identity,
+        service,
+        body.order_id,
+        body.recurrence,
+        body.first_run_date,
+        body.line_rules,
+        body.title,
     )
     agree(terms, body.agreed_terms_fingerprint)
     digest = fingerprint(body.model_dump(mode="json", exclude={"idempotency_key"}))
@@ -435,6 +448,7 @@ def edited(old, body):
         "recurrence": body.recurrence or Recurrence.model_validate(old["recurrence"]),
         "first_run_date": body.first_run_date or max(today, old["next_run_date"] or today),
         "line_rules": rules,
+        "title": body.title or old["title"],
     }
 
 

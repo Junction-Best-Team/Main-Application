@@ -4169,6 +4169,20 @@
             "format": "uuid",
             "title": "Order Id"
           },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "The customer's own name; omitted: derived from the past order"
+          },
           "recurrence": {
             "$ref": "#/components/schemas/Recurrence"
           },
@@ -4419,6 +4433,20 @@
       },
       "ScheduleEditPreviewRequest": {
         "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "Omitted: the schedule keeps its name"
+          },
           "recurrence": {
             "anyOf": [
               {
@@ -4621,6 +4649,20 @@
             "format": "uuid",
             "title": "Order Id"
           },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "The customer's own name; omitted: derived from the past order"
+          },
           "recurrence": {
             "$ref": "#/components/schemas/Recurrence"
           },
@@ -4649,6 +4691,20 @@
       },
       "ScheduleReplaceRequest": {
         "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "Omitted: the schedule keeps its name"
+          },
           "recurrence": {
             "anyOf": [
               {

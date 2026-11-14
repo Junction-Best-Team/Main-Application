@@ -25,6 +25,7 @@ CREATE TABLE scheduled_authorizations (
  supersedes_id uuid REFERENCES scheduled_authorizations(id),
  create_key text NOT NULL,
  create_hash text NOT NULL,
+ title text,
  request jsonb NOT NULL,
  line_rules jsonb NOT NULL DEFAULT '{}'::jsonb,
  agreed_lines jsonb NOT NULL,
@@ -44,6 +45,7 @@ CREATE TABLE scheduled_authorizations (
  created_at timestamptz NOT NULL DEFAULT now(),
  updated_at timestamptz NOT NULL DEFAULT now(),
  CONSTRAINT sched_auth_create_key UNIQUE (buyer_id, create_key),
+ CONSTRAINT sched_auth_title CHECK (title IS NULL OR char_length(title) BETWEEN 1 AND 80),
  CONSTRAINT sched_auth_ceiling CHECK (price_ceiling_gross >= agreed_gross_total),
  CONSTRAINT sched_auth_one_year CHECK (valid_until <= first_run_date + 365),
  CONSTRAINT sched_auth_stop_reason CHECK (status <> 'stopped' OR stop_reason IS NOT NULL),
@@ -61,12 +63,12 @@ BEGIN
   RAISE EXCEPTION 'a finished authorization never changes; create a new one';
  END IF;
  IF (NEW.id, NEW.buyer_id, NEW.created_by, NEW.source_order_id, NEW.supersedes_id,
-     NEW.create_key, NEW.create_hash, NEW.request, NEW.line_rules, NEW.agreed_lines,
+     NEW.create_key, NEW.create_hash, NEW.title, NEW.request, NEW.line_rules, NEW.agreed_lines,
      NEW.terms_fingerprint, NEW.currency, NEW.agreed_gross_total, NEW.price_ceiling_gross,
      NEW.delivery_offset_days, NEW.recurrence, NEW.first_run_date, NEW.valid_until, NEW.created_at)
     IS DISTINCT FROM
     (OLD.id, OLD.buyer_id, OLD.created_by, OLD.source_order_id, OLD.supersedes_id,
-     OLD.create_key, OLD.create_hash, OLD.request, OLD.line_rules, OLD.agreed_lines,
+     OLD.create_key, OLD.create_hash, OLD.title, OLD.request, OLD.line_rules, OLD.agreed_lines,
      OLD.terms_fingerprint, OLD.currency, OLD.agreed_gross_total, OLD.price_ceiling_gross,
      OLD.delivery_offset_days, OLD.recurrence, OLD.first_run_date, OLD.valid_until, OLD.created_at) THEN
   RAISE EXCEPTION 'authorized terms are immutable; create a new authorization';

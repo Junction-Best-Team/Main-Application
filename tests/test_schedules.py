@@ -390,3 +390,73 @@ def test_a_source_orders_server_only_constraints_never_enter_the_standing_order(
             "SELECT request FROM scheduled_authorizations WHERE id=%s", (s["id"],)
         ).fetchone()["request"]
     assert "constraints" not in stored  # the limits are the ones the customer agrees now
+
+
+# --- the customer's own name for a standing order (owner Q-93) -------------------------------
+
+
+def test_the_title_is_optional_stripped_and_bounded():
+    from pydantic import ValidationError
+
+    base = {"order_id": str(uuid4()), "recurrence": WEEKLY, "first_run_date": str(first_run())}
+    assert SchedulePreviewRequest.model_validate(base).title is None
+    assert SchedulePreviewRequest.model_validate(base | {"title": "  Friday milk  "}).title == (
+        "Friday milk"
+    )
+    for bad in ("", "   ", "x" * 81):
+        with pytest.raises(ValidationError):
+            SchedulePreviewRequest.model_validate(base | {"title": bad})
+
+
+def test_a_chosen_title_is_echoed_by_preview_and_stored(buyer, service, placed_order):
+    terms = schedules.preview(buyer, preview_body(placed_order, title="Friday milk"), service)
+    assert terms["title"] == "Friday milk"
+    made = schedules.create(buyer, create_body(placed_order, terms, title="Friday milk"), service)
+    assert made["title"] == "Friday milk"
+    assert schedules.get(buyer, made["id"])["title"] == "Friday milk"
+    assert schedules.list_schedules(buyer, 0, 5)["items"][0]["title"] == "Friday milk"
+
+
+def test_without_a_title_it_is_derived_from_the_source_order(buyer, service, placed_order):
+    terms = schedules.preview(buyer, preview_body(placed_order), service)
+    made = schedules.create(buyer, create_body(placed_order, terms), service)
+    assert terms["title"] == made["title"] and made["title"]
+
+
+def test_a_replacement_keeps_the_title_unless_a_new_one_is_given(buyer, service, placed_order):
+    from aimo.schedule_schemas import ScheduleEditPreviewRequest
+
+    terms = schedules.preview(buyer, preview_body(placed_order, title="Friday milk"), service)
+    old = schedules.create(buyer, create_body(placed_order, terms, title="Friday milk"), service)
+    edit = schedules.preview_edit(buyer, old["id"], ScheduleEditPreviewRequest(), service)
+    assert edit["title"] == "Friday milk"
+    kept = schedules.replace(
+        buyer,
+        old["id"],
+        ScheduleReplaceRequest.model_validate(
+            {"agreed_terms_fingerprint": edit["terms_fingerprint"], "idempotency_key": str(uuid4())}
+        ),
+        service,
+    )
+    assert kept["title"] == "Friday milk"
+    renamed = schedules.replace(
+        buyer,
+        kept["id"],
+        ScheduleReplaceRequest.model_validate(
+            {
+                "agreed_terms_fingerprint": edit["terms_fingerprint"],
+                "idempotency_key": str(uuid4()),
+                "title": "Weekend milk",
+            }
+        ),
+        service,
+    )
+    assert renamed["title"] == "Weekend milk"
+
+
+def test_the_same_key_with_another_title_conflicts(buyer, service, placed_order):
+    terms = schedules.preview(buyer, preview_body(placed_order), service)
+    body = create_body(placed_order, terms, title="One")
+    schedules.create(buyer, body, service)
+    other = create_body(placed_order, terms, title="Two", idempotency_key=body.idempotency_key)
+    refused("IDEMPOTENCY_CONFLICT", schedules.create, buyer, other, service)
