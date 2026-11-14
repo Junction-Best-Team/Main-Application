@@ -4,7 +4,7 @@ Three independently deployed apps serve chat purchasing: a React/Nginx frontend,
 
 The current [product migration](docs/chat-purchasing.md) overrides the external-agent entry points in the [original brief](docs/brief.md). The underlying purchasing controls remain. [Infrastructure](infra/README.md) is optional and operator-managed; this migration does not apply Terraform, deploy or enable releases.
 
-See the [architecture diagrams](docs/architecture.md) for the system overview, purchase confirmation flow and code map.
+See the [architecture diagrams](docs/architecture.md) for the system overview, purchase confirmation flow and code map. [Agent guardrails](docs/guardrails.md) separates deterministic controls from the optional TypeSafe Jev checks (`GUARDRAIL_MODE`).
 
 ## Working in parallel
 
