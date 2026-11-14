@@ -33,7 +33,7 @@ Needs Docker (PostgreSQL + pgvector, started by the script) and `uv`. The script
 ## Modes, and what a pass means
 
 - **Hermetic (default).** Own database `aimo_ci`, authored fixture catalog, fixture price/stock. Proves the code works; says nothing about Valio's real data. The sweep prints `upstream commercial data in this run: FIXTURE`.
-- **Live (`--live`).** Uses `UPSTREAM_MODE=live`, so it fails closed without `VALIO_AIMO_API_KEY`. The key exists and teammates have it. Real stock decides the outcome: a check that cannot run (for example nothing is committable against current live stock) is reported as `SKIP` with the reason, never as a pass. Pass `SWEEP_ARGS=--strict` to make a skip fail the run.
+- **Live (`--live`).** Uses `UPSTREAM_MODE=live`, so it fails closed without `VALIO_AIMO_API_KEY`. The key exists and teammates have it. Real stock decides the outcome: a check that cannot run (for example nothing is committable against current live stock) is reported as `SKIP` with the reason, never as a pass. Pass `SWEEP_ARGS=--strict` to make a skip fail the run. Live stock for the default product `464306` is the unknown-quantity sentinel, so expect skips; `SWEEP_ARGS="--product 463380"` commits for real (see F-MVP-005 in `docs/findings.md`).
 - Never printed or logged: the agent token, buyer password and API key.
 
 ## Running pieces on their own
