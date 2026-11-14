@@ -1,5 +1,13 @@
 # WS-E scheduler: design (no feature code)
 
+> **Status note (implementation).** This is the design written before the build and kept as the record of
+> the questions and the code evidence. The owner's later answers changed it: migration number **020**; a price
+> outside the agreed range with no accepted substitute is a **disruption** (no `needs_customer` run state);
+> pause, `placed` orders, per-ingredient accepted substitutes with a percentage range, and restart by
+> `replace` were added; sections 1-5 were built as described otherwise. What exists and how it runs:
+> [scheduler.md](scheduler.md).
+
+
 Status: design for the owner's review, 2026-11-14. Author: scheduler design session (reports to junction-b5).
 Base: `origin/develop` `6ba4754` (worktree `worktrees/p3-scheduler-design`, branch `p3/scheduler-design`). All `file:line` cites are on that commit and were read, not run, unless marked **ran**. Local run, not CI. Every order the scheduler places is a **mock** ("Accepted by demo order service"). No secret was printed or read.
 
