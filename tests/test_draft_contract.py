@@ -144,10 +144,8 @@ def test_lookup_request_accepts_one_thousand_product_ids():
 SUPPLIER_LIMIT = 1000
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="SUP-007 Draft: ValioClient.lookup sends every product id in one request per endpoint",
-)
+# WS-A implemented the batching (SUP-007), so this is now an ordinary passing test: it XPASSed
+# strictly once the two branches were combined and its xfail mark was removed.
 def test_lookup_is_split_into_batches_within_the_supplier_limit():
     ids = [f"authored-{n}" for n in range(2500)]
     sent = []
