@@ -900,3 +900,55 @@ def test_prompt_sections_can_be_reworded_without_breaking_recipe_turns(
     assert agent.run_turn(identity, HISTORY, FakeService(identity)).text
     prompt = seen[0]["messages"][0]["content"]
     assert "Reworded safety guidance." in prompt and "search_recipes" in prompt
+
+
+def test_q44_basket_mismatch_says_exactly_what_to_send(identity):
+    """The plan needs 20 KG pasta + 0.5 KG pasta; one 20 KG line is refused with 'pasta 20.5 KG'."""
+    service = FakeService(identity)
+    session = matched_session(identity, service)
+    expanded = meal()
+    expanded["ingredients"].append(
+        {"name": "extra pasta", "product_id": "pasta", "amount": "0.5", "unit": "KG"}
+    )
+    invoke(session, "publish_meal_plan", expanded)
+    with pytest.raises(Problem) as error:
+        invoke(session, "prepare_order", purchase())  # pasta is 20 KG, the plan needs 20.5 KG
+    assert error.value.code == "MEAL_BASKET_MISMATCH" and error.value.status == 422
+    assert "pasta 20.5 KG" in error.value.message
+    details = error.value.details
+    assert details["wrong_amount_or_unit"] == [
+        {
+            "product_id": "pasta",
+            "required": {"amount": "20.5", "unit": "KG"},
+            "sent": {"amount": "20", "unit": "KG"},
+        }
+    ]
+    assert details["missing"] == [] and details["unexpected"] == []
+    pasta = next(r for r in details["required"] if r["product_id"] == "pasta")
+    assert (pasta["amount"], pasta["unit"]) == ("20.5", "KG")
+    assert pasta["ingredients"] == ["extra pasta", "pasta"]
+    assert not any(c[0] == "prepare" for c in service.calls)
+
+
+def test_q44_model_sees_the_details_in_the_tool_error(monkeypatch, config, identity):
+    expanded = meal()
+    expanded["ingredients"].append(
+        {"name": "extra pasta", "product_id": "pasta", "amount": "0.5", "unit": "KG"}
+    )
+    seen = scripted(
+        monkeypatch,
+        [
+            reply(*[call("get_product", {"product_id": name}) for name in NAMES]),
+            reply(call("publish_meal_plan", expanded)),
+            reply(call("prepare_order", purchase())),
+            reply(text="Retrying with pasta 20.5 KG."),
+        ],
+    )
+    agent.run_turn(identity, HISTORY, FakeService(identity))
+    tool = [m for m in seen[-1]["messages"] if m["role"] == "tool"][-1]
+    error = json.loads(tool["content"])["error"]
+    assert error["code"] == "MEAL_BASKET_MISMATCH"
+    assert error["details"]["wrong_amount_or_unit"][0]["required"] == {
+        "amount": "20.5",
+        "unit": "KG",
+    }

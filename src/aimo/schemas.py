@@ -478,3 +478,25 @@ class CommitResponse(
 ):
     # Preserve the flat, status-discriminated browser confirmation result.
     model_config = ConfigDict(json_schema_extra={"type": "object"})
+
+
+class ErrorDetail(BaseModel):
+    """One validation failure. The submitted value is never included."""
+
+    type: str
+    loc: list[str | int]
+    msg: str
+
+
+class ErrorBody(BaseModel):
+    """`details` is the list of ErrorDetail for VALIDATION_ERROR; some application errors send an object."""
+
+    code: str
+    message: str
+    details: list[ErrorDetail] | dict[str, JsonValue] | None = None
+
+
+class ErrorResponse(BaseModel):
+    """The one body of every HTTP error response (TCT-008)."""
+
+    error: ErrorBody
