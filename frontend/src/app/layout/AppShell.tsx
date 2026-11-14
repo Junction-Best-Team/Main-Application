@@ -5,11 +5,7 @@ import { useAuth } from "../../features/auth/useAuth";
 import { useConversationNavigation } from "../../features/chat/hooks/useConversationNavigation";
 import { NoticeBar } from "../../shared/components/NoticeBar";
 import { Wordmark } from "../../shared/components/Wordmark";
-import {
-  Icon,
-  InertButton,
-  InertInput,
-} from "../../shared/components/DesignPrimitives";
+import { Icon, InertButton } from "../../shared/components/DesignPrimitives";
 
 import type { ConversationList } from "../../shared/api/types";
 type ConversationListItem = ConversationList["items"][number];
@@ -310,18 +306,7 @@ function Sidebar({ conversations }: { conversations: ConversationNav }) {
 
 function DesktopHeader() {
   return (
-    <header className="sticky top-0 z-40 hidden h-16 items-center justify-between gap-space-md border-b border-border-subtle bg-surface/80 px-margin backdrop-blur-xl md:flex">
-      <div className="relative w-full max-w-xl">
-        <Icon
-          name="search"
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-outline"
-        />
-        <InertInput
-          label="Search products"
-          placeholder={MOCK.shell.searchPlaceholder}
-          className="w-full rounded-lg border border-border-subtle bg-surface-pure py-2 pl-9 pr-space-md font-body text-body-sm text-on-surface placeholder:text-outline"
-        />
-      </div>
+    <header className="sticky top-0 z-40 hidden h-16 items-center justify-end gap-space-md border-b border-border-subtle bg-surface/80 px-margin backdrop-blur-xl md:flex">
       <div className="flex items-center gap-space-md">
         <div className="flex items-center">
           <NotificationsButton />

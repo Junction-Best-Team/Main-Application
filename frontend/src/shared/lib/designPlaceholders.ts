@@ -2,7 +2,6 @@
 export const DESIGN_PLACEHOLDERS = {
   /** App shell (sidebar / mobile top bar). */
   shell: {
-    searchPlaceholder: "Search wholesale SKU, product, EAN...",
     hub: "Hub: Helsinki Sörnäinen",
     hubShort: "Sörnäinen",
     account: { name: "Demo restaurant", number: "Acc #94821-FI" },
