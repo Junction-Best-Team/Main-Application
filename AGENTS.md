@@ -30,8 +30,14 @@ Four-person Junction hackathon repository. The implemented Valio Aimo MVP is des
 
 ## Checks
 
-`tests/ci.sh` runs lint, the pytest suite and a black-box sweep of all eight agent tools (`tests/README.md`); `--browser` adds the Playwright tests and `--live` repeats the sweep against the real Valio API. `CI_COVERAGE=1 tests/ci.sh` then `uv run python tests/coverage_report.py` measures Python coverage and enforces the `fail_under` gate in `pyproject.toml`; CI does the same across its parallel jobs. `tests/TEST-GUIDE.md` explains what each test checks.
+`tests/ci.sh` runs lint, the pytest suite and a black-box sweep of the buyer-facing API (`tests/README.md`; the assistant's tools are covered by `tests/test_agent*.py`); `--browser` adds the Playwright tests and `--live` repeats the sweep against the real Valio API. `CI_COVERAGE=1 tests/ci.sh` then `uv run python tests/coverage_report.py` measures Python coverage and enforces the `fail_under` gate in `pyproject.toml`; CI does the same across its parallel jobs. `tests/TEST-GUIDE.md` explains what each test checks.
 
 ## Scope and history
 
-The team works as one group on one backend (`docs/brief.md`). The earlier four-track split, the C1 to C5 contract numbering and the Type1 draft were dropped on 2026-11-14 (decision D-006 in `docs/findings.md`). New verification is appended to `docs/findings.md`; record non-obvious facts there with evidence and mark anything unchecked `unverified`.
+The explicit implementation handoff selects the PR #2 brief for this MVP. PR #2 was closed unmerged; implementation starts on current main and preserves the post-MVP draft as reference. For this implementation use database-seeded versioned policy, eight named tools, four outcomes, independent buyer inbox, ordinary persistent audit and no live deployment. The draft open issues above are resolved for this scope by `docs/brief.md`; do not reintroduce a notifier, policy editor or hash chaining. New verification is appended to `docs/findings.md`.
+
+## Chat purchasing cutover (2026-11-14)
+
+The explicit product migration in `docs/chat-purchasing.md` overrides the earlier external-agent/MCP and standalone inbox entry points above. The existing React app is the customer chat product; the authenticated FastAPI app runs typed internal tools directly against Service. Customer confirmation must be a persisted authenticated exact-revision action; retain purchasing controls, historical records and mock-order labels. Do not merge, deploy, apply Terraform or enable the release switch for this task.
+
+The earlier four-track split, the C1 to C5 contract numbering and the Type1 draft were dropped on 2026-11-14 (decision D-006 in `docs/findings.md`).

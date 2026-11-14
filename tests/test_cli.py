@@ -1,5 +1,6 @@
 """Command-line entry points: configure, migrate, seed and the argument dispatch of main()."""
 
+import hashlib
 import json
 import shutil
 import stat
@@ -37,12 +38,12 @@ def test_configure_writes_private_env_with_generated_secrets(workdir, capsys):
     assert stat.S_IMODE(env.stat().st_mode) == 0o600
     values = dict(line.split("=", 1) for line in env.read_text().splitlines() if "=" in line)
     assert len(values["APPROVAL_SESSION_SECRET"]) >= 48
-    assert len(values["DEMO_AGENT_TOKEN"]) >= 24
+    assert "DEMO_AGENT_TOKEN" not in values  # no external agent credential any more
     assert len(values["DEMO_BUYER_PASSWORD"]) >= 12
     assert values["VALIO_AIMO_API_KEY"] == ""  # never invented
     out = capsys.readouterr().out
     assert "mode 0600" in out
-    assert values["DEMO_AGENT_TOKEN"] not in out  # values are not printed
+    assert values["DEMO_BUYER_PASSWORD"] not in out  # values are not printed
 
 
 def test_configure_generates_distinct_secrets_each_time(workdir):
@@ -54,10 +55,10 @@ def test_configure_generates_distinct_secrets_each_time(workdir):
 
 
 def test_configure_refuses_to_overwrite_an_existing_env(workdir):
-    (workdir / ".env").write_text("DEMO_AGENT_TOKEN=mine\n")
+    (workdir / ".env").write_text("DEMO_BUYER_PASSWORD=mine\n")
     with pytest.raises(ValueError, match=r"\.env exists"):
         cli.configure()
-    assert (workdir / ".env").read_text() == "DEMO_AGENT_TOKEN=mine\n"
+    assert (workdir / ".env").read_text() == "DEMO_BUYER_PASSWORD=mine\n"
 
 
 # --- migrate -------------------------------------------------------------------------------------
@@ -105,19 +106,10 @@ def test_migrate_applies_a_new_migration_exactly_once(tmp_path, monkeypatch):
 # --- seed ----------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "token,password",
-    [
-        ("short-token", "long-enough-password"),
-        ("a" * 24, "short-pw"),
-        ("", "long-enough-password"),
-        ("a" * 24, ""),
-    ],
-)
-def test_seed_rejects_weak_or_missing_credentials(monkeypatch, token, password):
-    monkeypatch.setenv("DEMO_AGENT_TOKEN", token)
+@pytest.mark.parametrize("password", ["short-pw", ""])
+def test_seed_rejects_weak_or_missing_credentials(monkeypatch, password):
     monkeypatch.setenv("DEMO_BUYER_PASSWORD", password)
-    with pytest.raises(ValueError, match="DEMO_AGENT_TOKEN"):
+    with pytest.raises(ValueError, match="DEMO_BUYER_PASSWORD"):
         cli.seed()
 
 
@@ -130,7 +122,6 @@ def test_seed_is_idempotent_and_does_not_rotate_existing_credentials(monkeypatch
             )
 
     before = state()
-    monkeypatch.setenv("DEMO_AGENT_TOKEN", "a-completely-different-agent-token")
     monkeypatch.setenv("DEMO_BUYER_PASSWORD", "a-completely-different-password")
     cli.seed()
     assert state() == before
@@ -138,11 +129,16 @@ def test_seed_is_idempotent_and_does_not_rotate_existing_credentials(monkeypatch
 
 def test_seed_stores_hashes_never_plaintext():
     with connection() as c:
-        rows = c.execute("SELECT id,credential_hash FROM identities").fetchall()
-    by_id = {r["id"]: r["credential_hash"] for r in rows}
-    assert set(by_id) == {"demo-agent", "buyer"}
-    assert "test-agent-token-only-not-a-real-secret" not in by_id["demo-agent"]
-    assert hasher.verify(by_id["buyer"], "test-buyer-password-only")
+        rows = c.execute("SELECT id,role,credential_hash FROM identities").fetchall()
+        mapped = c.execute("SELECT buyer_id,identity_id FROM internal_agents").fetchall()
+    by_id = {r["id"]: r for r in rows}
+    internal = "internal:" + hashlib.md5(b"demo-hotel").hexdigest()
+    assert set(by_id) == {"demo-agent", "buyer", internal}
+    assert hasher.verify(by_id["buyer"]["credential_hash"], "test-buyer-password-only")
+    # Neither agent identity can ever log in with a bearer value.
+    assert by_id["demo-agent"]["credential_hash"].startswith("!")
+    assert by_id[internal]["credential_hash"].startswith("!")
+    assert [(m["buyer_id"], m["identity_id"]) for m in mapped] == [("demo-hotel", internal)]
 
 
 # --- main() dispatch -----------------------------------------------------------------------------

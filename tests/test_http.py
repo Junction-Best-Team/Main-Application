@@ -5,7 +5,6 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from jsonschema import Draft202012Validator
 
 from aimo.api import create_app
 from aimo.auth import digest, hasher
@@ -34,13 +33,13 @@ def test_auth_inbox_csrf_and_logout(http, service, agent, mission):
     assert http.get("/api/approvals").status_code == 401
     assert (
         http.get(
-            "/api/approvals", headers={"Authorization": "Bearer " + os.environ["DEMO_AGENT_TOKEN"]}
+            "/api/approvals", headers={"Authorization": "Bearer " + "removed-external-token"}
         ).status_code
         == 401
     )
-    assert http.get("/api/agent/purchase-policy").status_code == 401
+    assert http.get("/api/agent/purchase-policy").status_code == 404
     assert http.get("/api/purchases/" + p["proposal_id"]).status_code == 401
-    assert http.get("/mcp/").status_code == 401
+    assert http.get("/mcp/").status_code == 404
     headers = login(http)
     assert http.get("/api/approvals").json()["items"][0]["proposal_id"] == p["proposal_id"]
     url = f"/api/approvals/{p['approval_id']}/decision"
@@ -104,34 +103,24 @@ def test_cross_account_and_agent_isolation(http, service, agent, mission):
 
 
 def test_input_validation_and_api_errors(http, request_data):
-    headers = {"Authorization": "Bearer " + os.environ["DEMO_AGENT_TOKEN"]}
-    missing_key = {key: value for key, value in request_data.items() if key != "idempotency_key"}
+    headers = login(http)
     assert (
-        http.post("/api/agent/prepare_order", json=missing_key, headers=headers).status_code == 422
+        http.post("/api/conversations", json={"title": "meal"}, headers=headers).status_code == 422
     )
     assert (
         http.post(
-            "/api/agent/prepare_order",
-            json=request_data | {"approved_product_ids": ["464398"]},
+            "/api/conversations",
+            json={"title": "meal", "idempotency_key": str(uuid4()), "buyer_id": "other"},
             headers=headers,
         ).status_code
         == 422
     )
-    request_data["approved"] = True
-    assert (
-        http.post("/api/agent/prepare_order", json=request_data, headers=headers).status_code == 422
-    )
-    assert (
-        http.post(
-            "/api/agent/search_products",
-            json={"query": "milk", "requirements": {"vegan": True}},
-            headers=headers,
-        ).status_code
-        == 422
-    )
-    assert http.get("/api/nonexistent").status_code == 404
-    assert http.get("/api/nonexistent").headers["content-type"].startswith("application/json")
-    assert http.get("/api/approvals?limit=100000").status_code in (401, 422)
+    for path in ("/api/nonexistent", "/api/agent/prepare_order", "/mcp", "/mcp/"):
+        for method in ("get", "post"):
+            response = http.request(method, path)
+            assert response.status_code == 404
+            assert response.headers["content-type"].startswith("application/json")
+    assert http.get("/api/approvals?limit=100000").status_code == 422
     assert http.get("/health/live").status_code == 200
 
 
@@ -170,84 +159,36 @@ def test_documentation_nonce_and_scoped_csp(http):
         assert "unsafe-inline" not in strict and "cdn.jsdelivr.net" not in strict
 
 
-@pytest.mark.parametrize("transport", ["http", "mcp"])
-def test_eight_typed_operations_and_both_commit_outcomes(http, connector, request_data, transport):
-    headers = {"Authorization": "Bearer " + os.environ["DEMO_AGENT_TOKEN"]}
-    routes = {
-        "search_products": ("post", "/api/agent/search_products"),
-        "get_product": ("get", "/api/agent/products/{product_id}"),
-        "get_purchase_policy": ("get", "/api/agent/purchase-policy"),
-        "check_price_and_availability": ("post", "/api/agent/check_price_and_availability"),
-        "prepare_order": ("post", "/api/agent/prepare_order"),
-        "get_proposal": ("get", "/api/agent/proposals/{proposal_id}"),
-        "commit_order": ("post", "/api/agent/commit_order"),
-        "get_order": ("get", "/api/agent/orders/{order_id}"),
-    }
+def test_shared_purchasing_operations_and_both_commit_outcomes(
+    service, agent, connector, request_data
+):
+    from aimo.schemas import CommitRequest, LookupRequest, PrepareRequest, SearchRequest
 
-    def rpc(method, params):
-        response = http.post(
-            "/mcp/",
-            headers=headers | {"Accept": "application/json, text/event-stream"},
-            json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
-        )
-        assert response.status_code == 200, response.text
-        assert "error" not in response.json(), response.text
-        return response.json()["result"]
-
-    schemas = {t["name"]: t["outputSchema"] for t in rpc("tools/list", {})["tools"]}
-    assert set(schemas) == set(routes)
-    openapi = http.get("/openapi.json").json()
-    for name, (method, path) in routes.items():
-        schema = schemas[name]
-        Draft202012Validator.check_schema(schema)
-        assert schema["type"] == "object"
-        assert schema.get("properties") or schema.get("oneOf")
-        response_schema = openapi["paths"][path][method]["responses"]["200"]["content"][
-            "application/json"
-        ]["schema"]
-        assert response_schema.get("$ref"), (name, response_schema)
-
-    def invoke(name, args=None):
-        args = args or {}
-        if transport == "mcp":
-            result = rpc("tools/call", {"name": name, "arguments": args})
-            assert not result.get("isError"), result
-            body = result["structuredContent"]
-            Draft202012Validator(schemas[name]).validate(body)
-            return body
-        method, path = routes[name]
-        kwargs = {"json": args["request"]} if method == "post" else {}
-        response = http.request(method, path.format(**args), headers=headers, **kwargs)
-        assert response.status_code == 200, response.text
-        return response.json()
-
-    assert invoke("get_purchase_policy")["rules"]["autonomous_limit"] == "1500.00"
-    assert invoke("get_product", {"product_id": "464306"})["measures"]["L"]["value"] == "1"
+    assert service.get_purchase_policy(agent)["rules"]["autonomous_limit"] == "1500.00"
+    assert service.get_product(agent, "464306")["measures"]["L"]["value"] == "1"
     assert (
-        invoke("search_products", {"request": {"query": "464306"}})["products"][0]["id"] == "464306"
+        service.search_products(agent, SearchRequest(query="464306"))["products"][0]["id"]
+        == "464306"
     )
-    assert invoke("search_products", {"request": {"query": "000000"}})["products"] == []
-    lookup = invoke(
-        "check_price_and_availability",
-        {
-            "request": {
-                "product_ids": ["464306"],
-                "delivery_date": request_data["delivery_date"],
-            }
-        },
+    assert service.search_products(agent, SearchRequest(query="000000"))["products"] == []
+    lookup = service.check_price_and_availability(
+        agent, LookupRequest(product_ids=["464306"], delivery_date=request_data["delivery_date"])
     )
     assert Decimal(lookup["products"]["464306"]["gross"]) == Decimal("1.70")
-    p = invoke("prepare_order", {"request": request_data})
-    assert invoke("get_proposal", {"proposal_id": p["proposal_id"]})["revision"] == 1
+    p = service.prepare_order(agent, PrepareRequest.model_validate(request_data))
+    assert service.get_proposal(agent, p["proposal_id"])["revision"] == 1
     payload = {"proposal_id": p["proposal_id"], "revision": 1, "idempotency_key": str(uuid4())}
     connector.price_multiplier = Decimal("1.10")
-    revised = invoke("commit_order", {"request": payload})
+    revised = service.commit_order(agent, CommitRequest.model_validate(payload))
     assert revised["status"] == "revised" and revised["revision"] == 2
     assert revised["snapshot"]["gross_total"] == "18.70"
-    receipt = invoke("commit_order", {"request": payload | {"revision": 2}})
-    assert receipt["status"] == "accepted_mock" and receipt["gross_total"] == "18.70"
-    assert invoke("commit_order", {"request": payload | {"revision": 2}}) == receipt
-    assert invoke("get_order", {"order_id": receipt["order_id"]}) == receipt
+    receipt = service.commit_order(agent, CommitRequest.model_validate(payload | {"revision": 2}))
+    assert receipt["status"] == "accepted_mock"
+    assert (
+        service.commit_order(agent, CommitRequest.model_validate(payload | {"revision": 2}))
+        == receipt
+    )
+    assert service.get_order(agent, receipt["order_id"]) == receipt
 
 
 def test_historical_approval_links_current_autonomous_revision(
@@ -275,13 +216,16 @@ def test_historical_approval_links_current_autonomous_revision(
         ).status_code
         == 200
     )
-    agent_headers = {"Authorization": "Bearer " + os.environ["DEMO_AGENT_TOKEN"]}
     payload = {"proposal_id": p["proposal_id"], "revision": 1, "idempotency_key": str(uuid4())}
     connector.price_multiplier = Decimal(".5")
-    fresh = http.post("/api/agent/commit_order", headers=agent_headers, json=payload).json()
+    fresh = http.post(
+        "/api/purchases/" + p["proposal_id"] + "/confirm", headers=csrf, json=payload
+    ).json()
     assert fresh["approval_id"] is None and fresh["policy_outcome"] == "ready_to_commit"
     receipt = http.post(
-        "/api/agent/commit_order", headers=agent_headers, json=payload | {"revision": 2}
+        "/api/purchases/" + p["proposal_id"] + "/confirm",
+        headers=csrf,
+        json=payload | {"revision": 2, "idempotency_key": str(uuid4())},
     ).json()
     old = http.get(old_url).json()
     assert old["approval_status"] == "superseded" and old["order_id"] is None

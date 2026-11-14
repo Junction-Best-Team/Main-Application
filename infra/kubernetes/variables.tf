@@ -137,16 +137,15 @@ variable "bootstrap_credentials" {
   type = object({
     database_url   = string
     database_user  = string
-    agent_token    = string
     buyer_password = string
   })
   sensitive = true
   default   = null
   validation {
     condition = var.bootstrap_credentials == null ? true : (
-      length(var.bootstrap_credentials.agent_token) >= 24 && length(var.bootstrap_credentials.buyer_password) >= 12
+      length(var.bootstrap_credentials.buyer_password) >= 12
     )
-    error_message = "Bootstrap requires a 24+ character agent token and 12+ character buyer password."
+    error_message = "Bootstrap requires a private buyer password of at least 12 characters."
   }
 }
 
@@ -157,5 +156,21 @@ variable "bootstrap_generation" {
   validation {
     condition     = var.bootstrap_generation == null ? true : can(regex("^[a-z0-9][a-z0-9-]{0,29}$", var.bootstrap_generation))
     error_message = "Use a lowercase generation suffix of at most 30 characters."
+  }
+}
+
+variable "llm_model" {
+  description = "Conversational LLM model; separate from local embedding model."
+  type        = string
+  default     = "gpt-4.1-mini"
+}
+
+variable "llm_base_url" {
+  description = "Server-side OpenAI-compatible provider URL; key in runtime_secrets.LLM_API_KEY."
+  type        = string
+  default     = "https://api.openai.com/v1"
+  validation {
+    condition     = startswith(var.llm_base_url, "https://")
+    error_message = "Hosted LLM provider traffic requires HTTPS."
   }
 }

@@ -1,6 +1,5 @@
-"""Edge behaviour of the policy function, sessions, MCP errors, health, static frontend and search."""
+"""Edge behaviour of the policy function, sessions, health, static frontend and search."""
 
-import asyncio
 import os
 import sys
 import types
@@ -15,7 +14,6 @@ import aimo.search as search
 from aimo.approval_policy import can_approve, evaluate_purchase
 from aimo.config import Settings
 from aimo.db import Problem, connection
-from aimo.mcp_adapter import build_mcp
 from aimo.schemas import Requirements, SearchRequest
 from aimo.service import Service
 
@@ -182,45 +180,6 @@ def test_expired_session_row_is_refused():
         assert http.get("/api/session").status_code == 401
 
 
-# --- MCP -----------------------------------------------------------------------------------------
-
-
-def test_mcp_tool_error_is_reported_as_error_result():
-    token = os.environ["DEMO_AGENT_TOKEN"]
-    with TestClient(api.create_app(Service())) as http:
-        response = http.post(
-            "/mcp/",
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Accept": "application/json, text/event-stream",
-            },
-            json={
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "tools/call",
-                "params": {"name": "get_product", "arguments": {"product_id": "no-such-id"}},
-            },
-        )
-    result = response.json()["result"]
-    assert result["isError"] is True
-    assert "NOT_FOUND" in result["content"][0]["text"]
-
-
-def test_mcp_tool_without_an_http_request_is_refused():
-    """In-memory transport has no HTTP request, hence no bearer token: no anonymous tool calls."""
-    from mcp.shared.memory import create_connected_server_and_client_session
-
-    mcp = build_mcp(Service())
-
-    async def call():
-        async with create_connected_server_and_client_session(mcp._mcp_server) as session:
-            return await session.call_tool("get_purchase_policy", {})
-
-    result = asyncio.run(call())
-    assert result.isError is True
-    assert "Authenticated HTTP transport is required" in result.content[0].text
-
-
 # --- health and static frontend ------------------------------------------------------------------
 
 
@@ -378,22 +337,25 @@ def test_real_model_key_embeds_with_query_and_passage_prefixes_and_pins_the_revi
 # --- agent bearer credentials and CSRF -----------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "header", [None, "", "Basic abc", "bearer lowercase", "Bearer wrong-token"]
-)
-def test_agent_credentials_must_be_an_exact_bearer_token(header):
+def test_internal_agent_is_resolved_from_the_buyer_mapping_never_from_input():
+    agent = auth.internal_agent({"buyer_id": "demo-hotel"})
+    assert agent["role"] == "agent" and agent["buyer_id"] == "demo-hotel"
+    assert agent["id"].startswith("internal:")
+
+
+def test_buyer_without_a_provisioned_internal_agent_is_refused():
     with pytest.raises(Problem) as error:
-        auth.agent_identity(header)
-    assert (error.value.code, error.value.status) == ("UNAUTHENTICATED", 401)
+        auth.internal_agent({"buyer_id": "no-such-buyer"})
+    assert (error.value.code, error.value.status) == ("AGENT_NOT_CONFIGURED", 503)
 
 
-def test_agent_credential_of_an_inactive_agent_is_refused():
-    token = os.environ["DEMO_AGENT_TOKEN"]
-    assert auth.agent_identity("Bearer " + token)["id"] == "demo-agent"
+def test_inactive_internal_agent_is_refused():
+    agent = auth.internal_agent({"buyer_id": "demo-hotel"})
     with connection() as c:
-        c.execute("UPDATE identities SET active=false WHERE id='demo-agent'")
-    with pytest.raises(Problem):
-        auth.agent_identity("Bearer " + token)
+        c.execute("UPDATE identities SET active=false WHERE id=%s", (agent["id"],))
+    with pytest.raises(Problem) as error:
+        auth.internal_agent({"buyer_id": "demo-hotel"})
+    assert error.value.code == "AGENT_NOT_CONFIGURED"
 
 
 def test_csrf_check_needs_the_matching_token_and_origin():

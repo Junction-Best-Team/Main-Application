@@ -3,31 +3,28 @@ from pathlib import Path
 from secrets import token_urlsafe
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, Header, Query, Request, Response
+from fastapi import Depends, FastAPI, Query, Request, Response
 from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from aimo import approval_workflow as workflow
-from aimo import auth, upstream
+from aimo import auth, conversations, upstream
+from aimo.chat_schemas import (
+    ConversationCreate,
+    ConversationList,
+    ConversationResponse,
+    MessageRequest,
+)
 from aimo.config import settings
 from aimo.db import Problem, close_pools, connection
-from aimo.mcp_adapter import build_mcp
 from aimo.schemas import (
     CommitRequest,
     CommitResponse,
     DecisionRequest,
     InboxResponse,
     LoginRequest,
-    LookupRequest,
-    LookupResponse,
-    OrderResponse,
-    PolicyResponse,
-    PrepareRequest,
-    ProductResponse,
     ProposalResponse,
-    SearchRequest,
-    SearchResponse,
     SessionResponse,
 )
 from aimo.service import Service
@@ -40,21 +37,18 @@ CONTENT_SECURITY_POLICY = (
 
 def create_app(service=None):
     service = service or Service()
-    mcp = build_mcp(service)
-    transport = mcp.streamable_http_app()
 
     @asynccontextmanager
     async def lifespan(app):
         import anyio
 
         try:
-            async with mcp.session_manager.run():
-                yield
+            yield
         finally:
             await anyio.to_thread.run_sync(close_pools)
 
     app = FastAPI(
-        title="Valio Aimo purchasing gateway",
+        title="Aimo chat purchasing",
         version="0.1.0",
         lifespan=lifespan,
         docs_url=None,
@@ -89,28 +83,15 @@ def create_app(service=None):
 
     @app.middleware("http")
     async def security_headers(request, call_next):
-        # Apply agent auth to MCP discovery as well as every tool invocation.
-        if request.url.path.startswith("/mcp"):
-            try:
-                import anyio
-
-                request.state.agent_identity = await anyio.to_thread.run_sync(
-                    auth.agent_identity, request.headers.get("authorization")
-                )
-            except Problem as exc:
-                return await problem_handler(request, exc)
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Frame-Options"] = "DENY"
         if request.url.path != "/docs" or response.status_code != 200:
             response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
-        if request.url.path.startswith(("/api", "/mcp")):
+        if request.url.path.startswith("/api"):
             response.headers["Cache-Control"] = "no-store"
         return response
-
-    def agent(authorization: str | None = Header(default=None)):
-        return auth.agent_identity(authorization)
 
     def buyer(request: Request):
         return auth.browser_identity(request.cookies.get("aimo_session"))[0]
@@ -200,44 +181,110 @@ def create_app(service=None):
         )
         return workflow.record_human_decision(identity, approval_id, body)
 
-    @app.post("/api/agent/search_products", response_model=SearchResponse)
-    def search(body: SearchRequest, identity=Depends(agent)):
-        return service.search_products(identity, body)
+    @app.get("/api/purchases", response_model=InboxResponse)
+    def purchase_history(
+        offset: int = Query(0, ge=0, le=10000),
+        limit: int = Query(20, ge=1, le=50),
+        identity=Depends(buyer),
+    ):
+        return conversations.purchases(identity, offset, limit)
 
-    @app.get("/api/agent/products/{product_id}", response_model=ProductResponse)
-    def product(product_id: str, identity=Depends(agent)):
-        return service.get_product(identity, product_id)
+    @app.post("/api/purchases/{proposal_id}/confirm", response_model=CommitResponse)
+    def confirm_purchase(
+        proposal_id: UUID, body: CommitRequest, request: Request, identity=Depends(buyer)
+    ):
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+        return conversations.confirm(identity, proposal_id, body, service)
 
-    @app.get("/api/agent/purchase-policy", response_model=PolicyResponse)
-    def policy(identity=Depends(agent)):
-        return service.get_purchase_policy(identity)
+    @app.get("/api/conversations", response_model=ConversationList)
+    def conversation_list(
+        offset: int = Query(0, ge=0, le=10000),
+        limit: int = Query(20, ge=1, le=50),
+        identity=Depends(buyer),
+    ):
+        return conversations.listing(identity, offset, limit)
 
-    @app.post("/api/agent/check_price_and_availability", response_model=LookupResponse)
-    def lookup(body: LookupRequest, identity=Depends(agent)):
-        return service.check_price_and_availability(identity, body)
+    @app.post("/api/conversations", response_model=ConversationResponse)
+    def conversation_create(body: ConversationCreate, request: Request, identity=Depends(buyer)):
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+        return conversations.create(identity, body)
 
-    @app.post("/api/agent/prepare_order", response_model=ProposalResponse)
-    def prepare(body: PrepareRequest, identity=Depends(agent)):
-        return service.prepare_order(identity, body)
+    @app.get("/api/conversations/{conversation_id}", response_model=ConversationResponse)
+    def conversation_detail(conversation_id: UUID, identity=Depends(buyer)):
+        return conversations.detail(identity, conversation_id)
 
-    @app.get("/api/agent/proposals/{proposal_id}", response_model=ProposalResponse)
-    def proposal(proposal_id: UUID, identity=Depends(agent)):
-        return service.get_proposal(identity, proposal_id)
+    @app.post("/api/conversations/{conversation_id}/messages", response_model=ConversationResponse)
+    def send_message(
+        conversation_id: UUID, body: MessageRequest, request: Request, identity=Depends(buyer)
+    ):
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+        return conversations.message(
+            identity, conversation_id, body, service, getattr(app.state, "agent_runner", None)
+        )
 
-    @app.post("/api/agent/commit_order", response_model=CommitResponse)
-    def commit(body: CommitRequest, identity=Depends(agent)):
-        return service.commit_order(identity, body)
+    @app.get(
+        "/api/conversations/{conversation_id}/events",
+        response_class=StreamingResponse,
+        responses={
+            200: {
+                "description": "SSE event 'conversation' carries ConversationResponse JSON; 'expired' carries an empty object. Comments are heartbeats.",
+                "content": {"text/event-stream": {"schema": {"type": "string"}}},
+            }
+        },
+    )
+    def conversation_events(conversation_id: UUID, request: Request, identity=Depends(buyer)):
+        conversations.detail(identity, conversation_id)  # Authenticate before streaming headers.
+        cookie = request.cookies.get("aimo_session")
 
-    @app.get("/api/agent/orders/{order_id}", response_model=OrderResponse)
-    def order(order_id: UUID, identity=Depends(agent)):
-        return service.get_order(identity, order_id)
+        async def stream():
+            import asyncio
+            import json
+            import time
 
-    app.mount("/mcp", transport)
+            import anyio
+            from fastapi.encoders import jsonable_encoder
+
+            deadline, previous = time.monotonic() + 25, None
+            while time.monotonic() < deadline and not await request.is_disconnected():
+                # Revocation/session expiry continues to apply after connection establishment.
+                try:
+                    current, _ = await anyio.to_thread.run_sync(auth.browser_identity, cookie)
+                    data = await anyio.to_thread.run_sync(
+                        conversations.detail, current, conversation_id
+                    )
+                except Problem:
+                    yield "event: expired\ndata: {}\n\n"
+                    return
+                value = json.dumps(jsonable_encoder(data), separators=(",", ":"))
+                if value != previous:
+                    yield f"event: conversation\ndata: {value}\n\n"
+                    previous = value
+                else:
+                    yield ": keep-alive\n\n"
+                await asyncio.sleep(2)
+
+        return StreamingResponse(
+            stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-store",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
     dist = Path(settings().frontend_dist)
     if (dist / "assets").exists():
         app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
 
     @app.get("/", include_in_schema=False)
+    @app.get("/conversations/{conversation_id}", include_in_schema=False)
+    @app.get("/purchases", include_in_schema=False)
     @app.get("/login", include_in_schema=False)
     @app.get("/approvals", include_in_schema=False)
     @app.get("/approvals/{approval_id}", include_in_schema=False)

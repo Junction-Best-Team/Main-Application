@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CI procedure: lint, unit/integration tests, then a black-box sweep of every agent tool.
+# CI procedure: lint, unit/integration tests, then a black-box sweep of the buyer-facing API.
 #
 #   tests/ci.sh           hermetic: own database (aimo_ci), fixture catalog, FIXTURE price/stock.
 #                         Needs no API key and never touches your dev database.
@@ -70,8 +70,7 @@ with psycopg.connect(urlunsplit(url._replace(path="/postgres")), autocommit=True
     if not c.execute("SELECT 1 FROM pg_database WHERE datname=%s", (name,)).fetchone():
         c.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
 PY
-  export EMBEDDING_BACKEND=fixture UPSTREAM_MODE=fixture VALIO_AIMO_API_KEY=""
-  export DEMO_AGENT_TOKEN="ci-agent-$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
+  export EMBEDDING_BACKEND=fixture UPSTREAM_MODE=fixture VALIO_AIMO_API_KEY="" LLM_API_KEY=""
   export DEMO_BUYER_PASSWORD="ci-buyer-$(head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
   export APPROVAL_SESSION_SECRET="ci-session-$(head -c 36 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
   aimo_cli migrate
@@ -95,7 +94,8 @@ if [ "$BROWSER" = 1 ]; then
   npm exec --prefix frontend -- playwright install ${PLAYWRIGHT_DEPS:+--with-deps} chromium
 fi
 
-export SECURE_COOKIES=false PUBLIC_BASE_URL="$BASE" DEMO_BASE_URL="$BASE"
+# The sweep never spends an LLM provider: the server runs without one in every mode.
+export SECURE_COOKIES=false PUBLIC_BASE_URL="$BASE" DEMO_BASE_URL="$BASE" LLM_API_KEY=""
 
 step "Start server on ${BASE}"
 if [ "${CI_COVERAGE:-0}" = 1 ]; then
@@ -115,7 +115,7 @@ done
 RESULT=0
 
 if [ "$SWEEP" = 1 ]; then
-  step "Tool sweep (all eight tools + MCP + controls)"
+  step "Tool sweep (sign-in, CSRF/Origin, conversations, purchases, approvals)"
   uv run python tests/sweep/run_sweep.py --base-url "$BASE" ${SWEEP_ARGS:-} || RESULT=1
 fi
 
@@ -127,7 +127,7 @@ from aimo.db import connection
 with connection() as c:
     c.execute("TRUNCATE login_attempts")
 PY
-  BASE_URL="$BASE" npm run test --prefix frontend || RESULT=1
+  AIMO_INTEGRATION=1 BASE_URL="$BASE" npm run test --prefix frontend || RESULT=1
 fi
 
 [ "$RESULT" = 0 ] && echo && echo "ALL CI STEPS PASSED" || { echo && echo "CI FAILED"; }

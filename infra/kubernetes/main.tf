@@ -59,6 +59,10 @@ resource "kubernetes_config_map_v1" "runtime" {
     namespace = kubernetes_namespace_v1.aimo.metadata[0].name
   }
   data = {
+    LLM_BASE_URL        = var.llm_base_url
+    LLM_MODEL           = var.llm_model
+    LLM_TIMEOUT_SECONDS = "20"
+    LLM_MAX_TOOL_ROUNDS = "20"
     PUBLIC_BASE_URL     = "https://${var.hostname}"
     SECURE_COOKIES      = "true"
     UPSTREAM_MODE       = var.upstream_mode

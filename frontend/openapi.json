@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Valio Aimo purchasing gateway",
+    "title": "Aimo chat purchasing",
     "version": "0.1.0"
   },
   "paths": {
@@ -288,90 +288,33 @@
         }
       }
     },
-    "/api/agent/search_products": {
-      "post": {
-        "summary": "Search",
-        "operationId": "search_api_agent_search_products_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SearchRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SearchResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/agent/products/{product_id}": {
+    "/api/purchases": {
       "get": {
-        "summary": "Product",
-        "operationId": "product_api_agent_products__product_id__get",
+        "summary": "Purchase History",
+        "operationId": "purchase_history_api_purchases_get",
         "parameters": [
           {
-            "name": "product_id",
-            "in": "path",
-            "required": true,
+            "name": "offset",
+            "in": "query",
+            "required": false,
             "schema": {
-              "type": "string",
-              "title": "Product Id"
+              "type": "integer",
+              "maximum": 10000,
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
             }
           },
           {
-            "name": "authorization",
-            "in": "header",
+            "name": "limit",
+            "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
             }
           }
         ],
@@ -381,7 +324,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProductResponse"
+                  "$ref": "#/components/schemas/InboxResponse"
                 }
               }
             }
@@ -399,168 +342,10 @@
         }
       }
     },
-    "/api/agent/purchase-policy": {
-      "get": {
-        "summary": "Policy",
-        "operationId": "policy_api_agent_purchase_policy_get",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PolicyResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/agent/check_price_and_availability": {
+    "/api/purchases/{proposal_id}/confirm": {
       "post": {
-        "summary": "Lookup",
-        "operationId": "lookup_api_agent_check_price_and_availability_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LookupRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LookupResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/agent/prepare_order": {
-      "post": {
-        "summary": "Prepare",
-        "operationId": "prepare_api_agent_prepare_order_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PrepareRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProposalResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/agent/proposals/{proposal_id}": {
-      "get": {
-        "summary": "Proposal",
-        "operationId": "proposal_api_agent_proposals__proposal_id__get",
+        "summary": "Confirm Purchase",
+        "operationId": "confirm_purchase_api_purchases__proposal_id__confirm_post",
         "parameters": [
           {
             "name": "proposal_id",
@@ -570,68 +355,6 @@
               "type": "string",
               "format": "uuid",
               "title": "Proposal Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProposalResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/agent/commit_order": {
-      "post": {
-        "summary": "Commit",
-        "operationId": "commit_api_agent_commit_order_post",
-        "parameters": [
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
             }
           }
         ],
@@ -669,35 +392,33 @@
         }
       }
     },
-    "/api/agent/orders/{order_id}": {
+    "/api/conversations": {
       "get": {
-        "summary": "Order",
-        "operationId": "order_api_agent_orders__order_id__get",
+        "summary": "Conversation List",
+        "operationId": "conversation_list_api_conversations_get",
         "parameters": [
           {
-            "name": "order_id",
-            "in": "path",
-            "required": true,
+            "name": "offset",
+            "in": "query",
+            "required": false,
             "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Order Id"
+              "type": "integer",
+              "maximum": 10000,
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
             }
           },
           {
-            "name": "authorization",
-            "in": "header",
+            "name": "limit",
+            "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
             }
           }
         ],
@@ -707,7 +428,173 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OrderResponse"
+                  "$ref": "#/components/schemas/ConversationList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Conversation Create",
+        "operationId": "conversation_create_api_conversations_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/conversations/{conversation_id}": {
+      "get": {
+        "summary": "Conversation Detail",
+        "operationId": "conversation_detail_api_conversations__conversation_id__get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/conversations/{conversation_id}/messages": {
+      "post": {
+        "summary": "Send Message",
+        "operationId": "send_message_api_conversations__conversation_id__messages_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/conversations/{conversation_id}/events": {
+      "get": {
+        "summary": "Conversation Events",
+        "operationId": "conversation_events_api_conversations__conversation_id__events_get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE event 'conversation' carries ConversationResponse JSON; 'expired' carries an empty object. Comments are heartbeats.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -728,147 +615,60 @@
   },
   "components": {
     "schemas": {
-      "CommercialEvidence": {
+      "ChatMessage": {
         "properties": {
-          "product_id": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "role": {
             "type": "string",
-            "title": "Product Id"
-          },
-          "currency": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "enum": [
+              "user",
+              "assistant"
             ],
-            "title": "Currency"
+            "title": "Role"
           },
-          "net": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Net"
+          "text": {
+            "type": "string",
+            "title": "Text"
           },
-          "gross": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Gross"
-          },
-          "tax_rate": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tax Rate"
-          },
-          "available_sales_quantity": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Available Sales Quantity"
-          },
-          "expires_at": {
+          "created_at": {
             "type": "string",
             "format": "date-time",
-            "title": "Expires At"
+            "title": "Created At"
           },
-          "reasons": {
-            "items": {
-              "$ref": "#/components/schemas/Reason"
-            },
-            "type": "array",
-            "title": "Reasons"
+          "meal_plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MealPlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
-          "mode": {
-            "type": "string",
-            "title": "Mode"
-          },
-          "observed_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Observed At"
-          },
-          "source": {
-            "$ref": "#/components/schemas/CommercialSource"
+          "proposal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposal Id"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "product_id",
-          "currency",
-          "net",
-          "gross",
-          "tax_rate",
-          "available_sales_quantity",
-          "expires_at",
-          "reasons",
-          "mode",
-          "observed_at",
-          "source"
+          "id",
+          "role",
+          "text",
+          "created_at"
         ],
-        "title": "CommercialEvidence"
-      },
-      "CommercialSource": {
-        "properties": {
-          "price": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "$ref": "#/components/schemas/JsonValue"
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Price"
-          },
-          "availability": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "$ref": "#/components/schemas/JsonValue"
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Availability"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "price",
-          "availability"
-        ],
-        "title": "CommercialSource"
+        "title": "ChatMessage"
       },
       "CommitRequest": {
         "properties": {
@@ -916,6 +716,150 @@
             "revised": "#/components/schemas/RevisedProposalResponse"
           }
         }
+      },
+      "ConversationCreate": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title",
+            "default": "New purchase"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 8,
+            "title": "Idempotency Key"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "idempotency_key"
+        ],
+        "title": "ConversationCreate"
+      },
+      "ConversationList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationSummary"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Offset"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ConversationList"
+      },
+      "ConversationResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ChatMessage"
+            },
+            "type": "array",
+            "title": "Messages"
+          },
+          "purchases": {
+            "items": {
+              "$ref": "#/components/schemas/ProposalResponse"
+            },
+            "type": "array",
+            "title": "Purchases"
+          },
+          "busy": {
+            "type": "boolean",
+            "title": "Busy",
+            "default": false
+          },
+          "retry_message": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MessageRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "created_at",
+          "updated_at",
+          "messages",
+          "purchases"
+        ],
+        "title": "ConversationResponse"
+      },
+      "ConversationSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ConversationSummary"
       },
       "DecisionRequest": {
         "properties": {
@@ -982,57 +926,48 @@
         ],
         "title": "InboxResponse"
       },
-      "JsonValue": {},
-      "LineRequest-Input": {
+      "Ingredient": {
         "properties": {
-          "product_id": {
+          "name": {
             "type": "string",
-            "maxLength": 40,
+            "maxLength": 120,
             "minLength": 1,
-            "title": "Product Id"
+            "title": "Name"
           },
           "amount": {
-            "anyOf": [
-              {
-                "type": "number",
-                "exclusiveMinimum": 0.0
-              },
-              {
-                "type": "string"
-              }
-            ],
+            "type": "string",
+            "maxLength": 30,
+            "minLength": 1,
             "title": "Amount"
           },
           "unit": {
             "type": "string",
             "maxLength": 12,
             "minLength": 1,
-            "title": "Unit",
-            "description": "Explicit catalog unit code, L or KG; boxes is ambiguous."
+            "title": "Unit"
           },
-          "substitutes_for": {
+          "product_id": {
             "anyOf": [
               {
-                "type": "string",
-                "maxLength": 40
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Substitutes For"
+            "title": "Product Id"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "product_id",
+          "name",
           "amount",
           "unit"
         ],
-        "title": "LineRequest"
+        "title": "Ingredient"
       },
-      "LineRequest-Output": {
+      "LineRequest": {
         "properties": {
           "product_id": {
             "type": "string",
@@ -1096,102 +1031,69 @@
         ],
         "title": "LoginRequest"
       },
-      "LookupRequest": {
+      "MealPlan": {
         "properties": {
-          "product_ids": {
+          "title": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "portions": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Portions"
+          },
+          "ingredients": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/Ingredient"
             },
             "type": "array",
-            "maxItems": 50,
+            "maxItems": 30,
             "minItems": 1,
-            "title": "Product Ids"
+            "title": "Ingredients"
           },
-          "delivery_date": {
-            "type": "string",
-            "format": "date",
-            "title": "Delivery Date"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "product_ids",
-          "delivery_date"
-        ],
-        "title": "LookupRequest"
-      },
-      "LookupResponse": {
-        "properties": {
-          "mode": {
-            "type": "string",
-            "title": "Mode"
-          },
-          "products": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/CommercialEvidence"
-            },
-            "type": "object",
-            "title": "Products"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "mode",
-          "products"
-        ],
-        "title": "LookupResponse"
-      },
-      "Measure": {
-        "properties": {
-          "value": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Value"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "known",
-              "unknown",
-              "conflicting"
-            ],
-            "title": "Status"
-          },
-          "basis": {
+          "notes": {
             "items": {
               "type": "string"
             },
             "type": "array",
-            "title": "Basis"
-          },
-          "name_hint": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name Hint"
+            "maxItems": 20,
+            "title": "Notes"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "value",
-          "status",
-          "basis"
+          "title",
+          "portions",
+          "ingredients"
         ],
-        "title": "Measure"
+        "title": "MealPlan"
+      },
+      "MessageRequest": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Text"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 8,
+            "title": "Idempotency Key"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text",
+          "idempotency_key"
+        ],
+        "title": "MessageRequest"
       },
       "NextAction": {
         "properties": {
@@ -1363,366 +1265,6 @@
         ],
         "title": "OrderResponse"
       },
-      "PolicyResponse": {
-        "properties": {
-          "buyer_id": {
-            "type": "string",
-            "title": "Buyer Id"
-          },
-          "agent_id": {
-            "type": "string",
-            "title": "Agent Id"
-          },
-          "policy_version": {
-            "type": "integer",
-            "title": "Policy Version"
-          },
-          "rules": {
-            "$ref": "#/components/schemas/PolicyRules"
-          },
-          "spend_basis": {
-            "type": "string",
-            "title": "Spend Basis"
-          },
-          "editable": {
-            "type": "boolean",
-            "const": false,
-            "title": "Editable"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "buyer_id",
-          "agent_id",
-          "policy_version",
-          "rules",
-          "spend_basis",
-          "editable"
-        ],
-        "title": "PolicyResponse"
-      },
-      "PolicyRules": {
-        "properties": {
-          "currency": {
-            "type": "string",
-            "const": "EUR",
-            "title": "Currency"
-          },
-          "autonomous_limit": {
-            "type": "string",
-            "title": "Autonomous Limit"
-          },
-          "destinations": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "minItems": 1,
-            "title": "Destinations"
-          },
-          "substitution": {
-            "type": "string",
-            "enum": [
-              "allowed",
-              "requires_approval",
-              "forbidden"
-            ],
-            "title": "Substitution"
-          },
-          "overbuy": {
-            "type": "string",
-            "enum": [
-              "allowed",
-              "requires_approval",
-              "forbidden"
-            ],
-            "title": "Overbuy"
-          },
-          "whole_sales_units": {
-            "type": "boolean",
-            "title": "Whole Sales Units"
-          },
-          "approved_product_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Approved Product Ids",
-            "description": "Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope blocks regulated substitutions until privileged setup supplies it."
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "currency",
-          "autonomous_limit",
-          "destinations",
-          "substitution",
-          "overbuy",
-          "whole_sales_units"
-        ],
-        "title": "PolicyRules"
-      },
-      "PrepareRequest": {
-        "properties": {
-          "request_id": {
-            "type": "string",
-            "maxLength": 100,
-            "minLength": 1,
-            "title": "Request Id"
-          },
-          "lines": {
-            "items": {
-              "$ref": "#/components/schemas/LineRequest-Input"
-            },
-            "type": "array",
-            "maxItems": 30,
-            "minItems": 1,
-            "title": "Lines"
-          },
-          "destination": {
-            "type": "string",
-            "maxLength": 120,
-            "minLength": 1,
-            "title": "Destination"
-          },
-          "delivery_date": {
-            "type": "string",
-            "format": "date",
-            "title": "Delivery Date"
-          },
-          "requirements": {
-            "$ref": "#/components/schemas/Requirements"
-          },
-          "budget_gross": {
-            "anyOf": [
-              {
-                "type": "number",
-                "minimum": 0.0
-              },
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Budget Gross"
-          },
-          "allow_substitution": {
-            "type": "boolean",
-            "title": "Allow Substitution",
-            "default": true
-          },
-          "allow_overbuy": {
-            "type": "boolean",
-            "title": "Allow Overbuy",
-            "default": true
-          },
-          "idempotency_key": {
-            "type": "string",
-            "maxLength": 120,
-            "minLength": 8,
-            "title": "Idempotency Key",
-            "description": "Stable key for retries of this preparation, scoped to buyer and agent. Use a new key for a new purchase or fresh proposal after expiry."
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "request_id",
-          "lines",
-          "destination",
-          "delivery_date",
-          "idempotency_key"
-        ],
-        "title": "PrepareRequest"
-      },
-      "ProductResponse": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "names": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "Names"
-          },
-          "sales_unit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sales Unit"
-          },
-          "base_unit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Base Unit"
-          },
-          "units": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "Units"
-          },
-          "order_step": {
-            "type": "string",
-            "title": "Order Step"
-          },
-          "measures": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/Measure"
-            },
-            "type": "object",
-            "title": "Measures"
-          },
-          "claims": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Claims"
-          },
-          "allergens": {
-            "additionalProperties": {
-              "type": "string",
-              "enum": [
-                "CONTAINS",
-                "MAY_CONTAIN"
-              ]
-            },
-            "type": "object",
-            "title": "Allergens"
-          },
-          "free_from": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Free From"
-          },
-          "provenance": {
-            "$ref": "#/components/schemas/Provenance"
-          },
-          "gtin": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Gtin"
-          },
-          "variable_weight": {
-            "type": "boolean",
-            "title": "Variable Weight"
-          },
-          "allergen_conflicts": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Allergen Conflicts"
-          },
-          "conflicts": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Conflicts"
-          },
-          "deposits": {
-            "items": {
-              "$ref": "#/components/schemas/JsonValue"
-            },
-            "type": "array",
-            "title": "Deposits",
-            "description": "Original supplier deposit declarations."
-          },
-          "substitutions": {
-            "items": {
-              "$ref": "#/components/schemas/JsonValue"
-            },
-            "type": "array",
-            "title": "Substitutions",
-            "description": "Original supplier substitution declarations."
-          },
-          "category": {
-            "$ref": "#/components/schemas/JsonValue"
-          },
-          "country_of_origin": {
-            "$ref": "#/components/schemas/JsonValue"
-          },
-          "deleted": {
-            "type": "boolean",
-            "title": "Deleted"
-          },
-          "packaging": {
-            "items": {
-              "$ref": "#/components/schemas/JsonValue"
-            },
-            "type": "array",
-            "title": "Packaging",
-            "description": "Original supplier packaging evidence."
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "id",
-          "name",
-          "names",
-          "sales_unit",
-          "base_unit",
-          "units",
-          "order_step",
-          "measures",
-          "claims",
-          "allergens",
-          "free_from",
-          "provenance",
-          "gtin",
-          "variable_weight",
-          "allergen_conflicts",
-          "conflicts",
-          "deposits",
-          "substitutions",
-          "category",
-          "country_of_origin",
-          "deleted",
-          "packaging"
-        ],
-        "title": "ProductResponse"
-      },
       "ProposalResponse": {
         "properties": {
           "proposal_id": {
@@ -1872,25 +1414,6 @@
         ],
         "title": "ProposalResponse"
       },
-      "Provenance": {
-        "properties": {
-          "source": {
-            "type": "string",
-            "title": "Source"
-          },
-          "product_id": {
-            "type": "string",
-            "title": "Product Id"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "source",
-          "product_id"
-        ],
-        "title": "Provenance"
-      },
       "PurchaseRequest": {
         "properties": {
           "request_id": {
@@ -1901,7 +1424,7 @@
           },
           "lines": {
             "items": {
-              "$ref": "#/components/schemas/LineRequest-Output"
+              "$ref": "#/components/schemas/LineRequest"
             },
             "type": "array",
             "maxItems": 30,
@@ -2359,189 +1882,6 @@
           "status"
         ],
         "title": "RevisedProposalResponse"
-      },
-      "SearchCandidate": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "names": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "Names"
-          },
-          "sales_unit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sales Unit"
-          },
-          "base_unit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Base Unit"
-          },
-          "units": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "Units"
-          },
-          "order_step": {
-            "type": "string",
-            "title": "Order Step"
-          },
-          "measures": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/Measure"
-            },
-            "type": "object",
-            "title": "Measures"
-          },
-          "claims": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Claims"
-          },
-          "allergens": {
-            "additionalProperties": {
-              "type": "string",
-              "enum": [
-                "CONTAINS",
-                "MAY_CONTAIN"
-              ]
-            },
-            "type": "object",
-            "title": "Allergens"
-          },
-          "free_from": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Free From"
-          },
-          "provenance": {
-            "$ref": "#/components/schemas/Provenance"
-          },
-          "score": {
-            "type": "number",
-            "title": "Score"
-          },
-          "match_is_suitability_proof": {
-            "type": "boolean",
-            "const": false,
-            "title": "Match Is Suitability Proof"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "id",
-          "name",
-          "names",
-          "sales_unit",
-          "base_unit",
-          "units",
-          "order_step",
-          "measures",
-          "claims",
-          "allergens",
-          "free_from",
-          "provenance",
-          "score",
-          "match_is_suitability_proof"
-        ],
-        "title": "SearchCandidate"
-      },
-      "SearchRequest": {
-        "properties": {
-          "query": {
-            "type": "string",
-            "maxLength": 250,
-            "minLength": 1,
-            "title": "Query"
-          },
-          "requirements": {
-            "$ref": "#/components/schemas/Requirements"
-          },
-          "limit": {
-            "type": "integer",
-            "maximum": 20.0,
-            "minimum": 1.0,
-            "title": "Limit",
-            "default": 5
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "query"
-        ],
-        "title": "SearchRequest"
-      },
-      "SearchResponse": {
-        "properties": {
-          "products": {
-            "items": {
-              "$ref": "#/components/schemas/SearchCandidate"
-            },
-            "type": "array",
-            "title": "Products"
-          },
-          "generation": {
-            "type": "string",
-            "title": "Generation"
-          },
-          "model": {
-            "type": "string",
-            "title": "Model"
-          },
-          "strategy": {
-            "type": "string",
-            "enum": [
-              "keyword",
-              "semantic",
-              "hybrid"
-            ],
-            "title": "Strategy"
-          },
-          "note": {
-            "type": "string",
-            "title": "Note"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "products",
-          "generation",
-          "model",
-          "strategy",
-          "note"
-        ],
-        "title": "SearchResponse"
       },
       "SessionResponse": {
         "properties": {

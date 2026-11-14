@@ -157,32 +157,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/agent/search_products": {
+    "/api/purchases": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
-        /** Search */
-        post: operations["search_api_agent_search_products_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agent/products/{product_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Product */
-        get: operations["product_api_agent_products__product_id__get"];
+        /** Purchase History */
+        get: operations["purchase_history_api_purchases_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -191,15 +174,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/agent/purchase-policy": {
+    "/api/purchases/{proposal_id}/confirm": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Policy */
-        get: operations["policy_api_agent_purchase_policy_get"];
+        get?: never;
+        put?: never;
+        /** Confirm Purchase */
+        post: operations["confirm_purchase_api_purchases__proposal_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Conversation List */
+        get: operations["conversation_list_api_conversations_get"];
+        put?: never;
+        /** Conversation Create */
+        post: operations["conversation_create_api_conversations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/conversations/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Conversation Detail */
+        get: operations["conversation_detail_api_conversations__conversation_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -208,7 +226,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/agent/check_price_and_availability": {
+    "/api/conversations/{conversation_id}/messages": {
         parameters: {
             query?: never;
             header?: never;
@@ -217,74 +235,23 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Lookup */
-        post: operations["lookup_api_agent_check_price_and_availability_post"];
+        /** Send Message */
+        post: operations["send_message_api_conversations__conversation_id__messages_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/agent/prepare_order": {
+    "/api/conversations/{conversation_id}/events": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
-        /** Prepare */
-        post: operations["prepare_api_agent_prepare_order_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agent/proposals/{proposal_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Proposal */
-        get: operations["proposal_api_agent_proposals__proposal_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agent/commit_order": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Commit */
-        post: operations["commit_api_agent_commit_order_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/agent/orders/{order_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Order */
-        get: operations["order_api_agent_orders__order_id__get"];
+        /** Conversation Events */
+        get: operations["conversation_events_api_conversations__conversation_id__events_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -297,46 +264,25 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** CommercialEvidence */
-        CommercialEvidence: {
-            /** Product Id */
-            product_id: string;
-            /** Currency */
-            currency: string | null;
-            /** Net */
-            net: string | null;
-            /** Gross */
-            gross: string | null;
-            /** Tax Rate */
-            tax_rate: string | null;
-            /** Available Sales Quantity */
-            available_sales_quantity: string | null;
+        /** ChatMessage */
+        ChatMessage: {
+            /** Id */
+            id: number;
             /**
-             * Expires At
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
+            /** Text */
+            text: string;
+            /**
+             * Created At
              * Format: date-time
              */
-            expires_at: string;
-            /** Reasons */
-            reasons: components["schemas"]["Reason"][];
-            /** Mode */
-            mode: string;
-            /**
-             * Observed At
-             * Format: date-time
-             */
-            observed_at: string;
-            source: components["schemas"]["CommercialSource"];
-        };
-        /** CommercialSource */
-        CommercialSource: {
-            /** Price */
-            price: {
-                [key: string]: components["schemas"]["JsonValue"];
-            } | null;
-            /** Availability */
-            availability: {
-                [key: string]: components["schemas"]["JsonValue"];
-            } | null;
+            created_at: string;
+            meal_plan?: components["schemas"]["MealPlan"] | null;
+            /** Proposal Id */
+            proposal_id?: string | null;
         };
         /** CommitRequest */
         CommitRequest: {
@@ -352,6 +298,67 @@ export interface components {
         };
         /** CommitResponse */
         CommitResponse: components["schemas"]["OrderResponse"] | components["schemas"]["RevisedProposalResponse"];
+        /** ConversationCreate */
+        ConversationCreate: {
+            /**
+             * Title
+             * @default New purchase
+             */
+            title: string;
+            /** Idempotency Key */
+            idempotency_key: string;
+        };
+        /** ConversationList */
+        ConversationList: {
+            /** Items */
+            items: components["schemas"]["ConversationSummary"][];
+            /** Next Offset */
+            next_offset?: number | null;
+        };
+        /** ConversationResponse */
+        ConversationResponse: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Messages */
+            messages: components["schemas"]["ChatMessage"][];
+            /** Purchases */
+            purchases: components["schemas"]["ProposalResponse"][];
+            /**
+             * Busy
+             * @default false
+             */
+            busy: boolean;
+            retry_message?: components["schemas"]["MessageRequest"] | null;
+        };
+        /** ConversationSummary */
+        ConversationSummary: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** DecisionRequest */
         DecisionRequest: {
             /** Revision */
@@ -374,23 +381,19 @@ export interface components {
             /** Next Offset */
             next_offset?: number | null;
         };
-        JsonValue: unknown;
-        /** LineRequest */
-        "LineRequest-Input": {
-            /** Product Id */
-            product_id: string;
+        /** Ingredient */
+        Ingredient: {
+            /** Name */
+            name: string;
             /** Amount */
-            amount: number | string;
-            /**
-             * Unit
-             * @description Explicit catalog unit code, L or KG; boxes is ambiguous.
-             */
+            amount: string;
+            /** Unit */
             unit: string;
-            /** Substitutes For */
-            substitutes_for?: string | null;
+            /** Product Id */
+            product_id?: string | null;
         };
         /** LineRequest */
-        "LineRequest-Output": {
+        LineRequest: {
             /** Product Id */
             product_id: string;
             /** Amount */
@@ -410,38 +413,23 @@ export interface components {
             /** Password */
             password: string;
         };
-        /** LookupRequest */
-        LookupRequest: {
-            /** Product Ids */
-            product_ids: string[];
-            /**
-             * Delivery Date
-             * Format: date
-             */
-            delivery_date: string;
+        /** MealPlan */
+        MealPlan: {
+            /** Title */
+            title: string;
+            /** Portions */
+            portions: number;
+            /** Ingredients */
+            ingredients: components["schemas"]["Ingredient"][];
+            /** Notes */
+            notes?: string[];
         };
-        /** LookupResponse */
-        LookupResponse: {
-            /** Mode */
-            mode: string;
-            /** Products */
-            products: {
-                [key: string]: components["schemas"]["CommercialEvidence"];
-            };
-        };
-        /** Measure */
-        Measure: {
-            /** Value */
-            value: string | null;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "known" | "unknown" | "conflicting";
-            /** Basis */
-            basis: string[];
-            /** Name Hint */
-            name_hint?: string | null;
+        /** MessageRequest */
+        MessageRequest: {
+            /** Text */
+            text: string;
+            /** Idempotency Key */
+            idempotency_key: string;
         };
         /** NextAction */
         NextAction: {
@@ -521,145 +509,6 @@ export interface components {
             /** Explanation */
             explanation: string;
         };
-        /** PolicyResponse */
-        PolicyResponse: {
-            /** Buyer Id */
-            buyer_id: string;
-            /** Agent Id */
-            agent_id: string;
-            /** Policy Version */
-            policy_version: number;
-            rules: components["schemas"]["PolicyRules"];
-            /** Spend Basis */
-            spend_basis: string;
-            /**
-             * Editable
-             * @constant
-             */
-            editable: false;
-        };
-        /** PolicyRules */
-        PolicyRules: {
-            /**
-             * Currency
-             * @constant
-             */
-            currency: "EUR";
-            /** Autonomous Limit */
-            autonomous_limit: string;
-            /** Destinations */
-            destinations: string[];
-            /**
-             * Substitution
-             * @enum {string}
-             */
-            substitution: "allowed" | "requires_approval" | "forbidden";
-            /**
-             * Overbuy
-             * @enum {string}
-             */
-            overbuy: "allowed" | "requires_approval" | "forbidden";
-            /** Whole Sales Units */
-            whole_sales_units: boolean;
-            /**
-             * Approved Product Ids
-             * @description Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope blocks regulated substitutions until privileged setup supplies it.
-             */
-            approved_product_ids?: string[] | null;
-        };
-        /** PrepareRequest */
-        PrepareRequest: {
-            /** Request Id */
-            request_id: string;
-            /** Lines */
-            lines: components["schemas"]["LineRequest-Input"][];
-            /** Destination */
-            destination: string;
-            /**
-             * Delivery Date
-             * Format: date
-             */
-            delivery_date: string;
-            requirements?: components["schemas"]["Requirements"];
-            /** Budget Gross */
-            budget_gross?: number | string | null;
-            /**
-             * Allow Substitution
-             * @default true
-             */
-            allow_substitution: boolean;
-            /**
-             * Allow Overbuy
-             * @default true
-             */
-            allow_overbuy: boolean;
-            /**
-             * Idempotency Key
-             * @description Stable key for retries of this preparation, scoped to buyer and agent. Use a new key for a new purchase or fresh proposal after expiry.
-             */
-            idempotency_key: string;
-        };
-        /** ProductResponse */
-        ProductResponse: {
-            /** Id */
-            id: string;
-            /** Name */
-            name: string;
-            /** Names */
-            names: {
-                [key: string]: string;
-            };
-            /** Sales Unit */
-            sales_unit: string | null;
-            /** Base Unit */
-            base_unit: string | null;
-            /** Units */
-            units: {
-                [key: string]: string;
-            };
-            /** Order Step */
-            order_step: string;
-            /** Measures */
-            measures: {
-                [key: string]: components["schemas"]["Measure"];
-            };
-            /** Claims */
-            claims: string[];
-            /** Allergens */
-            allergens: {
-                [key: string]: "CONTAINS" | "MAY_CONTAIN";
-            };
-            /** Free From */
-            free_from: string[];
-            provenance: components["schemas"]["Provenance"];
-            /** Gtin */
-            gtin: string | null;
-            /** Variable Weight */
-            variable_weight: boolean;
-            /** Allergen Conflicts */
-            allergen_conflicts: string[];
-            /** Conflicts */
-            conflicts: string[];
-            /**
-             * Deposits
-             * @description Original supplier deposit declarations.
-             */
-            deposits: components["schemas"]["JsonValue"][];
-            /**
-             * Substitutions
-             * @description Original supplier substitution declarations.
-             */
-            substitutions: components["schemas"]["JsonValue"][];
-            category: components["schemas"]["JsonValue"];
-            country_of_origin: components["schemas"]["JsonValue"];
-            /** Deleted */
-            deleted: boolean;
-            /**
-             * Packaging
-             * @description Original supplier packaging evidence.
-             */
-            packaging: components["schemas"]["JsonValue"][];
-        };
         /** ProposalResponse */
         ProposalResponse: {
             /** Proposal Id */
@@ -713,19 +562,12 @@ export interface components {
              */
             can_decide: boolean;
         };
-        /** Provenance */
-        Provenance: {
-            /** Source */
-            source: string;
-            /** Product Id */
-            product_id: string;
-        };
         /** PurchaseRequest */
         PurchaseRequest: {
             /** Request Id */
             request_id: string;
             /** Lines */
-            lines: components["schemas"]["LineRequest-Output"][];
+            lines: components["schemas"]["LineRequest"][];
             /** Destination */
             destination: string;
             /**
@@ -879,74 +721,6 @@ export interface components {
              * @enum {string}
              */
             status: "revised";
-        };
-        /** SearchCandidate */
-        SearchCandidate: {
-            /** Id */
-            id: string;
-            /** Name */
-            name: string;
-            /** Names */
-            names: {
-                [key: string]: string;
-            };
-            /** Sales Unit */
-            sales_unit: string | null;
-            /** Base Unit */
-            base_unit: string | null;
-            /** Units */
-            units: {
-                [key: string]: string;
-            };
-            /** Order Step */
-            order_step: string;
-            /** Measures */
-            measures: {
-                [key: string]: components["schemas"]["Measure"];
-            };
-            /** Claims */
-            claims: string[];
-            /** Allergens */
-            allergens: {
-                [key: string]: "CONTAINS" | "MAY_CONTAIN";
-            };
-            /** Free From */
-            free_from: string[];
-            provenance: components["schemas"]["Provenance"];
-            /** Score */
-            score: number;
-            /**
-             * Match Is Suitability Proof
-             * @constant
-             */
-            match_is_suitability_proof: false;
-        };
-        /** SearchRequest */
-        SearchRequest: {
-            /** Query */
-            query: string;
-            requirements?: components["schemas"]["Requirements"];
-            /**
-             * Limit
-             * @default 5
-             */
-            limit: number;
-        };
-        /** SearchResponse */
-        SearchResponse: {
-            /** Products */
-            products: components["schemas"]["SearchCandidate"][];
-            /** Generation */
-            generation: string;
-            /** Model */
-            model: string;
-            /**
-             * Strategy
-             * @enum {string}
-             */
-            strategy: "keyword" | "semantic" | "hybrid";
-            /** Note */
-            note: string;
         };
         /** SessionResponse */
         SessionResponse: {
@@ -1249,80 +1023,13 @@ export interface operations {
             };
         };
     };
-    search_api_agent_search_products_post: {
+    purchase_history_api_purchases_get: {
         parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
+            query?: {
+                offset?: number;
+                limit?: number;
             };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SearchRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SearchResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    product_api_agent_products__product_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                product_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProductResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    policy_api_agent_purchase_policy_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -1334,7 +1041,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PolicyResponse"];
+                    "application/json": components["schemas"]["InboxResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1348,116 +1055,13 @@ export interface operations {
             };
         };
     };
-    lookup_api_agent_check_price_and_availability_post: {
+    confirm_purchase_api_purchases__proposal_id__confirm_post: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LookupRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LookupResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    prepare_api_agent_prepare_order_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PrepareRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProposalResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    proposal_api_agent_proposals__proposal_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
+            header?: never;
             path: {
                 proposal_id: string;
             };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProposalResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    commit_api_agent_commit_order_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
             cookie?: never;
         };
         requestBody: {
@@ -1486,14 +1090,77 @@ export interface operations {
             };
         };
     };
-    order_api_agent_orders__order_id__get: {
+    conversation_list_api_conversations_get: {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    conversation_create_api_conversations_post: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConversationCreate"];
             };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    conversation_detail_api_conversations__conversation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
             path: {
-                order_id: string;
+                conversation_id: string;
             };
             cookie?: never;
         };
@@ -1505,7 +1172,73 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OrderResponse"];
+                    "application/json": components["schemas"]["ConversationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_message_api_conversations__conversation_id__messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MessageRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    conversation_events_api_conversations__conversation_id__events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SSE event 'conversation' carries ConversationResponse JSON; 'expired' carries an empty object. Comments are heartbeats. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
                 };
             };
             /** @description Validation Error */

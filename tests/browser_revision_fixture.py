@@ -1,18 +1,17 @@
 """Create only this browser test's purchase, using the same DB as the fixture-mode app."""
 
 import json
-import os
 from datetime import date, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
 from dotenv import load_dotenv
 
-from aimo import approval_workflow as workflow
-from aimo.auth import agent_identity
+from aimo import conversations
+from aimo.auth import internal_agent
 from aimo.config import settings
 from aimo.db import connection
-from aimo.schemas import CommitRequest, DecisionRequest, PrepareRequest
+from aimo.schemas import CommitRequest, PrepareRequest
 from aimo.service import Service
 from aimo.upstream import FixtureClient
 
@@ -21,9 +20,9 @@ def main():
     load_dotenv()
     if settings().upstream_mode != "fixture":
         raise RuntimeError("Historical approval browser setup requires fixture commerce.")
-    agent = agent_identity("Bearer " + os.environ["DEMO_AGENT_TOKEN"])
     with connection() as c:
         buyer = c.execute("SELECT * FROM identities WHERE id='buyer'").fetchone()
+    agent = internal_agent(buyer)
     connector = FixtureClient()
     service = Service(connector)
     proposal = service.prepare_order(
@@ -39,28 +38,22 @@ def main():
             ],
         ),
     )
-    workflow.record_human_decision(
-        buyer, proposal["approval_id"], DecisionRequest(revision=1, decision="approve")
-    )
     connector.price_multiplier = Decimal("1.10")
-    revised = service.commit_order(
-        agent,
+    revised = conversations.confirm(
+        buyer,
+        proposal["proposal_id"],
         CommitRequest(
-            proposal_id=proposal["proposal_id"],
-            revision=1,
-            idempotency_key=str(uuid4()),
+            proposal_id=proposal["proposal_id"], revision=1, idempotency_key=str(uuid4())
         ),
+        service,
     )
-    workflow.record_human_decision(
-        buyer, revised["approval_id"], DecisionRequest(revision=2, decision="approve")
-    )
-    service.commit_order(
-        agent,
+    conversations.confirm(
+        buyer,
+        revised["proposal_id"],
         CommitRequest(
-            proposal_id=proposal["proposal_id"],
-            revision=2,
-            idempotency_key=str(uuid4()),
+            proposal_id=proposal["proposal_id"], revision=2, idempotency_key=str(uuid4())
         ),
+        service,
     )
     print(
         json.dumps({"approval_id": proposal["approval_id"], "proposal_id": proposal["proposal_id"]})

@@ -158,7 +158,7 @@ jobs:
         run: npm run build
 
   sweep:
-    name: Tool sweep
+    name: API sweep
     needs: components
     if: needs.components.outputs.backend == 'true'
     runs-on: ubuntu-latest
@@ -187,7 +187,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/python-env
-      - name: Black-box sweep of all eight agent tools, MCP and the buyer controls
+      - name: Black-box sweep of the buyer-facing API (sign-in, CSRF, conversations, purchases)
         run: tests/ci.sh --skip-unit
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

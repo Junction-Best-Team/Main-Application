@@ -1,38 +1,29 @@
-"""Black-box sweep of the eight agent tools against a RUNNING server.
+"""Black-box sweep of the buyer-facing HTTP surface against a RUNNING server.
 
-Not a unit test: it uses only the public HTTP/MCP surface, the way an external agent would, so a
-pass means "each tool works end to end". Works in fixture mode (no API key) and in live mode;
-the mode actually used is read from the server and printed, never assumed.
+Not a unit test: it uses only the public HTTP API, the way the browser does, so a pass means
+"the server is up, authenticates and isolates buyers, enforces CSRF/Origin on every state change and
+serves the chat and purchase endpoints end to end". It needs no LLM and no Valio key.
+
+The internal assistant's tools (search_products, get_product, get_purchase_policy,
+check_price_and_availability, prepare_order, get_proposal, saved receipts) run only inside a chat
+turn driven by a paid LLM provider, so they are exercised by the scripted-provider pytest suites
+(tests/test_agent*.py), not here. The sweep checks that a chat turn without a provider fails with
+an honest error rather than a pretend answer.
 
     uv run python tests/sweep/run_sweep.py                 # DEMO_BASE_URL or http://localhost:8000
     uv run python tests/sweep/run_sweep.py --strict        # a SKIP counts as a failure
 
-Credentials come from the environment or .env (DEMO_AGENT_TOKEN, DEMO_BUYER_PASSWORD) and are
-never printed. Exit code: 0 all passed (skips allowed unless --strict), 1 any failure.
+The buyer password comes from the environment or .env (DEMO_BUYER_PASSWORD) and is never printed.
+Exit code: 0 all passed (skips allowed unless --strict), 1 any failure.
 """
 
 import argparse
-import asyncio
-import json
 import os
 import sys
-from datetime import date, timedelta
 from uuid import uuid4
 
 import httpx
 from dotenv import load_dotenv
-
-TOOLS = {
-    "search_products",
-    "get_product",
-    "get_purchase_policy",
-    "check_price_and_availability",
-    "prepare_order",
-    "get_proposal",
-    "commit_order",
-    "get_order",
-}
-OUTCOMES = {"ready_to_commit", "approval_required", "denied", "needs_resolution"}
 
 
 class Skip(Exception):
@@ -45,43 +36,24 @@ def need(condition, message):
 
 
 class Sweep:
-    def __init__(self, base, token, password, product, substitute):
+    def __init__(self, base, password):
         self.base = base.rstrip("/")
         self.password = password
-        self.product, self.substitute = product, substitute
-        self.agent = httpx.Client(
-            base_url=self.base, headers={"Authorization": "Bearer " + token}, timeout=90
-        )
-        self.buyer = httpx.Client(base_url=self.base, timeout=30)
+        self.http = httpx.Client(base_url=self.base, timeout=60)
         self.csrf = None
         self.mode = "unknown"
-        self.date = str(date.today() + timedelta(days=2))
-        self.proposal = None
-        self.receipt = None
+        self.conversation = None
         self.results = []
 
     # -- helpers -----------------------------------------------------------------------------
-    def get(self, path, **kw):
-        return self.agent.get("/api/agent/" + path, **kw)
+    def headers(self, csrf=True):
+        h = {"Origin": self.base}
+        if csrf and self.csrf:
+            h["X-CSRF-Token"] = self.csrf
+        return h
 
-    def post(self, path, body):
-        return self.agent.post("/api/agent/" + path, json=body)
-
-    def purchase(self, **over):
-        body = {
-            "request_id": "sweep-" + str(uuid4())[:8],
-            "idempotency_key": "sweep-prepare-" + str(uuid4()),  # one per preparation (retries reuse it)
-            "destination": "hotel-helsinki",
-            "delivery_date": self.date,
-            "requirements": {"lactose_free": True},
-            "lines": [{"product_id": self.product, "amount": "10", "unit": "L"}],
-        }
-        return body | over
-
-    def buyer_login(self):
-        if self.csrf:
-            return
-        r = self.buyer.post(
+    def login(self):
+        r = self.http.post(
             "/api/login",
             json={"username": "buyer", "password": self.password},
             headers={"Origin": self.base},
@@ -105,277 +77,159 @@ class Sweep:
         self.mode = r.json()["upstream_mode"]
         return f"upstream_mode={self.mode}"
 
-    def auth_required(self):
-        r = httpx.get(self.base + "/api/agent/purchase-policy", timeout=30)
-        need(r.status_code in (401, 403), f"no token should be refused, got {r.status_code}")
-        r = httpx.get(
-            self.base + "/api/agent/purchase-policy",
-            headers={"Authorization": "Bearer wrong-token-0000000000000000"},
-            timeout=30,
-        )
-        need(r.status_code in (401, 403), f"bad token should be refused, got {r.status_code}")
-
-    def get_purchase_policy(self):
-        r = self.get("purchase-policy")
-        need(r.status_code == 200, f"HTTP {r.status_code}")
-        p = r.json()
-        for k in ("buyer_id", "agent_id", "policy_version", "rules"):
-            need(k in p, f"missing {k}")
-        need(p["editable"] is False, "policy must be read-only to the agent")
-        return f"policy v{p['policy_version']}, limit {p['rules']['autonomous_limit']}"
-
-    def search_exact_id(self):
-        r = self.post(
-            "search_products",
-            {"query": self.product, "requirements": {"lactose_free": True}, "limit": 5},
-        )
-        need(r.status_code == 200, f"HTTP {r.status_code}: {r.text[:120]}")
-        ids = [p["id"] for p in r.json()["products"]]
-        need(ids and ids[0] == self.product, f"exact id not first: {ids}")
-        return f"top hit {ids[0]}"
-
-    def search_text(self):
-        r = self.post(
-            "search_products",
-            {"query": "lactose-free milk", "requirements": {"lactose_free": True}, "limit": 5},
-        )
-        need(r.status_code == 200, f"HTTP {r.status_code}: {r.text[:120]}")
-        found = r.json()["products"]
-        need(len(found) >= 1, "no results for a basic lactose-free milk query")
-        return f"{len(found)} results"
-
-    def search_rejects_unsupported_filter(self):
-        r = self.post("search_products", {"query": "milk", "requirements": {"organic": True}})
-        need(
-            r.status_code in (400, 422), f"unsupported filter must be rejected, got {r.status_code}"
-        )
-
-    def get_product(self):
-        r = self.get("products/" + self.product)
-        need(r.status_code == 200, f"HTTP {r.status_code}")
-        need(self.product in json.dumps(r.json()), "response does not mention the product id")
-        r = self.get("products/does-not-exist-0")
-        need(r.status_code == 404, f"unknown product should be 404, got {r.status_code}")
-
-    def check_price_and_availability(self):
-        r = self.post(
-            "check_price_and_availability",
-            {"product_ids": [self.product, self.substitute], "delivery_date": self.date},
-        )
-        need(r.status_code == 200, f"HTTP {r.status_code}: {r.text[:160]}")
-        body = r.json()
-        need(body["mode"] in ("live", "fixture"), f"evidence not labelled: {body.get('mode')}")
-        need(set(body["products"]) == {self.product, self.substitute}, "missing product evidence")
-        return f"evidence mode={body['mode']}"
-
-    def prepare_order(self):
-        r = self.post("prepare_order", self.purchase())
-        need(r.status_code == 200, f"HTTP {r.status_code}: {r.text[:200]}")
-        p = r.json()
-        need(p["policy_outcome"] in OUTCOMES, f"unknown outcome {p['policy_outcome']}")
-        need(p["revision"] >= 1 and p["proposal_id"], "proposal missing id/revision")
-        need(p["next_action"]["type"], "no next_action")
-        self.proposal = p
-        return f"outcome={p['policy_outcome']}, next={p['next_action']['type']}"
-
-    def get_proposal(self):
-        need(self.proposal, "no proposal (prepare_order failed)")
-        r = self.get("proposals/" + self.proposal["proposal_id"])
-        need(r.status_code == 200, f"HTTP {r.status_code}")
-        p = r.json()
-        need(p["proposal_id"] == self.proposal["proposal_id"], "wrong proposal returned")
-        need(p["revision"] == self.proposal["revision"], "revision changed unexpectedly")
-
-    def commit_gate_blocks_denied(self):
-        denied = self.post("prepare_order", self.purchase(budget_gross="1")).json()
-        need(denied["policy_outcome"] == "denied", f"hard budget not denied: {denied}")
-        r = self.post(
-            "commit_order",
-            {
-                "proposal_id": denied["proposal_id"],
-                "revision": denied["revision"],
-                "idempotency_key": "sweep-" + str(uuid4()),
-            },
-        )
-        need(
-            400 <= r.status_code < 500,
-            f"denied proposal must be refused with a 4xx, got {r.status_code}",
-        )
-        return f"denied proposal refused with HTTP {r.status_code}"
-
-    def commit_order(self):
-        need(self.proposal, "no proposal (prepare_order failed)")
-        p = self.proposal
-        if p["policy_outcome"] == "approval_required":
-            self.buyer_login()
-            approval_id = p["approval_id"]
-            r = self.buyer.post(
-                f"/api/approvals/{approval_id}/decision",
-                json={"revision": p["revision"], "decision": "approve"},
-                headers={"X-CSRF-Token": self.csrf, "Origin": self.base},
-            )
-            need(r.status_code == 200, f"buyer approval failed: HTTP {r.status_code}")
-        elif p["policy_outcome"] != "ready_to_commit":
-            reasons = [x["code"] for x in p.get("reasons", [])]
-            raise Skip(f"proposal is {p['policy_outcome']} ({reasons}); nothing committable")
-        body = {
-            "proposal_id": p["proposal_id"],
-            "revision": p["revision"],
-            "idempotency_key": "sweep-" + str(uuid4()),
-        }
-        first = self.post("commit_order", body)
-        need(first.status_code == 200, f"HTTP {first.status_code}: {first.text[:200]}")
-        need(first.json()["status"] == "accepted_mock", f"unexpected status {first.json()}")
-        again = self.post("commit_order", body)
-        need(again.json() == first.json(), "retry with the same key must return the same receipt")
-        self.receipt = first.json()
-        return "accepted_mock, identical receipt on retry"
-
-    def split_proposal(self):
-        """A split purchase that needs the buyer, or Skip if live data does not produce one."""
-        lines = [
-            {"product_id": self.product, "amount": "600", "unit": "L"},
-            {
-                "product_id": self.substitute,
-                "amount": "400",
-                "unit": "L",
-                "substitutes_for": self.product,
-            },
-        ]
-        r = self.post("prepare_order", self.purchase(lines=lines))
-        need(r.status_code == 200, f"HTTP {r.status_code}: {r.text[:200]}")
-        p = r.json()
-        if p["policy_outcome"] != "approval_required":
-            reasons = [x["code"] for x in p["reasons"]]
-            raise Skip(f"split purchase is {p['policy_outcome']} ({reasons}); no approval to test")
-        return p
-
-    def commit_body(self, p):
-        return {
-            "proposal_id": p["proposal_id"],
-            "revision": p["revision"],
-            "idempotency_key": "sweep-" + str(uuid4()),
-        }
-
-    def decide(self, p, decision, csrf=True):
-        headers = {"Origin": self.base}
-        if csrf:
-            headers["X-CSRF-Token"] = self.csrf
-        return self.buyer.post(
-            f"/api/approvals/{p['approval_id']}/decision",
-            json={"revision": p["revision"], "decision": decision},
-            headers=headers,
-        )
-
-    def approval_path(self):
-        """Exception flow: split purchase needs the buyer. Agent cannot commit until they decide."""
-        p = self.split_proposal()
-        body = self.commit_body(p)
-        early = self.post("commit_order", body)
-        need(
-            400 <= early.status_code < 500,
-            f"commit before the buyer decides must be a 4xx refusal, got {early.status_code}",
-        )
-        self.buyer_login()
-        inbox = self.buyer.get("/api/approvals")
-        need(inbox.status_code == 200, f"inbox HTTP {inbox.status_code}")
-        need(
-            p["proposal_id"] in [i["proposal_id"] for i in inbox.json()["items"]],
-            "pending proposal missing from the buyer inbox",
-        )
-        d = self.decide(p, "approve")
-        need(d.status_code == 200, f"buyer decision HTTP {d.status_code}")
-        done = self.post("commit_order", body)
-        need(done.status_code == 200, f"commit after approval HTTP {done.status_code}")
-        return "refused before approval; in inbox; committed after buyer approval"
-
-    def reject_path(self):
-        """The buyer says no: the decision needs a CSRF token and the agent can never commit."""
-        p = self.split_proposal()
-        self.buyer_login()
-        no_csrf = self.decide(p, "reject", csrf=False)
-        need(no_csrf.status_code in (400, 403), f"decision without CSRF got {no_csrf.status_code}")
-        rejected = self.decide(p, "reject")
-        need(rejected.status_code == 200, f"buyer rejection HTTP {rejected.status_code}")
-        after = self.post("commit_order", self.commit_body(p))
-        need(
-            400 <= after.status_code < 500,
-            f"rejected proposal must be refused with a 4xx, got {after.status_code}",
-        )
-        state = self.get("proposals/" + p["proposal_id"]).json()
-        need("reject" in state["approval_status"].lower(), f"status: {state['approval_status']}")
-        need(state["next_action"]["type"] != "commit", "next_action must not say commit")
-        return "CSRF enforced; rejection recorded; commit refused"
-
-    def buyer_agent_separation(self):
-        """The two realms stay apart: agent token is not a buyer, a buyer session is not an agent."""
-        for r in (
-            self.agent.get("/api/approvals"),
-            httpx.get(self.base + "/api/approvals", timeout=30),
+    def sign_in_required(self):
+        anonymous = httpx.Client(base_url=self.base, timeout=30)
+        for path in (
+            "/api/session",
+            "/api/conversations",
+            "/api/purchases",
+            "/api/approvals",
+            f"/api/purchases/{uuid4()}",
         ):
-            need(r.status_code in (401, 403), f"inbox must refuse non-buyers, got {r.status_code}")
+            r = anonymous.get(path)
+            need(r.status_code == 401, f"GET {path} without a session gave {r.status_code}")
+        return "5 endpoints refuse an anonymous caller"
+
+    def login_controls(self):
         bad = httpx.post(
             self.base + "/api/login",
-            json={"username": "buyer", "password": "definitely-not-the-password"},
+            json={"username": "buyer", "password": "definitely-the-wrong-password"},
             headers={"Origin": self.base},
             timeout=30,
         )
-        need(bad.status_code in (400, 401, 403), f"wrong password got {bad.status_code}")
-        self.buyer_login()
-        r = self.buyer.get("/api/agent/purchase-policy")
-        need(r.status_code in (401, 403), f"buyer session must not act as agent: {r.status_code}")
-        return "agent token refused by inbox; wrong password refused; buyer session refused by agent API"
+        need(bad.status_code in (401, 403, 429), f"wrong password gave {bad.status_code}")
+        foreign = httpx.post(
+            self.base + "/api/login",
+            json={"username": "buyer", "password": self.password},
+            headers={"Origin": "https://evil.example"},
+            timeout=30,
+        )
+        need(foreign.status_code == 403, f"login from a foreign Origin gave {foreign.status_code}")
+        self.login()
+        r = self.http.get("/api/session")
+        need(r.status_code == 200, f"session after login gave {r.status_code}")
+        return "wrong password and foreign Origin refused; correct login opens a session"
 
-    def get_order(self):
-        if not self.receipt:
-            raise Skip("no order was committed")
-        r = self.get("orders/" + self.receipt["order_id"])
-        need(r.status_code == 200, f"HTTP {r.status_code}")
-        need(r.json() == self.receipt, "get_order differs from the commit receipt")
-        r = self.get("orders/" + str(uuid4()))
-        need(r.status_code == 404, f"unknown order should be 404, got {r.status_code}")
+    def csrf_enforced(self):
+        body = {"title": "csrf probe", "idempotency_key": "sweep-csrf-" + str(uuid4())}
+        for label, headers in (
+            ("no CSRF token", {"Origin": self.base}),
+            ("wrong CSRF token", {"Origin": self.base, "X-CSRF-Token": "wrong"}),
+            ("foreign Origin", {**self.headers(), "Origin": "https://evil.example"}),
+        ):
+            r = self.http.post("/api/conversations", json=body, headers=headers)
+            need(r.status_code == 403, f"create conversation with {label} gave {r.status_code}")
+        listed = self.http.get("/api/conversations").json()["items"]
+        need(all(c["title"] != "csrf probe" for c in listed), "a refused request created data")
+        return "create refused without token, with a wrong token and from a foreign Origin"
 
-    def mcp_tools(self):
-        from mcp import ClientSession
-        from mcp.client.streamable_http import streamable_http_client
+    def conversation_create_and_retry(self):
+        key = "sweep-conv-" + str(uuid4())
+        body = {"title": "Sweep conversation", "idempotency_key": key}
+        first = self.http.post("/api/conversations", json=body, headers=self.headers())
+        need(first.status_code == 200, f"create gave {first.status_code}: {first.text[:120]}")
+        self.conversation = first.json()["id"]
+        again = self.http.post("/api/conversations", json=body, headers=self.headers())
+        need(again.status_code == 200 and again.json()["id"] == self.conversation, "retry differed")
+        other = self.http.post(
+            "/api/conversations",
+            json={"title": "A different title", "idempotency_key": key},
+            headers=self.headers(),
+        )
+        need(other.status_code >= 400, f"reusing a key for another body gave {other.status_code}")
+        return "created; same key returns the same conversation; a conflicting reuse is refused"
 
-        async def go():
-            async with httpx.AsyncClient(headers=dict(self.agent.headers)) as http:
-                async with streamable_http_client(self.base + "/mcp/", http_client=http) as (
-                    read,
-                    write,
-                    _,
-                ):
-                    async with ClientSession(read, write) as session:
-                        await session.initialize()
-                        listed = {t.name for t in (await session.list_tools()).tools}
-                        res = await session.call_tool("get_purchase_policy", {})
-                        return listed, res
+    def conversation_list_and_get(self):
+        if not self.conversation:
+            raise Skip("no conversation was created")
+        listed = self.http.get("/api/conversations", params={"limit": 50}).json()
+        need(self.conversation in {c["id"] for c in listed["items"]}, "not in the list")
+        got = self.http.get(f"/api/conversations/{self.conversation}")
+        need(got.status_code == 200, f"get gave {got.status_code}")
+        detail = got.json()
+        need(detail["messages"] == [] and detail["purchases"] == [], "new conversation not empty")
+        missing = self.http.get(f"/api/conversations/{uuid4()}")
+        need(missing.status_code == 404, f"unknown conversation gave {missing.status_code}")
+        return "listed; fetched; unknown id is 404"
 
-        listed, res = asyncio.run(go())
-        need(listed == TOOLS, f"tool set differs: {sorted(listed ^ TOOLS)}")
-        need(not res.isError, "MCP get_purchase_policy errored")
-        return "8 tools discovered; policy callable"
+    def message_without_provider_fails_honestly(self):
+        if not self.conversation:
+            raise Skip("no conversation was created")
+        url = f"/api/conversations/{self.conversation}/messages"
+        body = {"text": "I need milk.", "idempotency_key": "sweep-msg-" + str(uuid4())}
+        refused = self.http.post(url, json=body, headers={"Origin": self.base})
+        need(refused.status_code == 403, f"message without CSRF gave {refused.status_code}")
+        r = self.http.post(url, json=body, headers=self.headers())
+        if r.status_code == 200:
+            raise Skip("an LLM provider is configured on this server; the sweep never spends it")
+        need(
+            r.status_code in (502, 503) and "LLM" in r.text,
+            f"expected an honest provider error, got {r.status_code}: {r.text[:160]}",
+        )
+        detail = self.http.get(f"/api/conversations/{self.conversation}").json()
+        need(
+            all(m["role"] != "assistant" for m in detail["messages"]),
+            "an assistant reply was invented without a provider",
+        )
+        return f"HTTP {r.status_code} provider error, no pretend assistant message"
+
+    def purchases_and_approvals(self):
+        for path in ("/api/purchases", "/api/approvals"):
+            r = self.http.get(path, params={"limit": 5})
+            need(r.status_code == 200, f"GET {path} gave {r.status_code}")
+            need("items" in r.json(), f"{path} has no items list")
+        for path in (f"/api/purchases/{uuid4()}", f"/api/approvals/{uuid4()}"):
+            r = self.http.get(path)
+            need(r.status_code == 404, f"GET {path} gave {r.status_code}")
+        return "lists open; unknown proposal and approval are 404"
+
+    def confirmation_and_decision_controls(self):
+        proposal = str(uuid4())
+        confirm = f"/api/purchases/{proposal}/confirm"
+        body = {
+            "proposal_id": proposal,
+            "revision": 1,
+            "idempotency_key": "sweep-confirm-" + str(uuid4()),
+        }
+        no_csrf = self.http.post(confirm, json=body, headers={"Origin": self.base})
+        need(no_csrf.status_code == 403, f"confirm without CSRF gave {no_csrf.status_code}")
+        unknown = self.http.post(confirm, json=body, headers=self.headers())
+        need(unknown.status_code == 404, f"confirm unknown gave {unknown.status_code}")
+        decision = f"/api/approvals/{uuid4()}/decision"
+        payload = {"revision": 1, "decision": "approve"}
+        no_csrf = self.http.post(decision, json=payload, headers={"Origin": self.base})
+        need(no_csrf.status_code == 403, f"decision without CSRF gave {no_csrf.status_code}")
+        unknown = self.http.post(decision, json=payload, headers=self.headers())
+        need(unknown.status_code == 404, f"decision on unknown gave {unknown.status_code}")
+        return "confirm and decide need CSRF; unknown proposals are refused"
+
+    def logout_closes_the_session(self):
+        r = self.http.post("/api/logout", headers=self.headers())
+        need(r.status_code == 204, f"logout gave {r.status_code}")
+        after = self.http.get("/api/conversations")
+        need(after.status_code == 401, f"conversations after logout gave {after.status_code}")
+        self.csrf = None
+        return "session ends; protected endpoints refuse the old cookie"
+
+    def app_shell(self):
+        for path in ("/", "/login", "/health/live"):
+            r = httpx.get(self.base + path, timeout=30)
+            need(r.status_code == 200, f"GET {path} gave {r.status_code}")
+        return "app shell, login route and liveness answer"
 
     def all(self):
         for name, fn in [
             ("health/ready", self.health),
-            ("auth required", self.auth_required),
-            ("get_purchase_policy", self.get_purchase_policy),
-            ("search_products (exact id)", self.search_exact_id),
-            ("search_products (text)", self.search_text),
-            ("search_products (rejects bad filter)", self.search_rejects_unsupported_filter),
-            ("get_product", self.get_product),
-            ("check_price_and_availability", self.check_price_and_availability),
-            ("prepare_order", self.prepare_order),
-            ("get_proposal", self.get_proposal),
-            ("commit gate (denied cannot commit)", self.commit_gate_blocks_denied),
-            ("commit_order (+ approval, retry)", self.commit_order),
-            ("buyer/agent separation", self.buyer_agent_separation),
-            ("approval path (inbox, then commit)", self.approval_path),
-            ("reject path (CSRF, no commit)", self.reject_path),
-            ("get_order", self.get_order),
-            ("MCP tool discovery", self.mcp_tools),
+            ("sign-in required", self.sign_in_required),
+            ("login controls", self.login_controls),
+            ("CSRF and Origin enforced", self.csrf_enforced),
+            ("create conversation (+ retry)", self.conversation_create_and_retry),
+            ("list and get conversation", self.conversation_list_and_get),
+            ("message without provider", self.message_without_provider_fails_honestly),
+            ("purchases and approvals", self.purchases_and_approvals),
+            ("confirm and decide controls", self.confirmation_and_decision_controls),
+            ("logout", self.logout_closes_the_session),
+            ("app shell", self.app_shell),
         ]:
             self.run(name, fn)
 
@@ -384,20 +238,11 @@ def main():
     load_dotenv()
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--base-url", default=os.getenv("DEMO_BASE_URL", "http://localhost:8000"))
-    ap.add_argument("--product", default="464306", help="lactose-free milk used for the purchase")
-    ap.add_argument("--substitute", default="464398")
     ap.add_argument("--strict", action="store_true", help="count SKIP as failure")
     args = ap.parse_args()
-    for var in ("DEMO_AGENT_TOKEN", "DEMO_BUYER_PASSWORD"):
-        if not os.getenv(var):
-            sys.exit(f"{var} is not set (see .env.example)")
-    sweep = Sweep(
-        args.base_url,
-        os.environ["DEMO_AGENT_TOKEN"],
-        os.environ["DEMO_BUYER_PASSWORD"],
-        args.product,
-        args.substitute,
-    )
+    if not os.getenv("DEMO_BUYER_PASSWORD"):
+        sys.exit("DEMO_BUYER_PASSWORD is not set (see .env.example)")
+    sweep = Sweep(args.base_url, os.environ["DEMO_BUYER_PASSWORD"])
     sweep.all()
     width = max(len(n) for n, _, _ in sweep.results)
     for name, status, detail in sweep.results:

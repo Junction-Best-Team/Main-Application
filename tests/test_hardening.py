@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import json
 import os
@@ -18,7 +17,6 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from aimo import approval_workflow as workflow
 from aimo import auth
-from aimo.api import create_app
 from aimo.catalog import quantity
 from aimo.cli import set_product_scope
 from aimo.config import settings
@@ -276,52 +274,6 @@ def test_forwarded_client_addresses_only_from_trusted_ingress(peer, expected):
     app = ProxyHeadersMiddleware(echo, trusted_hosts="10.20.0.0/24")
     client = TestClient(app, client=(peer, 123))
     assert client.get("/", headers={"X-Forwarded-For": "198.51.100.7"}).json()["client"] == expected
-
-
-def test_mcp_authenticates_once_in_worker_and_service_runs_in_worker(service, monkeypatch):
-    import threading
-
-    from aimo import mcp_adapter
-
-    calls = []
-    original = auth.agent_identity
-
-    def authenticate(header):
-        calls.append(threading.current_thread().name)
-        return original(header)
-
-    monkeypatch.setattr(auth, "agent_identity", authenticate)
-    # Catch a reintroduced adapter-local import as well as middleware authentication.
-    monkeypatch.setattr(mcp_adapter, "agent_identity", authenticate, raising=False)
-    with TestClient(create_app(service)) as client:
-        response = client.post(
-            "/mcp/",
-            headers={
-                "Authorization": "Bearer " + os.environ["DEMO_AGENT_TOKEN"],
-                "Accept": "application/json, text/event-stream",
-            },
-            json={
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "tools/call",
-                "params": {"name": "get_purchase_policy", "arguments": {}},
-            },
-        )
-        assert response.status_code == 200 and not response.json()["result"]["isError"]
-    assert calls == ["AnyIO worker thread"]
-
-    class Stub:
-        def get_product(self, actor, pid):
-            assert threading.current_thread() is not threading.main_thread()
-            return fixture_facts()[0]
-
-    tool = mcp_adapter.build_mcp(Stub())._tool_manager.get_tool("get_product")
-    ctx = SimpleNamespace(
-        request_context=SimpleNamespace(
-            request=SimpleNamespace(state=SimpleNamespace(agent_identity={"id": "test"}))
-        )
-    )
-    asyncio.run(tool.fn("464306", ctx))
 
 
 def test_pool_reuses_connection_and_rolls_back_failed_work(monkeypatch):

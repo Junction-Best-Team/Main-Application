@@ -76,7 +76,6 @@ run "reject_import_with_serving_app" {
     bootstrap_credentials = {
       database_url   = "postgresql://synthetic-admin@postgres.test/aimo"
       database_user  = "aimo_runtime"
-      agent_token    = "synthetic-agent-token-at-least-24-chars"
       buyer_password = "synthetic-password-at-least-12-chars"
     }
   }

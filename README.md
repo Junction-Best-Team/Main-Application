@@ -1,10 +1,8 @@
-# Valio Aimo purchasing gateway
+# Aimo chat purchasing
 
-One seller-side FastAPI service exposes eight HTTP/MCP tools, serves a React buyer approval inbox, and commits **persistent mock orders**. PostgreSQL stores the catalog index, versioned buyer policy, identities, immutable proposal revisions, approvals, audit events and receipts. The buyer's purchasing agent is external.
+One authenticated FastAPI application serves the existing React frontend, runs our internal meal-purchasing assistant, and records **persistent mock orders**. Open `/`, sign in, and ask for ingredients for 200 portions of carbonara. PostgreSQL retains conversations, exact proposal revisions, customer confirmations, policies, approvals, orders and audit history. No supplier checkout or inventory reservation is implemented.
 
-The agreed scope is in [docs/brief.md](docs/brief.md). PR #2 was **closed without merging** before implementation; this branch starts from `main` at `76296c1`, keeps PR #3's findings, and implements the attached PR #2 brief. See [actual validation and limitations](docs/validation.md).
-
-[Terraform infrastructure](infra/README.md) provides the team's optional DigitalOcean Kubernetes/managed PostgreSQL stack and portable Kubernetes deployment. Provisioning is an explicit operator action.
+The current [product migration](docs/chat-purchasing.md) overrides the external-agent entry points in the [original brief](docs/brief.md). The underlying purchasing controls remain. [Infrastructure](infra/README.md) is optional and operator-managed; this migration does not apply Terraform, deploy or enable releases.
 
 ## Working in parallel
 
@@ -24,8 +22,8 @@ One workflow, `.github/workflows/ci.yml`, runs on PRs into `develop` and `main` 
 | Detect application components | Decides which jobs apply (backend, frontend, Terraform) |
 | Python lint and tests | `ruff check`, then `pytest` against temporary PostgreSQL/pgvector with fixture embeddings and supplier responses; saves coverage data |
 | Frontend types and build | `npm ci`, TypeScript check, production build |
-| Tool sweep | Starts the real server and drives all eight agent tools, MCP and the buyer approval, rejection and separation controls (`tests/sweep/run_sweep.py`) |
-| Browser tests | Playwright flows in real Chromium against the built UI |
+| API sweep | Starts the real server and drives the buyer-facing API: sign-in, CSRF and Origin checks, conversations, purchases and approvals, and that a chat turn without an LLM provider fails honestly (`tests/sweep/run_sweep.py`) |
+| Browser tests | Playwright in real Chromium against the built UI: mocked-route chat flows, plus real-server checks with `AIMO_INTEGRATION=1` |
 | Terraform | Format, validate, mocked-provider plan tests and Helm render for `infra/` (only when it or the workflows changed) |
 | Coverage (95% minimum) | Combines the pytest, sweep and browser coverage data and fails below `fail_under` in `pyproject.toml` |
 | **CI gate** | Waits for every job above; the required status check |
@@ -69,7 +67,7 @@ The first import downloads the pinned `intfloat/multilingual-e5-small` model and
 
 For a quick authored-fixture catalog, use `uv run aimo fixture-catalog` instead of `ingest`. Set `EMBEDDING_BACKEND=fixture` in `.env` only when you also want deterministic fake embeddings; ingestion and serving must use the same setting. The default uses the real model, including for a small fixture catalog. `UPSTREAM_MODE=fixture` is independent: commercial prices/stock remain invented unless explicitly switched to `live` with private credentials. There is no silent live-to-fixture fallback.
 
-Open [the buyer inbox](http://localhost:8000/approvals). Username: **buyer**. Read the generated `DEMO_BUYER_PASSWORD` privately from `.env`; the agent uses the separate `DEMO_AGENT_TOKEN`. The browser never receives agent/API keys. `SECURE_COOKIES=false` is for localhost HTTP only. Hosted deployments require HTTPS and `SECURE_COOKIES=true`.
+Open [chat purchasing](http://localhost:8000/). Username: **buyer**. Read the generated `DEMO_BUYER_PASSWORD` privately from `.env`. Configure `LLM_API_KEY` privately for chat; `LLM_BASE_URL` and `LLM_MODEL` select the conversational provider independently of local embeddings. The browser never receives provider/API keys. `SECURE_COOKIES=false` is for localhost HTTP only. Hosted deployments require HTTPS and `SECURE_COOKIES=true`.
 
 For frontend development, run `npm run dev --prefix frontend` and temporarily set `PUBLIC_BASE_URL=http://localhost:5173` for the backend. Vite proxies `/api`; production serves the built assets from FastAPI. The source of the browser's generated types is Python: `uv run python scripts/export_schema.py && npm run types --prefix frontend`.
 
@@ -91,32 +89,19 @@ For frontend development, run `npm run dev --prefix frontend` and temporarily se
 
 ```sh
 uv run python scripts/demo.py
+# Continue clarification in the same persisted conversation:
+uv run python scripts/demo.py --conversation <uuid> --message "Delivery 2026-11-16, hotel-helsinki, no dietary restrictions, budget EUR 1000"
 ```
 
-This reference client demonstrates an autonomous purchase and identical receipt on retry; a denied hard budget; an unresolved shortage; and a mission waiting for approval. The buyer independently opens `/approvals`, logs in, and approves or rejects. Use the printed `--resume` command to let the agent retrieve the decision and commit. **Approval itself never places an order.** For a recorded successful retry, keep the same `--key` and payload; retrieve existing receipts through `get_order`.
+The CLI authenticates as the buyer and starts chat. Complete recipe clarification, inspect the actual product quantities and commercial evidence, then explicitly click **Confirm purchase** inside the product. Chat text never confirms anything. Prices/stock are invented when `UPSTREAM_MODE=fixture`; the optional live supplier connector still does not place orders.
 
-The fixture shortage scenario is 600 L of `464306` plus 400 L of `464398`, marked as a substitution and requiring approval. These are invented stock levels, not current inventory. The real static snapshot verifies the quantities for these two products. A natural live shortage has **not** been independently verified in this implementation session; use the bounded probe when credentials are available:
+`/` is chat, `/conversations/{id}` is addressable chat, `/purchases` preserves purchase history, and `/purchases/{proposal_id}` reviews current terms. Legacy `/approvals/{approval_id}` remains an authenticated exact historical snapshot; superseded terms link explicitly to the current revision. `/approvals` redirects to purchases.
 
-```sh
-uv run python scripts/probe_upstream.py --date 2026-11-16 --ids 463380 464306 464398
-```
+Authenticated JSON routes are `/api/conversations`, `/api/conversations/{id}`, `/api/conversations/{id}/messages`, `/api/conversations/{id}/events`, `/api/purchases` and `/api/purchases/{id}/confirm`, plus existing session, approval-detail/decision and purchase-detail APIs. Writes require the buyer session, exact configured Origin and session-bound CSRF token. SSE replays persisted conversation state and sends heartbeats; it does not stream speculative model tokens. Interactive contracts are at `/docs`; generated browser types come from Python. [Credential-free examples](docs/examples/requests.json) show the request bodies.
 
-## Interfaces and authorization
+`/mcp` and every `/api/agent/*` route are removed and return JSON 404. The internal typed agent calls `Service` directly with a server-controlled buyer identity. There is no bearer-token provisioning, MCP client, loopback HTTP, second frontend, queue or separate agent service.
 
-| Agent tool | HTTP route |
-| --- | --- |
-| `search_products` | `POST /api/agent/search_products` |
-| `get_product` | `GET /api/agent/products/{product_id}` |
-| `get_purchase_policy` | `GET /api/agent/purchase-policy` |
-| `check_price_and_availability` | `POST /api/agent/check_price_and_availability` |
-| `prepare_order` | `POST /api/agent/prepare_order` |
-| `get_proposal` | `GET /api/agent/proposals/{proposal_id}` |
-| `commit_order` | `POST /api/agent/commit_order` |
-| `get_order` | `GET /api/agent/orders/{order_id}` |
-
-Use `Authorization: Bearer <private agent token>` for HTTP and stateless Streamable HTTP MCP at `/mcp/`. MCP tool arguments use a typed `request` object where applicable; product/proposal/order lookups take their identifier directly. All eight operations share Pydantic response contracts across HTTP and MCP. Commit returns a flat object discriminated by `status`: `accepted_mock` (receipt) or `revised` (fresh proposal); neither uses an extra result envelope. Every tool checks the credential and buyer scope. Proposals and orders are additionally scoped to their creating agent. The demo uses preconfigured bearer credentials, not OAuth discovery. Interactive OpenAPI documentation is at `/docs`; it loads Swagger assets from jsDelivr with a per-response script nonce and a documentation-only CSP. The buyer UI retains its strict same-origin CSP. [Examples](docs/examples/requests.json) contain no credentials. `uv run python scripts/mcp_smoke.py` runs all eight tools with the official SDK client against the server.
-
-The browser uses `/login`, `/approvals`, `/approvals/{approval_id}`, and separate `/api/login`, `/api/session`, `/api/logout`, `/api/approvals` and decision routes. Historical approvals stay superseded after a newer revision is committed. They link to `/purchases/{proposal_id}` (buyer-authenticated `/api/purchases/{proposal_id}`), which displays current terms even when the newer revision needs no approval. `order_id` and accepted status belong only to the committed revision; `current_revision`, `committed_revision` and `current_proposal_url` identify the newer terms without attaching their receipt to an old snapshot. Direct approval/current-purchase links survive sign-in. Sessions are signed, persisted, HttpOnly, SameSite Strict and expiring. State changes require an exact configured Origin and session-bound CSRF header. Buyer passwords use Argon2; API tokens and session lookup tokens are hashed. Login attempts are rate-limited in PostgreSQL. The URL grants no authority. Inbox pagination is bounded; refresh pauses while hidden. There is no email/push notifier or claim of delivery.
+Apply additive migration `003_chat_purchasing.sql` using the setup role before running the new image. It retains all historical purchasing records and creates zero-autonomous-limit internal agents for existing buyers without broadening their product scope. New demo provisioning needs only `DEMO_BUYER_PASSWORD`. Old private `DEMO_AGENT_TOKEN` settings can be removed from your secret store; historical identity rows must stay. See [upgrade and operational details](docs/chat-purchasing.md).
 
 Policy is seeded in PostgreSQL, versioned and read-only at runtime. The demo autonomous gross limit is €1,500; the buyer can approve up to €5,000 for spend, substitution and overbuy exceptions. Only `hotel-helsinki` is allowed. Mission budgets and permissions can tighten these rules. Whole discrete sales units are an **explicit buyer rule**, retaining the source lot step. Unknown conversions, variable weight, conflicting dietary evidence, missing costs, uncertain supplier stock and passed cutoffs cannot be fixed by approval.
 
@@ -128,13 +113,13 @@ The policy also contains a **buyer-approved product scope**, seeded as `approved
 
 Login throttling separates failed passwords (10 per client/username in five minutes) from total requests (60 per client/minute); successful logins do not consume the failed-password budget. Expired counters and sessions are cleaned in bounded batches. Behind ingress, configure `FORWARDED_ALLOW_IPS` with the actual trusted proxy addresses/CIDRs and ensure ingress replaces untrusted forwarded headers; never use `*`. PostgreSQL connections are pooled with a default maximum of 10 per process and a bounded wait. The pending inbox batches page data/history into six SQL statements rather than querying each item's dependencies separately.
 
-Commit re-fetches commercial evidence outside the transaction, then locks the buyer, current identities and proposal in a consistent order. Changed commercial terms, policy version or effective authorization decision create a new immutable revision and invalidate earlier approval. Lowering an agent's limit can therefore create a pending approval without changing the policy version or prices; losing the last eligible approver produces `needs_resolution`. Current approver and agent authority are checked again. Before revalidation, a stale proposal reports `authority_changed` and directs the caller to refresh, instead of advertising commitment. Unique database constraints enforce one order per proposal and one payload per buyer/idempotency key. A completed authenticated retry returns its saved receipt before querying upstream. Privileged authority/policy maintenance must take the same buyer lock before changing identity rows/current policy; insert a policy version instead of updating history. Ordinary HTTP/MCP provides no maintenance action. See the module docstrings and SQL migration for this protocol.
+Commit re-fetches commercial evidence outside the transaction, then locks the buyer, current identities and proposal in a consistent order. Changed commercial terms, policy version or effective authorization decision create a new immutable revision and invalidate earlier approval. Lowering an agent's limit can therefore create a pending approval without changing the policy version or prices; losing the last eligible approver produces `needs_resolution`. Current approver and agent authority are checked again. Before revalidation, a stale proposal reports `authority_changed` and directs the caller to refresh, instead of advertising commitment. Unique database constraints enforce one order per proposal and one payload per buyer/idempotency key. A completed authenticated retry returns its saved receipt before querying upstream. Privileged authority/policy maintenance must take the same buyer lock before changing identity rows/current policy; insert a policy version instead of updating history. The browser/agent interfaces provide no maintenance action. See the module docstrings and SQL migration for this protocol.
 
 Receipts say **“Accepted by demo order service”** and explicitly report no supplier order and no reservation. Demo delivery charges are zero by adapter definition; real checkout charges need an upstream contract. The supplied API has no order endpoint.
 
 ## Verification
 
-One command runs lint, the pytest suite and a black-box sweep of all eight tools (details in [tests/README.md](tests/README.md)):
+One command runs lint, the pytest suite and a black-box sweep of the buyer-facing API (details in [tests/README.md](tests/README.md)):
 
 ```sh
 tests/ci.sh          # hermetic: own database, fixture catalog and fixture price/stock, no key needed
@@ -150,15 +135,14 @@ uv run pytest -q                         # real pgvector/PostgreSQL, isolated ai
 npm ci --prefix frontend
 npm run build --prefix frontend
 npm exec --prefix frontend -- playwright install chromium
-npm run test --prefix frontend           # running server, .env credentials, full or fixture catalog
-uv run python scripts/mcp_smoke.py        # running server; official SDK transport
-# Optional actual process-restart check on a dedicated local test container:
-uv run python scripts/restart_smoke.py --container aimo-mvp-verify --base-url http://localhost:8001
+npm run test --prefix frontend           # running frontend/server; default UI route fixtures
+# Explicit mock-confirmation/process-restart check in a dedicated verification container:
+uv run python scripts/restart_smoke.py --container aimo-mvp-verify --base-url http://localhost:8001 --conversation <uuid> --proposal <uuid>
 uv run python scripts/verify_catalog.py /absolute/path/valio_aimo_junction26_product_data.json
 uv run python scripts/evaluate_search.py  # full catalog, real embeddings; writes compact results
 ```
 
-Tests require a PostgreSQL role permitted to create `aimo_test`, or an existing database named with `_test` and `TEST_DATABASE_URL` configured. Tests refuse to clear a database without that suffix. Browser tests create mock purchases in the demo database and require fixture commerce: set `UPSTREAM_MODE=fixture` in `.env` (and restart the server) before running them, because the default `auto` goes live when `VALIO_AIMO_API_KEY` is set. The historical-revision test uses `uv` and `tests/browser_revision_fixture.py` to seed its own repriced purchase; its `DATABASE_URL` must point to the same database as the running server. `/docs` testing needs access to jsDelivr. `BASE_URL` selects a browser-test origin; `DEMO_BASE_URL` selects the reference/MCP clients. [Validation](docs/validation.md) records actual outcomes and the limited 30-case retrieval evaluation.
+Tests require a PostgreSQL role permitted to create `aimo_test`, or an existing database named with `_test` and `TEST_DATABASE_URL` configured. Tests refuse to clear a database without that suffix. Browser tests create mock purchases in the demo database and require fixture commerce. The historical-revision test uses `uv` and `tests/browser_revision_fixture.py` to seed its own repriced purchase; its `DATABASE_URL` must point to the same database as the running server. `/docs` testing needs access to jsDelivr. `BASE_URL` selects a browser-test origin; `DEMO_BASE_URL` selects the chat demo. `AIMO_INTEGRATION=1` enables real-server browser checks; default UI regressions mock route responses. [Current migration verification](docs/chat-purchasing.md#verification-record) records the chat cutover. [Historical gateway validation](docs/validation.md) retains the earlier outcomes and limited 30-case retrieval evaluation.
 
 ## One production image, existing cluster
 
