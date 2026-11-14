@@ -951,3 +951,8 @@ Add new findings below, under your track heading.
 ### F-CHAT-ATTACHMENTS-002: Hide the idle upload hint
 
 - Date: 2026-11-15. Removed the persistent file-format/size helper line from the composer at the owner's request. Upload validation and previews remain; drop/reading feedback appears only while active. `npm run check` and all five attachment browser checks passed, including desktop and 320 px mobile previews.
+
+### F-CHAT-ATTACHMENTS-003: Integrate the latest chat changes
+
+- Date: 2026-11-15. Rebased onto `develop` at `aa92cbd` for the owner's merge request. Retained Markdown in both message roles, bundled fonts, simplified memory settings, structured request constraints and the shared API error envelope. Regenerated the attachment download contract with the shared error responses.
+- Verification: 227 focused backend checks passed, covering attachments, constraints, conversations, error responses, guardrails, tools and readiness. Frontend `npm run check` passed; all 73 browser checks passed, with two optional backend integration checks skipped. Python lint and the whitespace check passed. No live provider call or deployment.
