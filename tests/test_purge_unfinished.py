@@ -261,3 +261,66 @@ def test_a_proposal_a_protected_record_points_at_is_never_purged(
         finally:
             conn.rollback()
     assert count("proposals") == 2 and count("purged_proposals") == 0  # nothing leaked out
+
+
+def test_as_the_restricted_runtime_role_the_flag_alone_is_not_enough_to_delete_history(
+    service, buyer, actor, request_data
+):
+    """What the guard does and does not stop, for the role the deployed API really uses.
+
+    (a) The flag alone is refused; (b) the normal purge (which writes the record first) works;
+    (c) a record the same role inserts itself does allow the delete: the flag and the record guard
+    against mistakes and loose credentials, NOT against a compromised runtime role that can insert
+    into purged_proposals. The no-order check is what keeps ordered proposals safe whatever the role does.
+    """
+    unfinished = prepare(service, actor, request_data, "11")
+    ordered = prepare(service, actor, request_data, "12")
+    order(service, buyer, ordered)
+    record = (
+        "INSERT INTO purged_proposals(proposal_id,buyer_id,created_at,last_revision,last_outcome,"
+        "last_expires_at,period_days) SELECT id,buyer_id,created_at,current_revision,'x',now(),30 "
+        "FROM proposals WHERE id=%s"
+    )
+    with psycopg.connect(settings().database_url, row_factory=dict_row) as conn:
+        capable = conn.execute(
+            "SELECT (rolsuper OR rolcreaterole) AS ok FROM pg_roles WHERE rolname=current_user"
+        ).fetchone()["ok"]
+        if not capable:
+            pytest.skip("The restricted-role case needs CREATEROLE in the test database")
+        role = "purge_guard_" + uuid4().hex
+        try:
+            conn.execute(sql.SQL("CREATE ROLE {} NOLOGIN").format(sql.Identifier(role)))
+            configure_runtime_role(conn, role)
+            conn.execute(sql.SQL("SET LOCAL ROLE {}").format(sql.Identifier(role)))
+            conn.execute("SET LOCAL aimo.purge_unfinished = 'on'")
+            conn.execute("SAVEPOINT s")
+            for table in ("audit_events", "proposal_revisions"):  # (a) flag without a record
+                with pytest.raises(psycopg.errors.RaiseException, match="immutable history"):
+                    conn.execute(
+                        f"DELETE FROM {table} WHERE proposal_id=%s", (unfinished["proposal_id"],)
+                    )
+                conn.execute("ROLLBACK TO SAVEPOINT s")
+            conn.execute(record, (ordered["proposal_id"],))  # a record does not help an ordered one
+            with pytest.raises(psycopg.errors.RaiseException, match="immutable history"):
+                conn.execute(
+                    "DELETE FROM audit_events WHERE proposal_id=%s", (ordered["proposal_id"],)
+                )
+            conn.execute("ROLLBACK TO SAVEPOINT s")
+            conn.execute(record, (unfinished["proposal_id"],))  # (c) the role's own record
+            deleted = conn.execute(
+                "DELETE FROM audit_events WHERE proposal_id=%s", (unfinished["proposal_id"],)
+            ).rowcount
+            assert deleted >= 1  # a documented limit, not a protection
+            conn.execute("ROLLBACK TO SAVEPOINT s")
+            result = workflow.purge_unfinished_proposals(  # (b) the normal purge works
+                PERIOD, as_of=now() + LATE, conn=conn
+            )
+            assert result["proposals"] == 1 and result["audit_events"] >= 1
+            kept = conn.execute(
+                "SELECT count(*) AS n FROM audit_events WHERE proposal_id=%s",
+                (ordered["proposal_id"],),
+            ).fetchone()["n"]
+            assert kept >= 3
+        finally:
+            conn.rollback()
+    assert count("proposals") == 2 and count("purged_proposals") == 0
