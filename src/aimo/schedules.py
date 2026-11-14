@@ -11,7 +11,7 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 from aimo import scheduler
-from aimo.approval_policy import evaluate_purchase
+from aimo.approval_policy import can_approve, evaluate_purchase
 from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, js, now
 from aimo.purchases import build_snapshot, context, load_products
@@ -32,6 +32,7 @@ NOT_A_SCHEDULE_DATE = (
     "recipe_plan_id",
     "recipe_plan_revision",
     "constraints",
+    "budget_gross",  # the one-off hard budget of that purchase; the standing order has its ceiling
 )
 
 
@@ -172,6 +173,7 @@ def build_terms(
         "currency": snapshot["currency"],
         "gross_total": snapshot["gross_total"],
         "policy_outcome": evaluated["policy_outcome"],
+        "_required_exceptions": evaluated["required_exceptions"],
         "terms_fingerprint": scheduler.terms_fingerprint(probe, snapshot),
         "delivery_offset_days": offset,
         "recurrence": rule,
@@ -442,6 +444,21 @@ def insert(c, identity, terms, *, key, digest, ceiling, supersedes=None):
     return row
 
 
+def require_authority(identity, terms, ceiling):
+    """The creating approver authorizes every run up to the ceiling, so their own limit and
+    exceptions must cover the larger of the agreed total and the ceiling (as `confirm` does for a
+    single purchase): the demo policy only needs ANY approver to cover a total, not this one."""
+    total = max(Decimal(terms["gross_total"]), Decimal(str(ceiling)))
+    if not can_approve(
+        identity["authority"], total, terms["currency"], terms["_required_exceptions"]
+    ):
+        raise Problem(
+            "APPROVAL_SCOPE",
+            "This amount or exception exceeds your current authority to approve.",
+            403,
+        )
+
+
 def agree(terms, agreed_fingerprint):
     if terms["policy_outcome"] != "ready_to_commit":
         raise Problem(
@@ -490,6 +507,7 @@ def create(identity, body: ScheduleCreateRequest, service):
         body.title,
     )
     agree(terms, body.agreed_terms_fingerprint)
+    require_authority(identity, terms, body.price_ceiling_gross)
     with connection() as c:
         context(c, identity, lock=True)
         lock_buyer(c, identity)
@@ -554,7 +572,12 @@ def replace(identity, schedule_id, body: ScheduleReplaceRequest, service):
     terms = build_terms(identity, service, **edited(old, body))
     agree(terms, body.agreed_terms_fingerprint)
     digest = digest_of(old["id"])
-    ceiling = body.price_ceiling_gross or old["price_ceiling_gross"]
+    ceiling = (
+        body.price_ceiling_gross
+        if body.price_ceiling_gross is not None
+        else old["price_ceiling_gross"]
+    )
+    require_authority(identity, terms, ceiling)
     with connection() as c:
         context(c, identity, lock=True)
         lock_buyer(c, identity)

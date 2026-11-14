@@ -20,6 +20,7 @@ from uuid import uuid4
 
 from aimo import auth as auth_module
 from aimo import cancellations
+from aimo.approval_policy import can_approve
 from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, js
 from aimo.observability import event, failure
@@ -165,13 +166,19 @@ def compare(auth, request, snapshot, outcome, plan=(), delivery_date=None):
     usable and within the range of the ORIGINAL agreed price. Returns the verdict with a status for
     every line, the substitutions used and the first disruption code."""
     swaps = {item["product_id"]: item["substitute_product_id"] for item in plan}
+    unaccepted = [
+        pid
+        for pid, substitute in swaps.items()
+        if substitute
+        not in ((auth["line_rules"] or {}).get(pid) or {}).get("accepted_substitutes", [])
+    ]  # a substitution is never taken on trust: it must come from the customer's own list
     current = {line["product_id"]: line for line in snapshot["lines"]}
     blocked = {}
     for reason in snapshot["reasons"]:
         if reason.get("product_id") and reason["severity"] in BLOCKING:
             blocked.setdefault(reason["product_id"], set()).add(reason["code"])
     lines, substitutions, codes, wanted = [], [], [], set()
-    if snapshot["currency"] != auth["currency"]:
+    if snapshot["currency"] != auth["currency"] or unaccepted:
         codes.append("RUN_TERMS_CHANGED")
     for agreed in auth["agreed_lines"]:
         pid = agreed["product_id"]
@@ -307,11 +314,18 @@ def ensure_commit_allowed(c, identity, p, r, snapshot, evaluated):
     if not auth or auth["status"] != "active" or auth["valid_until"] < helsinki_today():
         refuse("The scheduled authorization is not active.")
     customer = c.execute(
-        "SELECT 1 FROM identities WHERE id=%s AND buyer_id=%s AND active AND role='approver'",
+        "SELECT * FROM identities WHERE id=%s AND buyer_id=%s AND active AND role='approver'",
         (auth["created_by"], identity["buyer_id"]),
     ).fetchone()
     if not customer:
         refuse("The customer who created the schedule is no longer active.")
+    if snapshot["gross_total"] is None or not can_approve(
+        customer["authority"],
+        Decimal(snapshot["gross_total"]),
+        snapshot["currency"],
+        evaluated["required_exceptions"],
+    ):
+        refuse("The customer who created the schedule no longer has authority for this amount.")
     verdict = compare(
         auth,
         r["request"],
