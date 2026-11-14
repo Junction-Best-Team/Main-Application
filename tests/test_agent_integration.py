@@ -22,6 +22,7 @@ from aimo.ingest import publish
 from aimo.schemas import CommitRequest
 from aimo.service import Service
 from aimo.upstream import FixtureClient
+from aimo.worker import run_once
 
 INGREDIENTS = [("pasta", "20"), ("eggs", "12"), ("pork", "6"), ("cheese", "4"), ("pepper", "0.2")]
 
@@ -105,6 +106,9 @@ def test_carbonara_actual_catalog_policy_customer_confirmation_and_persisted_rec
         first = client.post(message_url, headers=headers, json={
             "text": "I need ingredients for 200 portions of carbonara.", "idempotency_key": str(uuid4())})
         assert first.status_code == 200, first.text
+        assert first.json()["busy"] is True
+        assert run_once(service)
+        first = client.get(f"/api/conversations/{cid}")
         assert "delivery date" in first.json()["messages"][-1]["text"]
         assert first.json()["purchases"] == []
         second_body = {"text": f"{delivery}, hotel-helsinki, no dietary restrictions, 1000 EUR. "
@@ -112,6 +116,9 @@ def test_carbonara_actual_catalog_policy_customer_confirmation_and_persisted_rec
                        "idempotency_key": str(uuid4())}
         second = client.post(message_url, headers=headers, json=second_body)
         assert second.status_code == 200, second.text
+        assert second.json()["busy"] is True
+        assert run_once(service)
+        second = client.get(f"/api/conversations/{cid}")
         data = second.json()
         assert data["messages"][-1]["meal_plan"]["portions"] == 200
         basket = data["purchases"][0]
@@ -161,6 +168,9 @@ def test_carbonara_actual_catalog_policy_customer_confirmation_and_persisted_rec
         resumed = client.post(message_url, headers=headers, json={
             "text": "Was my confirmed basket recorded?", "idempotency_key": str(uuid4())})
         assert resumed.status_code == 200, resumed.text
+        assert resumed.json()["busy"] is True
+        assert run_once(service)
+        resumed = client.get(f"/api/conversations/{cid}")
         assert "accepted_mock" in str(seen[-2])
         assert "No supplier order" in resumed.json()["messages"][-1]["text"]
         with connection() as c:

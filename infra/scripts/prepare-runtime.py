@@ -40,7 +40,9 @@ def write_private(path, content):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cloud-directory", type=Path, required=True)
-    parser.add_argument("--image", required=True)
+    parser.add_argument("--image", required=True, help="API image")
+    parser.add_argument("--worker-image", required=True)
+    parser.add_argument("--frontend-image", required=True)
     parser.add_argument("--hostname", required=True)
     parser.add_argument("--acme-email", required=True)
     args = parser.parse_args()
@@ -62,6 +64,8 @@ def main():
         values = {
             "kubeconfig_path": str(config),
             "image": args.image,
+            "worker_image": args.worker_image,
+            "frontend_image": args.frontend_image,
             "hostname": args.hostname,
             "acme_email": args.acme_email,
             "database_url": outputs["database_url"],

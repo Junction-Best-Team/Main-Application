@@ -48,6 +48,12 @@ Owner decisions use `D-<nnn>` and quote the owner's words verbatim.
 - Evidence: `terraform -chdir=infra/digitalocean apply -input=false weekend.tfplan` reported seven additions; DigitalOcean cluster/database/firewall reads and `kubectl get nodes` verified readiness and isolation. A subsequent Terraform plan and rejected settings-only update reproduced the provider issue; see [provider v2.107.0](https://github.com/digitalocean/terraform-provider-digitalocean/blob/v2.107.0/digitalocean/database/resource_database_user.go). Retaining the empty settings block applied successfully; a refreshed plan with the private deployment tfvars then reported no changes (exit 0).
 - Impact: Cloud billing is active. Keep the private tfvars and local state for future plans and teardown; credentials, kubeconfig and a private state backup stay outside Git. The Kubernetes application/ingress stack, SQL bootstrap, catalog import and app readiness remain pending; no application image, DNS or challenge API key was invented.
 
+### F-INFRA-003: Independent application containers and durable worker queue
+- Date: 2026-11-14   Track: all   Status: verified locally; live cutover pending
+- Finding: The owner requested “separete all into their apps, worker is a pod api fe etc” and “new pr new worktree”. The frontend, API and worker now have independent build targets, Kubernetes Deployments/Services, probes and credentials. PostgreSQL stores queued turns; workers claim with bounded leases and attempt fencing. Migration 004 preserves business history and makes historical interrupted turns explicitly retryable.
+- Evidence: 144 PostgreSQL-backed backend tests; Python lint; three successful Docker target builds; 8 mocked portable Terraform plans; 28 infrastructure helper tests (including the merged OpenRouter sync); rendered Traefik chart. A three-container smoke with fixture embeddings/provider returned a queued message in 0.02 seconds with the worker stopped, retained it across API restart, processed it after worker startup, and delivered SSE through the frontend proxy. No live supplier calls or production changes were made by these checks.
+- Impact: The API no longer loads ML weights or runs agent turns inline. The static frontend receives no secrets. Apply migration 004 and the reviewed separate-app Terraform cutover before enabling the new three-image release pipeline; see `docs/separate-apps.md`.
+
 ## Owner decisions
 
 ### D-001: Build the Valio Aimo side, not the buyer's agent

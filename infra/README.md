@@ -1,5 +1,11 @@
 # Weekend infrastructure
 
+**Separate-app update:** follow [the current cutover runbook](../docs/separate-apps.md).
+The Kubernetes stack now creates frontend/API/worker apps. Supply `image` (API),
+`worker_image`, and `frontend_image`; the helper requires all three image arguments.
+The older monolith rollout narrative below is historical and must not be used for
+the one-time cutover. The cloud/database stack remains unchanged.
+
 Terraform provisioning and release helpers. Creating a PR or passing its CI never provisions resources.
 Run plans for review; applying a plan is a separate operator action. This work was
 prepared without applying either stack.
@@ -103,7 +109,9 @@ These steps document the future deployment; none were performed for this PR.
    ```sh
    python3 infra/scripts/prepare-runtime.py \
      --cloud-directory infra/digitalocean \
-     --image ghcr.io/OWNER/IMAGE:COMMIT \
+     --image ghcr.io/OWNER/IMAGE:api-COMMIT \
+     --worker-image ghcr.io/OWNER/IMAGE:worker-COMMIT \
+     --frontend-image ghcr.io/OWNER/IMAGE:frontend-COMMIT \
      --hostname aimo.YOUR_DOMAIN \
      --acme-email YOUR_EMAIL
    ```
