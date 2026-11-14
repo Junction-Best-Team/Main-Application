@@ -64,6 +64,9 @@ def active_generation():
         ids = {
             r["id"]
             for r in c.execute("SELECT id FROM products WHERE generation=%s", (row["generation"],))
+            if r["id"].startswith(
+                "9100"
+            )  # fixture products carried forward as withdrawn are ignored
         }
     return str(row["generation"]), ids
 
@@ -91,15 +94,17 @@ def test_rerunning_an_unchanged_snapshot_is_safe_and_reuses_embeddings(
     assert second["generation"] != first["generation"]  # a new generation, not row updates
     assert generation == second["generation"]
     assert ids_after == ids_before == {"910001", "910002"}
-    assert second["new_embeddings"] == 0 and second["reused_embeddings"] == 2
+    assert second["new_embeddings"] == 0 and second["reused_embeddings"] >= 2
     with connection() as c:
-        total = c.execute(
-            "SELECT count(*) AS n FROM products WHERE generation=%s", (generation,)
-        ).fetchone()["n"]
+        rows = c.execute(
+            "SELECT count(*) AS n, count(DISTINCT id) AS ids, count(*) FILTER (WHERE id LIKE '9100%%') AS mine "
+            "FROM products WHERE generation=%s",
+            (generation,),
+        ).fetchone()
         stored = c.execute(
             "SELECT product_count FROM catalog_generations WHERE id=%s", (generation,)
         ).fetchone()["product_count"]
-    assert total == stored == 2  # no duplicate or partial rows
+    assert rows["n"] == rows["ids"] == stored and rows["mine"] == 2  # no duplicate or partial rows
 
 
 def test_a_refused_run_leaves_the_active_catalog_untouched(monkeypatch, capsys, tmp_path):

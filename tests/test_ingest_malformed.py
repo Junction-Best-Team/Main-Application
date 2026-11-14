@@ -109,7 +109,7 @@ def active():
 
 def test_control_a_well_formed_snapshot_is_published(tmp_path):
     path, sha = snapshot(tmp_path, good("920002"))
-    result = ingest_file(path, expected_count=3, expected_sha=sha)
+    result = ingest_file(path, expected_count=3, expected_sha=sha, carry_withdrawn=False)
     assert result["products"] == 3 and result["active"] is True
 
 

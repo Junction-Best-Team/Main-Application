@@ -12,7 +12,7 @@ import httpx
 
 from aimo.catalog import normalize
 from aimo.config import settings
-from aimo.db import connection, fingerprint, js
+from aimo.db import connection, fingerprint, js, now
 from aimo.search import dimensions, document_text, embed, model_key, vector
 
 CATALOG_SHA256 = "50651aae31ca842112afdc16fcce92f9858d7f5d05e9928a3748aef16b22ea02"
@@ -37,7 +37,14 @@ def download(path: Path):
         path.write_bytes(response.content)
 
 
-def ingest_file(path: Path, expected_count=17546, expected_sha=CATALOG_SHA256, *, activate=True):
+def ingest_file(
+    path: Path,
+    expected_count=17546,
+    expected_sha=CATALOG_SHA256,
+    *,
+    activate=True,
+    carry_withdrawn=True,
+):
     content = path.read_bytes()
     actual = hashlib.sha256(content).hexdigest()
     if actual != expected_sha:
@@ -59,7 +66,25 @@ def ingest_file(path: Path, expected_count=17546, expected_sha=CATALOG_SHA256, *
     source = f"{path.name}; sha256:{actual}"
     # Retain withdrawal facts for exact lookup/denial; discovery filters them out.
     facts = [_normalize_record(index, p, source) for index, p in enumerate(records)]
+    if carry_withdrawn:  # DIS-008; tests of unrelated snapshot rules opt out
+        facts += _absent_as_withdrawn(facts)
     return publish(facts, source, actual, activate=activate)
+
+
+def _absent_as_withdrawn(facts):
+    """Products of the active catalog missing from a newer snapshot stay as withdrawn (DIS-008).
+
+    The earlier facts are kept unchanged except `deleted`, so exact lookup still returns the product
+    and every purchase check denies it as withdrawn. Their withdrawal date is carried by `publish`.
+    """
+    new_ids = [p["id"] for p in facts]
+    with connection() as c:
+        rows = c.execute(
+            "SELECT p.facts FROM products p JOIN active_catalog a ON a.generation=p.generation "
+            "WHERE NOT (p.id = ANY(%s))",
+            (new_ids,),
+        ).fetchall()
+    return [dict(r["facts"], deleted=True) for r in rows]
 
 
 def _normalize_record(index, raw, source):
@@ -141,10 +166,19 @@ def publish(facts, source, source_hash, *, activate=True):
             "INSERT INTO catalog_generations(id,source,source_hash,model_key,product_count,embedding_dimensions) VALUES(%s,%s,%s,%s,%s,%s)",
             (generation, source, source_hash, key, len(facts), dimensions()),
         )
+        # The first date a product was withdrawn wins; a product that returns clears it.
+        prior = {
+            r["id"]: r["withdrawn_since"]
+            for r in c.execute(
+                "SELECT p.id, p.withdrawn_since FROM products p JOIN active_catalog a "
+                "ON a.generation=p.generation WHERE p.withdrawn_since IS NOT NULL"
+            )
+        }
+        stamp = now()
         with c.cursor() as cur:
             cur.executemany(
-                "INSERT INTO products(generation,id,gtin,search_text,facts,embedding) "
-                "SELECT %s,%s,%s,%s,%s,embedding FROM embedding_cache WHERE model_key=%s AND text_hash=%s",
+                "INSERT INTO products(generation,id,gtin,search_text,facts,embedding,withdrawn_since) "
+                "SELECT %s,%s,%s,%s,%s,embedding,%s FROM embedding_cache WHERE model_key=%s AND text_hash=%s",
                 [
                     (
                         generation,
@@ -152,6 +186,7 @@ def publish(facts, source, source_hash, *, activate=True):
                         p.get("gtin"),
                         document_text(p),
                         js(p),
+                        (prior.get(p["id"]) or stamp) if p["deleted"] else None,
                         key,
                         fingerprint(document_text(p)),
                     )
