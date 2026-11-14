@@ -105,3 +105,11 @@ original records and reviewed overrides. Agent, product search and purchasing re
 existing application code; hosted recipe search targets PR #34's Qwen provider.
 Tests use authored recipe/product/commerce evidence, not verified sponsor stock.
 See `docs/recipes.md` for the snapshot checksum and remaining recipe/data limitations.
+
+## Editable architecture diagrams — 2026-11-14
+
+Codex authored the system and harness diagrams in `docs/diagrams/` during the event,
+checking current application code, SQL migrations and infrastructure configuration.
+Native editable scenes and SVG/PNG exports were created with the free open-source
+Excalidraw library (MIT); no third-party illustrations or infrastructure changes
+were introduced. These document configured topology, not a verified live inventory.

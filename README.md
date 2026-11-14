@@ -6,6 +6,12 @@ The current [product migration](docs/chat-purchasing.md) overrides the external-
 
 See the [architecture diagrams](docs/architecture.md) for the system overview, purchase confirmation flow and code map.
 
+| Full architecture | Agent harness |
+| --- | --- |
+| [![System architecture](docs/diagrams/architecture.svg)](docs/diagrams/architecture.svg) | [![Agent harness](docs/diagrams/harness.svg)](docs/diagrams/harness.svg) |
+
+[Download and edit both diagrams in free Excalidraw](docs/diagrams/README.md).
+
 ## Working in parallel
 
 - Start a task from the latest `develop`: `git switch develop`, then `git pull --ff-only` with a clean working tree. For an existing clone without that branch, first run `git fetch origin` and `git switch --track origin/develop`.

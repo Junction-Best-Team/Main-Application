@@ -7,6 +7,25 @@ GitHub renders the Mermaid diagrams directly; edit their text here when the arch
 The OpenRouter search profile requires an explicit staged import and coordinated cutover.
 Deploying the code alone retains the existing local E5 profile.
 
+## Excalidraw system and harness views
+
+These views cover the application and configured Kubernetes topology, including the single
+PostgreSQL/pgvector database, durable queue, external providers, optional search/recipe profiles,
+and explicit ingestion/release jobs. They describe repository configuration rather than live
+cluster state. [Download, edit and maintain the diagrams](diagrams/README.md).
+
+### Full system architecture
+
+[Editable Excalidraw source](diagrams/architecture.excalidraw) · [Full-size SVG](diagrams/architecture.svg) · [PNG](diagrams/architecture.png)
+
+![Full system architecture](diagrams/architecture.svg)
+
+### Agent harness and purchase authority
+
+[Editable Excalidraw source](diagrams/harness.excalidraw) · [Full-size SVG](diagrams/harness.svg) · [PNG](diagrams/harness.png)
+
+![Agent harness and customer confirmation](diagrams/harness.svg)
+
 ## System overview
 
 ```mermaid
