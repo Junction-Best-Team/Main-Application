@@ -191,6 +191,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/purchases/{proposal_id}/receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Purchase Receipt */
+        get: operations["purchase_receipt_api_purchases__proposal_id__receipt_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/memories": {
         parameters: {
             query?: never;
@@ -350,6 +367,20 @@ export interface components {
         };
         /** CommitResponse */
         CommitResponse: components["schemas"]["OrderResponse"] | components["schemas"]["RevisedProposalResponse"];
+        /**
+         * Contribution
+         * @description One ingredient's required quantity inside a basket line (BAS-002, MEA-005).
+         */
+        Contribution: {
+            /** Ingredient */
+            ingredient: string;
+            /** Ingredient Id */
+            ingredient_id?: string | null;
+            /** Amount */
+            amount: string;
+            /** Unit */
+            unit: string;
+        };
         /** ConversationCreate */
         ConversationCreate: {
             /**
@@ -477,6 +508,11 @@ export interface components {
             unit: string;
             /** Substitutes For */
             substitutes_for?: string | null;
+            /**
+             * Contributions
+             * @description Free-form baskets: the ingredients this line serves; amounts add up to it.
+             */
+            contributions?: components["schemas"]["Contribution"][] | null;
         };
         /** LoginRequest */
         LoginRequest: {
@@ -713,6 +749,11 @@ export interface components {
             proposal_id: string;
             /** Revision */
             revision: number;
+            /**
+             * Fingerprint
+             * @description Fingerprint of this revision's material terms (request, lines, prices, deposits, product facts, currency, mode, charges, policy version and blockers). A customer confirmation is bound to this revision and fingerprint; it excludes lookup time and stock that stays sufficient.
+             */
+            fingerprint: string;
             /** Current Revision */
             current_revision: number;
             /** Committed Revision */
@@ -844,6 +885,8 @@ export interface components {
             source_step: string;
             /** Effective Step */
             effective_step?: string | null;
+            /** Shortfall */
+            shortfall?: string | null;
         };
         /** Reason */
         Reason: {
@@ -871,6 +914,21 @@ export interface components {
              * @default false
              */
             milk_free: boolean;
+            /**
+             * Free From
+             * @description Allergen codes (for example AM milk, AE, AW) the product must explicitly declare free from. A product with no declaration is excluded, not assumed safe.
+             */
+            free_from?: string[];
+            /**
+             * Country Of Origin
+             * @description Two-letter origin codes (for example fi, se); the product must match one. A product with no recorded origin is excluded.
+             */
+            country_of_origin?: string[];
+            /**
+             * Unsupported
+             * @description Customer requirements the catalog cannot verify (for example gluten-free). Each entry blocks readiness: the basket needs the customer's decision (POL-009).
+             */
+            unsupported?: string[];
         };
         /** RevisedProposalResponse */
         RevisedProposalResponse: {
@@ -878,6 +936,11 @@ export interface components {
             proposal_id: string;
             /** Revision */
             revision: number;
+            /**
+             * Fingerprint
+             * @description Fingerprint of this revision's material terms (request, lines, prices, deposits, product facts, currency, mode, charges, policy version and blockers). A customer confirmation is bound to this revision and fingerprint; it excludes lookup time and stock that stays sufficient.
+             */
+            fingerprint: string;
             /** Current Revision */
             current_revision: number;
             /** Committed Revision */
@@ -974,6 +1037,10 @@ export interface components {
             commercial_evidence: {
                 [key: string]: unknown;
             };
+            /** Contributions */
+            contributions?: {
+                [key: string]: unknown;
+            }[] | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -1291,6 +1358,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CommitResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    purchase_receipt_api_purchases__proposal_id__receipt_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderResponse"];
                 };
             };
             /** @description Validation Error */

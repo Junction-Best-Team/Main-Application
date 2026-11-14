@@ -127,3 +127,21 @@ On 2026-11-14, at the owner's request, Codex simplified the existing CI for the
 hackathon: reused the existing backend tests, API sweep, frontend build and
 infrastructure checks, removed coverage gating/artifact jobs and shared the
 backend setup. No new dependency, dataset, model or asset was introduced.
+
+## Production screen styling port — 2026-11-14
+
+Reused the visual language from designer PR #102 and `ui/DESIGN.md` in the
+existing production feature components: colors, typography, message bubbles,
+card surfaces, login layout and purchase controls. Reused the existing Tailwind
+tokens and fonts; no prototype store, fixtures, handwritten API types, assets
+or dependencies were imported. Routes, hooks and purchase authority stay with
+the existing production implementation.
+
+## Complete designer UI integration — 2026-11-14
+
+Adapted PR #102 (5f550d2) presentational markup for the shell, Home, Request,
+SKU cards, Overview, expandable Past Orders, login and Tailwind preflight into
+production feature folders. Actual account and purchase data use existing API
+modules/hooks and generated types. Static schedule/hub/account-manager examples
+and disabled controls are labelled placeholders. No prototype store, fake login,
+scenario switcher, dependencies or backend/schema changes were imported.

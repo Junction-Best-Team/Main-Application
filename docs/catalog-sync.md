@@ -49,7 +49,7 @@ flowchart LR
 
 ```json
 {"event": "catalog_sync", "outcome": "unchanged", "source_hash": "5065…ea02", "generation": "…", "products": 17546, "new_embeddings": 0, "reused_embeddings": 0, "duration_seconds": 41.3}
-{"event": "catalog_sync", "outcome": "updated", "reason": "import_profile_changed", "source_hash": "…", "generation": "…", "products": 17546, "withdrawn_products": 0, "new_embeddings": 0, "reused_embeddings": 17546, "model": "…", "import_profile": "catalog-import-v1:…", "duration_seconds": 95.0}
+{"event": "catalog_sync", "outcome": "updated", "reason": "import_profile_changed", "source_hash": "…", "generation": "…", "products": 17546, "withdrawn_products": 0, "new_embeddings": 0, "reused_embeddings": 17546, "model": "…", "import_profile": "catalog-import-v2:…", "duration_seconds": 95.0}
 {"event": "catalog_sync", "outcome": "failed", "error_code": "SNAPSHOT_HASH_MISMATCH", "error": "Snapshot hash differs from the approved SHA-256; nothing was imported", "duration_seconds": 38.2}
 ```
 

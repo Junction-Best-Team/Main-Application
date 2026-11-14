@@ -49,16 +49,15 @@ Keep reusable tokens in `src/styles/theme.css`. Hanken Grotesk is the body and
 heading face; Space Grotesk is for labels/data. Pair lime actions with navy text.
 
 Apply utilities to the extracted components and remove their obsolete rules
-from `legacy.css`. Utilities occupy the last cascade layer. Keep global imports
+from base defaults in `theme.css`. Utilities occupy the last cascade layer. Keep global imports
 at the entry point, retain visible focus and check both desktop and mobile.
-Avoid enabling preflight as an incidental styling change: it affects every
-screen and needs its own visual verification.
-
-The structural refactor intentionally keeps existing routes and confirmation
-behavior. Follow-up design work can build Home, Request/Overview and Past Orders
-in separate focused changes, integrating useful designer work from #102.
-The prototype package remains an isolated reference; coordinate the final
-integration path against #59 before landing shared work.
+The complete #102 screen layout now runs in production’s feature structure.
+Home lives in `features/home`; conversation navigation stays in chat hooks;
+Overview and accepted-order pagination stay in purchases. The app shell only
+composes those features. Tailwind preflight is enabled and legacy CSS removed.
+Check all screens at desktop and phone sizes when adjusting global defaults.
+Disabled design controls and example schedules must remain visibly identified
+as placeholders. Never import the prototype store, fixtures or API types.
 
 ## Tooling dependencies
 

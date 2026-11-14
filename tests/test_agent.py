@@ -96,6 +96,7 @@ def proposal(identity, pid=None, outcome="approval_required"):
     return {
         "proposal_id": pid or str(uuid4()),
         "revision": 1,
+        "fingerprint": "f" * 64,
         "current_revision": 1,
         "committed_revision": None,
         "current_proposal_url": "/purchases/example",

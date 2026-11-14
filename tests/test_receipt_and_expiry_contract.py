@@ -154,12 +154,6 @@ def test_receipts_and_audit_history_stay_retrievable_without_expiry(
 # --- JNP3-PRP-002: a proposal carries id, revision, fingerprint, totals, outcome and expiry ------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="PRP-002: the fingerprint is stored (proposal_revisions.fingerprint) but not returned "
-    "by render()/ProposalResponse. Fix is T2 and waits for person 1's agreement (shared schema).",
-)
 def test_proposal_response_carries_every_required_field(service, buyer, actor, request_data):
     p = prepared(service, actor, request_data)
     for response in (p, service.get_proposal(actor, p["proposal_id"])):
