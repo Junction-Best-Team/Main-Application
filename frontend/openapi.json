@@ -930,19 +930,26 @@
         "properties": {
           "name": {
             "type": "string",
-            "maxLength": 120,
+            "maxLength": 240,
             "minLength": 1,
             "title": "Name"
           },
           "amount": {
-            "type": "string",
-            "maxLength": 30,
-            "minLength": 1,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 30,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Amount"
           },
           "unit": {
             "type": "string",
-            "maxLength": 12,
+            "maxLength": 30,
             "minLength": 1,
             "title": "Unit"
           },
@@ -956,13 +963,98 @@
               }
             ],
             "title": "Product Id"
+          },
+          "ingredient_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingredient Id"
+          },
+          "form": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "proposed",
+              "matched",
+              "unresolved"
+            ],
+            "title": "Status",
+            "default": "proposed"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "purchase_amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Amount"
+          },
+          "purchase_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Unit"
+          },
+          "product_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Fingerprint"
+          },
+          "conversion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuantityCalculation"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "name",
-          "amount",
           "unit"
         ],
         "title": "Ingredient"
@@ -1035,7 +1127,7 @@
         "properties": {
           "title": {
             "type": "string",
-            "maxLength": 120,
+            "maxLength": 240,
             "minLength": 1,
             "title": "Title"
           },
@@ -1061,6 +1153,72 @@
             "type": "array",
             "maxItems": 20,
             "title": "Notes"
+          },
+          "recipe_plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipe Plan Id"
+          },
+          "recipe_plan_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipe Plan Revision"
+          },
+          "recipe_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipe Id"
+          },
+          "recipe_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipe Version"
+          },
+          "base_servings": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Servings"
+          },
+          "attribution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attribution"
           }
         },
         "additionalProperties": false,
@@ -1308,6 +1466,15 @@
             ],
             "title": "Policy Outcome"
           },
+          "recipe_basis": {
+            "type": "string",
+            "enum": [
+              "saved_recipe",
+              "free_form"
+            ],
+            "title": "Recipe Basis",
+            "default": "free_form"
+          },
           "approval_status": {
             "type": "string",
             "title": "Approval Status"
@@ -1416,6 +1583,30 @@
       },
       "PurchaseRequest": {
         "properties": {
+          "recipe_plan_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipe Plan Id"
+          },
+          "recipe_plan_revision": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipe Plan Revision"
+          },
           "request_id": {
             "type": "string",
             "maxLength": 100,
@@ -1771,6 +1962,15 @@
             ],
             "title": "Policy Outcome"
           },
+          "recipe_basis": {
+            "type": "string",
+            "enum": [
+              "saved_recipe",
+              "free_form"
+            ],
+            "title": "Recipe Basis",
+            "default": "free_form"
+          },
           "approval_status": {
             "type": "string",
             "title": "Approval Status"
@@ -1896,6 +2096,11 @@
           "csrf_token": {
             "type": "string",
             "title": "Csrf Token"
+          },
+          "recipe_planning_enabled": {
+            "type": "boolean",
+            "title": "Recipe Planning Enabled",
+            "default": false
           }
         },
         "additionalProperties": false,

@@ -57,6 +57,7 @@ Reference: [Junction general terms](https://www.hackjunction.com/terms-of-servic
 | Material | Date | Source / actual usage |
 | --- | --- | --- |
 | Seller gateway, normalization, ingestion/search, policy/workflow, eight HTTP/MCP tools, buyer inbox, PostgreSQL migrations, mock adapter, tests and packaging | 2026-11-14 | Implemented with Codex during this task, starting from main `76296c1`; agreed behavior from PR #2 head `b0d1ee3`. No earlier application implementation was copied. PR #3's findings/draft are retained and attributed separately. |
+| Tool sweep, CI script and `auto` upstream mode (labelled fixture fallback without an API key) | 2026-11-14 | `tests/sweep/run_sweep.py`, `tests/ci.sh`, `tests/test_upstream_mode.py`, `src/aimo/upstream.py`: written with Claude on top of PR #4. First real-key calls to the sponsor price/availability API were made this day (F-MVP-007). |
 | Authored miniature fixture projections and invented commercial responses | 2026-11-14 | `src/aimo/fixtures.py` and `FixtureClient`; selected known product shapes exercise reported cases, but are not full catalog records or captured live responses. `demo-deposit` is a wholly fictional material. Real source records are verified privately by `scripts/verify_catalog.py`. |
 | Buyer UI | 2026-11-14 | Original React/CSS interface; system fonts, no third-party photos or downloaded visual assets. Styled text marks this as the challenge demo; it is not an official supplier checkout. |
 | PR #4 review fixes | 2026-11-14 | Codex changes to authority reevaluation, historical/current purchase views, documentation CSP and shared response contracts, with regression tests. Built on PR head `cd16b09`; no new services or dependencies. Swagger continues using FastAPI's jsDelivr assets, with nonced scripts on the documentation route. |
@@ -93,3 +94,14 @@ inspected for concurrent schema changes; no numbered migration was added. Local
 PostgreSQL tests are real; kubectl/Job behavior and Terraform plans use mocks.
 No deployment, Terraform apply, production DB, seed/import or paid provider call
 was performed by this task.
+
+### Recipe planning — 2026-11-14
+
+The owner selected the pre-existing UniTools World Recipes dataset (v2.0.0,
+501 recipes, CC BY-SA 4.0, attribution UniTools — theunitools.com). Its source and
+schema were inspected and its complete JSON imported locally with fixture embeddings;
+no recipe data/photos are bundled. The importer preserves source/version/license,
+original records and reviewed overrides. Agent, product search and purchasing reuse
+existing application code; hosted recipe search targets PR #34's Qwen provider.
+Tests use authored recipe/product/commerce evidence, not verified sponsor stock.
+See `docs/recipes.md` for the snapshot checksum and remaining recipe/data limitations.

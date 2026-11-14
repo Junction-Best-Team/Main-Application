@@ -1,5 +1,6 @@
 """Read-only sponsor integration. The supplier has no order-placement API."""
 
+import logging
 import math
 import random
 import time
@@ -15,6 +16,7 @@ from aimo.config import settings
 from aimo.db import Problem, now
 from aimo.numeric import D
 
+log = logging.getLogger(__name__)
 HELSINKI = ZoneInfo("Europe/Helsinki")
 
 
@@ -204,8 +206,26 @@ class FixtureClient:
         }
 
 
+def effective_mode() -> str:
+    """`auto` uses the live API when a key is configured and labelled fixtures when it is not.
+
+    The key exists and teammates have it (see docs/findings.md); the fixture fallback only keeps
+    the app runnable without it. Fixture evidence is always labelled `mode: fixture`.
+    """
+    cfg = settings()
+    if cfg.upstream_mode == "auto":
+        return "live" if cfg.valio_aimo_api_key else "fixture"
+    return cfg.upstream_mode
+
+
 def client():
-    return FixtureClient() if settings().upstream_mode == "fixture" else ValioClient()
+    if effective_mode() == "live":
+        return ValioClient()
+    if settings().upstream_mode == "auto":
+        log.warning(
+            "No VALIO_AIMO_API_KEY: using authored FIXTURE price/availability, not live data."
+        )
+    return FixtureClient()
 
 
 def validate_lookup(

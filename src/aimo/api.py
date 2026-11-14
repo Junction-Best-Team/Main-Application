@@ -7,7 +7,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 from aimo import approval_workflow as workflow
-from aimo import auth, conversations
+from aimo import auth, conversations, upstream
 from aimo.chat_schemas import (
     ConversationCreate,
     ConversationList,
@@ -119,7 +119,7 @@ def create_app(service=None):
         return {
             "status": "ready",
             "model": active["model_key"],
-            "upstream_mode": settings().upstream_mode,
+            "upstream_mode": upstream.effective_mode(),
         }
 
     @app.post("/api/login", response_model=SessionResponse)
@@ -137,7 +137,12 @@ def create_app(service=None):
             max_age=8 * 3600,
             path="/",
         )
-        return {"username": identity["id"], "buyer_id": identity["buyer_id"], "csrf_token": csrf}
+        return {
+            "username": identity["id"],
+            "buyer_id": identity["buyer_id"],
+            "csrf_token": csrf,
+            "recipe_planning_enabled": settings().recipe_planning_enabled,
+        }
 
     @app.get("/api/session", response_model=SessionResponse)
     def session(request: Request):
@@ -146,6 +151,7 @@ def create_app(service=None):
             "username": identity["id"],
             "buyer_id": identity["buyer_id"],
             "csrf_token": data["csrf"],
+            "recipe_planning_enabled": settings().recipe_planning_enabled,
         }
 
     @app.post("/api/logout", status_code=204)
@@ -277,7 +283,6 @@ def create_app(service=None):
                 "X-Accel-Buffering": "no",
             },
         )
-
 
     return app
 
