@@ -10,6 +10,7 @@ from aimo.config import settings
 from aimo.db import connection
 from aimo.schemas import Requirements, SearchRequest
 from aimo.search import model_key, search_products
+from aimo.search_provider import RERANK_MODEL
 
 MILKS = {
     "464306",
@@ -83,6 +84,9 @@ def main():
         identity = c.execute("SELECT * FROM identities WHERE id='demo-agent'").fetchone()
     report = {
         "model": model_key(),
+        "reranker": RERANK_MODEL
+        if settings().embedding_backend == "openrouter" and settings().rerank_enabled
+        else None,
         "rerank_enabled": settings().embedding_backend == "openrouter"
         and settings().rerank_enabled,
         "cases": len(CASES),

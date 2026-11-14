@@ -1,7 +1,7 @@
 # OpenRouter catalog search
 
 The hosted profile uses `qwen/qwen3-embedding-8b` at its native **4096 dimensions**,
-keyword retrieval, and `qwen/qwen3-reranker-0.6b` on at most 30 filtered candidates.
+keyword retrieval, and `qwen/qwen3-reranker-8b` on at most 30 filtered candidates.
 This is a candidate for improved Finnish/English retrieval, not a claim that a
 public benchmark proves it is the best model for this catalog. The local E5 backend
 remains the default so deploying code alone cannot invalidate an existing index or
@@ -87,6 +87,13 @@ descriptive top-one/top-five results, violations, latency and reranker availabil
 Expand the labeled Finnish/English set before claiming broad quality/capacity.
 Production cluster latency remains an operator check because this PR does not deploy.
 
+Recorded full-catalog runs: [final evaluation](search-evaluation-openrouter.json)
+and [reranker comparison](search-reranker-comparison.json). The 8B reranker reached
+20/21 descriptive top-five hits (saved E5 baseline: 17/21; 0.6B reranker: 19/21).
+Two 8B runs had 12–14/21 labeled top-one hits and 2.1–2.9 second descriptive median
+latency, with no filter violations or reranker outages. The Finnish flank-steak
+case remains a miss. Ranking variability and incomplete labels limit these claims.
+
 ## Costs
 
 On 2026-11-14, embedding prices start at $0.01/million tokens; our real probe routed
@@ -98,6 +105,6 @@ query/instruction overhead. These are estimates, not caps; chat, hosting and
 credit-purchase fees are separate. The 8,000-character text limit is not a token limit.
 
 References: [embedding model](https://openrouter.ai/qwen/qwen3-embedding-8b),
-[reranker](https://openrouter.ai/qwen/qwen3-reranker-0.6b),
+[reranker](https://openrouter.ai/qwen/qwen3-reranker-8b),
 [embedding API](https://openrouter.ai/docs/api/api-reference/embeddings/submit-an-embedding-request),
 [Qwen query formatting](https://huggingface.co/Qwen/Qwen3-Embedding-8B).

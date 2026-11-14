@@ -1,0 +1,54 @@
+{
+  "scope": "Same complete catalog and curated 30-case regression set; separate live API runs, not a held-out benchmark. Latencies include local PostgreSQL and network calls.",
+  "embedding_model": "qwen/qwen3-embedding-8b",
+  "comparison": {
+    "qwen/qwen3-reranker-0.6b": {
+      "top1": 20,
+      "top5": 28,
+      "constraint_violations": 0,
+      "description_median_ms": 2290.1,
+      "rerank_unavailable": 0,
+      "by_kind": {
+        "identifier": {
+          "count": 6,
+          "top1": 6,
+          "top5": 6
+        },
+        "description": {
+          "count": 21,
+          "top1": 11,
+          "top5": 19
+        },
+        "no_match": {
+          "count": 3,
+          "top1": 3,
+          "top5": 3
+        }
+      }
+    },
+    "qwen/qwen3-reranker-8b": {
+      "top1": 23,
+      "top5": 29,
+      "constraint_violations": 0,
+      "description_median_ms": 2096.6,
+      "rerank_unavailable": 0,
+      "by_kind": {
+        "identifier": {
+          "count": 6,
+          "top1": 6,
+          "top5": 6
+        },
+        "description": {
+          "count": 21,
+          "top1": 14,
+          "top5": 20
+        },
+        "no_match": {
+          "count": 3,
+          "top1": 3,
+          "top5": 3
+        }
+      }
+    }
+  }
+}

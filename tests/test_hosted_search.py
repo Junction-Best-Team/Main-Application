@@ -102,6 +102,27 @@ def test_reranker_cannot_inject_candidates(monkeypatch, rows):
         provider.rerank("milk", ["milk", "salad"])
 
 
+def test_reranker_uses_8b_and_ignores_provider_document_text(monkeypatch):
+    def post(endpoint, payload):
+        assert endpoint == "rerank"
+        assert payload == {
+            "model": "qwen/qwen3-reranker-8b",
+            "query": "milk",
+            "documents": ["milk", "salad"],
+            "top_n": 2,
+            "return_documents": False,
+        }
+        return {
+            "results": [
+                {"index": 1, "relevance_score": 0.1, "document": {"text": "fabricated"}},
+                {"index": 0, "relevance_score": 0.9, "document": {"text": "fabricated"}},
+            ]
+        }
+
+    monkeypatch.setattr(provider, "post", post)
+    assert provider.rerank("milk", ["milk", "salad"]) == [(0, 0.9), (1, 0.1)]
+
+
 def test_rich_text_is_bounded_and_preserves_source_facts():
     facts = fixture_facts()[0]
     original = deepcopy(facts)

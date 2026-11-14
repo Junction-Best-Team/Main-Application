@@ -256,6 +256,12 @@ Add new findings below, under your track heading.
 
 ### Track 1: Catalog and Discovery
 
+#### F-SEARCH-001: Hosted Qwen search verified on the complete catalog
+- Date: 2026-11-14   Track: 1   Status: verified (local PostgreSQL and live OpenRouter); deployed cutover unverified
+- Finding: The supplied SHA-256-verified snapshot imported all 17,546 products into a separate local evaluation database with 4,096-dimensional Qwen3 Embedding 8B vectors. An interrupted run resumed with 192 cached embeddings and generated the remaining 17,354. All normalized products validated against the product schema; the evaluation database including its embedding cache occupies approximately 698 MB. No production database or Kubernetes configuration changed.
+- Evidence: `docs/search-evaluation-openrouter.json`, `docs/search-reranker-comparison.json`, and `scripts/evaluate_search.py`. Hybrid search with Qwen3 Reranker 8B found a labeled top-five result in 20/21 descriptive cases, versus 17/21 in the saved E5 baseline and 19/21 with Reranker 0.6B. Two 8B reranker runs had 12–14/21 labeled top-one results (baseline 12/21) and 2.1–2.9 second descriptive median latency. Both passed all six identifier and three exclusion cases, with zero supported dietary-filter violations or reranker outages. The remaining top-five miss was `Snellman naudan kuve`. These are curated, incompletely labeled regression cases, not a held-out benchmark; the baseline also used different document text, and hosted rankings/timings varied between runs.
+- Impact: Select the 8B embedding/reranker profile as an opt-in candidate-retrieval upgrade, without claiming first-result correctness or a universally best model. Migration 004, resumable batch caching, staged imports, exact filtered ranking and explicit profile-matched cutover/rollback preserve existing catalogs and purchasing history. Readiness does not spend API tokens. `165` backend tests, Python lint and the frontend production build passed locally. Cloud latency/capacity and operator rollout remain separate from this PR.
+
 ### Track 2: Quote and Order
 
 ### Track 3: Mandates, Policy and Approvals

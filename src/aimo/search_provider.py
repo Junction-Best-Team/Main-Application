@@ -9,7 +9,7 @@ from aimo.config import settings
 from aimo.db import Problem
 
 EMBEDDING_MODEL = "qwen/qwen3-embedding-8b"
-RERANK_MODEL = "qwen/qwen3-reranker-0.6b"
+RERANK_MODEL = "qwen/qwen3-reranker-8b"
 DIMENSIONS = 4096
 QUERY_INSTRUCTION = "Given a food purchasing request, retrieve matching wholesale food products."
 # Bump when document construction or query instructions change.
