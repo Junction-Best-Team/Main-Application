@@ -1,17 +1,22 @@
 import { Link } from "react-router-dom";
 import { currency, dateTime } from "../../../shared/lib/format";
-import { placedAt } from "../../purchases/model/acceptedOrders";
-import { useAcceptedOrders } from "../../purchases/hooks/useAcceptedOrders";
+import { useOrders } from "../../purchases/hooks/useOrders";
 import { useAuth } from "../../auth/useAuth";
 import { DESIGN_PLACEHOLDERS as MOCK } from "../../../shared/lib/designPlaceholders";
 import { Icon } from "../../../shared/components/DesignPrimitives";
+import { StandingOrdersCard } from "../components/StandingOrdersCard";
 
 const rowClass =
   "group flex items-center justify-between gap-space-sm rounded-lg bg-surface-container-low p-space-sm no-underline";
 
 export function HomePage() {
   const { session } = useAuth();
-  const { orders, error, loading } = useAcceptedOrders(3);
+  const {
+    items: placed,
+    error,
+    loading,
+  } = useOrders({ status: "placed", want: 3 });
+  const orders = placed.slice(0, 3);
   const m = MOCK.home;
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-col gap-space-lg px-margin-sm py-space-lg md:gap-space-xl md:px-margin md:py-space-xl">
@@ -53,83 +58,83 @@ export function HomePage() {
         />
       </section>
 
-      <p className="m-0 font-body text-body-md text-on-surface-variant">
-        Delivery schedule is not available yet.
-      </p>
+      <div className="grid grid-cols-1 gap-space-lg lg:grid-cols-2">
+        <StandingOrdersCard />
 
-      <section
-        aria-labelledby="home-recent"
-        className="flex flex-col gap-space-sm rounded-xl bg-surface-pure p-space-lg shadow-level-2"
-      >
-        <div className="flex items-center justify-between gap-space-sm">
-          <h3
-            id="home-recent"
-            className="m-0 flex items-center gap-space-xs font-headline text-headline-sm text-primary"
-          >
-            <Icon name="receipt_long" className="text-wholesale-teal" />
-            Recent Past Orders
-          </h3>
-          <Link
-            to="/purchases"
-            className="inline-flex items-center gap-1 font-label text-label-md text-wholesale-teal no-underline hover:text-deep-ocean-navy"
-          >
-            View All Past Orders
-            <Icon name="arrow_forward" className="text-[16px]" />
-          </Link>
-        </div>
-        {error && (
-          <div
-            role="alert"
-            className="rounded-lg bg-error-container p-space-md text-on-error-container"
-          >
-            {error}
+        <section
+          aria-labelledby="home-recent"
+          className="flex flex-col gap-space-sm rounded-xl bg-surface-pure p-space-lg shadow-level-2"
+        >
+          <div className="flex items-center justify-between gap-space-sm">
+            <h3
+              id="home-recent"
+              className="m-0 flex items-center gap-space-xs font-headline text-headline-sm text-primary"
+            >
+              <Icon name="receipt_long" className="text-wholesale-teal" />
+              Recent Past Orders
+            </h3>
+            <Link
+              to="/purchases"
+              className="inline-flex items-center gap-1 font-label text-label-md text-wholesale-teal no-underline hover:text-deep-ocean-navy"
+            >
+              View All Past Orders
+              <Icon name="arrow_forward" className="text-[16px]" />
+            </Link>
           </div>
-        )}
-        {loading && !error && (
-          <p role="status" className="m-0 text-secondary">
-            Loading past orders…
-          </p>
-        )}
-        {orders?.length === 0 && (
-          <p className="m-0 text-secondary">
-            No past orders yet. Orders you approve in a request will appear
-            here.
-          </p>
-        )}
-        <ul className="m-0 flex list-none flex-col gap-space-xs p-0">
-          {orders?.map((p) => (
-            <li key={p.proposal_id}>
-              <Link
-                to={`/purchases/${p.proposal_id}`}
-                className={`${rowClass} hover:bg-surface-container`}
-              >
-                <span className="flex min-w-0 items-start gap-space-sm">
-                  <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-surface-container-high text-wholesale-teal">
-                    <Icon name="check_circle" className="text-[20px]" />
-                  </span>
-                  <span className="flex min-w-0 flex-col">
-                    <span className="truncate font-label text-label-lg text-deep-ocean-navy">
-                      {p.request.request_id}
+          {error && (
+            <div
+              role="alert"
+              className="rounded-lg bg-error-container p-space-md text-on-error-container"
+            >
+              {error}
+            </div>
+          )}
+          {loading && !error && (
+            <p role="status" className="m-0 text-secondary">
+              Loading past orders…
+            </p>
+          )}
+          {!loading && !error && orders.length === 0 && (
+            <p className="m-0 text-secondary">
+              No past orders yet. Orders you approve in a request will appear
+              here.
+            </p>
+          )}
+          <ul className="m-0 flex list-none flex-col gap-space-xs p-0">
+            {orders.map((p, index) => (
+              <li key={p.order_id ?? p.proposal_id ?? index}>
+                <Link
+                  to={`/purchases/${p.proposal_id}`}
+                  className={`${rowClass} hover:bg-surface-container`}
+                >
+                  <span className="flex min-w-0 items-start gap-space-sm">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-surface-container-high text-wholesale-teal">
+                      <Icon name="check_circle" className="text-[20px]" />
                     </span>
-                    <span className="font-label text-label-sm text-on-surface-variant">
-                      Accepted (demo) • {dateTime(placedAt(p))}
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate font-label text-label-lg text-deep-ocean-navy">
+                        {p.title}
+                      </span>
+                      <span className="font-label text-label-sm text-on-surface-variant">
+                        Accepted (demo) •{" "}
+                        {dateTime(p.placed_at ?? p.updated_at)}
+                      </span>
                     </span>
                   </span>
-                </span>
-                <span className="flex shrink-0 flex-col items-end">
-                  <span className="font-headline text-headline-sm font-bold leading-tight text-primary">
-                    {currency(p.snapshot.gross_total)}
+                  <span className="flex shrink-0 flex-col items-end">
+                    <span className="font-headline text-headline-sm font-bold leading-tight text-primary">
+                      {currency(p.gross_total, p.currency ?? "EUR")}
+                    </span>
+                    <span className="font-label text-label-sm text-secondary">
+                      {p.line_count} {p.line_count === 1 ? "item" : "items"}
+                    </span>
                   </span>
-                  <span className="font-label text-label-sm text-secondary">
-                    {p.snapshot.lines.length}{" "}
-                    {p.snapshot.lines.length === 1 ? "item" : "items"}
-                  </span>
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </section>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
     </main>
   );
 }
