@@ -129,7 +129,7 @@ async function mockSession(page: Page, signedIn = true) {
   );
 }
 
-for (const width of [1440, 390]) {
+for (const width of [1440, 1024, 390, 320]) {
   test(`recipe illustration persists beside text at ${width}px`, async ({
     page,
   }, testInfo) => {
@@ -151,11 +151,8 @@ for (const width of [1440, 390]) {
     };
     await page.route(imageUrl, (route) =>
       route.fulfill({
-        contentType: "image/png",
-        body: Buffer.from(
-          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
-          "base64",
-        ),
+        contentType: "image/svg+xml",
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="768"><rect width="1024" height="768" fill="#c7e8f6"/><text x="64" y="384" font-size="48">Recipe image fixture</text></svg>',
       }),
     );
     await page.route(`**/api/conversations/${conversationId}`, (route) =>
@@ -178,6 +175,11 @@ for (const width of [1440, 390]) {
       ),
     ).toBeVisible();
     await expect(image).toHaveAttribute("referrerpolicy", "no-referrer");
+    const bounds = await image.boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(bounds!.width / bounds!.height).toBeCloseTo(4 / 3, 2);
+    expect(bounds!.x).toBeGreaterThanOrEqual(0);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,
