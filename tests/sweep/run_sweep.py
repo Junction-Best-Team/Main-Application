@@ -194,7 +194,7 @@ class Sweep:
                 "idempotency_key": "sweep-" + str(uuid4()),
             },
         )
-        need(r.status_code >= 400, "a denied proposal must not commit")
+        need(400 <= r.status_code < 500, f"denied proposal must be refused with a 4xx, got {r.status_code}")
         return f"denied proposal refused with HTTP {r.status_code}"
 
     def commit_order(self):
@@ -266,7 +266,7 @@ class Sweep:
         p = self.split_proposal()
         body = self.commit_body(p)
         early = self.post("commit_order", body)
-        need(early.status_code >= 400, "commit must be refused before the buyer decides")
+        need(400 <= early.status_code < 500, f"commit before the buyer decides must be a 4xx refusal, got {early.status_code}")
         self.buyer_login()
         inbox = self.buyer.get("/api/approvals")
         need(inbox.status_code == 200, f"inbox HTTP {inbox.status_code}")
@@ -289,7 +289,7 @@ class Sweep:
         rejected = self.decide(p, "reject")
         need(rejected.status_code == 200, f"buyer rejection HTTP {rejected.status_code}")
         after = self.post("commit_order", self.commit_body(p))
-        need(after.status_code >= 400, "a rejected proposal must not commit")
+        need(400 <= after.status_code < 500, f"rejected proposal must be refused with a 4xx, got {after.status_code}")
         state = self.get("proposals/" + p["proposal_id"]).json()
         need("reject" in state["approval_status"].lower(), f"status: {state['approval_status']}")
         need(state["next_action"]["type"] != "commit", "next_action must not say commit")

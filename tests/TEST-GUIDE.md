@@ -1,0 +1,226 @@
+# What the tests really check
+
+Written by reading the test code, not the test names. Branch `mvp-local`. If a claim says "unclear from the code", I could not settle it by reading.
+
+## 1. How to read this
+
+1. **Lint** (`ruff check src tests scripts`): style and obvious code errors. It checks no behaviour.
+2. **pytest** (`tests/test_*.py`, 35 test functions, 57 cases): calls the Python code directly against a real PostgreSQL test database, with invented ("fixture") prices, stock and search vectors. Fast, precise, no browser.
+3. **Frontend build** (`npm run build`): TypeScript type check and bundle. Proves the UI compiles, nothing more.
+4. **Sweep** (`tests/sweep/run_sweep.py`, 17 checks): talks to a running server over HTTP and MCP like an outside agent. Proves the pieces work together.
+5. **Browser tests** (`frontend/e2e/approval.spec.ts`, 6 tests): real Chromium clicking through the buyer approval page.
+6. **Local-only scripts** (`scripts/*.py`): need a running server, Docker, the full catalog or the real API key. Not run by CI. See section 6.
+7. `tests/ci.sh` is only the runner. It starts the database and server, then runs lint, pytest, sweep, browser tests. CI sets `SWEEP_ARGS=--strict`, so a skipped sweep check fails the build there (`.github/workflows/ci.yml`, jobs "Tool sweep" and "Browser tests").
+8. All pytest, sweep and browser tests use **fixture** commerce: invented price and stock from `src/aimo/upstream.py::FixtureClient` and a 10-product catalog from `src/aimo/fixtures.py`. A pass says nothing about Valio's real data.
+9. Fixture facts worth knowing: product `464306` costs 1.70 EUR gross per litre, has 600 in stock; `464398` has 400; `463380` has 698; everything else has 5000. The autonomous limit is 1500 EUR.
+10. Search "vectors" are fake in tests (`EMBEDDING_BACKEND=fixture`), so meaning-based search quality is never measured by CI.
+
+### Terms used below
+
+- **Proposal / revision**: `prepare_order` stores a priced basket as a proposal, revision 1. If price, stock or rules change, a later `commit_order` creates revision 2 instead of ordering, and approvals of revision 1 no longer count.
+- **Policy outcome**: one of `ready_to_commit` (agent may order alone), `approval_required` (a human buyer must approve), `denied` (forbidden, approval cannot fix it), `needs_resolution` (facts missing or conflicting; approval cannot fix it). Precedence: denied, then needs_resolution, then approval_required, then ready (`approval_policy.py::evaluate_purchase`).
+- **Mock order**: the supplier has no order API. A "commit" only stores a receipt with status `accepted_mock`. Nothing is sent to Valio.
+- **Buyer vs agent**: the agent is the purchasing program (bearer token, `/api/agent/*`, MCP). The buyer is the human (username and password, cookie session, `/api/approvals`). They must stay separate.
+- **CSRF**: a check that a browser POST came from our own page, not a hostile site. Here: an `X-CSRF-Token` header plus a matching `Origin` header.
+- **Idempotency key**: a client-chosen string. Sending the same commit again with the same key must return the same receipt and not create a second order.
+- **Gross**: price including tax and deposits.
+
+## 2. pytest
+
+Shared setup is `tests/conftest.py`. It forces a database whose name ends in `_test`, fixture upstream and fixture embeddings, clears buyers and login attempts before every test, and re-seeds the demo buyer, agent and policy v1. `request_data` is 10 L of `464306`, delivery in 2 days, lactose-free required. `mission` is 600 L of `464306` plus 400 L of `464398` as a substitute, which totals 1700.00 EUR and needs approval.
+
+### 2.1 Supplier (upstream) response checking
+
+`tests/test_evidence.py` unless noted. All use `validate_lookup`, the function that decides whether a price/stock reply can be trusted.
+
+| Test | Scenario | Asserts | Catches |
+| --- | --- | --- | --- |
+| `test_supplier_regressions` (12 cases) | Take a good fixture reply and break one field: price missing; price expired (2020); tax rate that does not match the gross price; wrong customer id; duplicated product row; no delivery schedule; `logisticModel` not "Stock"; placeholder stock 9999999999; order cutoff in the past; unknown sales unit; sales block; availability date in 2099 | The expected reason code is among the reasons: `MISSING_PRICE`, `PRICE_OUTSIDE_VALIDITY`, `MISSING_PRICE`, `UPSTREAM_CONTEXT_MISMATCH`, `UPSTREAM_PRODUCT_MISMATCH`, `DELIVERY_UNRESOLVED`, `UNVERIFIED_STOCK` (twice), `CUTOFF_PASSED`, `AVAILABILITY_UNIT_UNKNOWN`, `SALES_BLOCK`, `DELIVERY_TOO_LATE` | A bad supplier reply being treated as a valid price or stock. Only checks the code appears, not that it is the only reason and not the final outcome |
+| `test_sales_unit_mismatch_converts_only_known_factors` | Supplier reports stock of 2 in unit `KI` (case) while the product sells in `ST` (piece); `KI` = 20 `ST` | No reasons; available quantity is exactly 40 | Wrong or guessed unit conversion on stock. Unknown units are covered by the `MYSTERY` case above |
+| `test_malformed_upstream_has_explicit_failure` | Price list contains `None` instead of a product row | Raises error code `UPSTREAM_SCHEMA_INVALID` | A garbled supplier reply crashing as a generic error or being half-used |
+
+### 2.2 Product data, units and search
+
+| Test | Scenario | Asserts | Catches |
+| --- | --- | --- | --- |
+| `test_evidence.py::test_dimensions_packaging_levels_and_name_conflicts` | A synthetic raw product: 1 L per piece. Then change the volume unit to grams; then set volume to 20 L while the name says 1 l; then label the measurement as a CASE level | 1000 L maps to 1000 pieces. Grams give litres "unknown" and no quantity. Gross packaging weight does not become food kilos (kg "unknown"). 20 L vs name 1 l gives "conflicting". A case-level volume gives "unknown" for litres | Guessing litres or kilos from the wrong packaging level or a wrong unit |
+| `test_evidence.py::test_missing_claim_is_unknown_not_dietary_denial` | A product with no lactose-free and no milk-free claims, buyer asks for both | Two reasons, both severity `unresolved` (not `denied`) | Treating "no claim in the data" as "contains lactose" (or as "safe") |
+| `test_evidence.py::test_supported_filters_and_conflicts_on_both_search_paths` | Search "milk" with lactose-free required in keyword, semantic and hybrid mode; then milk-free required (default mode only) | Every hit has the lactose-free claim; conflicting-allergen products `468044`, `469429` never appear; milk-free search returns an empty list | A dietary filter that lets a wrong product through in any search mode. Uses only the 10-product fixture catalog and fake vectors |
+| `test_evidence.py::test_unchanged_embeddings_and_failed_import_keep_generation` | Re-import the catalog; re-import with only a metadata change while the embedding function is rigged to fail; then import with a changed name (needs a new vector) while it fails | Metadata-only import reuses all vectors and computes none. The failing import raises and the active catalog generation id does not change. Search for `464306` still works | A failed or partial catalog import replacing the working catalog; wasteful re-embedding. It checks the active-generation pointer only, not that no half-written rows remain |
+
+### 2.3 Policy rules and the four outcomes
+
+| Test | Scenario | Asserts | Catches |
+| --- | --- | --- | --- |
+| `test_evidence.py::test_gross_boundary` (3 cases) | Pure policy function with limit 1500 and totals 1499.99, 1500.00, 1500.01 | ready, ready, approval_required | Off-by-one at the spending limit (limit itself is allowed) |
+| `test_evidence.py::test_missing_currency_is_unresolved` | Snapshot with no currency or total | `needs_resolution` | Ordering when the currency is unknown |
+| `test_workflow.py::test_four_outcomes_and_hard_requirements` (8 cases) | Change `request_data`: unlisted destination; hard budget 16.99 against 17.00; milk-free required; 1000 L when 600 in stock; product with unverified litre size; 12 kg of variable-weight steak; two products with conflicting allergen data | Outcome and code: denied `DESTINATION_NOT_ALLOWED`; denied `HARD_BUDGET_EXCEEDED`; denied `MILK_REQUIREMENT_VIOLATED`; needs_resolution `INSUFFICIENT_STOCK`, `QUANTITY_UNRESOLVED`, `VARIABLE_WEIGHT_UNRESOLVED`, `DIETARY_EVIDENCE_CONFLICT` (x2). Always: no approval is opened and `commit_order` fails with `COMMIT_BLOCKED` | Letting an unfit proposal reach a buyer or the commit step. Note: the request keeps `lactose_free` on, so the non-milk products also get an unresolved dietary reason; the specific-code assertion is what proves the intended rule fired |
+| `test_workflow.py::test_denied_precedes_unknown` | Forbidden destination and an unusable unit "boxes" together | `denied`, and both reason codes are listed | An unresolved fact masking a hard prohibition |
+| `test_workflow.py::test_deposit_totals_and_overbuy` | 10 cases of bottles with deposits; then 10.5 L of milk (sold only in whole pieces); then the same with overbuy forbidden | Deposit lines 120 units, deposits 15.60, total 32.60. 10.5 L rounds up to 11 and needs approval. With `allow_overbuy=false`: denied | Missing deposit charges; silent over-ordering; rounding bugs |
+| `test_workflow.py::test_invalid_policy_does_not_default_to_permission` | Insert policy v2 with `substitution` set to a made-up mode | `prepare_order` raises `INVALID_POLICY_CONFIGURATION` | A typo in policy turning into "allowed". Only this one field is tried; the check is a type validation, so other fields are likely covered by the same mechanism (unclear from tests alone) |
+
+### 2.4 Autonomous purchase, commit and idempotency
+
+| Test | Scenario | Asserts | Catches |
+| --- | --- | --- | --- |
+| `test_workflow.py::test_autonomous_and_idempotent_after_restart` | 10 L, within limit. Commit. Then retry using a new `Service` whose supplier connection raises if called | `ready_to_commit`, total 17.00; receipt labelled "Accepted by demo order service", `upstream_order_placed` false, status `accepted_mock`. Retry returns the identical receipt without asking the supplier; `get_order` and `get_proposal` agree | A retry re-checking the supplier, or creating a second order. "Restart" here is a new Python object, not a process restart |
+| `test_workflow.py::test_concurrent_same_key_one_order` | 8 threads commit the same request with the same key | One order id; 1 row in `orders`, 1 in `idempotency` | Double orders from client retries racing |
+| `test_workflow.py::test_concurrent_different_keys_and_conflicting_payloads` | 4 threads commit the same proposal with different keys. Then reuse one key for a different proposal | Exactly one `accepted_mock`, three `ALREADY_COMMITTED`. Key reuse gives `IDEMPOTENCY_CONFLICT` | Two orders for one proposal; a key being reused for something else |
+
+### 2.5 Human approval, rejection, and invalidation
+
+| Test | Scenario | Asserts | Catches |
+| --- | --- | --- | --- |
+| `test_workflow.py::test_independent_inbox_and_agent_resume` | `mission` (1700 EUR, substitution). Check buyer inbox; agent tries to commit; buyer approves (twice); a fresh `Service` resumes | `approval_required`, next action `wait`; proposal is in the inbox; commit fails `APPROVAL_REQUIRED`; approval status approved but order `not_placed`; approving twice is harmless; after approval next action is `commit` and commit gives `accepted_mock`. Policy read-back shows limit 1500.00 | An agent ordering before the human decides; approval itself creating an order |
+| `test_workflow.py::test_changed_price_creates_revision_and_invalidates_approval` | Buyer approves revision 1, then the price rises 10% | Commit returns status `revised`, revision 2, approval pending. Old approval shows `superseded`; deciding or committing revision 1 gives `STALE_REVISION`; revision 2 needs its own approval and then commits. The old approval page still shows 1700.00, no order, cannot be decided, and links to current revision 2 (1870.00, with the order) | Approving one price and paying another; history being rewritten |
+| `test_workflow.py::test_stock_change_blocks_old_revision` | Approved, then stock of `464306` drops to 10 | Commit returns outcome `needs_resolution` with no approval id | Ordering against stock that vanished. Does not check that the old approval is marked superseded |
+| `test_workflow.py::test_rejection_expiry_and_revocation` | (a) buyer rejects; (b) buyer approves, then the buyer account is deactivated; (c) proposal waits past its lifetime (workflow clock +1 h) | (a) commit fails `APPROVAL_REJECTED`, second decision `DECISION_CONFLICT`. (b) commit returns a revised proposal with `needs_resolution`; committing that fails `COMMIT_BLOCKED`. (c) commit fails `PROPOSAL_EXPIRED` and status reads `expired` | Rejected, revoked or stale approvals still working |
+| `test_workflow.py::test_policy_version_reauthorizes_and_seed_preserves` | Approve, then add policy v2 (limit 500) and run `seed` again | `seed` keeps v2 (does not reset to v1). Old approval reads `policy_changed`; commit makes a new revision under policy v2, pending | Policy edits not applying to earlier approvals; setup script overwriting live policy |
+| `test_workflow.py::test_reduced_agent_authority_revises_without_policy_change` (2 cases: an eligible approver exists, or not) | Agent limit lowered to 10 EUR after a 17 EUR proposal was ready; second case also deactivates the buyer | `get_proposal` reads `authority_changed` and does not offer commit. Commit returns revision 2, same policy version, reason `AUTONOMOUS_LIMIT_EXCEEDED`; old revision then gives `STALE_REVISION`; no orders exist. With an approver: pending approval, commit blocked until approved, then `accepted_mock`. Without: `needs_resolution`, no approval id, next action `revise_request`, commit `COMMIT_BLOCKED` | An agent keeping spending power after its authority is cut |
+| `test_workflow.py::test_approver_amount_and_exception_scope` | Buyer's authority set to max 1600 EUR, spend exceptions only; then a new `mission` | Approving gives `APPROVAL_SCOPE`; page `can_decide` false; a newly prepared mission is `needs_resolution` with `NO_ELIGIBLE_APPROVER` | An approver approving beyond their rights. The scenario fails both the amount (1700 > 1600) and the exception type (no "substitution"), so it cannot tell which check works |
+| `test_workflow.py::test_competing_decisions_and_commit` | Approve, reject and commit race on one proposal (3 threads) | Final state is approved or rejected; never both outcomes in the results; if an order exists, the proposal must be approved | Two contradictory decisions both being recorded. The outcome is timing-dependent and the assertions are loose |
+
+### 2.6 Upstream mode choice (`tests/test_upstream_mode.py`)
+
+| Test | Scenario | Asserts | Catches |
+| --- | --- | --- | --- |
+| `test_auto_without_key_falls_back_to_labelled_fixtures` | mode `auto`, no key | effective mode `fixture`, client is `FixtureClient` | Silent use of live API without a key |
+| `test_auto_with_key_uses_live_client` | mode `auto`, a made-up key | mode `live`, client is `ValioClient` | Key being ignored. No network call is made |
+| `test_explicit_fixture_ignores_a_configured_key` | mode `fixture` with a key | fixture client | Accidentally hitting the live API in tests |
+| `test_explicit_live_without_key_fails_closed` | mode `live`, no key | Calling the client raises `UPSTREAM_CREDENTIALS_MISSING` | Falling back to fixture data when live was demanded |
+
+### 2.7 HTTP, security and interfaces (`tests/test_http.py`)
+
+These use FastAPI's in-process `TestClient` (no real socket).
+
+| Test | Scenario | Asserts | Catches |
+| --- | --- | --- | --- |
+| `test_auth_inbox_csrf_and_logout` | Many unauthenticated calls; agent token on the buyer inbox; buyer login; decide without CSRF, with a hostile Origin, then correctly; logout | 401 for no login, for the agent token on the inbox, for the agent policy, for a purchase page, and for `/mcp/`. Cookie is `HttpOnly` and `SameSite=strict`. Decision without CSRF or Origin: 403; hostile Origin with a valid token: 403; correct: 200 and `order_status` `not_placed`. Logout gives 204 and the session is then 401 | Missing login checks; CSRF bypass; the agent acting as buyer. A wrong token value (header present but wrong) is not tried. After logout the test client drops the cookie, so server-side session invalidation is not proven |
+| `test_cross_account_and_agent_isolation` | A second company (agent and approver) is created. It requests company A's proposal and inbox | Foreign agent: 404 on the proposal. Foreign buyer: empty inbox, 404 on the approval, 404 on the purchase page, 404 when trying to approve | One customer seeing or deciding another customer's purchase. Only reads and the approve action are tried; foreign `commit_order` and `get_order` are not |
+| `test_input_validation_and_api_errors` | Unknown extra field `approved: true` on `prepare_order`; unsupported filter `vegan`; unknown route; huge `limit`; health check | 422, 422, 404 with JSON content type, 401 or 422, 200 | An agent smuggling an "approved" flag; unsupported dietary filters being silently ignored. The `limit=100000` call has no login, so it most likely returns 401 and tests nothing about the limit |
+| `test_login_rate_limit_and_wrong_origin` | Login without Origin; then 11 wrong passwords | 403; then ten 401 followed by one 429 | Password guessing; cross-site login |
+| `test_documentation_nonce_and_scoped_csp` | Fetch `/docs`, the approvals page, session and OpenAPI | Docs page has a per-request nonce on both script tags; `script-src` has no `unsafe-inline`; styles allow `cdn.jsdelivr.net`; docs are `no-store`; the nonce changes per request; other pages get the strict policy without the CDN | A loose Content Security Policy leaking from the docs page to the rest |
+| `test_eight_typed_operations_and_both_commit_outcomes` (2 cases: `http`, `mcp`) | Calls all eight tools through plain HTTP and again through the MCP JSON-RPC endpoint. Checks each tool's published output schema first | Tool list is exactly the eight; each has a valid object schema and an OpenAPI response reference. Policy limit 1500.00; product litre value "1"; exact-id search ranks first; unknown id gives no results; price 1.70 gross; prepare/get_proposal agree; with a 10% price rise the first commit returns `revised` revision 2 (18.70); the second returns `accepted_mock`; a retry returns the same receipt; `get_order` equals the receipt. In MCP mode each body is validated against its schema | A tool missing, renamed or returning the wrong shape in either transport. Only success paths: an MCP error result is never exercised, and HTTP bodies are not schema-validated |
+| `test_historical_approval_links_current_autonomous_revision` | Approve via HTTP, then the price halves so revision 2 is within the limit and needs no approval; commit | Old approval is `superseded` with no order; the current purchase page shows revision 2, 850.00, with the order | The "view current terms" link breaking when the new revision no longer needs approval. Overlaps `test_changed_price_creates_revision_and_invalidates_approval` |
+
+## 3. Sweep (`tests/sweep/run_sweep.py`)
+
+Runs against a live server process with the fixture catalog (CI) or, locally with `--live`, the real API. It uses `httpx` and the official MCP client. Result is PASS, SKIP (with reason) or FAIL. A check that throws is FAIL.
+
+| Check | Scenario | Asserts | Catches |
+| --- | --- | --- | --- |
+| `health/ready` | GET `/health/ready` | 200; records `upstream_mode` | Server or DB not up |
+| `auth required` | Agent policy endpoint with no token and a wrong token | 401 or 403 both times | Open agent API. Only one endpoint is tried |
+| `get_purchase_policy` | Read policy | 200; has buyer, agent, version, rules; `editable` is false | Agent being allowed to edit policy |
+| `search_products (exact id)` | Query "464306", lactose-free | First hit is that id | Exact id lookup broken |
+| `search_products (text)` | "lactose-free milk" | At least 1 result | Search returns nothing for the headline query. No ranking check |
+| `search_products (rejects bad filter)` | Filter `organic` | 400 or 422 | Unsupported filters silently ignored |
+| `get_product` | Known id, unknown id | 200 and the id appears somewhere in the JSON; unknown gives 404 | Missing product detail. The check is a substring test |
+| `check_price_and_availability` | Two ids, delivery in 2 days | 200; `mode` is `live` or `fixture`; exactly the two ids returned | Evidence not labelled fixture/live. Prices are not checked |
+| `prepare_order` | 10 L of 464306 | Outcome is any of the four; revision at least 1; has a `next_action` | Malformed proposal. Any outcome passes, even `denied` |
+| `get_proposal` | Fetch the proposal just made | Same id and revision | Lost or mutated proposal |
+| `commit gate (denied cannot commit)` | Budget 1 EUR hard limit, then commit | Outcome is `denied`; commit status is 400 or above | A denied proposal being committed. Any error, even a 500, passes |
+| `commit_order (+ approval, retry)` | Commit the prepared order (approving as buyer first if needed) | 200 and `accepted_mock`; second call returns an identical body. SKIP if outcome is denied or needs_resolution | Commit and idempotency over the real server |
+| `buyer/agent separation` | Agent token and anonymous on the inbox; wrong password; buyer session on the agent API | 401/403 for inbox; 400/401/403 for wrong password; 401/403 for buyer on agent API | Mixed-up realms |
+| `approval path (inbox, then commit)` | Split purchase (600 L + 400 L substitute), try commit, buyer logs in, finds it in the inbox, approves, commit | Early commit status 400 or above; proposal listed in the inbox; approval 200; commit 200. SKIP if live data gives no approval case | End-to-end approval flow over HTTP. The early refusal is not checked for its code |
+| `reject path (CSRF, no commit)` | New split purchase; reject without CSRF; then with; then commit | No-CSRF is 400 or 403; rejection 200; commit status 400 or above; status text contains "reject"; next action is not `commit` | Rejection not blocking commit; CSRF missing. Note the request does send the Origin header, so only the token is tested |
+| `get_order` | Fetch the receipt, and a random id | Equals the commit receipt; random id gives 404. SKIP if nothing was committed | Receipt not stored or differing |
+| `MCP tool discovery` | Official MCP client lists tools, calls `get_purchase_policy` | Exactly the eight tool names; no error | MCP transport or tool set broken. The other seven tools are not called over MCP here (pytest does that) |
+
+## 4. Browser tests (`frontend/e2e/approval.spec.ts`)
+
+Real Chromium, built UI, fixture commerce, one worker. Login uses the demo buyer password from the environment or `.env`.
+
+| Test | Scenario | Asserts | Catches |
+| --- | --- | --- | --- |
+| `historical approval stays superseded and links to committed terms` | `tests/browser_revision_fixture.py` (runs through `uv`) builds a purchase: approved at revision 1, price rises 10%, revision 2 approved and committed. Browser opens the old approval and signs in | Old page shows total 1,700.00, "Superseded", no mock-receipt text, no Approve button. Link "View current revision 2" goes to `/purchases/<id>`; total 1,870.00 and the mock-receipt text are shown; survives reload; after sign-out and sign-in the user lands on that purchase page again | A buyer approving or reading the wrong revision; wrong redirect after login |
+| `Swagger loads its operations without CSP violations` | Open `/docs` | Title "Valio Aimo purchasing gateway"; `/api/agent/commit_order` listed; zero `securitypolicyviolation` events; zero page errors | The tight security policy breaking the API docs page (the unit test only inspects headers). Needs whatever the page fetches to be reachable; whether CI needs internet is unclear from the code |
+| `independent buyer inbox, exact-revision approval, agent resume and retry` | Agent API prepares a 1700 EUR split purchase. Buyer, with no link, signs in, opens the inbox, opens the item, reads the notice, approves. Agent then resumes, commits, retries. Buyer refreshes. Mobile width | Outcome is `approval_required`; sign-in heading shown first; text "Approval applies to this revision only."; "Approval recorded" appears; the agent sees `order_status` `not_placed`, commit gives `accepted_mock`, retry gives the same order id; after refresh the mock-receipt text shows; page does not scroll sideways at 390 px; sign-out returns to sign-in; no JavaScript errors | The main demo story breaking. Screenshots are saved but never compared |
+| `inbox error state, inaccessible routes and mobile login` | Sign in; make the inbox call return 503 and press refresh; unknown API route; open `/login` at mobile width and click Sign out | An alert shows "Test service unavailable"; unknown route is 404 JSON; no assertion on the final mobile step (screenshot only) | UI hiding a server error. The "inaccessible routes" part is one unknown API path |
+| `competing buyer tabs preserve the first decision and refresh the stale page` | Two tabs on the same approval; tab 1 rejects, then tab 2 approves | "Rejection recorded" in tab 1; tab 2 shows an alert containing "already been recorded" and its Approve button disappears; the agent's commit returns HTTP 409 with `APPROVAL_REJECTED` | A second tab overriding the first decision; stale button staying active |
+| `inbox polling pauses when hidden` | Fake clock; page marked hidden; 60 s passes; page marked visible | No inbox request while hidden; exactly 1 after becoming visible | Wasted background requests. It does not show that polling happens while visible (unclear if that single request is the timer or the visibility event) |
+
+## 5. Lint and build
+
+- `ruff check src tests scripts`: Python style and common bug patterns. No behaviour.
+- `npm run build` (`tsc -b && vite build`): TypeScript type errors and a failing production build. This is the only automated check of frontend code outside the browser tests (README: "no frontend unit tests").
+
+## 6. Local-only scripts
+
+None are run by any workflow. `tests/README.md` lists them as local only. The real-key sweep (`tests/ci.sh --live`) also needs a key that is not stored in GitHub.
+
+| Script | What it checks | Needs | Built for CI? |
+| --- | --- | --- | --- |
+| `scripts/mcp_smoke.py` | Official MCP client over authenticated HTTP: eight tools listed; policy buyer id `demo-hotel`; exact-id search; product; a 10 L autonomous purchase is `ready_to_commit`; lookup; get_proposal; commit; retry returns identical receipt; `get_order` equals it. Raises on failure | Running server at `DEMO_BASE_URL`, `DEMO_AGENT_TOKEN`; fixture-style data (it asserts `ready_to_commit`, which live stock may not give). Creates a real mock order | No. Overlaps the sweep MCP check and the `mcp` case of `test_eight_typed_operations_and_both_commit_outcomes` |
+| `scripts/demo.py` | The demo story as an agent: reads policy, autonomous purchase and receipt; asserts one `denied` (budget 1), one `needs_resolution` (1000 L), one `approval_required`; prints the proposal id. With `--resume <id>` commits only if the buyer has approved. A human does the approval | Running server, `DEMO_AGENT_TOKEN`; a person in the inbox for the second half | No. A demo helper; asserts only the first half |
+| `scripts/restart_smoke.py` | Prepares a split purchase, buyer approves, then `docker restart <container>`; afterwards the session still works, approval is still approved, commit gives `accepted_mock`, retry returns the same body | Docker, a dedicated running container (`--container`), server on port 8001, agent token and buyer password. Restarts that container | No (README: container check, local). Retry happens after the restart, so it does not prove an idempotent retry across a restart. "mock_order_created_once" in the output is printed without counting orders |
+| `scripts/verify_catalog.py` | Seven real products from the 84 MB catalog file: SHA-256 of the file; 1000 L maps to 1000 pieces; 5 pieces per case for `465039` with litres unresolved; 12 kg steak rounds to 20 kg; lettuce 4 kg to 6; allergen conflicts on `468044`, `469429`; deposit total 120 for 10 cases | The private catalog JSON path as an argument (gitignored). No server or DB | No. The data is gitignored. This is the only check of unit logic on real records |
+| `scripts/evaluate_search.py` | Runs 30 curated queries through keyword, semantic and hybrid search on the full catalog with real embeddings; counts top-1 and top-5 hits, constraint violations, latency; writes `docs/search-evaluation.json` | Database with the full catalog ingested; the embedding model | No. It has no pass/fail threshold: it reports numbers and exits 0 |
+| `scripts/probe_upstream.py` | Not a test. Calls the real price and availability API for 1 to 20 product ids and prints the validated evidence | `VALIO_AIMO_API_KEY`, database with catalog. Hits a rate-limited real API | No. Asserts nothing |
+
+Also present: `scripts/export_schema.py` (8 lines, writes the API schema; not a check) and `tests/coverage_report.py` (reports line coverage, fails below the configured gate; only runs when `CI_COVERAGE=1` was used).
+
+## 7. What these tests do NOT check
+
+Each item is traced to code I read.
+
+**Real supplier behaviour**
+- The live client `ValioClient.post` has retries, a 429 and 5xx back-off, and a timeout path ending in `UPSTREAM_UNAVAILABLE`. No test triggers any of these. `UPSTREAM_UNAVAILABLE` does not appear in any test file. `tests/test_upstream_mode.py` only checks which class is chosen and the missing-key error.
+- Fixture replies are generated to be internally consistent (`FixtureClient.lookup`): fresh timestamp, price validity 2020 to 2099, stock for any unknown id 5000. So `UPSTREAM_CLOCK_STALE` and `UPSTREAM_CLOCK_UNKNOWN` are never tested, and real-world oddities exist only as the 12 hand-made mutations in `test_evidence.py::test_supplier_regressions`.
+- Live stock is described in the README as an unknown-quantity placeholder for the default product; the approval flow is therefore not exercised against live stock (README "Known gaps"; sweep SKIPs).
+
+**Policy rules**
+- Reason codes with no test mentioning them: `CURRENCY_NOT_ALLOWED`, `MISSING_AUTHORITY`, `SUBSTITUTION_FORBIDDEN`, `LACTOSE_FREE_UNVERIFIED`, `MILK_FREE_UNVERIFIED` (grep of `tests/`, `frontend/e2e`, `scripts`). Policy modes `allowed` for substitution or overbuy, and `forbidden` for substitution, are never set. Only `requires_approval` substitution and overbuy forbidden (via the per-request flag, `test_workflow.py::test_deposit_totals_and_overbuy`) are exercised.
+- The spending-limit boundary is tested on the pure function only (`test_evidence.py::test_gross_boundary`), not on the combination of agent limit and policy limit (the code uses the smaller of the two; the test passes 1500 vs 2000 so the min path is taken once, and the reverse is not).
+- Approver amount limit and approver exception types are not tested separately (`test_workflow.py::test_approver_amount_and_exception_scope`).
+
+**Security**
+- Cross-company isolation covers one proposal read for the agent and read/decide for the buyer (`test_http.py::test_cross_account_and_agent_isolation`). Foreign `commit_order`, `get_order`, `check_price_and_availability` and the MCP route are not tried.
+- CSRF is tested for a missing token and a hostile Origin (`test_auth_inbox_csrf_and_logout`, sweep `reject path`). A present but wrong token, an expired session cookie, and reuse of an old cookie after logout are not tested.
+- Rate limiting is tested only for login.
+
+**Error handling over the wire**
+- Most error codes are asserted through Python calls (`expect_code`), not over HTTP. The HTTP status for `APPROVAL_REQUIRED`, `STALE_REVISION`, `COMMIT_BLOCKED`, `IDEMPOTENCY_CONFLICT` and similar is never asserted in `test_http.py`. Only `APPROVAL_REJECTED` is seen over HTTP (409, browser test 5).
+- The MCP error path (`call()` turning a `Problem` into an error) is never triggered: `test_http.py::test_eight_typed_operations_and_both_commit_outcomes[mcp]` asserts that no call errors.
+- Sweep `commit gate`, `approval path` and `reject path` accept any status of 400 or above for a refused commit, including a server crash (HTTP 500).
+
+**Expiry and time**
+- Expiry is tested by moving only the workflow module's clock one hour (`test_workflow.py::test_rejection_expiry_and_revocation`). The proposal lifetime is 900 s, but expiry can also come from the supplier cutoff or price end date (`validate_lookup`). Which of these the test hits is unclear from the code; the commit-time cutoff path has no test. `CUTOFF_PASSED` is tested only at prepare time.
+
+**Concurrency and restart**
+- Concurrency tests use threads in one Python process sharing one `Service`. Several server processes or pods are not tested.
+- No automated test restarts a process. The pytest "restart" is a new `Service` object. The only real restart is `scripts/restart_smoke.py` (local), whose retry happens after the restart, not across it.
+
+**Search**
+- Search relevance and ranking are untested in CI: fake vectors and 10 products. `test_supported_filters...` checks filters, not ordering. The sweep only checks that exact id ranks first and a text query returns at least one result. Real quality is measured only by `scripts/evaluate_search.py`, which has no pass threshold.
+- Milk-free filtering is tested only in the default strategy, not in all three (`test_evidence.py::test_supported_filters_and_conflicts_on_both_search_paths`).
+- Real-catalog unit conversions (the 17,546 products) are checked for 7 products by a local script only.
+
+**Frontend**
+- No unit tests. Browser tests cover approve, reject, stale revision, superseded, error alert and polling pause. Not covered by any browser test: UI for expired, policy-changed, authority-changed, `needs_resolution`, `denied` states; the empty inbox; wrong password message; keyboard use. Screenshots are saved with no comparison. The mobile layout is asserted once (no sideways scroll, browser test 3).
+- Product search is not part of the UI. Nothing tests it there.
+
+**Mock ordering**
+- Orders are mocks. Tests assert `upstream_order_placed` is false once (`test_autonomous_and_idempotent_after_restart`). No test inspects outgoing HTTP calls to prove a real supplier order is never sent. Unclear from the code whether any such code path exists; the README says there is no order endpoint.
+
+**Database**
+- Migrations are run at test start only on an empty or existing test DB. No test of upgrading an older schema, or of the Kubernetes and Docker image (README says so).
+
+## 8. Weak or redundant tests
+
+| Test | Why |
+| --- | --- |
+| `test_http.py::test_input_validation_and_api_errors` (the `limit=100000` line) | The request has no login, so `401` satisfies `in (401, 422)`. It does not show the limit is enforced |
+| `test_http.py::test_input_validation_and_api_errors` (404 JSON check, `/health/live`) | Repeated by browser test 4 (`/api/not-a-route`) and by `tests/ci.sh`, which polls `/health/live` before running anything |
+| Browser `inbox error state, inaccessible routes and mobile login` (last part) | Opens `/login`, clicks Sign out and takes a screenshot with no assertion. The 404 check duplicates the pytest one |
+| Sweep `prepare_order` | Passes on any of the four outcomes, so a regression from `ready_to_commit` to `denied` would pass |
+| Sweep `get_product` | Passes if the id appears anywhere in the JSON |
+| Sweep `check_price_and_availability` | Does not look at any price or quantity |
+| Sweep `commit gate`, `approval path` (early commit), `reject path` (final commit) | Status `>= 400` only; the reason is not checked |
+| `test_workflow.py::test_stock_change_blocks_old_revision` | Asserts only the new revision's outcome and no approval id. Does not check the old approval or that commit is blocked |
+| `test_workflow.py::test_competing_decisions_and_commit` | Result depends on thread timing. Assertions allow several valid orderings; it would catch only a flagrant contradiction |
+| `test_upstream_mode.py::test_auto_with_key_uses_live_client`, `test_explicit_fixture_ignores_a_configured_key` | Check only class type; no behaviour |
+| `test_http.py::test_historical_approval_links_current_autonomous_revision` | Repeats most of `test_workflow.py::test_changed_price_creates_revision_and_invalidates_approval` and browser test 1; the new part is the "no approval needed at revision 2" case |
+| `tests/test_evidence.py::test_gross_boundary` | Fine as a boundary test, but the same rows are all `spend`; nothing else about the limit rule is varied |
+| Commit and retry flow | Checked in `test_autonomous_and_idempotent_after_restart`, the `[http]` and `[mcp]` cases, sweep `commit_order`, `mcp_smoke.py`, `demo.py` and browser test 3. Overlap is deliberate (different layers), but a failure will show in many places |
+| `scripts/restart_smoke.py` output | `mock_order_created_once` is printed as true with no check that counts orders |
