@@ -17,17 +17,19 @@ def digest(secret):
     return hashlib.sha256(secret.encode()).hexdigest()
 
 
-def agent_identity(authorization: str | None):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise Problem("UNAUTHENTICATED", "A scoped agent bearer credential is required.", 401)
+def internal_agent(identity):
+    """Resolve a privileged-setup mapping; never take an actor ID from the model."""
     with connection() as c:
-        identity = c.execute(
-            "SELECT * FROM identities WHERE role='agent' AND active AND credential_hash=%s",
-            (digest(authorization[7:]),),
+        row = c.execute(
+            """SELECT i.* FROM internal_agents a JOIN identities i ON i.id=a.identity_id
+            WHERE a.buyer_id=%s AND i.buyer_id=a.buyer_id AND i.active AND i.role='agent'""",
+            (identity["buyer_id"],),
         ).fetchone()
-    if not identity:
-        raise Problem("UNAUTHENTICATED", "Invalid agent credential.", 401)
-    return identity
+    if not row:
+        raise Problem(
+            "AGENT_NOT_CONFIGURED", "Ask an operator to provision this buyer's internal agent.", 503
+        )
+    return row
 
 
 def signer():
@@ -128,7 +130,7 @@ def browser_identity(cookie: str | None):
             raise BadSignature("inactive")
         return row, data
     except (BadSignature, KeyError):
-        raise Problem("UNAUTHENTICATED", "Log in to the buyer inbox.", 401) from None
+        raise Problem("UNAUTHENTICATED", "Sign in to continue your purchase.", 401) from None
 
 
 def check_origin(origin):

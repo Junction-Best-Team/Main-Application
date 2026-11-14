@@ -492,6 +492,31 @@ def commit_order(identity, request: CommitRequest, connector):
                 "status": "revised",
                 **render(c, *proposal(c, p["id"], identity), identity),
             }
+        # Internal agents can prepare, but a model can never authorize a purchase.
+        if c.execute(
+            "SELECT 1 FROM internal_agents WHERE identity_id=%s", (identity["id"],)
+        ).fetchone():
+            confirmations = c.execute(
+                """SELECT actor_id FROM customer_confirmations
+                WHERE proposal_id=%s AND revision=%s AND fingerprint=%s""",
+                (p["id"], r["revision"], r["fingerprint"]),
+            ).fetchall()
+            confirmed_ids = {item["actor_id"] for item in confirmations}
+            if not any(
+                candidate["id"] in confirmed_ids
+                and can_approve(
+                    candidate["authority"],
+                    Decimal(snapshot["gross_total"]),
+                    snapshot["currency"],
+                    evaluated["required_exceptions"],
+                )
+                for candidate in approvers
+            ):
+                raise Problem(
+                    "CUSTOMER_CONFIRMATION_REQUIRED",
+                    "Confirm these exact terms in the product.",
+                    403,
+                )
         authorize_commit(r, a, approvers, snapshot, evaluated)
         oid = uuid4()
         receipt = {

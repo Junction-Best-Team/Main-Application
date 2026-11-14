@@ -16,8 +16,7 @@ The typed registry calls `Service` directly for catalog search, product detail,
 policy, price/availability, preparation, proposal status and saved receipts. It
 also publishes the shared `MealPlan`. Model arguments cannot choose an identity,
 change policy, supply permissions, approve a recipe as purchasing authority, or
-commit an order. Preparation keys are generated from the persisted turn ID and
-normalized purchase payload, so retries do not depend on a model-generated key.
+commit an order. Preparation keys are generated from the persisted turn ID (one preparation payload per turn), so retries do not depend on a model-generated key.
 
 The assistant asks for delivery, dietary needs and budget, proposes ingredient
 quantities, and matches products from the actual catalog. Every required

@@ -111,7 +111,7 @@ These steps document the future deployment; none were performed for this PR.
    The helper writes ignored `kubeconfig.generated.yaml` and
    `runtime.auto.tfvars.json`, both mode 0600. It generates private demo buyer,
    agent and session credentials once and refuses to overwrite existing inputs.
-   It never applies Terraform. Add `runtime_secrets = { VALIO_AIMO_API_KEY = ... }`
+   It never applies Terraform. Add `runtime_secrets = { LLM_API_KEY = ..., VALIO_AIMO_API_KEY = ... }`
    to the private JSON inputs using your secret manager/editor. JSON requires
    the equivalent object syntax. Keep credentials out of command history.
 
@@ -157,8 +157,8 @@ These steps document the future deployment; none were performed for this PR.
    then starts serving with the restricted database role. Keep the private demo
    login credentials in your password manager before removing their local copy.
    Saved old plans/state backups still contain secrets; protect them as above.
-6. Check `/health/live` and `/health/ready`, then run PR #4's login, MCP and
-   approval smoke flow. `upstream_mode="fixture"` is the explicit default for
+6. Check `/health/live` and `/health/ready`, then run PR #4's root/login, chat streaming, exact customer confirmation and
+   mock-receipt smoke flow. `upstream_mode="fixture"` is the explicit default for
    mocked supplier price/availability; enable `live` only with working API access.
    Orders/receipts remain mock acceptance as defined in the application plan.
 
@@ -292,3 +292,9 @@ unexpectedly skipped Terraform checks, while unrelated PRs can skip Terraform.
 CI validates these checks without credentials, app builds, model downloads or
 cloud changes. A green plan does not establish actual cluster capacity, ACME issuance, extension grants,
 catalog throughput, or app readiness; those require the later operator rollout.
+
+### Chat purchasing upgrade (2026-11-14)
+
+The existing image, Deployment, Service, database and ingress remain. `llm_base_url` and `llm_model` configure the conversational provider; put `LLM_API_KEY` only in `runtime_secrets`. Embedding-model configuration is independent. Bootstrap credentials now contain only `database_url`, `database_user` and `buyer_password`; delete obsolete `agent_token` fields from private inputs when convenient. Provisioning no longer needs `DEMO_AGENT_TOKEN`; historical database identities remain for audit and proposal references.
+
+Migration 003 adds persistent chat/turn leases and exact-revision customer confirmations without resetting data or extending product authority. Update the runtime grants for these tables/sequences with the privileged setup role. Runtime identity/policy writes are revoked by bootstrap. Keep trusted proxy CIDRs, secure cookies, probes, frontend-in-image build and existing resource allocations. SSE uses two-second heartbeats and bounded 25-second connections. Traefik's rendered chart has no response-buffering middleware; an existing other ingress must be verified for streaming per `deploy/README.md`. No Terraform apply, deployment or release activation is authorized by the migration.

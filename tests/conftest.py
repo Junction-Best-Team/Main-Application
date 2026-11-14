@@ -16,7 +16,6 @@ os.environ["UPSTREAM_MODE"] = "fixture"
 os.environ["APPROVAL_SESSION_SECRET"] = "test-session-secret-only-not-a-real-secret-12345678"
 os.environ["SECURE_COOKIES"] = "false"
 os.environ["PUBLIC_BASE_URL"] = "http://testserver"
-os.environ["DEMO_AGENT_TOKEN"] = "test-agent-token-only-not-a-real-secret"
 os.environ["DEMO_BUYER_PASSWORD"] = "test-buyer-password-only"
 
 from aimo.cli import migrate, seed

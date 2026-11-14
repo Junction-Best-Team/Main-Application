@@ -1,8 +1,6 @@
 {
-  "search_products": {"query":"laktoositon kevytmaito","requirements":{"lactose_free":true},"limit":5},
-  "check_price_and_availability": {"product_ids":["464306","464398"],"delivery_date":"2026-11-16"},
-  "prepare_order": {"idempotency_key":"hotel-breakfast-prepare-unique-key","request_id":"Hotel breakfast","destination":"hotel-helsinki","delivery_date":"2026-11-16","requirements":{"lactose_free":true},"budget_gross":"2000.00","lines":[{"product_id":"464306","amount":"600","unit":"L"},{"product_id":"464398","amount":"400","unit":"L","substitutes_for":"464306"}]},
-  "approval_decision": {"revision":1,"decision":"approve"},
-  "commit_order": {"proposal_id":"REPLACE_WITH_RETURNED_UUID","revision":1,"idempotency_key":"hotel-breakfast-unique-key"},
-  "notes": ["Dates are illustrative; use a current valid delivery date.","Fixture commercial data is invented. Approval uses a separate buyer session.","An approval URL is not a credential and does not place an order."]
+  "create_conversation": {"title": "Carbonara for 200", "idempotency_key": "example-create-2026"},
+  "send_message": {"text": "I need ingredients for 200 portions of carbonara.", "idempotency_key": "example-message-2026"},
+  "confirm_exact_purchase": {"proposal_id": "00000000-0000-0000-0000-000000000001", "revision": 1, "idempotency_key": "example-confirm-revision-1"},
+  "note": "Browser writes require the signed-in buyer session, exact Origin and session-bound X-CSRF-Token. Never confirm from assistant text. All orders remain mocks."
 }

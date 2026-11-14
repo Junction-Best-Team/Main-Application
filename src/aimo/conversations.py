@@ -1,0 +1,331 @@
+"""Buyer-scoped persisted chat, bounded turn leases, and exact purchase confirmation."""
+
+from datetime import timedelta
+from decimal import Decimal
+from uuid import uuid4
+
+from aimo import approval_workflow as workflow
+from aimo import auth
+from aimo.approval_policy import can_approve
+from aimo.chat_schemas import AgentTurn
+from aimo.db import Problem, connection, fingerprint, js, now
+from aimo.purchases import context
+
+
+def owned(c, identity, cid, lock=False):
+    row = c.execute(
+        "SELECT * FROM conversations WHERE id=%s AND buyer_id=%s" + (" FOR UPDATE" if lock else ""),
+        (cid, identity["buyer_id"]),
+    ).fetchone()
+    if not row:
+        raise Problem("NOT_FOUND", "Conversation not found.", 404)
+    return row
+
+
+def create(identity, body):
+    with connection() as c:
+        context(c, identity)
+        # Buyer lock makes create-key conflict handling safe across processes.
+        c.execute("SELECT id FROM buyers WHERE id=%s FOR UPDATE", (identity["buyer_id"],))
+        old = c.execute(
+            "SELECT * FROM conversations WHERE buyer_id=%s AND create_key=%s",
+            (identity["buyer_id"], body.idempotency_key),
+        ).fetchone()
+        digest = fingerprint({"title": body.title})
+        if old:
+            if old["create_hash"] != digest:
+                raise Problem(
+                    "IDEMPOTENCY_CONFLICT", "This key already identifies another conversation."
+                )
+            cid = old["id"]
+        else:
+            cid = uuid4()
+            c.execute(
+                "INSERT INTO conversations(id,buyer_id,title,create_key,create_hash) VALUES(%s,%s,%s,%s,%s)",
+                (cid, identity["buyer_id"], body.title, body.idempotency_key, digest),
+            )
+    return detail(identity, cid)
+
+
+def listing(identity, offset, limit):
+    with connection() as c:
+        context(c, identity)
+        rows = c.execute(
+            """SELECT id,title,created_at,updated_at FROM conversations WHERE buyer_id=%s
+            ORDER BY updated_at DESC,id LIMIT %s OFFSET %s""",
+            (identity["buyer_id"], limit + 1, offset),
+        ).fetchall()
+    return {
+        "items": [r | {"id": str(r["id"])} for r in rows[:limit]],
+        "next_offset": offset + limit if len(rows) > limit else None,
+    }
+
+
+def detail(identity, cid):
+    with connection() as c:
+        context(c, identity)
+        row = owned(c, identity, cid)
+        messages = c.execute(
+            """SELECT id,role,text,created_at,meal_plan,proposal_id FROM conversation_messages
+            WHERE conversation_id=%s ORDER BY id""",
+            (cid,),
+        ).fetchall()
+        busy = (
+            c.execute(
+                "SELECT 1 FROM conversation_turns WHERE conversation_id=%s AND state='running' AND lease_until>%s",
+                (cid, now()),
+            ).fetchone()
+            is not None
+        )
+        retry = c.execute(
+            """SELECT t.key,m.text FROM conversation_turns t JOIN conversation_messages m
+            ON m.turn_id=t.id AND m.role='user' WHERE t.conversation_id=%s AND t.state!='complete'
+            ORDER BY t.created_at LIMIT 1""",
+            (cid,),
+        ).fetchone()
+    pids = list(dict.fromkeys(str(m["proposal_id"]) for m in messages if m["proposal_id"]))
+    purchases = [workflow.get_proposal(identity, pid) for pid in pids]
+    return {
+        "id": str(row["id"]),
+        "title": row["title"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "messages": [
+            m | {"proposal_id": str(m["proposal_id"]) if m["proposal_id"] else None}
+            for m in messages
+        ],
+        "purchases": purchases,
+        "busy": busy,
+        "retry_message": {"text": retry["text"], "idempotency_key": retry["key"]}
+        if retry
+        else None,
+    }
+
+
+def message(identity, cid, body, service, runner=None):
+    if runner is None:
+        from aimo.agent import run_turn
+
+        runner = run_turn
+    with connection() as c:
+        context(c, identity)
+        owned(c, identity, cid, lock=True)
+        old = c.execute(
+            "SELECT * FROM conversation_turns WHERE conversation_id=%s AND key=%s",
+            (cid, body.idempotency_key),
+        ).fetchone()
+        digest = fingerprint({"text": body.text})
+        if old and old["payload_hash"] != digest:
+            raise Problem("IDEMPOTENCY_CONFLICT", "This key already identifies another message.")
+        if old and old["state"] == "complete":
+            complete = True
+        else:
+            complete = False
+            running = c.execute(
+                "SELECT 1 FROM conversation_turns WHERE conversation_id=%s AND state='running' AND lease_until>%s",
+                (cid, now()),
+            ).fetchone()
+            if running:
+                raise Problem(
+                    "CONVERSATION_BUSY",
+                    "A response is in progress. Reconnect before retrying.",
+                    409,
+                    3,
+                )
+            # Do not accept a different turn while a crashed/failed turn is unresolved:
+            # replaying it after newer customer messages would change its meaning.
+            unfinished = c.execute(
+                "SELECT key FROM conversation_turns WHERE conversation_id=%s AND state!='complete' ORDER BY created_at LIMIT 1",
+                (cid,),
+            ).fetchone()
+            if unfinished and unfinished["key"] != body.idempotency_key:
+                raise Problem(
+                    "RETRY_PREVIOUS_MESSAGE", "Retry the previous message before sending another."
+                )
+            attempt, tid = uuid4(), old["id"] if old else uuid4()
+            c.execute(
+                """INSERT INTO conversation_turns(id,conversation_id,key,payload_hash,state,lease_until,attempt)
+                VALUES(%s,%s,%s,%s,'running',%s,%s) ON CONFLICT(conversation_id,key)
+                DO UPDATE SET state='running',lease_until=EXCLUDED.lease_until,attempt=EXCLUDED.attempt""",
+                (tid, cid, body.idempotency_key, digest, now() + timedelta(seconds=240), attempt),
+            )
+            c.execute(
+                """INSERT INTO conversation_messages(conversation_id,turn_id,role,text)
+                VALUES(%s,%s,'user',%s) ON CONFLICT(turn_id,role) DO NOTHING""",
+                (cid, tid, body.text),
+            )
+            c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
+    if complete:
+        return detail(identity, cid)
+    try:
+        actor = auth.internal_agent(identity) | {"_turn_id": str(tid)}
+        data = detail(identity, cid)
+        history = [{"role": m["role"], "content": m["text"]} for m in data["messages"]]
+        # Structured persisted plans and status survive refresh, restarts and a provider context reset.
+        for index, msg in enumerate(data["messages"]):
+            if msg["meal_plan"]:
+                history[index]["content"] += "\nStored meal plan: " + str(msg["meal_plan"])
+        if data["purchases"]:
+            history.append(
+                {
+                    "role": "assistant",
+                    "content": "Persisted purchasing state (only browser confirmation authorizes): "
+                    + str(data["purchases"]),
+                }
+            )
+        # A process can stop after preparation commits but before its assistant reply.
+        # Recover that exact proposal instead of asking a nondeterministic model to
+        # prepare another payload. A turn has one stable preparation key.
+        with connection() as c:
+            prepared = c.execute(
+                """SELECT proposal_id FROM prepare_requests WHERE buyer_id=%s AND agent_id=%s AND key=%s""",
+                (actor["buyer_id"], actor["id"], "chat-" + fingerprint({"turn": str(tid)})),
+            ).fetchone()
+        result = (
+            AgentTurn(
+                text="Your saved basket was recovered. Review its exact revision before confirming; no supplier order was placed.",
+                proposal_id=str(prepared["proposal_id"]),
+            )
+            if prepared
+            else AgentTurn.model_validate(runner(actor, history, service))
+        )
+        if result.proposal_id:
+            service.get_proposal(
+                actor, result.proposal_id
+            )  # Never link another buyer/agent's proposal.
+        with connection() as c:
+            owned(c, identity, cid, lock=True)
+            turn = c.execute(
+                "SELECT * FROM conversation_turns WHERE id=%s FOR UPDATE", (tid,)
+            ).fetchone()
+            if turn["attempt"] != attempt or turn["state"] != "running":
+                raise Problem(
+                    "TURN_REPLACED", "This response was replaced; reload the conversation."
+                )
+            c.execute(
+                """INSERT INTO conversation_messages(conversation_id,turn_id,role,text,meal_plan,proposal_id)
+                VALUES(%s,%s,'assistant',%s,%s,%s)""",
+                (
+                    cid,
+                    tid,
+                    result.text,
+                    js(result.meal_plan.model_dump()) if result.meal_plan else None,
+                    result.proposal_id,
+                ),
+            )
+            c.execute("UPDATE conversation_turns SET state='complete' WHERE id=%s", (tid,))
+            c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
+    except Exception:
+        with connection() as c:
+            c.execute(
+                "UPDATE conversation_turns SET state='failed' WHERE id=%s AND attempt=%s AND state='running'",
+                (tid, attempt),
+            )
+        raise
+    return detail(identity, cid)
+
+
+def purchases(identity, offset, limit):
+    with connection() as c:
+        context(c, identity)
+        ids = c.execute(
+            "SELECT id FROM proposals WHERE buyer_id=%s ORDER BY created_at DESC,id LIMIT %s OFFSET %s",
+            (identity["buyer_id"], limit + 1, offset),
+        ).fetchall()
+    return {
+        "items": [workflow.get_proposal(identity, p["id"]) for p in ids[:limit]],
+        "next_offset": offset + limit if len(ids) > limit else None,
+    }
+
+
+def confirm(identity, pid, body, service):
+    if str(body.proposal_id) != str(pid):
+        raise Problem(
+            "PROPOSAL_MISMATCH", "Confirmation must identify the purchase being reviewed.", 422
+        )
+    with connection() as c:
+        _, policy, actor, _ = context(c, identity, lock=True)
+        p, r, a = workflow.proposal(c, pid, identity, lock=True)
+        # Completed retries return the saved receipt; browser keys never need provider/supplier access.
+        old = workflow.prior_result(c, identity, body)
+        if old:
+            return old
+        if r["revision"] != body.revision:
+            raise Problem("STALE_REVISION", "Terms changed. Review and confirm the new revision.")
+        if p["order_id"] or r["expires_at"] <= now() or r["policy_version"] != policy["version"]:
+            raise Problem(
+                "DECISION_CLOSED", "This purchase is finalized, expired or under an older policy."
+            )
+        if r["policy_outcome"] not in ("ready_to_commit", "approval_required"):
+            raise Problem(
+                "COMMIT_BLOCKED",
+                "Resolve the basket's policy and evidence issues before confirming.",
+            )
+        if a and a["status"] in ("rejected", "superseded"):
+            raise Problem("DECISION_CLOSED", "This purchase is rejected or superseded.")
+        if not can_approve(
+            actor["authority"],
+            Decimal(r["snapshot"]["gross_total"]),
+            r["snapshot"]["currency"],
+            r["required_exceptions"],
+        ):
+            raise Problem(
+                "APPROVAL_SCOPE", "This amount or exception exceeds your current authority.", 403
+            )
+        old_confirmation = c.execute(
+            "SELECT * FROM customer_confirmations WHERE buyer_id=%s AND key=%s",
+            (identity["buyer_id"], body.idempotency_key),
+        ).fetchone()
+        if old_confirmation and (
+            str(old_confirmation["proposal_id"]) != str(pid)
+            or old_confirmation["revision"] != body.revision
+        ):
+            raise Problem(
+                "IDEMPOTENCY_CONFLICT", "This confirmation key identifies different terms."
+            )
+        if a and (
+            a["status"] == "pending"
+            or (a["status"] == "approved" and a["actor_id"] != identity["id"])
+        ):
+            # Same buyer lock serializes this with existing legacy decision calls.
+            c.execute(
+                "UPDATE approvals SET status='approved',actor_id=%s,decided_at=%s WHERE id=%s",
+                (identity["id"], now(), a["id"]),
+            )
+            workflow.audit(
+                c,
+                p["id"],
+                identity["id"],
+                "approved",
+                {"revision": r["revision"], "fingerprint": r["fingerprint"]},
+            )
+        existing = c.execute(
+            "SELECT * FROM customer_confirmations WHERE proposal_id=%s AND revision=%s AND actor_id=%s",
+            (pid, r["revision"], identity["id"]),
+        ).fetchone()
+        if not existing:
+            c.execute(
+                "INSERT INTO customer_confirmations(proposal_id,revision,fingerprint,actor_id,key,buyer_id) VALUES(%s,%s,%s,%s,%s,%s)",
+                (
+                    pid,
+                    r["revision"],
+                    r["fingerprint"],
+                    identity["id"],
+                    body.idempotency_key,
+                    identity["buyer_id"],
+                ),
+            )
+            workflow.audit(
+                c,
+                p["id"],
+                identity["id"],
+                "customer_confirmed",
+                {"revision": r["revision"], "fingerprint": r["fingerprint"]},
+            )
+        internal = c.execute(
+            "SELECT * FROM identities WHERE id=%s AND buyer_id=%s",
+            (p["agent_id"], identity["buyer_id"]),
+        ).fetchone()
+    # This direct call resumes the persisted decision, with existing atomic revalidation
+    # and commit retries. Changed prices/authority produce a new UNCONFIRMED revision.
+    return service.commit_order(internal, body)

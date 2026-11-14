@@ -7,7 +7,6 @@ resource "kubernetes_secret_v1" "bootstrap" {
   data = {
     BOOTSTRAP_DATABASE_URL = try(var.bootstrap_credentials.database_url, "")
     RUNTIME_DATABASE_USER  = try(var.bootstrap_credentials.database_user, "")
-    DEMO_AGENT_TOKEN       = try(var.bootstrap_credentials.agent_token, "")
     DEMO_BUYER_PASSWORD    = try(var.bootstrap_credentials.buyer_password, "")
   }
   lifecycle {

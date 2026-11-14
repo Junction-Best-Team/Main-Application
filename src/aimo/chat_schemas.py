@@ -1,4 +1,5 @@
 """Shared internal agent and authenticated conversation contracts."""
+
 from datetime import datetime
 from typing import Literal
 
@@ -57,6 +58,7 @@ class ConversationResponse(ConversationSummary):
     messages: list[ChatMessage]
     purchases: list[ProposalResponse]
     busy: bool = False
+    retry_message: MessageRequest | None = None
 
 
 class ConversationList(Model):

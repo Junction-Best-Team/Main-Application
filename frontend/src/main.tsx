@@ -307,6 +307,7 @@ function ChatPage() {
       if (document.visibilityState !== "visible") return;
       stream = new EventSource(`/api/conversations/${conversationId}/events`);
       stream.addEventListener("conversation", (event) => {
+        if (activeConversation.current !== conversationId) return;
         try {
           setConversation(JSON.parse((event as MessageEvent).data));
           setReconnecting(false);
@@ -314,6 +315,7 @@ function ChatPage() {
           void load();
         }
       });
+      stream.addEventListener("expired", () => setSession(null));
       stream.onerror = () => setReconnecting(true);
     };
     open();
@@ -704,19 +706,22 @@ function PurchasesPage() {
 function DetailPage() {
   const { approvalId, proposalId } = useParams();
   const { session, setSession } = useContext(Auth);
+  const currentDetail = `${proposalId ?? ""}/${approvalId ?? ""}`;
+  const activeDetail = useRef(currentDetail);
+  activeDetail.current = currentDetail;
   const [p, setProposal] = useState<Proposal | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const load = useCallback(async () => {
     try {
-      setProposal(
-        await api<Proposal>(
-          proposalId
-            ? `/api/purchases/${proposalId}`
-            : `/api/approvals/${approvalId}`,
-        ),
+      const result = await api<Proposal>(
+        proposalId
+          ? `/api/purchases/${proposalId}`
+          : `/api/approvals/${approvalId}`,
       );
+      if (activeDetail.current !== `${proposalId ?? ""}/${approvalId ?? ""}`) return;
+      setProposal(result);
       setError("");
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) setSession(null);
@@ -766,6 +771,11 @@ function DetailPage() {
     setError("");
     setMessage("");
     try {
+      const actorHash = await crypto.subtle.digest(
+        "SHA-256", new TextEncoder().encode(session.username),
+      );
+      const actorKey = Array.from(new Uint8Array(actorHash)).slice(0, 12)
+        .map((byte) => byte.toString(16).padStart(2, "0")).join("");
       const result = await api<Commit>(
         `/api/purchases/${p.proposal_id}/confirm`,
         {
@@ -774,7 +784,7 @@ function DetailPage() {
           body: JSON.stringify({
             proposal_id: p.proposal_id,
             revision: p.revision,
-            idempotency_key: `customer-confirm-${p.proposal_id}-${p.revision}`,
+            idempotency_key: `customer-confirm-${p.proposal_id}-${p.revision}-${actorKey}`,
           }),
         },
       );
