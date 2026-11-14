@@ -6,9 +6,11 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
+from fastapi.exception_handlers import http_exception_handler as fastapi_http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from aimo import approval_workflow as workflow
 from aimo import auth, conversations, memory, schema_state, upstream
@@ -109,12 +111,31 @@ def create_app(service=None):
         ]
         return JSONResponse({"detail": jsonable_encoder(errors)}, status_code=422)
 
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(request, exc):
+        # An unknown route or a wrong method answers in the application's own error shape.
+        # Anything else keeps FastAPI's default body and headers (for example a route's own detail).
+        codes = {
+            404: ("NOT_FOUND", "Not found."),
+            405: ("METHOD_NOT_ALLOWED", "Method not allowed."),
+        }
+        if exc.status_code not in codes:
+            return await fastapi_http_exception_handler(request, exc)
+        code, message = codes[exc.status_code]
+        return JSONResponse(
+            {"error": {"code": code, "message": message}},
+            status_code=exc.status_code,
+            headers=getattr(exc, "headers", None),
+        )
+
     @app.middleware("http")
     async def security_headers(request, call_next):
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Frame-Options"] = "DENY"
+        if settings().secure_cookies:  # an HTTPS deployment; local HTTP development sends no HSTS
+            response.headers["Strict-Transport-Security"] = "max-age=31536000"
         if request.url.path != "/docs" or response.status_code != 200:
             response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
         if request.url.path.startswith("/api"):
@@ -129,6 +150,11 @@ def create_app(service=None):
     @app.get("/health/live")
     async def live():
         return {"status": "ok"}
+
+    # Monitors often probe with HEAD. Not part of the published contract.
+    @app.head("/health/live", include_in_schema=False)
+    async def live_head():
+        return Response(status_code=200)
 
     @app.get("/health/ready")
     def ready():
@@ -162,6 +188,11 @@ def create_app(service=None):
             "model": active["model_key"],
             "upstream_mode": upstream.effective_mode(),
         }
+
+    @app.head("/health/ready", include_in_schema=False)
+    def ready_head():
+        ready()  # same checks and same 503 as GET; only the body is dropped
+        return Response(status_code=200)
 
     @app.post("/api/login", response_model=SessionResponse)
     def login(body: LoginRequest, request: Request, response: Response):
