@@ -2,7 +2,7 @@
 
 Four-person team repository for [Junction 2026](https://2026.hackjunction.com/), November 13–15 in Espoo, Finland.
 
-Preparation files only. The challenge, stack, application, and deployment target are still to be selected.
+Preparation and design files for Valio Aimo's [Trusted Trade Agents challenge](https://hackjunction.app/participate/45/challenges/327). The [implementation plan](docs/brief.md) describes a seller-side purchasing gateway that external agents use to discover products, prepare valid orders, and obtain the required approval. Application code is not implemented yet; deployment is undecided.
 
 ## Get started
 
@@ -11,7 +11,7 @@ git clone https://github.com/Junction-Best-Team/Main-Application.git
 cd Main-Application
 ```
 
-All four teammates need write access. Before building, each person should confirm they can clone and push a task branch. Publish the preparation files first so everyone starts from the same commit.
+All four teammates need write access. Before building, each person should confirm they can clone and push a task branch.
 
 ## Working in parallel
 
@@ -24,11 +24,15 @@ All four teammates need write access. Before building, each person should confir
 
 No required pipelines, approval gates, or special GitHub board. Use the team chat to coordinate.
 
-## Application setup — fill in once the stack is chosen
+## Planned stack and application setup
 
 | Setting | Value |
 | --- | --- |
-| Stack, runtime version, and package manager | TBD |
+| Backend | Python / FastAPI; one application service shared by HTTP and MCP adapters |
+| Storage and search | SQLite with full-text search; local multilingual embedding matrix |
+| Human interface | React for proposal review, approval, and order receipts |
+| Demo client | Existing MCP-capable external agent; no custom buyer-agent application required |
+| Runtime versions, package managers, and embedding model | TBD during the application skeleton and retrieval evaluation |
 | Install command | TBD |
 | Local development command | TBD |
 | Build / quick validation command | TBD |
@@ -44,7 +48,7 @@ Document required variable names and safe placeholders in [.env.example](.env.ex
 ## Shared context
 
 - [AGENTS.md](AGENTS.md): short instructions shared by coding agents. [CLAUDE.md](CLAUDE.md) imports the same file for Claude Code.
-- [Project brief](docs/brief.md): the user, three essential features, demo, and agreed interfaces.
+- [Implementation plan](docs/brief.md): scope, data handling, proposed interfaces, controls, demo, milestones, and acceptance checks.
 - [Pre-existing work](docs/pre-existing-work.md): preparation and reused material to disclose in the submission.
 
 Check the current event and challenge rules before preparing application code. Junction's [general terms](https://www.hackjunction.com/terms-of-service) require projects to be built primarily during the event and pre-existing material to be identified in the submission. Confirm the required project licence before submitting.

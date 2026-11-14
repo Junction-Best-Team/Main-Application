@@ -10,11 +10,17 @@ Maintain this log for the final submission. It records provenance and timing; th
 
 Add any starter code or earlier prototypes separately. Describe which parts existed before the event and which parts were created during it.
 
+## Planning during the event
+
+| Material | Date | Source or author | Work performed |
+| --- | --- | --- | --- |
+| Valio Aimo implementation plan | 2026-11-14 | Team-provided research brief and discussions with AI assistants; plan developed with Codex after checking the official challenge, portal/API documentation, product schema, and selected catalog records | Documentation and read-only catalog analysis only. No application implementation or authenticated price/availability API calls at planning time. See [the plan](brief.md). |
+
 ## Reused code, data, models, and assets
 
 | Material/version | Source URL | Licence or usage restrictions | Role in the project | Attribution/disclosure needed |
 | --- | --- | --- | --- | --- |
-| To be completed | | | | |
+| Valio Aimo synthetic catalog, schema, companion data, and API documentation | [Challenge resource portal](https://junction26.valioaimo.fi/) | Sponsor states the synthetic data is for this challenge only; verify any additional submission/distribution requirements | Supplied inputs for design and planned implementation; raw datasets are not committed with the plan | Identify sponsor-provided data and distinguish live lookups, fixtures, and mock order acceptance |
 
 Include frameworks, datasets, model weights, third-party assets, and earlier work as applicable. Record source/version information while building so submission preparation is straightforward.
 
