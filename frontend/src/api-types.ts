@@ -386,11 +386,30 @@ export interface components {
             /** Name */
             name: string;
             /** Amount */
-            amount: string;
+            amount?: string | null;
             /** Unit */
             unit: string;
             /** Product Id */
             product_id?: string | null;
+            /** Ingredient Id */
+            ingredient_id?: string | null;
+            /** Form */
+            form?: string | null;
+            /**
+             * Status
+             * @default proposed
+             * @enum {string}
+             */
+            status: "proposed" | "matched" | "unresolved";
+            /** Reason */
+            reason?: string | null;
+            /** Purchase Amount */
+            purchase_amount?: string | null;
+            /** Purchase Unit */
+            purchase_unit?: string | null;
+            /** Product Fingerprint */
+            product_fingerprint?: string | null;
+            conversion?: components["schemas"]["QuantityCalculation"] | null;
         };
         /** LineRequest */
         LineRequest: {
@@ -423,6 +442,18 @@ export interface components {
             ingredients: components["schemas"]["Ingredient"][];
             /** Notes */
             notes?: string[];
+            /** Recipe Plan Id */
+            recipe_plan_id?: string | null;
+            /** Recipe Plan Revision */
+            recipe_plan_revision?: number | null;
+            /** Recipe Id */
+            recipe_id?: string | null;
+            /** Recipe Version */
+            recipe_version?: string | null;
+            /** Base Servings */
+            base_servings?: number | null;
+            /** Attribution */
+            attribution?: string | null;
         };
         /** MessageRequest */
         MessageRequest: {
@@ -528,6 +559,12 @@ export interface components {
              * @enum {string}
              */
             policy_outcome: "ready_to_commit" | "approval_required" | "denied" | "needs_resolution";
+            /**
+             * Recipe Basis
+             * @default free_form
+             * @enum {string}
+             */
+            recipe_basis: "saved_recipe" | "free_form";
             /** Approval Status */
             approval_status: string;
             /** Order Status */
@@ -564,6 +601,10 @@ export interface components {
         };
         /** PurchaseRequest */
         PurchaseRequest: {
+            /** Recipe Plan Id */
+            recipe_plan_id?: string | null;
+            /** Recipe Plan Revision */
+            recipe_plan_revision?: number | null;
             /** Request Id */
             request_id: string;
             /** Lines */
@@ -683,6 +724,12 @@ export interface components {
              * @enum {string}
              */
             policy_outcome: "ready_to_commit" | "approval_required" | "denied" | "needs_resolution";
+            /**
+             * Recipe Basis
+             * @default free_form
+             * @enum {string}
+             */
+            recipe_basis: "saved_recipe" | "free_form";
             /** Approval Status */
             approval_status: string;
             /** Order Status */
@@ -730,6 +777,11 @@ export interface components {
             buyer_id: string;
             /** Csrf Token */
             csrf_token: string;
+            /**
+             * Recipe Planning Enabled
+             * @default false
+             */
+            recipe_planning_enabled: boolean;
         };
         /** SnapshotLine */
         SnapshotLine: {

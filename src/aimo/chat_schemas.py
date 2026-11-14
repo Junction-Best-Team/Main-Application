@@ -5,21 +5,35 @@ from typing import Literal
 
 from pydantic import Field
 
-from aimo.schemas import Model, ProposalResponse
+from aimo.schemas import Model, ProposalResponse, QuantityCalculation
 
 
 class Ingredient(Model):
-    name: str = Field(min_length=1, max_length=120)
-    amount: str = Field(min_length=1, max_length=30)
-    unit: str = Field(min_length=1, max_length=12)
+    name: str = Field(min_length=1, max_length=240)
+    amount: str | None = Field(default=None, min_length=1, max_length=30)
+    unit: str = Field(min_length=1, max_length=30)
     product_id: str | None = None
+    ingredient_id: str | None = None
+    form: str | None = None
+    status: Literal["proposed", "matched", "unresolved"] = "proposed"
+    reason: str | None = None
+    purchase_amount: str | None = None
+    purchase_unit: str | None = None
+    product_fingerprint: str | None = None
+    conversion: QuantityCalculation | None = None
 
 
 class MealPlan(Model):
-    title: str = Field(min_length=1, max_length=120)
+    title: str = Field(min_length=1, max_length=240)
     portions: int = Field(ge=1, le=10000)
     ingredients: list[Ingredient] = Field(min_length=1, max_length=30)
     notes: list[str] = Field(default_factory=list, max_length=20)
+    recipe_plan_id: str | None = None
+    recipe_plan_revision: int | None = None
+    recipe_id: str | None = None
+    recipe_version: str | None = None
+    base_servings: int | None = None
+    attribution: str | None = None
 
 
 class AgentTurn(Model):

@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     rerank_candidates: int = Field(default=30, ge=20, le=80)
     catalog_generations_to_keep: int = Field(default=2, ge=1, le=10)
     proposal_ttl_seconds: int = 900
+    recipe_planning_enabled: bool = False
     # Conversational provider configuration is independent of local embeddings.
     llm_api_key: str = ""
     llm_base_url: str = "https://openrouter.ai/api/v1"

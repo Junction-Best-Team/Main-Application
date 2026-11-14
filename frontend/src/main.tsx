@@ -504,16 +504,44 @@ function ChatPage() {
                 <section className="meal-plan" aria-label="Proposed meal plan">
                   <h2>{message.meal_plan.title}</h2>
                   <p>{message.meal_plan.portions} portions</p>
+                  {session?.recipe_planning_enabled && (
+                    <p className="muted small">
+                      {message.meal_plan.recipe_plan_id
+                        ? "Saved recipe plan"
+                        : "Free-form plan — recipe completeness not checked."}
+                    </p>
+                  )}
                   <ul>
                     {message.meal_plan.ingredients.map((ingredient, i) => (
                       <li key={i}>
                         <span>{ingredient.name}</span>
                         <strong>
-                          {ingredient.amount} {ingredient.unit}
+                          {ingredient.amount == null
+                            ? "Quantity unresolved"
+                            : `${ingredient.amount} ${ingredient.unit}`}
                         </strong>
+                        {ingredient.status === "unresolved" && (
+                          <p>{ingredient.reason}</p>
+                        )}
+                        {ingredient.product_id && (
+                          <p>Product: {ingredient.product_id}</p>
+                        )}
+                        {ingredient.conversion?.sales_quantity && (
+                          <p>
+                            Buy {String(ingredient.conversion.sales_quantity)}{" "}
+                            {String(ingredient.conversion.sales_unit)}
+                            {Number(ingredient.conversion.excess) > 0 &&
+                              ` · Excess: ${ingredient.conversion.excess} ${ingredient.unit}`}
+                          </p>
+                        )}
                       </li>
                     ))}
                   </ul>
+                  {message.meal_plan.attribution && (
+                    <p className="muted small">
+                      {message.meal_plan.attribution}
+                    </p>
+                  )}
                   {(message.meal_plan.notes ?? []).map((note, i) => (
                     <p className="muted small" key={i}>
                       {note}
@@ -868,6 +896,13 @@ function DetailPage() {
                 </div>
               </div>
               <h2>Purchase details</h2>
+              {session?.recipe_planning_enabled && (
+                <p className="mode-note">
+                  {p.recipe_basis === "saved_recipe"
+                    ? "Recipe-backed basket — includes every ingredient from the saved recipe plan."
+                    : "Free-form basket — recipe completeness and ingredient conversions are not checked against a saved recipe."}
+                </p>
+              )}
               <div className="table-scroll">
                 <table>
                   <thead>
