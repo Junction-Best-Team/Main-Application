@@ -22,6 +22,8 @@ export function ChatPage() {
     conversation,
     text,
     setText,
+    attachments,
+    setAttachments,
     error,
     loading,
     reconnecting,
@@ -154,9 +156,12 @@ export function ChatPage() {
           </div>
 
           <ChatComposer
+            key={conversationId ?? "new"}
             conversationId={conversationId}
             text={text}
             onTextChange={setText}
+            attachments={attachments}
+            onAttachmentsChange={setAttachments}
             error={error}
             busy={busy}
             onSubmit={send}

@@ -6,6 +6,7 @@ import { MealPlanCard } from "./MealPlanCard";
 import { RecipeIllustration } from "./RecipeIllustration";
 import { SkuCards } from "./SkuCards";
 import { MessageMarkdown } from "./MessageMarkdown";
+import { AttachmentCards } from "./AttachmentCards";
 export function ConversationTranscript({
   conversation,
   busy,
@@ -30,10 +31,13 @@ export function ConversationTranscript({
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary shadow-sm">
               <Icon name="person" className="text-[18px]" />
             </div>
-            <div className="flex min-w-0 flex-col items-end">
-              <div className="max-w-full rounded-xl rounded-tr-none bg-primary px-space-md py-space-sm text-body-md text-on-primary shadow-sm">
-                <MessageMarkdown text={message.text} />
-              </div>
+            <div className="flex min-w-0 flex-col items-end gap-space-xs">
+              <AttachmentCards files={message.attachments ?? []} />
+              {message.text && (
+                <div className="max-w-full rounded-xl rounded-tr-none bg-primary px-space-md py-space-sm text-body-md text-on-primary shadow-sm">
+                  <MessageMarkdown text={message.text} />
+                </div>
+              )}
               <MessageByline who="You" at={message.created_at} />
             </div>
           </article>

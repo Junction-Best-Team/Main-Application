@@ -259,3 +259,11 @@ Material Symbols and Nordic UI tokens. Adapted the sidebar actions into a shared
 desktop/mobile header dropdown using the owner's screenshot as layout context.
 Browser verification uses the existing authored API fixtures. No new external
 assets or dependencies were introduced.
+
+## Chat attachments — 2026-11-14
+
+Reused the existing composer, generated Python/OpenAPI contracts, authenticated conversation API,
+PostgreSQL queue, retry fencing and native Google/OpenRouter adapters. Added pypdf, openpyxl,
+defusedxml and an explicit Pillow dependency for bounded file parsing; lockfile updated. Tests use
+small authored text, Office archives, PDF pages and image bytes, with mocked model responses;
+no challenge documents, user files, credentials or remote material are committed.

@@ -16,12 +16,14 @@ import {
   sendMessage,
   openConversationEvents,
 } from "../api/chatApi";
+import { draftSignature, type ChatAttachment } from "../model/attachments";
 
 export function useChat(conversationId?: string) {
   const { session, setSession } = useAuth();
   const navigate = useNavigate();
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [text, setText] = useState("");
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -54,8 +56,10 @@ export function useChat(conversationId?: string) {
       setConversation(data);
       if (loadedConversation.current !== conversationId) {
         loadedConversation.current = conversationId;
-        if (data.retry_message && !sendingRef.current)
+        if (data.retry_message && !sendingRef.current) {
           setText(data.retry_message.text);
+          setAttachments(data.retry_message.attachments ?? []);
+        }
       }
       setReconnecting(false);
     } catch (e) {
@@ -66,6 +70,7 @@ export function useChat(conversationId?: string) {
     setConversation(null);
     loadedConversation.current = null;
     setError("");
+    setAttachments([]);
     const saved = sessionStorage.getItem(pendingStorage);
     try {
       setText(saved ? JSON.parse(saved).text : "");
@@ -125,18 +130,33 @@ export function useChat(conversationId?: string) {
   }, [conversation?.messages.length, conversation?.busy]);
   async function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!text.trim() || !session || sendingRef.current || conversation?.busy)
+    if (
+      (!text.trim() && !attachments.length) ||
+      !session ||
+      sendingRef.current ||
+      conversation?.busy
+    )
       return;
     sendingRef.current = true;
     setSending(true);
     setError("");
     const messageText = text.trim();
+    const messageAttachments = attachments;
+    const savedRetry = conversation?.retry_message;
+    const matchingRetry =
+      savedRetry?.text === messageText &&
+      JSON.stringify(savedRetry.attachments ?? []) ===
+        JSON.stringify(messageAttachments);
+    const retryConstraints = matchingRetry
+      ? savedRetry?.constraints
+      : undefined;
     let id = conversationId;
     try {
+      const signature = await draftSignature(messageText, messageAttachments);
       if (!id) {
         const created = await createConversation(
           {
-            title: messageText.slice(0, 120),
+            title: (messageText || messageAttachments[0].name).slice(0, 120),
             idempotency_key: createKey.current,
           },
           session.csrf_token,
@@ -151,20 +171,33 @@ export function useChat(conversationId?: string) {
       let key: string = crypto.randomUUID();
       try {
         const saved = JSON.parse(sessionStorage.getItem(storageKey) || "null");
-        if (saved?.text === messageText) key = saved.idempotency_key;
+        if (
+          saved?.signature === signature ||
+          (!saved?.signature &&
+            !messageAttachments.length &&
+            saved?.text === messageText)
+        )
+          key = saved.idempotency_key;
       } catch {
         /* A missing pending request starts a new turn. */
       }
-      if (conversation?.retry_message?.text === messageText) {
-        key = conversation.retry_message.idempotency_key;
+      if (matchingRetry && savedRetry) {
+        key = savedRetry.idempotency_key;
       }
       sessionStorage.setItem(
         storageKey,
-        JSON.stringify({ text: messageText, idempotency_key: key }),
+        JSON.stringify({ text: messageText, signature, idempotency_key: key }),
       );
       const result = await sendMessage(
         id,
-        { text: messageText, idempotency_key: key },
+        {
+          text: messageText,
+          ...(messageAttachments.length
+            ? { attachments: messageAttachments }
+            : {}),
+          ...(retryConstraints ? { constraints: retryConstraints } : {}),
+          idempotency_key: key,
+        },
         session.csrf_token,
       );
       sessionStorage.removeItem(storageKey);
@@ -190,11 +223,13 @@ export function useChat(conversationId?: string) {
             : result;
         });
         setText("");
+        setAttachments([]);
       }
     } catch (e) {
       if (activeConversation.current !== id) return;
       fail(e);
       setText(messageText);
+      setAttachments(messageAttachments);
       if (id) {
         try {
           const result = await getConversation(id);
@@ -210,17 +245,23 @@ export function useChat(conversationId?: string) {
   }
   const retryText = conversation?.retry_message?.text;
   const retryKey = conversation?.retry_message?.idempotency_key;
+  const retryAttachments = JSON.stringify(
+    conversation?.retry_message?.attachments ?? [],
+  );
   useEffect(() => {
     if (retryText !== undefined && !conversation?.busy && !sending) {
       setText(retryText);
+      setAttachments(JSON.parse(retryAttachments));
       setError("The response was interrupted. Retry this request to continue.");
     }
-  }, [retryKey, retryText, conversation?.busy, sending]);
+  }, [retryKey, retryText, retryAttachments, conversation?.busy, sending]);
   const busy = Boolean(sending || conversation?.busy);
   return {
     conversation,
     text,
     setText,
+    attachments,
+    setAttachments,
     error,
     loading,
     reconnecting,

@@ -1072,7 +1072,7 @@ for (const width of [1440, 390]) {
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Attach file" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
     await expect(
       page.getByRole("complementary", { name: "Overview" }),
     ).toHaveCount(0);
@@ -1443,3 +1443,222 @@ for (const width of [1440, 390, 320]) {
     await expect(overview.getByText("Total estimated")).toBeVisible();
   });
 }
+
+const attachmentPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7VYAAAAASUVORK5CYII=",
+  "base64",
+);
+for (const width of [1440, 320]) {
+  test(`attachments preview, remove and send a file-only request at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await mockSession(page);
+    let current = { ...blankConversation };
+    let posted: components["schemas"]["MessageRequest"] | undefined;
+    await page.route(`**/api/conversations/${conversationId}`, (route) =>
+      route.fulfill({ json: current }),
+    );
+    await page.route(
+      `**/api/conversations/${conversationId}/messages`,
+      async (route) => {
+        posted = route.request().postDataJSON();
+        current = {
+          ...blankConversation,
+          messages: [
+            {
+              id: 1,
+              role: "user",
+              text: posted?.text ?? "",
+              created_at: timestamp,
+              attachments: [
+                {
+                  name: "menu.csv",
+                  media_type: "text/csv",
+                  size: 20,
+                  url: `/api/conversations/${conversationId}/attachments/1/0`,
+                },
+              ],
+            },
+          ],
+        };
+        await route.fulfill({ json: current });
+      },
+    );
+    await page.goto(`/conversations/${conversationId}`);
+    const picker = page.getByLabel("Choose attachments");
+    await picker.setInputFiles([
+      { name: "photo.png", mimeType: "image/png", buffer: attachmentPng },
+      {
+        name: "menu.csv",
+        mimeType: "text/csv",
+        buffer: Buffer.from("Ingredient,KG\nTomato,5"),
+      },
+    ]);
+    const files = page.getByRole("list", {
+      name: "Attached files",
+      exact: true,
+    });
+    await expect(files.getByText("photo.png")).toBeVisible();
+    await expect(
+      files.getByRole("img", { name: "Preview of photo.png" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Start voice mode" }),
+    ).toBeDisabled();
+    await page.screenshot({
+      path: testInfo.outputPath(`attachment-preview-${width}.png`),
+    });
+    await page.getByRole("button", { name: "Remove photo.png" }).click();
+    await expect(files.getByText("photo.png")).toHaveCount(0);
+    await page.getByRole("button", { name: "Send Order Request" }).click();
+    await expect.poll(() => posted?.attachments?.length).toBe(1);
+    expect(posted?.text).toBe("");
+    expect(posted?.attachments?.[0].data).toBe(
+      Buffer.from("Ingredient,KG\nTomato,5").toString("base64"),
+    );
+    await expect(
+      page
+        .getByRole("list", { name: "Message attachments", exact: true })
+        .getByRole("link", { name: "menu.csv" }),
+    ).toBeVisible();
+    await expect(files).toHaveCount(0);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await page.reload();
+    await expect(
+      page.getByRole("link", { name: "menu.csv", exact: true }),
+    ).toBeVisible();
+  });
+}
+
+test("drop and clipboard files produce removable composer previews", async ({
+  page,
+}) => {
+  await mockSession(page);
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: blankConversation }),
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  await page.getByRole("form", { name: "Chat message" }).evaluate((form) => {
+    const data = new DataTransfer();
+    data.items.add(
+      new File(["Tomato soup"], "dropped.txt", { type: "text/plain" }),
+    );
+    form.dispatchEvent(
+      new DragEvent("drop", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: data,
+      }),
+    );
+  });
+  await expect(page.getByText("dropped.txt", { exact: true })).toBeVisible();
+  await page.getByLabel("Continue the conversation").evaluate((input) => {
+    const data = new DataTransfer();
+    data.items.add(
+      new File(["Ingredient,KG\nTomato,5"], "pasted.csv", { type: "text/csv" }),
+    );
+    input.dispatchEvent(
+      new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: data,
+      }),
+    );
+  });
+  await expect(page.getByText("pasted.csv", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Remove dropped.txt" }).click();
+  await expect(page.getByText("dropped.txt", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("pasted.csv", { exact: true })).toBeVisible();
+});
+
+test("unsupported, empty, oversized and excessive files are rejected without losing the draft", async ({
+  page,
+}) => {
+  await mockSession(page);
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: blankConversation }),
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  await page.getByLabel("Continue the conversation").fill("Soup menu");
+  const picker = page.getByLabel("Choose attachments");
+  await picker.setInputFiles({
+    name: "script.exe",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from("abc"),
+  });
+  await expect(page.getByRole("alert")).toContainText("Use PDF");
+  await picker.setInputFiles({
+    name: "large.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.alloc(2 * 1024 * 1024 + 1),
+  });
+  await expect(page.getByRole("alert")).toContainText("at most 2 MB");
+  await picker.setInputFiles({
+    name: "empty.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.alloc(0),
+  });
+  await expect(page.getByRole("alert")).toContainText("nonempty");
+  await picker.setInputFiles(
+    ["a", "b", "c", "d"].map((name) => ({
+      name: `${name}.txt`,
+      mimeType: "text/plain",
+      buffer: Buffer.from(name),
+    })),
+  );
+  await expect(page.getByRole("alert")).toContainText("up to 3 files");
+  await picker.setInputFiles(
+    ["a", "b", "c"].map((name) => ({
+      name: `${name}.txt`,
+      mimeType: "text/plain",
+      buffer: Buffer.alloc(1500000, "x"),
+    })),
+  );
+  await expect(page.getByRole("alert")).toContainText("at most 4 MB");
+  await expect(page.getByLabel("Continue the conversation")).toHaveValue(
+    "Soup menu",
+  );
+  await expect(
+    page.getByRole("list", { name: "Attached files", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("failed worker retry restores attachments after refresh and retains the exact key", async ({
+  page,
+}) => {
+  await mockSession(page);
+  const retry = {
+    text: "Read this menu",
+    idempotency_key: "saved-file-turn-key",
+    constraints: { budget_gross: "150", lactose_free: true, milk_free: null },
+    attachments: [
+      {
+        name: "menu.txt",
+        media_type: "text/plain",
+        data: Buffer.from("Tomato soup").toString("base64"),
+      },
+    ],
+  };
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: { ...blankConversation, retry_message: retry } }),
+  );
+  let posted: unknown;
+  await page.route(
+    `**/api/conversations/${conversationId}/messages`,
+    async (route) => {
+      posted = route.request().postDataJSON();
+      await route.fulfill({ json: { ...blankConversation, busy: true } });
+    },
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  await expect(page.getByText("menu.txt", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("menu.txt", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Retry request" }).click();
+  await expect.poll(() => posted).toEqual(retry);
+});
