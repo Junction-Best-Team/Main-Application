@@ -34,7 +34,7 @@ Four-person Junction hackathon repository. The implemented Valio Aimo MVP is des
 
 ## Scope and history
 
-The explicit implementation handoff selects the PR #2 brief for this MVP. PR #2 was closed unmerged; implementation starts on current main and preserves the post-MVP draft as reference. For this implementation use database-seeded versioned policy, eight named tools, four outcomes, independent buyer inbox, ordinary persistent audit and no live deployment. The draft open issues above are resolved for this scope by `docs/brief.md`; do not reintroduce a notifier, policy editor or hash chaining. New verification is appended to `docs/findings.md`.
+The explicit implementation handoff selects the PR #2 brief for this MVP. PR #2 was closed unmerged; implementation starts on current main and preserves the post-MVP draft as reference. For this implementation use database-seeded versioned policy, eight named tools, four outcomes, independent buyer inbox, ordinary persistent audit and no live deployment. The draft open issues above are resolved for this scope by `docs/brief.md`; do not reintroduce a notifier or hash chaining. The owner explicitly requested buyer policy settings on 2026-11-14; see `docs/policy-settings.md`. New verification is appended to `docs/findings.md`.
 
 ## Chat purchasing cutover (2026-11-14)
 

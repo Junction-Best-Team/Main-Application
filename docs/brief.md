@@ -2,6 +2,8 @@
 
 > Current product update, 2026-11-14: [Chat purchasing migration](chat-purchasing.md) supersedes the external-agent/MCP transport and standalone approval-inbox entry point in this original baseline. Its quantity, policy, approval, isolation, audit and mock-order controls remain required. The transport descriptions below document the original design.
 
+> Policy management update, 2026-11-14: the owner requested [buyer policy Settings](policy-settings.md), replacing the product-scope CLI and superseding the policy-editor deferral below. Agents retain read-only policy access.
+
 # Valio Aimo — implementation plan
 
 Updated **14 November 2026 (Europe/Helsinki)** with the agreed scope and the discussion after the first draft. This records the agreed design at handoff. The MVP implementation and actual validation are now described in [README](../README.md) and [validation](validation.md); authenticated live Valio integration and cluster deployment remain unverified.
@@ -12,7 +14,7 @@ Infrastructure follow-up: the owner requested optional Terraform provisioning af
 
 The authorized correctness fixes clarify these interfaces without adding a service:
 
-- Trusted `approved_product_ids` belong to the versioned buyer policy. Outside-scope products trigger substitution policy even without an agent's `substitutes_for` declaration. Missing scope is `needs_resolution` when substitution restrictions apply. The initial demo scope is `464306`; privileged `set-product-scope` provisioning inserts a new version. This controls a standing approved product set, not arbitrary external mission intent. A future mission-specific authorization contract must establish its own trusted baseline.
+- Trusted `approved_product_ids` belong to the versioned buyer policy. Outside-scope products trigger substitution policy even without an agent's `substitutes_for` declaration. Missing scope is `needs_resolution` when substitution restrictions apply. The initial demo scope is `464306`; the owner-requested [buyer Settings page](policy-settings.md) inserts a new version (superseding the provisioning-only interface). This controls a standing approved product set, not arbitrary external mission intent. A future mission-specific authorization contract must establish its own trusted baseline.
 - `prepare_order` requires a distinct `idempotency_key`, stable across retries and scoped to buyer plus agent. A conflicting payload is rejected; creation of the proposal, approval and deduplication record is atomic. `request_id` remains a display label. Existing proposal snapshots retain their earlier request shape; commit keeps its existing idempotency contract.
 - Rational quantity conversion and pack ceilings use exact fractions; monetary amounts remain decimal. Withdrawn source records remain known and denied, while discovery excludes them.
 - For the 17,546-product MVP, semantic candidates use exact ranking within the filtered active catalog. Ingestion retains two generations of product/vector rows by default; generation metadata, embedding reuse and immutable purchase evidence remain. Search holds one consistent read snapshot across a concurrent refresh.

@@ -1,11 +1,14 @@
 # OpenRouter catalog search
 
+This describes the retained opt-in legacy OpenRouter backend. The current default
+is [Google Embedding 2 and Decision 1](google-models.md), with a separate staged
+index cutover. Select `EMBEDDING_BACKEND=openrouter` explicitly to use this profile.
+
 The hosted profile uses `qwen/qwen3-embedding-8b` at its native **4096 dimensions**,
 keyword retrieval, and `qwen/qwen3-reranker-8b` on at most 30 filtered candidates.
 This is a candidate for improved Finnish/English retrieval, not a claim that a
 public benchmark proves it is the best model for this catalog. The local E5 backend
-remains the default so deploying code alone cannot invalidate an existing index or
-start paid calls.
+is available through explicit `EMBEDDING_BACKEND=sentence_transformers` selection.
 
 Discovery text includes source names, brand, vendor, units and bounded
 Finnish/English/Swedish descriptions. Descriptions never establish allergen safety

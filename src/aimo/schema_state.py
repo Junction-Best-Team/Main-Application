@@ -22,7 +22,8 @@ from aimo.db import connection
 log = logging.getLogger(__name__)
 
 # Migration file name -> the objects the code needs from it: (kind, name...) with kind one of
-# table, view, index (a relation name), column (table, column) and trigger (table, trigger).
+# table, view, index (a relation name), column (table, column), trigger (table, trigger),
+# or function (full signature).
 # A new migration must add its entry (tests/test_readiness_migrations.py fails until it does).
 MANIFEST: dict[str, list[tuple[str, ...]]] = {
     "008_orders_immutable.sql": [("trigger", "orders", "immutable_orders")],
@@ -42,10 +43,31 @@ MANIFEST: dict[str, list[tuple[str, ...]]] = {
         ("column", "catalog_generations", "source_product_count"),
         ("view", "catalog_protected_products"),
     ],
+    "014_policy_settings.sql": [
+        ("table", "policy_managers"),
+        ("table", "policy_changes"),
+        ("trigger", "policy_changes", "immutable_policy_changes"),
+        ("function", "save_buyer_policy(text,integer,jsonb)"),
+    ],
+    "015_recipe_images.sql": [
+        ("column", "conversation_messages", "image"),
+        ("table", "recipe_image_jobs"),
+    ],
+    "018_purge_unfinished_proposals.sql": [
+        ("table", "purged_proposals"),
+        ("trigger", "purged_proposals", "immutable_purged_proposals"),
+        ("trigger", "audit_events", "immutable_audit"),
+    ],
+    "019_history_immutability.sql": [
+        ("trigger", "recipe_plan_revisions", "immutable_recipe_plan_revisions"),
+        ("trigger", "recipe_versions", "immutable_recipe_versions"),
+        ("trigger", "orders", "immutable_truncate"),
+    ],
     "021_turn_constraints.sql": [("column", "conversation_turns", "constraints")],
 }
 
 _RELATION = "SELECT to_regclass(%s) IS NOT NULL"
+_FUNCTION = "SELECT to_regprocedure(%s) IS NOT NULL"
 _COLUMN = (
     "SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass(%s) "
     "AND attname = %s AND attnum > 0 AND NOT attisdropped)"
@@ -60,7 +82,7 @@ def _present(cursor, check: tuple[str, ...]) -> bool:
     kind, *names = check
     query = {"table": _RELATION, "view": _RELATION, "index": _RELATION}.get(kind)
     if query is None:
-        query = {"column": _COLUMN, "trigger": _TRIGGER}[kind]
+        query = {"column": _COLUMN, "trigger": _TRIGGER, "function": _FUNCTION}[kind]
     return bool(cursor.execute(query, names).fetchone()[0])
 
 

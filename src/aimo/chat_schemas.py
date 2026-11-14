@@ -6,6 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field, model_validator
 
+from aimo.image_schemas import RecipeImage
 from aimo.schemas import MAX_BASKET_LINES, Constraint, Model, ProposalResponse, QuantityCalculation
 
 
@@ -49,6 +50,7 @@ class AgentTurn(Model):
     text: str = Field(min_length=1, max_length=20000)
     meal_plan: MealPlan | None = None
     proposal_id: str | None = None
+    image: RecipeImage | None = None
 
 
 class MessageConstraints(Model):
@@ -120,6 +122,7 @@ class ChatMessage(Model):
     created_at: datetime
     meal_plan: MealPlan | None = None
     proposal_id: str | None = None
+    image: RecipeImage | None = None
 
 
 class ConversationSummary(Model):

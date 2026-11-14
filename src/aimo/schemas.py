@@ -320,7 +320,7 @@ class PolicyRules(Model):
     whole_sales_units: bool
     approved_product_ids: list[str] | None = Field(
         default=None,
-        description="Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope always blocks a purchase until privileged setup supplies it.",
+        description="Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope always blocks a purchase until a policy manager configures it in Settings.",
     )
 
     @model_validator(mode="before")

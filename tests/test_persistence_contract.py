@@ -44,6 +44,8 @@ from aimo.upstream import FixtureClient
 @pytest.fixture(autouse=True)
 def clean_recipes():
     with connection() as c:
+        # A recipe reset cascades into guarded history (PER-002): say it is deliberate.
+        c.execute("SET LOCAL aimo.allow_history_truncate = 'on'")
         c.execute(
             "TRUNCATE recipes,recipe_catalogs,recipe_embedding_cache,recipe_product_evidence CASCADE"
         )
@@ -452,12 +454,7 @@ def test_history_tables_reject_update_and_delete(internal_planned, internal, buy
                 c.execute(statement)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PER-004 Draft: recipe_plan_revisions and recipe_versions have no immutable_record "
-    "trigger (only proposal_revisions, audit_events, policies, customer_confirmations do), "
-    "although docs/recipes.md calls plan revisions immutable.",
-)
+# PER-004 (Approved): migration 019 guards recipe_plan_revisions and recipe_versions.
 @pytest.mark.parametrize(
     "statement",
     [

@@ -55,6 +55,7 @@ FORBIDDEN_FIELDS = {
 }
 # Service methods the tool handlers are allowed to reach (read and prepare only).
 ALLOWED_SERVICE = {
+    "generate_recipe_image",  # Hosted illustration, no purchase/policy mutation.
     "search_products",
     "get_product",
     "get_purchase_policy",
