@@ -2,7 +2,8 @@
 
 Not a unit test: it uses only the public HTTP API, the way the browser does, so a pass means
 "the server is up, authenticates and isolates buyers, enforces CSRF/Origin on every state change and
-serves the chat and purchase endpoints end to end". It needs no LLM and no Valio key.
+serves the chat and purchase endpoints end to end". It needs no LLM, no Valio key and no built frontend
+(the browser tests cover the served app).
 
 The internal assistant's tools (search_products, get_product, get_purchase_policy,
 check_price_and_availability, prepare_order, get_proposal, saved receipts) run only inside a chat
@@ -211,12 +212,6 @@ class Sweep:
         self.csrf = None
         return "session ends; protected endpoints refuse the old cookie"
 
-    def app_shell(self):
-        for path in ("/", "/login", "/health/live"):
-            r = httpx.get(self.base + path, timeout=30)
-            need(r.status_code == 200, f"GET {path} gave {r.status_code}")
-        return "app shell, login route and liveness answer"
-
     def all(self):
         for name, fn in [
             ("health/ready", self.health),
@@ -229,7 +224,6 @@ class Sweep:
             ("purchases and approvals", self.purchases_and_approvals),
             ("confirm and decide controls", self.confirmation_and_decision_controls),
             ("logout", self.logout_closes_the_session),
-            ("app shell", self.app_shell),
         ]:
             self.run(name, fn)
 

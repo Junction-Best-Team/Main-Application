@@ -65,7 +65,6 @@ Uses only the public HTTP surface, like the browser. It needs no LLM provider an
 | purchases and approvals | Lists open; unknown proposal and approval are 404 |
 | confirm and decide controls | Confirming a purchase and deciding an approval need CSRF; unknown ids are 404 |
 | logout | The old cookie is refused afterwards |
-| app shell | `/`, `/login` and `/health/live` answer |
 
 A check that cannot run is reported as `SKIP` with its reason, never as a pass (for example, the message check skips if a provider is configured on that server). Live price and stock are no longer exercised by the sweep; `tests/ci.sh --live` now only runs the sweep with `UPSTREAM_MODE=live`.
 

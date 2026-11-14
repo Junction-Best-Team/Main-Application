@@ -115,7 +115,7 @@ done
 RESULT=0
 
 if [ "$SWEEP" = 1 ]; then
-  step "Tool sweep (sign-in, CSRF/Origin, conversations, purchases, approvals)"
+  step "API sweep (sign-in, CSRF/Origin, conversations, purchases, approvals)"
   uv run python tests/sweep/run_sweep.py --base-url "$BASE" ${SWEEP_ARGS:-} || RESULT=1
 fi
 

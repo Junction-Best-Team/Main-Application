@@ -9,7 +9,7 @@ Written by reading the test code, not the test names. Branch `tests-ci-coverage`
 1. **Lint** (`ruff check src tests scripts`): style and obvious code errors. It checks no behaviour.
 2. **pytest** (`tests/test_*.py`, 317 cases): calls the Python code directly against a real PostgreSQL test database, with invented ("fixture") prices, stock and search vectors. Fast, precise, no browser.
 3. **Frontend build** (`npm run build`): TypeScript type check and bundle. Proves the UI compiles, nothing more.
-4. **Sweep** (`tests/sweep/run_sweep.py`, 11 checks): talks to a running server over HTTP like the browser does (sign-in, CSRF/Origin, conversations, purchases, approvals). Proves the server, database and buyer-facing endpoints work together. It needs no LLM.
+4. **Sweep** (`tests/sweep/run_sweep.py`, 10 checks): talks to a running server over HTTP like the browser does (sign-in, CSRF/Origin, conversations, purchases, approvals). Proves the server, database and buyer-facing endpoints work together. It needs no LLM.
 5. **Browser tests** (`frontend/e2e/chat.spec.ts`, 7 tests with mocked routes; `approval.spec.ts`, 2 tests against the real server when `AIMO_INTEGRATION=1`): real Chromium on the chat product and the legacy approval pages.
 6. **Local-only scripts** (`scripts/*.py`): need a running server, Docker, the full catalog or the real API key. Not run by CI. See section 6.
 7. `tests/ci.sh` is only the runner. It starts the database and server, then runs lint, pytest, sweep, browser tests. CI sets `SWEEP_ARGS=--strict`, so a skipped sweep check fails the build there (`.github/workflows/ci.yml`, jobs "Tool sweep" and "Browser tests").
@@ -135,7 +135,6 @@ Runs against a live server process with the fixture catalog and no LLM provider 
 | `purchases and approvals` | List both; fetch an unknown purchase and an unknown approval | 200 with an `items` list; 404 | Broken list endpoints |
 | `confirm and decide controls` | Confirm and decide an unknown proposal without CSRF, then with it | 403; then 404 | Confirming or deciding without CSRF; accepting an unknown proposal |
 | `logout` | Log out, then call a protected endpoint with the old cookie | 204; then 401 | A session surviving logout |
-| `app shell` | GET `/`, `/login`, `/health/live` | 200 each | The built frontend not being served |
 
 ## 4. Browser tests (`frontend/e2e/`)
 
