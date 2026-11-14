@@ -286,7 +286,7 @@ def purchases(identity, offset, limit):
     with connection() as c:
         context(c, identity)
         ids = c.execute(
-            "SELECT id FROM proposals WHERE buyer_id=%s ORDER BY created_at DESC,id LIMIT %s OFFSET %s",
+            "SELECT id FROM proposals WHERE buyer_id=%s ORDER BY updated_at DESC,id LIMIT %s OFFSET %s",
             (identity["buyer_id"], limit + 1, offset),
         ).fetchall()
     return {

@@ -9,7 +9,17 @@ from uuid import UUID
 from pydantic import Field, TypeAdapter, ValidationError
 
 from aimo.chat_schemas import AgentTurn, MealPlan
+from aimo.config import settings
 from aimo.db import Problem, fingerprint
+from aimo.recipe_schemas import (
+    MatchIngredient,
+    PlanReference,
+    RecipeDetail,
+    RecipeReference,
+    RecipeSearch,
+    RecipeSearchResult,
+    ScaleRecipe,
+)
 from aimo.schemas import (
     Amount,
     LookupRequest,
@@ -104,6 +114,70 @@ class ToolSession:
             "get_order": ToolSpec(OrderRequest, "Read an existing saved mock receipt.", self.order),
         }
 
+        self.recipe_mode = settings().recipe_planning_enabled
+        if self.recipe_mode:
+            self.registry.update(
+                {
+                    "search_recipes": ToolSpec(
+                        RecipeSearch,
+                        "Discover recipe ideas; not dietary or purchasing proof.",
+                        lambda r: self.checked(
+                            RecipeSearchResult, self.service.search_recipes(self.identity, r)
+                        ),
+                    ),
+                    "get_recipe": ToolSpec(
+                        RecipeReference,
+                        "Read the exact recipe basis and instructions.",
+                        lambda r: self.checked(
+                            RecipeDetail, self.service.get_recipe(self.identity, r)
+                        ),
+                    ),
+                    "scale_recipe": ToolSpec(
+                        ScaleRecipe,
+                        "Save every ingredient scaled by the server. No model arithmetic.",
+                        self.scale_recipe,
+                    ),
+                    "get_recipe_plan": ToolSpec(
+                        PlanReference,
+                        "Reload a saved scoped recipe plan and its current revision.",
+                        self.get_recipe_plan,
+                    ),
+                    "match_ingredient": ToolSpec(
+                        MatchIngredient,
+                        "Check a catalog product against one required ingredient; retain unresolved items.",
+                        self.match_ingredient,
+                    ),
+                }
+            )
+
+    def save_recipe_result(self, value, *, read_only=False):
+        if self.prepared_digest is not None and not read_only:
+            raise Problem("MEAL_PLAN_LOCKED", "Request recipe changes in a new customer message.")
+        checked = self.checked(MealPlan, value)
+        # Reading another saved plan must not replace the already prepared plan.
+        if self.prepared_digest is None:
+            self.plan = MealPlan.model_validate(checked)
+        return {"meal_plan": checked, "purchase_authorized": False}
+
+    def scale_recipe(self, request):
+        if self.prepared_digest is not None:
+            raise Problem("MEAL_PLAN_LOCKED", "Request recipe changes in a new customer message.")
+        return self.save_recipe_result(self.service.scale_recipe(self.identity, request))
+
+    def get_recipe_plan(self, request):
+        return self.save_recipe_result(
+            self.service.get_recipe_plan(self.identity, request), read_only=True
+        )
+
+    def match_ingredient(self, request):
+        if self.prepared_digest is not None:
+            raise Problem("MEAL_PLAN_LOCKED", "Request recipe changes in a new customer message.")
+        if request.product_id not in self.products:
+            raise Problem(
+                "PRODUCT_NOT_VERIFIED", "Read the selected product with get_product first.", 422
+            )
+        return self.save_recipe_result(self.service.match_ingredient(self.identity, request))
+
     @property
     def definitions(self):
         return [tool.schema(name) for name, tool in self.registry.items()]
@@ -169,6 +243,12 @@ class ToolSession:
         )
 
     def publish(self, plan):
+        if plan.recipe_plan_id or (self.plan and self.plan.recipe_plan_id):
+            raise Problem(
+                "RECIPE_PLAN_REQUIRED",
+                "Use scale_recipe, match_ingredient and get_recipe_plan; saved recipe totals cannot be model-edited.",
+                422,
+            )
         if self.prepared_digest is not None and plan != self.plan:
             raise Problem("MEAL_PLAN_LOCKED", "Request recipe changes in a new customer message.")
         if self.plan:
@@ -209,8 +289,13 @@ class ToolSession:
             )
         required = {}
         for item in self.plan.ingredients:
-            key = (item.product_id, item.unit)
-            required[key] = required.get(key, Decimal(0)) + Decimal(item.amount)
+            if self.plan.recipe_plan_id and item.status != "matched":
+                raise Problem(
+                    "INCOMPLETE_MEAL_PLAN", "Resolve every recipe ingredient before preparing.", 422
+                )
+            key = (item.product_id, item.purchase_unit if self.plan.recipe_plan_id else item.unit)
+            amount = item.purchase_amount if self.plan.recipe_plan_id else item.amount
+            required[key] = required.get(key, Decimal(0)) + Decimal(amount)
         actual = {(line.product_id, line.unit): line.amount for line in request.lines}
         if required != actual:
             raise Problem(
@@ -218,6 +303,24 @@ class ToolSession:
                 "Include exactly the published ingredient totals and units. "
                 "Combine duplicate SKUs; purchasing tools perform pack rounding.",
                 422,
+            )
+        if self.plan.recipe_plan_id:
+            if request.recipe_plan_id and str(request.recipe_plan_id) != self.plan.recipe_plan_id:
+                raise Problem("MEAL_BASKET_MISMATCH", "Use the current saved recipe plan.", 422)
+            if (
+                request.recipe_plan_revision
+                and request.recipe_plan_revision != self.plan.recipe_plan_revision
+            ):
+                raise Problem("RECIPE_PLAN_CHANGED", "Use the current saved recipe plan revision.")
+            request = request.model_copy(
+                update={
+                    "recipe_plan_id": UUID(self.plan.recipe_plan_id),
+                    "recipe_plan_revision": self.plan.recipe_plan_revision,
+                }
+            )
+        elif request.recipe_plan_id or request.recipe_plan_revision:
+            raise Problem(
+                "RECIPE_PLAN_REQUIRED", "Load the saved recipe plan before preparing it.", 422
             )
         digest = fingerprint(request.model_dump(mode="json"))
         if self.prepared_digest is not None and self.prepared_digest != digest:

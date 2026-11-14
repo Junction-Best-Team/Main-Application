@@ -137,7 +137,12 @@ def create_app(service=None):
             max_age=8 * 3600,
             path="/",
         )
-        return {"username": identity["id"], "buyer_id": identity["buyer_id"], "csrf_token": csrf}
+        return {
+            "username": identity["id"],
+            "buyer_id": identity["buyer_id"],
+            "csrf_token": csrf,
+            "recipe_planning_enabled": settings().recipe_planning_enabled,
+        }
 
     @app.get("/api/session", response_model=SessionResponse)
     def session(request: Request):
@@ -146,6 +151,7 @@ def create_app(service=None):
             "username": identity["id"],
             "buyer_id": identity["buyer_id"],
             "csrf_token": data["csrf"],
+            "recipe_planning_enabled": settings().recipe_planning_enabled,
         }
 
     @app.post("/api/logout", status_code=204)
@@ -277,7 +283,6 @@ def create_app(service=None):
                 "X-Accel-Buffering": "no",
             },
         )
-
 
     return app
 

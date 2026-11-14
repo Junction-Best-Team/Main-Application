@@ -94,3 +94,14 @@ inspected for concurrent schema changes; no numbered migration was added. Local
 PostgreSQL tests are real; kubectl/Job behavior and Terraform plans use mocks.
 No deployment, Terraform apply, production DB, seed/import or paid provider call
 was performed by this task.
+
+### Recipe planning — 2026-11-14
+
+The owner selected the pre-existing UniTools World Recipes dataset (v2.0.0,
+501 recipes, CC BY-SA 4.0, attribution UniTools — theunitools.com). Its source and
+schema were inspected and its complete JSON imported locally with fixture embeddings;
+no recipe data/photos are bundled. The importer preserves source/version/license,
+original records and reviewed overrides. Agent, product search and purchasing reuse
+existing application code; hosted recipe search targets PR #34's Qwen provider.
+Tests use authored recipe/product/commerce evidence, not verified sponsor stock.
+See `docs/recipes.md` for the snapshot checksum and remaining recipe/data limitations.

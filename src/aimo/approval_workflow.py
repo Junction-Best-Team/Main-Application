@@ -76,7 +76,9 @@ def append_revision(
             "INSERT INTO approvals(id,proposal_id,revision,status,fingerprint) VALUES(%s,%s,%s,'pending',%s)",
             (uuid4(), pid, revision, fp),
         )
-    c.execute("UPDATE proposals SET current_revision=%s WHERE id=%s", (revision, pid))
+    c.execute(
+        "UPDATE proposals SET current_revision=%s,updated_at=now() WHERE id=%s", (revision, pid)
+    )
     audit(
         c,
         pid,
@@ -93,6 +95,7 @@ def evaluation_changed(revision, evaluated):
 def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, history=None):
     current = now()
     status = a["status"] if a else "not_required"
+    recipe_basis = "saved_recipe" if r["request"].get("recipe_plan_id") else "free_form"
     buyer, policy, actor, approvers = auth_context or context(c, identity)
     historical = r["revision"] != p["current_revision"]
     order = (
@@ -103,12 +106,12 @@ def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, hi
     committed = order is not None and order["revision"] == r["revision"]
     if historical:
         status = "superseded"
-    elif not committed:
+    elif not committed and status != "rejected":
         if r["expires_at"] <= current:
             status = "expired"
         elif policy["version"] != r["policy_version"]:
             status = "policy_changed"
-        elif status != "rejected":
+        else:
             # Buyer views must evaluate the purchasing agent, not the approver's authority.
             if purchasing_agent is None:
                 purchasing_agent = c.execute(
@@ -149,10 +152,16 @@ def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, hi
         action = {"type": "view_current_proposal", "tool": "get_proposal"}
     elif committed:
         action = {"type": "complete", "tool": "get_order"}
+    elif status == "rejected":
+        action = {"type": "stop"}
     elif status in ("expired", "superseded", "policy_changed", "authority_changed"):
         action = {"type": "request_fresh_proposal", "tool": "prepare_order"}
-    elif status == "rejected" or r["policy_outcome"] == "denied":
-        action = {"type": "stop"}
+    elif r["policy_outcome"] == "denied":
+        action = (
+            {"type": "revise_request", "tool": "prepare_order"}
+            if recipe_basis == "saved_recipe"
+            else {"type": "stop"}
+        )
     elif r["policy_outcome"] == "needs_resolution":
         action = {"type": "revise_request", "tool": "prepare_order"}
     elif eligible:
@@ -178,6 +187,7 @@ def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, hi
         "current_proposal_url": f"{settings().public_base_url}/purchases/{p['id']}",
         "policy_version": r["policy_version"],
         "policy_outcome": r["policy_outcome"],
+        "recipe_basis": recipe_basis,
         "approval_status": status,
         "order_status": "accepted_mock" if committed else "not_placed",
         "reasons": r["reasons"],
@@ -231,23 +241,37 @@ def prepare_order(identity, request: PrepareRequest, connector):
         old = prior_preparation(c, identity, request.idempotency_key, payload_hash)
         if old:
             return old
+        if request.recipe_plan_id:
+            from aimo.recipes import validate_basket
+
+            recipe_proposal = validate_basket(c, identity, request)
     snapshot, expires, version = build_snapshot(identity, request, connector)
     with connection() as c:
         _, policy, actor, approvers = context(c, identity, lock=True)
         old = prior_preparation(c, identity, request.idempotency_key, payload_hash)
         if old:
             return old
+        if request.recipe_plan_id:
+            # Recheck after supplier I/O. Serialize only this short persistence
+            # transaction; proposal creation and the plan lock commit together.
+            if validate_basket(c, identity, request) != recipe_proposal:
+                raise Problem(
+                    "RECIPE_PROPOSAL_CHANGED", "Another request refreshed this basket; reload it."
+                )
         if version != policy["version"]:
             raise Problem("POLICY_CHANGED", "Policy changed during lookup; prepare again.")
-        pid = uuid4()
-        c.execute(
-            "INSERT INTO proposals(id,buyer_id,agent_id,current_revision) VALUES(%s,%s,%s,1)",
-            (pid, identity["buyer_id"], identity["id"]),
-        )
+        previous = recipe_proposal if request.recipe_plan_id else None
+        pid = previous["id"] if previous else uuid4()
+        revision = previous["revision"] + 1 if previous else 1
+        if not previous:
+            c.execute(
+                "INSERT INTO proposals(id,buyer_id,agent_id,current_revision) VALUES(%s,%s,%s,1)",
+                (pid, identity["buyer_id"], identity["id"]),
+            )
         append_revision(
             c,
             pid,
-            1,
+            revision,
             identity,
             payload,
             snapshot,
@@ -260,6 +284,11 @@ def prepare_order(identity, request: PrepareRequest, connector):
             "INSERT INTO prepare_requests(buyer_id,agent_id,key,payload_hash,proposal_id) VALUES(%s,%s,%s,%s,%s)",
             (identity["buyer_id"], identity["id"], request.idempotency_key, payload_hash, pid),
         )
+        if request.recipe_plan_id:
+            c.execute(
+                "UPDATE recipe_plans SET locked=true,proposal_id=%s WHERE id=%s",
+                (pid, request.recipe_plan_id),
+            )
         return render(c, *proposal(c, pid, identity), identity)
 
 

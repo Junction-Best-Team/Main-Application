@@ -41,6 +41,8 @@ class LineRequest(Model):
 
 
 class PurchaseRequest(Model):
+    recipe_plan_id: UUID | None = None
+    recipe_plan_revision: int | None = Field(default=None, ge=1)
     request_id: str = Field(min_length=1, max_length=100)
     lines: list[LineRequest] = Field(min_length=1, max_length=30)
     destination: str = Field(min_length=1, max_length=120)
@@ -152,6 +154,7 @@ class ProposalResponse(Model):
     current_proposal_url: str
     policy_version: int
     policy_outcome: Literal["ready_to_commit", "approval_required", "denied", "needs_resolution"]
+    recipe_basis: Literal["saved_recipe", "free_form"] = "free_form"
     approval_status: str
     order_status: str
     reasons: list[Reason]
@@ -177,6 +180,7 @@ class SessionResponse(Model):
     username: str
     buyer_id: str
     csrf_token: str
+    recipe_planning_enabled: bool = False
 
 
 class PolicyRules(Model):

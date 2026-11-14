@@ -666,7 +666,9 @@ def test_unsupported_dietary_tool_fields_require_resolution(identity):
     assert not any(c[0] == "prepare" for c in service.calls)
 
 
-@pytest.mark.parametrize("url", ["http://localhost:8000/v1", "http://127.0.0.1/v1", "http://[::1]/v1"])
+@pytest.mark.parametrize(
+    "url", ["http://localhost:8000/v1", "http://127.0.0.1/v1", "http://[::1]/v1"]
+)
 def test_loopback_provider_is_allowed_for_local_development(config, url):
     config.llm_base_url = url
     with httpx.Client() as client:
@@ -674,7 +676,9 @@ def test_loopback_provider_is_allowed_for_local_development(config, url):
 
 
 @pytest.mark.parametrize("prepared", [False, True])
-@pytest.mark.parametrize("failure", [RuntimeError("private-provider-key"), httpx.ConnectError("private-provider-key")])
+@pytest.mark.parametrize(
+    "failure", [RuntimeError("private-provider-key"), httpx.ConnectError("private-provider-key")]
+)
 def test_unexpected_tool_failure_is_safe_and_preserves_saved_basket(
     monkeypatch, config, identity, prepared, failure, caplog
 ):
@@ -686,7 +690,9 @@ def test_unexpected_tool_failure_is_safe_and_preserves_saved_basket(
         raise failure
 
     service.get_purchase_policy = fail
-    scripted(monkeypatch, (prepared_script() if prepared else []) + [reply(call("get_purchase_policy"))])
+    scripted(
+        monkeypatch, (prepared_script() if prepared else []) + [reply(call("get_purchase_policy"))]
+    )
     events = []
     if prepared:
         result = agent.run_turn(identity, HISTORY, service, on_progress=events.append)
@@ -709,7 +715,10 @@ def test_unexpected_provider_failure_is_safe_and_preserves_saved_basket(
     monkeypatch, config, identity, prepared, caplog
 ):
     service = FakeService(identity)
-    scripted(monkeypatch, (prepared_script() if prepared else []) + [RuntimeError("private-provider-key")])
+    scripted(
+        monkeypatch,
+        (prepared_script() if prepared else []) + [RuntimeError("private-provider-key")],
+    )
     events = []
     if prepared:
         result = agent.run_turn(identity, HISTORY, service, on_progress=events.append)
@@ -731,3 +740,50 @@ def test_final_recipe_labels_estimates_and_lists_unresolved_ingredients(identity
     assert "Recipe quantities are estimates for customer review." in result.text
     assert "Unresolved ingredients: pasta, eggs, pork, cheese, pepper." in result.text
     assert result.proposal_id is None
+
+
+@pytest.mark.parametrize("recipe_enabled", [False, True])
+def test_direct_product_request_works_with_recipe_tools_enabled(
+    monkeypatch, config, identity, recipe_enabled
+):
+    monkeypatch.setattr(
+        "aimo.agent_tools.settings", lambda: SimpleNamespace(recipe_planning_enabled=recipe_enabled)
+    )
+    service = FakeService(identity)
+    plan = {
+        "title": "10 kg butter",
+        "portions": 1,
+        "ingredients": [{"name": "Butter", "amount": "10", "unit": "KG", "product_id": "butter"}],
+    }
+    request = purchase() | {"lines": [{"product_id": "butter", "unit": "KG", "amount": "10"}]}
+    seen = scripted(
+        monkeypatch,
+        [
+            reply(call("get_product", {"product_id": "butter"})),
+            reply(call("publish_meal_plan", plan)),
+            reply(call("prepare_order", request)),
+            reply(text="Your requested butter basket is ready to review."),
+        ],
+    )
+    turn = agent.run_turn(identity, [{"role": "user", "content": "Order 10 kg butter"}], service)
+    assert turn.proposal_id == service.saved["proposal_id"]
+    prompt = seen[0]["messages"][0]["content"]
+    assert "direct product requests" in prompt and "10 kg butter" in prompt
+    if recipe_enabled:
+        assert "search_recipes" in prompt
+        assert "For the first scenario" not in prompt
+    assert [c[0] for c in service.calls].count("prepare") == 1
+
+
+def test_prompt_sections_can_be_reworded_without_breaking_recipe_turns(
+    monkeypatch, config, identity
+):
+    monkeypatch.setattr(
+        "aimo.agent_tools.settings", lambda: SimpleNamespace(recipe_planning_enabled=True)
+    )
+    monkeypatch.setattr(agent, "LEGACY_RECIPE_PROMPT", "Reworded ordinary recipe guidance.")
+    monkeypatch.setattr(agent, "SAFETY_PROMPT", "Reworded safety guidance.")
+    seen = scripted(monkeypatch, [reply(text="How many portions do you need?")])
+    assert agent.run_turn(identity, HISTORY, FakeService(identity)).text
+    prompt = seen[0]["messages"][0]["content"]
+    assert "Reworded safety guidance." in prompt and "search_recipes" in prompt
