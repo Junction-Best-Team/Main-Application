@@ -99,6 +99,13 @@ def evaluate_purchase(
             "Gross payable exceeds the mission budget; revise the request.",
             "denied",
         )
+    cap = rules.get("max_order_gross")
+    if total is not None and cap is not None and total > Decimal(str(cap)):
+        add(
+            "ACCOUNT_CAP_EXCEEDED",
+            "Gross payable exceeds the account spending cap; revise the basket or account cap.",
+            "denied",
+        )
     approved_ids = rules.get("approved_product_ids")
     if approved_ids is None:
         # Owner decision 2026-11-14 (POL-004): missing trusted scope always blocks, whatever the

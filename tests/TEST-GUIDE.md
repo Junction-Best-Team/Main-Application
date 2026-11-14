@@ -368,6 +368,10 @@ The customer's structured limits on a message (a hard budget, the lactose-free a
 
 A refused product choice is kept on its ingredient with its reason, but only the newest 100 (the plan schema's cap, `chat_schemas.MAX_REJECTED`). With 100, 101 and 250 refusals of one ingredient, through the single path (`match_ingredient`) and the batch path (`match_ingredients`): the kept entries are the last 100 of the sequence in their original order, the plan still validates as a `MealPlan` and `get_recipe_plan` returns it (before the fix the 101st refusal made it fail with `TOOL_RESULT_INVALID` 502), and the two paths keep the same entries. Both paths share `recipes.record_rejection`.
 
+#### `tests/test_turn_failure_message.py` (owner Q-108) - 32 passed
+
+A turn that fails because the provider fails (each `LLM_*` code) stores exactly one assistant notice with `notice="provider_unavailable"` and a fixed text (English, Finnish or Swedish by the customer's last message, English when unsure or with one stray word), still raises the real error for the worker, keeps `retry_message`, and carries no raw error, key or provider name. Guardrail, policy, fence and programming errors and a stale worker attempt store nothing. A retry removes the notice and the answered retry leaves one real reply; four failures in a row leave one notice; the model's history never contains it; a new message is refused until the failed one is retried. Over HTTP the conversation response validates and carries the notice and the retry route works. Migration 024 is one nullable `text` column, in the readiness manifest and the allocation table.
+
 #### `tests/test_order_weight.py` (MEA-011, owner Q-70 and Q-98) - 15 passed
 
 An order heavier than 30,000 kg is refused with `ORDER_WEIGHT_LIMIT_EXCEEDED` (422) before any supplier call, and the error states the limit ("30,000 kg per order"), the computed weight and the litre rule. The weight of a line is what is bought: the whole sales units the basket proposes times the kilograms in one sales unit. Kilograms come from catalogue evidence (sales unit KG, a KG entry in the units table, or a known KG measure) and win; where there is none a litre counts as 1 kg per litre (Q-98). A product with neither kilogram nor litre evidence (for example eggs counted in pieces) is not counted and never guessed; the error names how many lines were not counted. Cases: the helper for KG, litre (with and without a kilogram measure), piece and unknown products, conflicting evidence not replaced by the litre rule, whole-unit rounding (29,995 asked is 30,000 bought and allowed, 30,001 asked is 30,010 bought and refused), two lines adding up, exactly 30,000 kg and 30,000 L allowed, 30,001 L refused with the rule in the message, an unweighed line named, and `Service.prepare_order` creating no proposal. The recipe-only per-portion bound that PR #133 added was removed on the owner's answer to Q-96; the order limit is the only MEA-011 check.
@@ -709,3 +713,23 @@ A guard that fails if a new table starts referencing `proposals` or `proposal_re
 - `test_q44_basket_mismatch_says_exactly_what_to_send`: the plan needs 20.5 KG of one product, the line says 20 KG; `prepare_order` returns `MEAL_BASKET_MISMATCH` whose message names "pasta 20.5 KG" and whose `details` list the required lines, the missing and unexpected ones and the wrong amount or unit; no prepare call is made.
 - `test_q44_model_sees_the_details_in_the_tool_error`: the same refusal reaches the model through `agent.run_turn` with `error.details`.
 - `test_one_product_in_two_units_can_be_prepared` (BAS-002): milk 5 L plus 1 KI is prepared as one 25 L line.
+
+#### `tests/test_cancellations.py` (CNF-035): 14 passed
+
+A customer cancels a pending order request (approver role only, own buyer only, idempotent); the first record stands; a placed order cannot be cancelled by the function or by the database trigger; a cancellation cannot be updated or deleted; the engine function `cancel_request` writes inside the caller's transaction and returns False on a repeat; a cancelled request cannot be committed or confirmed (`REQUEST_CANCELLED`), shows `approval_status` "cancelled" and leaves the approval inbox.
+
+#### `tests/test_orders_list.py` (CNF-034, Q-77, Q-78): 25 passed
+
+The derived orders list: pending, placed (with the order id), cancelled (with the reason; `run_retry` hidden), expired unconfirmed requests hidden, scheduled and paused standing orders with their next run date and the source order's label, requests produced by a run carrying `schedule_id` and `schedule_title`, newest-first paging without gaps, buyer scope, no writes, orders untouched, agent forbidden; the `status` filter (one, several, empty, unknown refused), `total` over every matching row and not just the page, and `placed_at` on placed rows only.
+
+#### `tests/test_orders_routes.py` (CNF-034, CNF-035 over HTTP): 11 passed
+
+`GET /api/orders` needs a session, has bounded paging and the declared item shape; `POST /api/purchases/{id}/cancel` needs CSRF and a same-origin request, is idempotent, makes the request `cancelled` in the list and unconfirmable, and is refused for a placed order; unknown and malformed ids; the `?status=` filter and `total` over HTTP, and an unknown status as a clear 422 `INVALID_ORDER_STATUS`; the routes and models are in OpenAPI.
+
+#### `tests/test_schedule_routes.py` (CNF-022 to CNF-037 over HTTP): 28 passed
+
+Every schedule read needs a session and every POST needs the session, CSRF and a same-origin request; preview, create (idempotent), list, get, stale agreement 409, low ceiling 422, cancel, pause and resume, edit preview and replace (supersedes the old schedule), the literal substitute-candidates path, bounds and OpenAPI. The Service behaviour itself is in `test_schedules.py`.
+
+#### `tests/test_orders_search.py` (Past Orders search, person 1 PR #168): 16 passed
+
+`GET /api/orders?q=`: trimmed, case-insensitive substring over the row title, the standing order's title, order id, proposal id, destination, delivery date, line names and product ids (SQL wildcards stay literal); `line_names` lists at most five product names, biggest line first (agreed lines for a scheduled row); `q` combines with `?status=` and `total` counts every match, also past the last page; another buyer's rows are never found; a page of 19 rows costs the same number of statements as one row; a query over 80 characters after trimming is `INVALID_ORDER_QUERY` 422; an empty or blank `q` means everything; the parameter and field are in OpenAPI.

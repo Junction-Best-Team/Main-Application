@@ -89,6 +89,16 @@ def seed():
             """INSERT INTO internal_agents SELECT buyer_id,id FROM identities
             WHERE id='internal:' || md5('demo-hotel') ON CONFLICT DO NOTHING"""
         )
+        # WS-E: the scheduler identity (no login, no model, no authority), like the internal agent.
+        c.execute(
+            """INSERT INTO identities(id,buyer_id,role,active,credential_hash,authority)
+            SELECT 'scheduler:' || md5(id),id,'scheduler',true,'!scheduler-no-login','{}'::jsonb
+            FROM buyers WHERE id='demo-hotel' ON CONFLICT DO NOTHING"""
+        )
+        c.execute(
+            """INSERT INTO scheduler_identities SELECT buyer_id,id FROM identities
+            WHERE id='scheduler:' || md5('demo-hotel') ON CONFLICT DO NOTHING"""
+        )
         c.execute(
             "INSERT INTO identities VALUES('buyer','demo-hotel','approver',true,%s,%s) ON CONFLICT DO NOTHING",
             (

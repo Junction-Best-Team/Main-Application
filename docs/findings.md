@@ -919,6 +919,7 @@ Add new findings below, under your track heading.
 
 - Date: 2026-11-14. Rebased voice mode onto `develop` at `ff9398f`, including merged PR #162. The owner's reference image is represented by an authored SVG waveform inside a white circular button, labelled “Start voice mode” for accessibility. Clicking it starts the existing microphone/session flow. The single-line input, arrow send button and fixed message viewport remain in place.
 - Verification: frontend formatting, lint, type checking and production build passed. All 61 browser tests passed (two optional backend integration checks skipped), including nine voice scenarios and composer alignment/scroll checks at 1440×900, 1024×768, 390×844, 320×740 and 390×568. Desktop, narrow-phone and active mobile voice screenshots were inspected. The 30 focused voice/Google helper tests passed using isolated database `aimo_voice_input_test`; an initial run against a stale local test database failed on an existing missing column. No new live provider call, merge or deployment.
+
 ### F-BASKET-001: Cap of 100, guardrail state at 100 lines, order weight limit, variable-weight estimate
 - Date: 2026-11-14. Owner Q-67, Q-68, Q-70, built on PR #133 (`p3/otto-fixes`) as `p3/policy-basket-1`: a meal plan, a saved recipe, a purchase request and a `match_ingredients` batch hold at most 100 ingredients or lines; the supplier lookup keeps its own 1000 product ids.
 - Measured offline (no classifier call, no key): the assistant-output review state is 27,944 bytes at 30 realistic lines and 86,772 bytes at 100 (683 bytes per proposal line); the check that gates preparation is only 16,535 bytes at 100 lines; the displayed plan is 16,917 characters at 100 ingredients. `MAX_STATE_BYTES` is now 120,000 and `MAX_NARRATIVE_CHARS` 30,000. Unverified: the classifier's latency above TypeSafe's ~32,000 byte long-context threshold.
@@ -938,10 +939,103 @@ Add new findings below, under your track heading.
 - Date: 2026-11-14. Customer and assistant messages now render Markdown headings, emphasis, nested/ordered lists, quotes, links, code, tables and task lists using `react-markdown` and `remark-gfm`. Existing plain-text line breaks remain visible. Code and tables scroll within their bubbles on narrow screens. Raw HTML stays inert, unsafe URL protocols are filtered, and Markdown images render alt text without network requests; validated recipe illustrations retain their existing component.
 - Verification: locked `npm ci` and `npm run check --prefix frontend` passed. All 65 fixture-backed browser tests passed, with two optional backend integration tests skipped. Four new cases cover desktop/320px rendering and reload, no document overflow, and unsafe HTML/URLs/images in both message roles. Desktop and phone screenshots were visually inspected. An initial overlapping test invocation lost the reused Vite server; the complete sequential rerun passed. Vite reports a nonblocking 548 kB chunk-size warning. No backend, schema, deployment or purchasing-authority changes.
 
+### F-FE-ACTIVITY-001: Stream real tool activity into chat
+
+- Date: 2026-11-14. Replaced the static busy line with the latest turn's real tool activity, a left-to-right animated line and expandable per-call completion/failure/interruption history. All 18 registered tools have server-authored labels. Reduced motion disables animation; completed work stops moving. The worker reuses its existing progress observer and authenticated SSE snapshots (two-second cadence), retaining fast calls between updates. Migration `022_chat_activity.sql` adds bounded display-only events, fenced to the current live attempt and reset on retry/reclaim. No tool arguments/results, provider errors or model reasoning enter activity. A delayed queued response cannot replace newer streamed work.
+- Verification: frontend formatting, lint, TypeScript and production build passed. All 66 fixture-backed browser tests passed; two optional backend integration checks skipped. Five activity regressions cover stream/reload, failures, interruption, reduced motion, completion, three desktop/phone widths and the delayed-POST race. Desktop and 320px-phone screenshots were inspected. Full fixture-backed `tests/ci.sh` passed on isolated `aimo_activity_test` / `aimo_activity_ci` databases: 2147 passed, seven expected failures; all 11 strict HTTP sweep checks passed. This includes real runner/worker wiring, lease/attempt fencing, retry/restart, authenticated SSE, buyer isolation and restricted-role migration readiness. No provider/supplier calls, deployment, Terraform apply or shared-branch merge.
+- Integration: merged `develop` at `945680c`, preserving the concurrent Markdown renderer and API error contracts, and regenerated browser types. `npm ci`, frontend checks and all 71 browser tests passed (two optional integration checks skipped); 178 focused backend activity/worker/chat/agent/isolation/readiness checks passed again. Desktop and 320px activity screenshots were re-inspected.
+
+### F-FE-CHAT-HEADER-001: Remove the chat header extras
+
+- Date: 2026-11-14. Removed the Exact-revision confirmation badge and Assistant preferences shortcut from the chat header at the owner's request. Reused the existing page layout and updated its navigation expectation. `npm run check --prefix frontend` and all 48 chat/activity/preferences browser tests passed, including desktop and phone layouts.
+
+### F-FE-EMPTY-OVERVIEW-001: Keep the basket panel out of a new chat
+
+- Date: 2026-11-14. Removed the fake account-manager contact and its unused placeholder data. A new/unprepared chat no longer renders an empty Overview; desktop chat uses the space and mobile no longer reserves drawer padding. The panel appears when a persisted proposal exists, with an honest loading/error state while fetching it. Frontend checks and all 71 browser tests passed (two optional integration checks skipped), including empty-to-proposal, revised confirmation, blocked baskets and mock receipts. Desktop and phone empty-chat captures were inspected.
+
+
+### F-SCHED-001: The commit gate was fail-open for any role except agent
+- Date: 2026-11-14   Track: 3   Status: verified (local run, not CI)
+- Finding: `commit_order` checked the customer confirmation only `if identity["role"] == "agent"`, so every other role skipped it like an approver. A simulated `scheduler` role and an unknown role each committed a mock order. `conversations.confirm` refused an agent only because its authority was empty: an agent row given approver-like authority recorded a `customer_confirmations` row.
+- Evidence: tests/test_commit_role_gate.py (red: DID NOT RAISE for both roles, then green after `require_commit_authority`); tests/test_confirm_role.py (red: confirmation recorded, then FORBIDDEN). Commits 50aa73e and 131a4ef on p3/scheduler-design.
+- Impact: gate dispatch is now per role and refuses unknown roles; the scheduler role goes through `scheduler.ensure_commit_allowed`.
+
+### F-SCHED-002: Fingerprint equality cannot mean "the same terms" across dates
+- Date: 2026-11-14   Track: 3   Status: verified (code reading, tests/test_scheduler_helpers.py)
+- Finding: `material_fingerprint` hashes `request_id`, `delivery_date`, the supplier cutoff and the full product facts, so two runs of one standing order never match. The scheduler compares `terms_fingerprint` (products, quantities, deposits, unit net/gross/tax rate, destination, currency) and checks the policy outcome and the ceiling separately. The field set is the `TERMS_*` constants in `src/aimo/scheduler.py`.
+- Impact: a different answer on which fields count is a change to those constants only.
+
+### F-SCHED-003: A failed system-authored first turn strands the chat
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: after a failed turn `enqueue` refuses new messages (`RETRY_PREVIOUS_MESSAGE`) and `detail()` builds `retry_message` from a *user* message. A turn that starts with a system message has none, so the customer could neither write nor retry.
+- Evidence: tests/test_scheduler_chat.py (`test_a_failed_first_turn_never_strands_the_customer`, `test_three_interrupted_attempts_leave_the_same_fallback`). Fix: `scheduler.settle_failed_system_turn` writes a deterministic assistant message and closes the turn.
+
+### F-SCHED-004: The scheduler identity cannot be created at run time
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: the runtime database role cannot write `identities` (`permissions.py`), so the per-buyer scheduler identity comes from the migration and `aimo seed`. A buyer created later has none until provisioning adds it; its runs fail closed (`SCHEDULER_NOT_CONFIGURED`). The boundary "the scheduler never creates or edits an authorization" is enforced in code and by triggers (terms immutable, final statuses final), not by database grants.
+- Evidence: tests/test_scheduler_migration.py, tests/test_scheduler_engine.py (`test_a_buyer_without_a_scheduler_identity_fails_closed`).
+## Signed-in buyer settings simplification — 2026-11-14
+
+- Owner decision: every signed-in active human buyer can edit purchasing settings without a separate policy-manager grant. The money box is a shared account purchasing cap, not permission to increase a person's approval authority.
+- Finding: Settings now separates account cap from basket rules, keeps pack rounding under Advanced, and removes product-code/delivery editors, history/version labels and permission/admin notes. The browser PUT accepts only those controls; the restricted SQL function merges the current policy so hidden scopes and personal permissions stay intact. Above-cap baskets are denied on preparation and commit revalidation; blank preserves the legacy uncapped-account behavior, and every purchase still needs exact customer confirmation.
+- Evidence: the full local `tests/ci.sh` passes after rebasing onto current integration changes (2,213 pytest checks and 11 strict HTTP sweep checks), using isolated fixture databases. Frontend formatting/lint/types/build pass; 11 fixture-backed Playwright cases pass, including save/reload, discard, conflicts, session expiry and five responsive widths. Desktop and 320px screenshots were inspected. The focused PostgreSQL settings suite passes all 22 cases, including editing without manager grants, immutable attribution, scope preservation, personal-authority preservation, stale writes, cap clearing/negative-zero normalization and cap changes blocking old confirmed baskets. Fixtures do not establish live supplier behavior.
+- Operations: apply additive migration `022_buyer_settings.sql` and runtime grants before the new API. No existing policy/identity/history row is rewritten by the migration. No cluster migration, deployment, Terraform apply or merge was performed.
+
 ### F-FE-FONTS-001: Bundle UI fonts for reliable local preview
 
 - Date: 2026-11-14. The owner saw Material Symbols ligature names (`dashboard`, `order_approve`) instead of icons when the local browser could not load Google Fonts. Replaced the external stylesheet with locked Fontsource packages for the same Hanken Grotesk, Space Grotesk and Material Symbols typefaces. Vite serves font assets from the app origin in development and production; license notices are shipped in `public/font-licenses/`.
 - Verification after merging current develop: `npm run check --prefix frontend` passed formatting, lint, TypeScript and production build. `BASE_URL=http://127.0.0.1:5196 npm test` passed 67 fixture-backed browser tests; two opt-in integration tests were skipped. The new regression blocks Google font hosts, loads all three bundled families and checks the sidebar icon has glyph width rather than word width. Refreshed the isolated local preview and visually verified the bundled-font build. Vite retains develop's nonblocking 547 kB JavaScript chunk warning from the Markdown integration. No backend, schema, authority or deployment change.
+
+### F-MEAL-PLANNING-001: The assistant owns recipe quantities
+
+- Date: 2026-11-15. Owner clarified that customers describe a dish and guest count;
+  the assistant chooses a recipe and calculates ingredient quantities. Removed the
+  instruction to stop when an exact saved recipe is absent. Saved recipes retain
+  their existing scaling/matching controls; the new `draft_recipe` tool labels an
+  assistant-authored recipe estimate and reuses exact server scaling. Matching
+  cannot change its totals or omit ingredients in the same turn. Drafts remain
+  free-form plans without saved-recipe completeness or cooked-yield guarantees.
+- The assistant publishes the recipe before investigating purchasing blockers,
+  chooses normal serving sizes, retains stated dietary needs/budgets, leaves an
+  unstated budget unset and asks only for material missing facts. Reply instructions
+  keep ingredient lists in the plan card and limit chat to three short sentences.
+  Overview now shows the latest persisted draft before a proposal exists, including
+  after an older basket; prepared proposals retain exact confirmation controls.
+- Verification: full fixture-backed `tests/ci.sh` passed against isolated local
+  databases (2,229 tests and all 11 strict HTTP sweep checks). Frontend `npm run check`
+  passed; 68 browser tests passed, with two optional backend integration tests
+  skipped. Desktop/320px draft screenshots were inspected. Regression coverage
+  includes missing/unavailable recipe discovery, exact/fractional scaling, repeated
+  calls, invalid units, changed/omitted quantities, saved-plan bypass prevention,
+  retained unsupported dietary requirements and draft-to-confirmed-mock-receipt
+  persistence. Two existing tests assumed a single saved-recipe scaling caller or
+  an exhaustive old tool list; both now cover the separate draft path.
+- Live limits: one Google chat/guardrail run using authored empty catalogs produced
+  a labelled 500-portion, 19-ingredient draft without asking for weights or preparing
+  an order. Its reply was verbose; the subsequent concise-prompt recheck failed with
+  provider `LLM_UNAVAILABLE` after a 45-second completion timeout. An earlier retry
+  exposed a missing substitution stub in the local smoke harness, which was fixed.
+  These runs do not establish culinary yields, live supplier matching or reliable
+  final reply style. No customer data, supplier call, new public API, migration,
+  dependency, shared-branch merge, Terraform operation or deployment.
+### F-CHAT-DRAFT-001: Move from food planning to a progressive purchasing cart
+
+- Date: 2026-11-15. Clarified the assistant's goal: help with ideas/advice, advance selected recipes or direct product needs through a draft, matching, commercial checks and preparation when the customer is ready, then explicit exact-revision confirmation. Advice does not require delivery/checkout details. A separate display-only `draft_cart` streams selected ingredients and unresolved rows, with normalized checked sales-unit prices, source, delivery date and observation time. Unknown/expired/unresolved commercial evidence never becomes an invented total. Preparation supplies pack-rounded lines, prices, full totals and the existing purchasing controls; ordering remains mock.
+- Migration `023_chat_draft_cart.sql` persists the projection on the current worker attempt. Completed drafts survive followups; newer prepared proposals supersede older drafts. Existing lease/attempt/sequence fencing prevents stale updates. Under enforcement, changed plans pass the existing output check before draft display, with a cached verdict for unchanged plans and a fresh final-prose review. No search candidate is selected merely by reading it; drafts carry no purchasing authority. Generated OpenAPI/types and API/worker readiness include the additive contract.
+- Verification: integrated `origin/develop` at `aa92cbd`, preserving the Memory simplification, bundled fonts, purchase filters and recipe hardening. Locked dependency installation, frontend formatting/lint/TypeScript/build passed. All 76 authored browser tests passed with two optional backend integration checks skipped, using this checkout's isolated Vite port 5191. Desktop and 320px draft screenshots were inspected. Full isolated `tests/ci.sh` passed: 2216 backend tests and all 11 strict HTTP checks. Follow-up focused checks cover price validity, reviewed/withheld drafts, real runner/worker wiring, persistence/reconnect, buyer isolation, stale attempts, and mock confirmation/receipt recovery. No live provider/supplier calls or deployment; PR remains unmerged.
+
+### F-FE-USER-MENU-001: Move account actions to the header
+
+- Date: 2026-11-14. Removed the account identity/switcher and account actions from the desktop sidebar and mobile navigation drawer. The top-right user icon now opens Account Settings, Assistant preferences and Sign out on both layouts. Links retain current-page indicators and sign-out retains the existing session/CSRF flow. The dropdown supports keyboard opening/Tab navigation, Escape with focus restoration, trigger toggling and outside-click/focus dismissal.
+- Verification: `npm run check --prefix frontend` passed (formatting, lint, TypeScript and production build). `npm test --prefix frontend` passed 61 fixture-backed browser tests; two optional backend integration checks were skipped. Navigation, session restoration/sign-out and dropdown interactions passed, including five widths from 320px to 1440px. Desktop and 320px-phone screenshots were visually inspected. No backend, contract, dependency or deployment changes.
+- Integration: merged `develop` at `d751859`, preserving the concurrent basket findings. Frontend checks and all 61 fixture-backed browser tests passed again (two optional integration checks skipped).
+
+### F-FE-CHAT-FOOTER-001: Remove the chat confirmation reminder
+
+- Date: 2026-11-14. Removed “Messages never authorize a purchase. You confirm the exact basket separately.” below the chat composer at the owner's request. Reused the existing layout and updated its browser expectation; no new material or dependencies. `npm run check --prefix frontend` and all 30 fixture-backed chat browser tests passed, including desktop/mobile scrolling and exact-revision confirmation flows.
+
+- Combined UI delivery: brought the earlier account-menu/footer branch into this feature branch after its navigation conflicted with current develop. The sidebar account block is removed; Account Settings, Memory and Sign out live under the top-right avatar, with keyboard/outside-click dismissal. The redundant chat footer is removed. Kept the current Memory screen/name and bundled fonts. Frontend checks and all 76 browser tests passed again (two optional integration checks skipped) with all requested changes present together; supersedes the separate #174 delivery.
+
 ### F-CHAT-ATTACHMENTS-001: Bounded private files in customer chat
 
 - Date: 2026-11-14. Added file selection, drop and clipboard attachments to the existing composer, with removable thumbnails/file cards and persisted message downloads. Supported files are PDF, DOCX, XLSX, CSV, UTF-8 TXT, PNG, JPEG and WebP: three files, 2 MiB each / 4 MiB total. Document/page/sheet/cell, archive-expansion, image-pixel and parser resource bounds are documented in [attachments](attachments.md). Files can be sent without accompanying text. Extracted reference text and normalized image pixels reach the existing provider adapters; files cannot confirm purchases or change policy. Guardrail policy `guard-2026-11-14.6` includes bounded file excerpts while memory intent still uses the customer's own message.
@@ -956,3 +1050,55 @@ Add new findings below, under your track heading.
 
 - Date: 2026-11-15. Rebased onto `develop` at `aa92cbd` for the owner's merge request. Retained Markdown in both message roles, bundled fonts, simplified memory settings, structured request constraints and the shared API error envelope. Regenerated the attachment download contract with the shared error responses.
 - Verification: 227 focused backend checks passed, covering attachments, constraints, conversations, error responses, guardrails, tools and readiness. Frontend `npm run check` passed; all 73 browser checks passed, with two optional backend integration checks skipped. Python lint and the whitespace check passed. No live provider call or deployment.
+
+- Attachment integration: merged `develop` at `2c923e4` after #175 landed. Preserved private attachment handling/retry payloads and both new browser suites, retained streamed activity/drafts and regenerated OpenAPI/types. Frontend checks and 262 focused attachment/activity/chat/agent/guardrail/readiness tests passed on the combined implementation.
+
+- Conflict resolution (2026-11-15): integrated `develop` at `7e67f7e`, preserving the simplified purchasing rules and attachment/voice-or-send composer. Adapted account-menu navigation checks to the new Maximum per order field, retained both independent 022 migrations by their full filenames, and regenerated browser contracts. Frontend formatting/lint/TypeScript/build and 389 focused policy/activity/agent/guardrail/migration checks passed.
+- Updated activity regressions for the new composer: voice and text are disabled during streamed work, and voice is enabled again after completion; the obsolete Working button expectation is removed.
+- Follow-up conflict resolution: integrated scheduler changes from `develop` at `02c76cd` that landed during CI. Retained both scheduler and chat schema probes, regenerated contracts, and preserved scheduler-aware worker/chat behavior. Frontend checks and 141 focused worker/scheduler/chat/role/readiness regressions passed; the preceding integration's full CI gate and all 83 browser tests passed.
+
+### F-MEAL-PLANNING-002: Integrate the activity harness and current develop
+
+- Date: 2026-11-15. Resolved #187 against #179 (`0b8ceaf`) and current `develop`
+  (`02c76cd`). Retained server-scaled recipe estimates, no ingredient-weight
+  questionnaire, shortlist checks, streamed tool activity and the progressive draft
+  cart. Added the `draft_recipe` activity label. The live cart takes precedence over
+  the persisted recipe fallback; preparation switches to the exact-revision basket.
+  Kept attachments, buyer settings and scheduler changes; regenerated browser contracts.
+- Verification: before the scheduler sync, isolated `tests/ci.sh` passed 2,289 tests
+  and all 11 strict API sweep checks. After the sync, 281 focused checks passed,
+  covering agent tools, real conversation persistence, activity fencing, guardrails,
+  scheduler chat/worker integration and migration readiness. Frontend `npm run check`
+  passed after contract regeneration; 85 browser checks passed (two optional backend
+  integration checks skipped), followed by all five activity checks with #179's final
+  composer assertions. Desktop and 320px combined draft-cart captures were inspected.
+  Fixtures are authored estimates and mocked provider/supplier data. No live provider
+  or supplier calls, PR merge, deployment or Terraform operation for this integration.
+
+
+### F-HOME-001: Minimal chat entry and schedule strip
+
+- Date: 2026-11-15. Implemented the owner's selected mockup in a new worktree from `origin/develop` (`945680c`). Home now starts requests through the existing authenticated chat hook, with a multiline composer, lime send control and a quiet three-item schedule strip. The lighter sidebar retains real conversation history/pagination, orders, settings, preferences and sign-out. Schedule entries remain static demo examples; schedule navigation stays disabled. The composer retains the existing attachment behavior after rebasing.
+- Verification: `npm ci` and `npm run check` in `frontend` passed. The complete browser suite against this worktree's dedicated Vite server passed: 69 passed, two optional backend integration checks skipped. New checks cover desktop/320px multiline submission and persisted chat after reload, disabled blank submission, demo labeling, and stable creation retry keys/draft retention. Desktop and 320px screenshots were inspected; the schedule stacks on phones without horizontal overflow. Existing purchasing confirmation, revised terms, voice and session regressions passed. An initial run lost a reused Vite server; a later 320px check caught an icon-font-loading overflow, fixed with inline composer SVGs before the successful full rerun. Vite retains its nonblocking bundle-size warning. No backend/provider/supplier integration run, deployment or merge.
+- Rebase verification (2026-11-15): rebased onto `develop` at `aa92cbd`, preserving bundled fonts, simplified Memory and purchase filters. Resolved documentation conflicts by retaining both entries and updated the bundled-font regression for the New request icon. Locked installation, frontend formatting/lint/typecheck/build and the full browser suite passed (71 passed, two optional backend checks skipped); desktop/320px screenshots were inspected again. The PR diff contains no backend, schema, API-contract or dependency changes. The local UI preview uses an existing compatible API image; no shared-database migration was applied.
+- Final rebase (2026-11-15): incorporated `develop` at `2c923e4` after chat attachments merged during validation. Preserved both attachment and homepage regressions, and reused the attachment-aware composer for the homepage variant. Formatting, lint, type checking and build passed; the full browser suite passed (76 passed, two optional backend checks skipped), including desktop/320px homepage submission with a text attachment. The diff against develop still has no backend or migration changes. The older API used for the local shared-database preview does not support attachments; attachment behavior was verified with current-contract browser fixtures.
+
+- Composer merge compatibility (2026-11-15): rebased onto `develop` at `7e67f7e` and retained PR #186's single voice-or-send action, attachment-only sending, removed barcode and removed input focus ring in the homepage variant. Frontend `npm run check` passed; the full browser suite passed (78 passed, two optional backend checks skipped). Three focused checks additionally covered home voice/send switching with text and attachments at desktop/320px and starting voice from Home through persisted conversation creation. Desktop/mobile screenshots inspected. This PR still changes only frontend and documentation; no database migration was added or applied.
+- Resolved the subsequent minimal-homepage overlap from `develop` at `1a81373`, retaining its new page, schedules strip, composer and navigation while keeping the requested avatar dropdown and removed sidebar account block. Restored the desktop account header and adjusted homepage height for it; frontend checks passed.
+
+### F-HOME-002: Remove the homepage paperclip
+
+- Date: 2026-11-15. Removed the homepage file-picker button at the owner's request and retained the existing voice/send switch aligned to the right. Chat's file picker and Home's existing paste/drop attachment handling remain available. Reused the shared composer without backend or schema changes.
+- Verification: frontend `npm run check` passed; 11 focused fixture-backed browser checks passed, covering desktop/mobile chat controls, attachments, homepage voice/send switching, multiline submission, retries and starting voice from Home. Desktop/320px screenshots inspected. No deployment or database migration.
+
+- Homepage polish follow-up (2026-11-15): disabled manual textarea resizing to remove the diagonal native resize handle identified by the owner. Frontend `npm run check` and both desktop/320px home submission checks passed; the mobile screenshot was inspected.
+
+- Attachment spacing follow-up (2026-11-15): the homepage composer now uses a vertical flex layout with a 16px gap, separating attachment previews and feedback from the text field. Frontend `npm run check` and both desktop/320px home submission checks passed; attachment-state screenshots were inspected.
+
+- Both-input follow-up (2026-11-15): matched chat's attachment-to-input gap to Home's 16px spacing. Frontend `npm run check` and four desktop/320px attachment submission checks passed across both inputs; chat attachment screenshots inspected.
+- Meal-planning follow-up: synced #187 with `develop` at `1a81373` and #179 at
+  `5ffb29c`, keeping the minimal homepage, account dropdown, attachments, streamed
+  cart and automatic ingredient scaling. Frontend checks and all 88 fixture-backed
+  browser checks passed (two optional backend integration checks skipped) before the
+  final shared homepage-height adjustment; focused homepage checks verify that adjustment.
+  The preceding CI run was superseded by these updates; final-head CI runs separately.

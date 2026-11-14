@@ -381,6 +381,211 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/purchases/{proposal_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Purchase */
+        post: operations["cancel_purchase_api_purchases__proposal_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Orders */
+        get: operations["orders_api_orders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Schedule List */
+        get: operations["schedule_list_api_schedules_get"];
+        put?: never;
+        /** Schedule Create */
+        post: operations["schedule_create_api_schedules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/schedules/substitute-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Schedule Substitute Candidates */
+        get: operations["schedule_substitute_candidates_api_schedules_substitute_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/schedules/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Schedule Preview */
+        post: operations["schedule_preview_api_schedules_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/schedules/{schedule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Schedule Detail */
+        get: operations["schedule_detail_api_schedules__schedule_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/schedules/{schedule_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Schedule Edit Preview */
+        post: operations["schedule_edit_preview_api_schedules__schedule_id__preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/schedules/{schedule_id}/replace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Schedule Replace */
+        post: operations["schedule_replace_api_schedules__schedule_id__replace_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/schedules/{schedule_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Schedule Cancel */
+        post: operations["schedule_cancel_api_schedules__schedule_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/schedules/{schedule_id}/run-now": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Schedule Run Now */
+        post: operations["schedule_run_now_api_schedules__schedule_id__run_now_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/schedules/{schedule_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Schedule Pause */
+        post: operations["schedule_pause_api_schedules__schedule_id__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/schedules/{schedule_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Schedule Resume */
+        post: operations["schedule_resume_api_schedules__schedule_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -420,6 +625,47 @@ export interface components {
             /** Data */
             data: string;
         };
+        /** CancellationResponse */
+        CancellationResponse: {
+            /** Proposal Id */
+            proposal_id: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "run_disrupted" | "run_retry" | "customer_revised" | "customer_cancelled";
+            /** Cancelled By */
+            cancelled_by: string;
+            /**
+             * Cancelled At
+             * Format: date-time
+             */
+            cancelled_at: string;
+        };
+        /** ChatActivity */
+        ChatActivity: {
+            /** Turn Id */
+            turn_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "complete" | "failed";
+            /** Events */
+            events?: components["schemas"]["ChatActivityEvent"][];
+        };
+        /** ChatActivityEvent */
+        ChatActivityEvent: {
+            /** Sequence */
+            sequence: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "started" | "tool_started" | "tool_completed" | "tool_failed" | "complete" | "error";
+            /** Label */
+            label: string;
+        };
         /** ChatMessage */
         ChatMessage: {
             /** Id */
@@ -428,7 +674,7 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "user" | "assistant";
+            role: "user" | "assistant" | "system";
             /** Text */
             text: string;
             /**
@@ -442,6 +688,11 @@ export interface components {
             image?: components["schemas"]["RecipeImage"] | null;
             /** Attachments */
             attachments?: components["schemas"]["AttachmentInfo"][];
+            /**
+             * Notice
+             * @description Set on a plain assistant notice stored when the model provider failed; show it as a notice, not as an answer. The unfinished message keeps its retry offer.
+             */
+            notice?: "provider_unavailable" | null;
         };
         /** CommitRequest */
         CommitRequest: {
@@ -513,6 +764,8 @@ export interface components {
              * @default false
              */
             busy: boolean;
+            activity?: components["schemas"]["ChatActivity"] | null;
+            draft_cart?: components["schemas"]["DraftCart"] | null;
             retry_message?: components["schemas"]["RetryMessage"] | null;
         };
         /** ConversationSummary */
@@ -542,15 +795,66 @@ export interface components {
              */
             decision: "approve" | "reject";
         };
+        /**
+         * DraftCart
+         * @description Display-only plan projection; never accepted by confirmation or preparation.
+         */
+        DraftCart: {
+            /** Turn Id */
+            turn_id: string;
+            /** Title */
+            title: string;
+            /** Items */
+            items: components["schemas"]["DraftCartItem"][];
+            /** Proposal Id */
+            proposal_id?: string | null;
+        };
+        /** DraftCartItem */
+        DraftCartItem: {
+            /** Name */
+            name: string;
+            /** Amount */
+            amount: string | null;
+            /** Unit */
+            unit: string;
+            /** Product Id */
+            product_id?: string | null;
+            /** Product Name */
+            product_name?: string | null;
+            /**
+             * Matched
+             * @default false
+             */
+            matched: boolean;
+            price?: components["schemas"]["DraftPrice"] | null;
+        };
+        /** DraftPrice */
+        DraftPrice: {
+            /** Gross */
+            gross: string;
+            /** Currency */
+            currency: string;
+            /** Sales Unit */
+            sales_unit: string;
+            /** Mode */
+            mode: string;
+            /** Delivery Date */
+            delivery_date: string;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
         /** EditablePolicy */
         EditablePolicy: {
-            /**
-             * Currency
-             * @constant
-             */
-            currency: "EUR";
-            /** Destinations */
-            destinations: string[];
+            /** Max Order Gross */
+            max_order_gross?: number | string | null;
             /**
              * Substitution
              * @enum {string}
@@ -563,8 +867,6 @@ export interface components {
             overbuy: "allowed" | "requires_approval" | "forbidden";
             /** Whole Sales Units */
             whole_sales_units: boolean;
-            /** Approved Product Ids */
-            approved_product_ids: string[];
         };
         /**
          * ErrorBody
@@ -665,6 +967,20 @@ export interface components {
              * @description Free-form baskets: the ingredients this line serves; amounts add up to it.
              */
             contributions?: components["schemas"]["Contribution"][] | null;
+        };
+        /**
+         * LineRule
+         * @description Per ingredient (CNF-036, POL-012): the customer's accepted substitutes, chosen from the
+         *     candidates the product page offers, and the price range around the agreed unit price.
+         */
+        LineRule: {
+            /** Accepted Substitutes */
+            accepted_substitutes?: string[];
+            /**
+             * Price Range Pct
+             * @default 0
+             */
+            price_range_pct: number | string;
         };
         /** LoginRequest */
         LoginRequest: {
@@ -857,6 +1173,48 @@ export interface components {
             /** Poll After Seconds */
             poll_after_seconds?: number | null;
         };
+        /** OrderListItem */
+        OrderListItem: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "scheduled" | "pending" | "placed" | "cancelled";
+            /** Title */
+            title?: string | null;
+            /** Scheduled For */
+            scheduled_for?: string | null;
+            /** Proposal Id */
+            proposal_id?: string | null;
+            /** Order Id */
+            order_id?: string | null;
+            /** Schedule Id */
+            schedule_id?: string | null;
+            /** Schedule Title */
+            schedule_title?: string | null;
+            /**
+             * Paused
+             * @default false
+             */
+            paused: boolean;
+            /** Gross Total */
+            gross_total?: string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Line Count */
+            line_count: number;
+            /** Line Names */
+            line_names?: string[];
+            /** Cancel Reason */
+            cancel_reason?: ("run_disrupted" | "run_retry" | "customer_revised" | "customer_cancelled") | null;
+            /** Placed At */
+            placed_at?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** OrderResponse */
         OrderResponse: {
             /** Order Id */
@@ -923,6 +1281,15 @@ export interface components {
             /** Explanation */
             explanation: string;
         };
+        /** OrdersResponse */
+        OrdersResponse: {
+            /** Items */
+            items: components["schemas"]["OrderListItem"][];
+            /** Next Offset */
+            next_offset?: number | null;
+            /** Total */
+            total: number;
+        };
         /** PolicyChange */
         PolicyChange: {
             /** Version */
@@ -934,6 +1301,11 @@ export interface components {
         };
         /** PolicyRules */
         PolicyRules: {
+            /**
+             * Max Order Gross
+             * @description Optional account-wide gross cap per order. Never grants personal approval authority.
+             */
+            max_order_gross?: string | null;
             /**
              * Currency
              * @constant
@@ -955,7 +1327,7 @@ export interface components {
             whole_sales_units: boolean;
             /**
              * Approved Product Ids
-             * @description Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope always blocks a purchase until a policy manager configures it in Settings.
+             * @description Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope always blocks a purchase until an operator configures it.
              */
             approved_product_ids?: string[] | null;
         };
@@ -1151,6 +1523,30 @@ export interface components {
             /** Height */
             height: number;
         };
+        /** Recurrence */
+        Recurrence: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "days" | "weekdays";
+            /**
+             * Interval
+             * @description kind=days: every N days
+             */
+            interval?: number | null;
+            /**
+             * Weekdays
+             * @description kind=weekdays: 0 = Monday ... 6 = Sunday
+             */
+            weekdays?: number[] | null;
+            /**
+             * Every Weeks
+             * @description kind=weekdays: every N weeks
+             * @default 1
+             */
+            every_weeks: number;
+        };
         /** Requirements */
         Requirements: {
             /**
@@ -1273,6 +1669,399 @@ export interface components {
              */
             status: "revised";
         };
+        /** RunLine */
+        RunLine: {
+            /** Product Id */
+            product_id: string;
+            /** Name */
+            name?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "available_same_price" | "price_within_range" | "substituted" | "price_outside_range" | "unavailable" | "withdrawn" | "blocked_by_policy";
+            /** Agreed Gross */
+            agreed_gross?: string | null;
+            /** Current Gross */
+            current_gross?: string | null;
+            /** Available Quantity */
+            available_quantity?: string | null;
+            /** Substitute Product Id */
+            substitute_product_id?: string | null;
+            /** Note */
+            note?: string | null;
+        };
+        /** RunReason */
+        RunReason: {
+            /** Codes */
+            codes?: string[];
+            /** Lines */
+            lines?: components["schemas"]["RunLine"][];
+            /** Agreed Gross Total */
+            agreed_gross_total?: string | null;
+            /** Current Gross Total */
+            current_gross_total?: string | null;
+        };
+        /** ScheduleCreateRequest */
+        ScheduleCreateRequest: {
+            /**
+             * Order Id
+             * Format: uuid
+             */
+            order_id: string;
+            /**
+             * Title
+             * @description The customer's own name; omitted: derived from the past order
+             */
+            title?: string | null;
+            recurrence: components["schemas"]["Recurrence"];
+            /**
+             * First Run Date
+             * Format: date
+             */
+            first_run_date: string;
+            /**
+             * Line Rules
+             * @description Key: product_id
+             */
+            line_rules?: {
+                [key: string]: components["schemas"]["LineRule"];
+            };
+            /** Price Ceiling Gross */
+            price_ceiling_gross: number | string;
+            /** Agreed Terms Fingerprint */
+            agreed_terms_fingerprint: string;
+            /** Idempotency Key */
+            idempotency_key: string;
+        };
+        /** ScheduleDetail */
+        ScheduleDetail: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "paused" | "stopped" | "cancelled" | "expired" | "superseded";
+            /** Stop Reason */
+            stop_reason?: string | null;
+            /** Source Order Id */
+            source_order_id: string;
+            /** Supersedes Id */
+            supersedes_id?: string | null;
+            /**
+             * Replaced By
+             * @description The schedule that replaced or restarted this one, if any
+             */
+            replaced_by?: string | null;
+            recurrence: components["schemas"]["Recurrence"];
+            /**
+             * First Run Date
+             * Format: date
+             */
+            first_run_date: string;
+            /**
+             * Valid Until
+             * Format: date
+             */
+            valid_until: string;
+            /**
+             * Next Run Date
+             * @description Null once stopped, cancelled or expired
+             */
+            next_run_date: string | null;
+            /** Paused At */
+            paused_at?: string | null;
+            /** Delivery Offset Days */
+            delivery_offset_days: number;
+            /** Currency */
+            currency: string;
+            /** Agreed Gross Total */
+            agreed_gross_total: string;
+            /** Price Ceiling Gross */
+            price_ceiling_gross: string;
+            /** Lines */
+            lines: components["schemas"]["ScheduleLine"][];
+            last_run?: components["schemas"]["ScheduleRun"] | null;
+            /**
+             * Conversation Id
+             * @description The chat of the latest disrupted run, if any
+             */
+            conversation_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Runs
+             * @description Newest first, at most `runs_limit`
+             */
+            runs: components["schemas"]["ScheduleRun"][];
+            /** Runs Next Offset */
+            runs_next_offset?: number | null;
+        };
+        /**
+         * ScheduleEditPreviewRequest
+         * @description Preview the terms of an existing schedule with optional changes (the edit page).
+         */
+        ScheduleEditPreviewRequest: {
+            /**
+             * Title
+             * @description Omitted: the schedule keeps its name
+             */
+            title?: string | null;
+            recurrence?: components["schemas"]["Recurrence"] | null;
+            /** First Run Date */
+            first_run_date?: string | null;
+            /** Line Rules */
+            line_rules?: {
+                [key: string]: components["schemas"]["LineRule"];
+            } | null;
+            /** Source Order Id */
+            source_order_id?: string | null;
+        };
+        /** ScheduleLine */
+        ScheduleLine: {
+            /** Product Id */
+            product_id: string;
+            /** Name */
+            name: string;
+            /** Amount */
+            amount: string;
+            /** Unit */
+            unit: string;
+            /** Sales Quantity */
+            sales_quantity: string | null;
+            /** Sales Unit */
+            sales_unit: string | null;
+            /** Unit Net */
+            unit_net: string | null;
+            /** Unit Gross */
+            unit_gross: string | null;
+            /** Tax Rate */
+            tax_rate: string | null;
+            /** Line Gross */
+            line_gross: string | null;
+            /** Accepted Substitutes */
+            accepted_substitutes?: components["schemas"]["SubstituteCandidate"][];
+            /**
+             * Price Range Pct
+             * @default 0
+             */
+            price_range_pct: string;
+        };
+        /** ScheduleList */
+        ScheduleList: {
+            /** Items */
+            items: components["schemas"]["ScheduleResponse"][];
+            /** Next Offset */
+            next_offset?: number | null;
+        };
+        /** SchedulePreviewRequest */
+        SchedulePreviewRequest: {
+            /**
+             * Order Id
+             * Format: uuid
+             */
+            order_id: string;
+            /**
+             * Title
+             * @description The customer's own name; omitted: derived from the past order
+             */
+            title?: string | null;
+            recurrence: components["schemas"]["Recurrence"];
+            /**
+             * First Run Date
+             * Format: date
+             */
+            first_run_date: string;
+            /**
+             * Line Rules
+             * @description Key: product_id
+             */
+            line_rules?: {
+                [key: string]: components["schemas"]["LineRule"];
+            };
+        };
+        /**
+         * ScheduleReplaceRequest
+         * @description Edit or restart: a new authorization that supersedes the old one.
+         */
+        ScheduleReplaceRequest: {
+            /**
+             * Title
+             * @description Omitted: the schedule keeps its name
+             */
+            title?: string | null;
+            recurrence?: components["schemas"]["Recurrence"] | null;
+            /** First Run Date */
+            first_run_date?: string | null;
+            /** Line Rules */
+            line_rules?: {
+                [key: string]: components["schemas"]["LineRule"];
+            } | null;
+            /** Source Order Id */
+            source_order_id?: string | null;
+            /** Price Ceiling Gross */
+            price_ceiling_gross?: number | string | null;
+            /** Agreed Terms Fingerprint */
+            agreed_terms_fingerprint: string;
+            /** Idempotency Key */
+            idempotency_key: string;
+        };
+        /** ScheduleResponse */
+        ScheduleResponse: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "paused" | "stopped" | "cancelled" | "expired" | "superseded";
+            /** Stop Reason */
+            stop_reason?: string | null;
+            /** Source Order Id */
+            source_order_id: string;
+            /** Supersedes Id */
+            supersedes_id?: string | null;
+            /**
+             * Replaced By
+             * @description The schedule that replaced or restarted this one, if any
+             */
+            replaced_by?: string | null;
+            recurrence: components["schemas"]["Recurrence"];
+            /**
+             * First Run Date
+             * Format: date
+             */
+            first_run_date: string;
+            /**
+             * Valid Until
+             * Format: date
+             */
+            valid_until: string;
+            /**
+             * Next Run Date
+             * @description Null once stopped, cancelled or expired
+             */
+            next_run_date: string | null;
+            /** Paused At */
+            paused_at?: string | null;
+            /** Delivery Offset Days */
+            delivery_offset_days: number;
+            /** Currency */
+            currency: string;
+            /** Agreed Gross Total */
+            agreed_gross_total: string;
+            /** Price Ceiling Gross */
+            price_ceiling_gross: string;
+            /** Lines */
+            lines: components["schemas"]["ScheduleLine"][];
+            last_run?: components["schemas"]["ScheduleRun"] | null;
+            /**
+             * Conversation Id
+             * @description The chat of the latest disrupted run, if any
+             */
+            conversation_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ScheduleRun */
+        ScheduleRun: {
+            /** Id */
+            id: string;
+            /**
+             * Scheduled Date
+             * Format: date
+             */
+            scheduled_date: string;
+            /**
+             * Delivery Date
+             * Format: date
+             */
+            delivery_date: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "due" | "prepared" | "committed" | "disrupted" | "skipped";
+            /** Reason Code */
+            reason_code?: string | null;
+            reason?: components["schemas"]["RunReason"] | null;
+            /** Substitutions */
+            substitutions?: components["schemas"]["RunLine"][];
+            /** Proposal Id */
+            proposal_id?: string | null;
+            /** Order Id */
+            order_id?: string | null;
+            /** Conversation Id */
+            conversation_id?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ScheduleTerms
+         * @description What the customer is asked to agree to; `terms_fingerprint` goes back in create/replace.
+         */
+        ScheduleTerms: {
+            /** Source Order Id */
+            source_order_id: string;
+            /** Title */
+            title: string;
+            /** Lines */
+            lines: components["schemas"]["ScheduleLine"][];
+            /** Currency */
+            currency: string | null;
+            /** Gross Total */
+            gross_total: string | null;
+            /** Policy Outcome */
+            policy_outcome: string;
+            /** Terms Fingerprint */
+            terms_fingerprint: string;
+            /** Delivery Offset Days */
+            delivery_offset_days: number;
+            recurrence: components["schemas"]["Recurrence"];
+            /**
+             * First Run Date
+             * Format: date
+             */
+            first_run_date: string;
+            /**
+             * Valid Until
+             * Format: date
+             */
+            valid_until: string;
+            /**
+             * Next Dates
+             * @description The first scheduled dates, for the preview
+             */
+            next_dates: string[];
+            /** Blocking Reasons */
+            blocking_reasons?: {
+                [key: string]: unknown;
+            }[];
+        };
         /** SessionResponse */
         SessionResponse: {
             /** Username */
@@ -1281,6 +2070,13 @@ export interface components {
             buyer_id: string;
             /** Csrf Token */
             csrf_token: string;
+            /** Role */
+            role: string;
+            /**
+             * Scheduler Demo Mode
+             * @default false
+             */
+            scheduler_demo_mode: boolean;
         };
         /** SnapshotLine */
         SnapshotLine: {
@@ -1320,6 +2116,24 @@ export interface components {
              * @description True for a variable-weight product: the final weight and price settle at delivery (BAS-007). Absent otherwise.
              */
             price_is_estimate?: boolean | null;
+        };
+        /** SubstituteCandidate */
+        SubstituteCandidate: {
+            /** Product Id */
+            product_id: string;
+            /** Name */
+            name: string;
+            /** Unit Gross */
+            unit_gross?: string | null;
+            /** Sales Unit */
+            sales_unit?: string | null;
+        };
+        /** SubstituteCandidates */
+        SubstituteCandidates: {
+            /** Product Id */
+            product_id: string;
+            /** Candidates */
+            candidates: components["schemas"]["SubstituteCandidate"][];
         };
         /** VoiceSession */
         VoiceSession: {
@@ -2523,6 +3337,665 @@ export interface operations {
                 };
                 content: {
                     "text/event-stream": string;
+                };
+            };
+            /** @description Validation error. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    cancel_purchase_api_purchases__proposal_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CancellationResponse"];
+                };
+            };
+            /** @description Validation error. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    orders_api_orders_get: {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+                /** @description Comma list of scheduled, pending, placed, cancelled; empty means all */
+                status?: string | null;
+                /** @description Search: trimmed, at most 80 characters, case-insensitive substring over titles, order and proposal ids, destination, delivery date, line names, product ids */
+                q?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrdersResponse"];
+                };
+            };
+            /** @description Validation error. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    schedule_list_api_schedules_get: {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+                /** @description Comma list of schedule statuses */
+                status?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleList"];
+                };
+            };
+            /** @description Validation error. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    schedule_create_api_schedules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleResponse"];
+                };
+            };
+            /** @description Validation error. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    schedule_substitute_candidates_api_schedules_substitute_candidates_get: {
+        parameters: {
+            query: {
+                product_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubstituteCandidates"];
+                };
+            };
+            /** @description Validation error. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    schedule_preview_api_schedules_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SchedulePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleTerms"];
+                };
+            };
+            /** @description Validation error. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    schedule_detail_api_schedules__schedule_id__get: {
+        parameters: {
+            query?: {
+                runs_offset?: number;
+            };
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleDetail"];
+                };
+            };
+            /** @description Validation error. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    schedule_edit_preview_api_schedules__schedule_id__preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleEditPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleTerms"];
+                };
+            };
+            /** @description Validation error. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    schedule_replace_api_schedules__schedule_id__replace_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleReplaceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleResponse"];
+                };
+            };
+            /** @description Validation error. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    schedule_cancel_api_schedules__schedule_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleResponse"];
+                };
+            };
+            /** @description Validation error. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    schedule_run_now_api_schedules__schedule_id__run_now_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleResponse"];
+                };
+            };
+            /** @description Validation error. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    schedule_pause_api_schedules__schedule_id__pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleResponse"];
+                };
+            };
+            /** @description Validation error. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    schedule_resume_api_schedules__schedule_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleResponse"];
                 };
             };
             /** @description Validation error. */

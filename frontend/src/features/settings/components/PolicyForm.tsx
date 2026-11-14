@@ -3,12 +3,10 @@ import type { PolicySettings, PolicyUpdate } from "../api/policyApi";
 
 type Rule = PolicyUpdate["rules"]["substitution"];
 const choices: { value: Rule; label: string }[] = [
-  { value: "requires_approval", label: "Require buyer approval" },
+  { value: "requires_approval", label: "Ask me first" },
   { value: "allowed", label: "Allow" },
-  { value: "forbidden", label: "Do not allow" },
+  { value: "forbidden", label: "Don’t allow" },
 ];
-const splitList = (value: string) =>
-  [...new Set(value.split(/[\s,]+/).filter(Boolean))].sort();
 
 export function PolicyForm({
   data,
@@ -19,139 +17,185 @@ export function PolicyForm({
   busy: boolean;
   save: (body: PolicyUpdate) => Promise<void>;
 }) {
-  const [products, setProducts] = useState(
-    (data.rules.approved_product_ids ?? []).join(", "),
-  );
-  const [destinations, setDestinations] = useState(
-    data.rules.destinations.join(", "),
-  );
+  const initialCap = data.rules.max_order_gross ?? "";
+  const [cap, setCap] = useState(String(initialCap));
   const [substitution, setSubstitution] = useState(data.rules.substitution);
   const [overbuy, setOverbuy] = useState(data.rules.overbuy);
   const [wholeUnits, setWholeUnits] = useState(data.rules.whole_sales_units);
-  const rules: PolicyUpdate["rules"] = {
-    currency: "EUR",
-    approved_product_ids: splitList(products),
-    destinations: splitList(destinations),
-    substitution,
-    overbuy,
-    whole_sales_units: wholeUnits,
-  };
+  const [discarded, setDiscarded] = useState(false);
+  const sameCap =
+    cap === ""
+      ? initialCap === ""
+      : initialCap !== "" && Number(cap) === Number(initialCap);
   const dirty =
-    data.rules.approved_product_ids == null ||
-    JSON.stringify(rules.approved_product_ids) !==
-      JSON.stringify([...data.rules.approved_product_ids].sort()) ||
-    JSON.stringify(rules.destinations) !==
-      JSON.stringify([...data.rules.destinations].sort()) ||
+    !sameCap ||
     substitution !== data.rules.substitution ||
     overbuy !== data.rules.overbuy ||
     wholeUnits !== data.rules.whole_sales_units;
+  const capValid =
+    cap === "" || (Number.isFinite(Number(cap)) && Number(cap) >= 0);
+  function discard() {
+    setCap(String(initialCap));
+    setSubstitution(data.rules.substitution);
+    setOverbuy(data.rules.overbuy);
+    setWholeUnits(data.rules.whole_sales_units);
+    setDiscarded(true);
+  }
   function submit(event: FormEvent) {
     event.preventDefault();
-    void save({ expected_version: data.policy_version, rules });
+    if (busy || !dirty || !data.can_edit || !capValid) return;
+    void save({
+      expected_version: data.policy_version,
+      rules: {
+        max_order_gross: cap === "" ? null : cap,
+        substitution,
+        overbuy,
+        whole_sales_units: wholeUnits,
+      },
+    });
   }
   return (
-    <form className="policy-form" onSubmit={submit}>
+    <form
+      className="policy-form"
+      onSubmit={submit}
+      onChange={() => setDiscarded(false)}
+    >
       <fieldset disabled={busy || !data.can_edit}>
-        <section className="policy-section" aria-labelledby="product-rules">
-          <h2 id="product-rules">Products & alternatives</h2>
-          <label htmlFor="approved-products">Approved product codes</label>
-          <textarea
-            id="approved-products"
-            value={products}
-            onChange={(e) => setProducts(e.target.value)}
-            rows={3}
-            aria-describedby="products-help"
-          />
-          <p id="products-help" className="muted small">
-            Separate catalog product codes with commas or new lines. You can
-            find these codes in purchase details.
-          </p>
-          {data.rules.approved_product_ids == null && (
-            <p className="policy-notice">
-              Product scope has not been configured. Save a product list to
-              resolve this purchasing block.
-            </p>
-          )}
-          <label htmlFor="substitution">
-            Substitutions & products outside this list
-          </label>
-          <select
-            id="substitution"
-            value={substitution}
-            onChange={(e) => setSubstitution(e.target.value as Rule)}
-          >
-            {choices.map((choice) => (
-              <option key={choice.value} value={choice.value}>
-                {choice.label}
-              </option>
-            ))}
-          </select>
-          <p className="muted small">
-            This rule also applies when the approved list is empty. Allowing
-            alternatives still requires confirmation of every purchase.
+        <section className="policy-section" aria-labelledby="spending-cap">
+          <div className="policy-section-heading">
+            <h2 id="spending-cap">Account spending cap</h2>
+            <p>Shared by everyone in {data.buyer_id}</p>
+          </div>
+          <div className="policy-row">
+            <div>
+              <label htmlFor="order-cap">Maximum per order</label>
+              <p id="cap-help">
+                Including tax and charges. Personal approval limits still apply.
+              </p>
+            </div>
+            <div className="policy-money">
+              <span aria-hidden="true">€</span>
+              <input
+                id="order-cap"
+                aria-describedby="cap-help cap-empty"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                max="999999999999.99"
+                step="0.01"
+                value={cap}
+                onChange={(e) => setCap(e.target.value)}
+                placeholder="No account cap"
+              />
+            </div>
+          </div>
+          <p className="policy-cap-help" id="cap-empty">
+            Leave blank for no account cap.
           </p>
         </section>
-        <section className="policy-section" aria-labelledby="quantity-rules">
-          <h2 id="quantity-rules">Quantities & delivery</h2>
-          <label htmlFor="overbuy">Buying more than requested</label>
-          <select
-            id="overbuy"
-            value={overbuy}
-            onChange={(e) => setOverbuy(e.target.value as Rule)}
-          >
-            {choices.map((choice) => (
-              <option key={choice.value} value={choice.value}>
-                {choice.label}
-              </option>
-            ))}
-          </select>
-          <p className="muted small">
-            For example, rounding up to the next pack size.
-          </p>
-          <label className="policy-checkbox">
-            <input
-              type="checkbox"
-              checked={wholeUnits}
-              onChange={(e) => setWholeUnits(e.target.checked)}
-            />{" "}
-            Require whole sales units
-          </label>
-          <p className="muted small">
-            Supplier minimum quantities and lot steps always apply.
-          </p>
-          <label htmlFor="destinations">Allowed delivery destinations</label>
-          <textarea
-            id="destinations"
-            value={destinations}
-            onChange={(e) => setDestinations(e.target.value)}
-            rows={2}
-            required
-            aria-describedby="destinations-help"
-          />
-          <p id="destinations-help" className="muted small">
-            Separate destination identifiers with commas or new lines. Currency:
-            EUR.
-          </p>
+        <section className="policy-section" aria-labelledby="basket-rules">
+          <div className="policy-section-heading">
+            <h2 id="basket-rules">Basket rules</h2>
+          </div>
+          <div className="policy-row">
+            <div>
+              <label htmlFor="substitution">
+                Other products & alternatives
+              </label>
+              <p id="substitution-help">
+                Replacements and products outside your account’s approved range.
+              </p>
+            </div>
+            <select
+              id="substitution"
+              aria-describedby="substitution-help"
+              value={substitution}
+              onChange={(e) => setSubstitution(e.target.value as Rule)}
+            >
+              {choices.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="policy-row">
+            <div>
+              <label htmlFor="overbuy">Extra quantities</label>
+              <p id="overbuy-help">
+                When pack sizes mean buying more than requested.
+              </p>
+            </div>
+            <select
+              id="overbuy"
+              aria-describedby="overbuy-help"
+              value={overbuy}
+              onChange={(e) => setOverbuy(e.target.value as Rule)}
+            >
+              {choices.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <details className="policy-advanced">
+            <summary>
+              Advanced rules <span>Pack sizes</span>
+            </summary>
+            <div>
+              <label className="policy-checkbox">
+                <input
+                  type="checkbox"
+                  checked={wholeUnits}
+                  onChange={(e) => setWholeUnits(e.target.checked)}
+                />
+                Require whole sales units
+              </label>
+              <p>
+                Supplier minimum quantities and pack increments always apply.
+              </p>
+            </div>
+          </details>
         </section>
       </fieldset>
       {data.can_edit ? (
-        <div className="policy-actions">
-          <p>
-            Saving applies to your buyer account. Pending baskets must be
-            refreshed and confirmed again.
+        <>
+          <div className="policy-actions">
+            <p aria-live="polite">
+              {dirty
+                ? "Unsaved changes"
+                : discarded
+                  ? "Changes discarded"
+                  : "No unsaved changes"}
+            </p>
+            <div>
+              {dirty && (
+                <button
+                  type="button"
+                  className="policy-discard"
+                  disabled={busy}
+                  onClick={discard}
+                >
+                  Discard
+                </button>
+              )}
+              <button
+                className="primary"
+                type="submit"
+                disabled={busy || !dirty || !capValid}
+              >
+                {busy ? "Saving…" : "Save changes"}
+              </button>
+            </div>
+          </div>
+          <p className="policy-save-note">
+            Pending baskets need a fresh review after rules change.
           </p>
-          <button
-            className="primary"
-            type="submit"
-            disabled={busy || !dirty || rules.destinations.length === 0}
-          >
-            {busy ? "Saving…" : "Save purchasing rules"}
-          </button>
-        </div>
+        </>
       ) : (
         <p className="policy-notice">
-          You can review these rules. A policy manager for your buyer account
-          can change them.
+          These purchasing rules are currently view only.
         </p>
       )}
     </form>

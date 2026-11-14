@@ -16,7 +16,7 @@ from starlette.responses import JSONResponse
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from aimo import approval_workflow as workflow
-from aimo import auth, policy_settings
+from aimo import auth
 from aimo.catalog import quantity
 from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, js, now, pool
@@ -86,14 +86,8 @@ def test_missing_product_scope_fails_closed_and_provisioning_versions_policy(
     p = service.prepare_order(agent, PrepareRequest(**request_data))
     assert p["policy_outcome"] == "needs_resolution" and p["approval_id"] is None
     assert "PRODUCT_SCOPE_UNCONFIGURED" in {r["code"] for r in p["reasons"]}
-    current = policy_settings.get(buyer)
-    body = policy_settings.PolicyUpdate(
-        expected_version=current["policy_version"],
-        rules=current["rules"].model_dump() | {"approved_product_ids": ["464306"]},
-    )
-    assert policy_settings.update(buyer, body)["policy_version"] == 3
-    body.expected_version = 3
-    assert policy_settings.update(buyer, body)["policy_version"] == 3
+    # Product scope is operator provisioning; the simplified form preserves it.
+    policy(approved_product_ids=["464306"])
     with connection() as c:
         assert (
             c.execute(

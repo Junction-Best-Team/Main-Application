@@ -135,7 +135,9 @@ def test_seed_stores_hashes_never_plaintext():
         mapped = c.execute("SELECT buyer_id,identity_id FROM internal_agents").fetchall()
     by_id = {r["id"]: r for r in rows}
     internal = "internal:" + hashlib.md5(b"demo-hotel").hexdigest()
-    assert set(by_id) == {"demo-agent", "buyer", internal}
+    scheduler = "scheduler:" + hashlib.md5(b"demo-hotel").hexdigest()
+    assert set(by_id) == {"demo-agent", "buyer", internal, scheduler}
+    assert by_id[scheduler]["role"] == "scheduler" and by_id[scheduler]["credential_hash"].startswith("!")
     assert hasher.verify(by_id["buyer"]["credential_hash"], "test-buyer-password-only")
     # Neither agent identity can ever log in with a bearer value.
     assert by_id["demo-agent"]["credential_hash"].startswith("!")

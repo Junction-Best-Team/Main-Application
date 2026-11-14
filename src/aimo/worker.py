@@ -6,7 +6,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Event, Thread
 
-from aimo import conversations
+from aimo import conversations, scheduler
 from aimo.config import settings
 from aimo.db import close_pools, connection
 from aimo.observability import configure_logging, event, failure
@@ -33,7 +33,7 @@ def check_readiness():
             "SELECT g.model_key,g.embedding_dimensions FROM active_catalog a "
             "JOIN catalog_generations g ON g.id=a.generation"
         ).fetchone()
-        c.execute("SELECT requested_by FROM conversation_turns LIMIT 0")
+        c.execute("SELECT requested_by,progress,draft_cart FROM conversation_turns LIMIT 0")
     if (
         not active
         or active["model_key"] != model_key()
@@ -55,6 +55,32 @@ def run_once(service, runner=None):
     )
     conversations.execute_turn(turn, service, runner)
     return True
+
+
+# The due-run scan is cheap but needs no more than one look per interval; a run that is already
+# claimable is stepped on every idle iteration without it.
+scheduler_state = {"materialised": float("-inf")}
+
+
+def run_schedules(service):
+    """One step of one scheduled run (WS-E). Never raises: a broken scheduler must not stop chat."""
+    due = (
+        time.monotonic() - scheduler_state["materialised"]
+        >= settings().scheduler_pass_interval_seconds
+    )
+    try:
+        worked = scheduler.run_due_schedules(service, materialise_first=due)
+        if due:
+            scheduler_state["materialised"] = time.monotonic()
+        return worked
+    except Exception as exc:
+        event("scheduler.iteration_failed", level=logging.WARNING, **failure(exc))
+        return False
+
+
+def work_once(service, runner=None):
+    """One iteration: a waiting chat turn first, otherwise one scheduler step."""
+    return run_once(service, runner) or run_schedules(service)
 
 
 def main():
@@ -98,7 +124,7 @@ def main():
                 if not state["ready"]:
                     event("worker.ready")
                 state.update(ready=True, progress=time.monotonic())
-                worked = run_once(service)
+                worked = work_once(service)
                 state["progress"] = time.monotonic()
                 if not worked:
                     stop.wait(1)

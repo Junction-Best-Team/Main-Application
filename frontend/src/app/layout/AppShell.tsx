@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
-import { DESIGN_PLACEHOLDERS as MOCK } from "../../shared/lib/designPlaceholders";
-import { useAuth } from "../../features/auth/useAuth";
 import { useConversationNavigation } from "../../features/chat/hooks/useConversationNavigation";
 import { Wordmark } from "../../shared/components/Wordmark";
-import { Icon, InertButton } from "../../shared/components/DesignPrimitives";
+import { Icon } from "../../shared/components/DesignPrimitives";
+import { UserMenu } from "./UserMenu";
 
 import type { ConversationList } from "../../shared/api/types";
 type ConversationListItem = ConversationList["items"][number];
@@ -18,15 +17,15 @@ type NavItem = {
 
 // Schedule is intentionally absent until its screens exist (spec #81).
 const NAV_ITEMS: NavItem[] = [
-  { label: "Home", to: "/", icon: "dashboard", isActive: (p) => p === "/" },
+  { label: "New request", to: "/", icon: "add", isActive: (p) => p === "/" },
   {
-    label: "Request",
+    label: "Requests",
     to: "/request",
-    icon: "order_approve",
+    icon: "chat_bubble",
     isActive: (p) => p === "/request" || p.startsWith("/conversations/"),
   },
   {
-    label: "Past Orders",
+    label: "Orders",
     to: "/purchases",
     icon: "receipt_long",
     isActive: (p) => p.startsWith("/purchases") || p.startsWith("/approvals"),
@@ -44,10 +43,10 @@ type ConversationNav = {
 };
 
 const navItemClass = (active: boolean) =>
-  `flex min-w-0 flex-1 items-center gap-space-sm rounded-lg px-space-md py-space-sm font-label text-label-lg no-underline transition-colors hover:no-underline ${
+  `flex min-w-0 flex-1 items-center gap-space-sm rounded-lg px-space-md py-space-sm font-body text-[15px] no-underline transition-colors hover:no-underline ${
     active
-      ? "bg-primary-container text-on-primary"
-      : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+      ? "bg-workspace-active text-primary"
+      : "text-primary hover:bg-workspace-active"
   }`;
 
 /** Collapsible tree of the buyer's conversations under the Request item. */
@@ -64,7 +63,7 @@ function ConversationSubList({
     <ul
       id="nav-conversations"
       aria-label="Conversations"
-      className="m-0 ml-[1.625rem] flex list-none flex-col gap-0.5 border-l border-border-subtle py-space-xs pl-0"
+      className="m-0 flex list-none flex-col gap-1 px-space-sm py-space-xs"
     >
       {!items ? (
         <li className="px-space-md py-space-xs font-body text-body-sm text-on-surface-variant">
@@ -76,10 +75,6 @@ function ConversationSubList({
           const current = pathname === to;
           return (
             <li key={item.id} className="relative flex">
-              <span
-                aria-hidden="true"
-                className="mt-[1.0625rem] h-px w-space-sm shrink-0 bg-border-subtle"
-              />
               <Link
                 to={to}
                 onClick={onNavigate}
@@ -87,8 +82,8 @@ function ConversationSubList({
                 title={item.title}
                 className={`block min-w-0 flex-1 truncate rounded-lg px-space-sm py-space-xs font-body text-body-sm no-underline transition-colors hover:no-underline ${
                   current
-                    ? "bg-secondary-container font-bold text-primary"
-                    : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+                    ? "bg-workspace-active font-semibold text-primary"
+                    : "text-primary hover:bg-workspace-active"
                 }`}
               >
                 {item.title}
@@ -158,132 +153,46 @@ function NavLinks({
                 />
               </button>
             </div>
-            {conversations.expanded && (
-              <>
-                <ConversationSubList
-                  items={conversations.items}
-                  pathname={pathname}
-                  onNavigate={onNavigate}
-                />
-                {conversations.hasMore && (
-                  <button
-                    className="mx-space-md my-space-xs text-label-sm"
-                    onClick={conversations.loadMore}
-                    disabled={conversations.loading}
-                  >
-                    Load older conversations
-                  </button>
-                )}
-                {conversations.error && (
-                  <p
-                    role="alert"
-                    className="px-space-md text-body-sm text-error"
-                  >
-                    {conversations.error}
-                  </p>
-                )}
-              </>
-            )}
           </div>
         );
       })}
+      {conversations.expanded && (
+        <>
+          <p className="mb-space-xs mt-space-xl px-space-md text-body-sm text-secondary">
+            Recent
+          </p>
+          <ConversationSubList
+            items={conversations.items}
+            pathname={pathname}
+            onNavigate={onNavigate}
+          />
+          {conversations.hasMore && (
+            <button
+              className="mx-space-md my-space-xs text-label-sm"
+              onClick={conversations.loadMore}
+              disabled={conversations.loading}
+            >
+              Load older conversations
+            </button>
+          )}
+          {conversations.error && (
+            <p role="alert" className="px-space-md text-body-sm text-error">
+              {conversations.error}
+            </p>
+          )}
+        </>
+      )}
     </nav>
-  );
-}
-
-function HubBadge() {
-  return (
-    <div className="mx-space-md my-space-sm flex items-center justify-between rounded-lg bg-surface-container-low px-space-sm py-space-xs">
-      <span className="flex items-center gap-space-xs font-label text-label-sm uppercase text-on-surface-variant">
-        <Icon name="storefront" className="text-[16px] text-wholesale-teal" />
-        {MOCK.shell.hub} · Placeholder
-      </span>
-      <span
-        aria-hidden="true"
-        className="h-2 w-2 rounded-full bg-status-fresh-green"
-      />
-    </div>
-  );
-}
-
-function Avatar() {
-  return (
-    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary">
-      <Icon name="person" className="text-[18px]" />
-    </span>
-  );
-}
-
-/** Account switcher placeholder, policy settings, assistant preferences and the real Sign out action. */
-function AccountBlock({ onNavigate }: { onNavigate?: () => void }) {
-  const { pathname } = useLocation();
-  const { session, logout } = useAuth();
-  return (
-    <div className="flex shrink-0 flex-col gap-space-xs bg-surface-container-low p-space-sm">
-      <InertButton
-        label="Switch account"
-        className="flex w-full items-center justify-between rounded-lg bg-surface-pure p-space-sm text-left"
-      >
-        <span className="flex items-center gap-space-sm">
-          <Avatar />
-          <span className="flex flex-col">
-            <span className="font-label text-label-md text-on-surface">
-              {session?.buyer_id}
-            </span>
-            <span className="font-label text-label-sm text-on-surface-variant">
-              {session?.username}
-            </span>
-          </span>
-        </span>
-        <Icon
-          name="unfold_more"
-          className="text-[18px] text-on-surface-variant"
-        />
-      </InertButton>
-      <Link
-        to="/settings"
-        onClick={onNavigate}
-        aria-current={pathname === "/settings" ? "page" : undefined}
-        className={`flex items-center gap-space-sm rounded-lg px-space-md py-space-sm font-label text-label-md no-underline hover:no-underline ${pathname === "/settings" ? "bg-secondary-container text-primary" : "text-on-surface-variant hover:bg-surface-container-high"}`}
-      >
-        <Icon name="manage_accounts" className="text-[18px]" />
-        Account Settings
-      </Link>
-      <Link
-        to="/settings/preferences"
-        onClick={onNavigate}
-        aria-current={
-          pathname.startsWith("/settings/preferences") ? "page" : undefined
-        }
-        className={`flex items-center gap-space-sm rounded-lg px-space-md py-space-sm font-label text-label-md no-underline hover:no-underline ${
-          pathname.startsWith("/settings/preferences")
-            ? "bg-secondary-container text-primary"
-            : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-        }`}
-      >
-        <Icon name="tune" className="text-[18px]" />
-        Memory
-      </Link>
-      <button
-        type="button"
-        onClick={logout}
-        className="flex cursor-pointer items-center gap-space-sm rounded-lg border-0 bg-transparent px-space-md py-space-sm font-label text-label-md text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-      >
-        <Icon name="logout" className="text-[18px]" />
-        Sign out
-      </button>
-    </div>
   );
 }
 
 function Sidebar({ conversations }: { conversations: ConversationNav }) {
   // Fixed to the viewport, top to bottom, so it never scrolls with the page;
-  // its nav scrolls internally if it outgrows the screen. pb-20 keeps the
-  // account block clear of the fixed prototype DemoBar.
+  // its nav scrolls internally if it outgrows the screen.
   return (
     <aside
       aria-label="Sidebar"
-      className="fixed inset-y-0 left-0 z-50 hidden h-dvh w-72 flex-col border-r border-border-subtle bg-surface-pure md:flex"
+      className="fixed inset-y-0 left-0 z-50 hidden h-dvh w-60 flex-col bg-workspace-panel pb-space-md pt-space-md md:flex"
     >
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <Link
@@ -293,10 +202,8 @@ function Sidebar({ conversations }: { conversations: ConversationNav }) {
         >
           <Wordmark className="text-[2.25rem]" />
         </Link>
-        <HubBadge />
         <NavLinks conversations={conversations} />
       </div>
-      <AccountBlock />
     </aside>
   );
 }
@@ -304,7 +211,7 @@ function Sidebar({ conversations }: { conversations: ConversationNav }) {
 function DesktopHeader() {
   return (
     <header className="sticky top-0 z-40 hidden h-16 shrink-0 items-center justify-end gap-space-md border-b border-border-subtle bg-surface/80 px-margin backdrop-blur-xl md:flex">
-      <Avatar />
+      <UserMenu />
     </header>
   );
 }
@@ -336,11 +243,11 @@ function MobileTopBar({
         >
           <Wordmark className="text-[1.75rem]" />
           <span className="font-label text-label-sm text-on-surface-variant">
-            {MOCK.shell.hubShort} · Demo
+            Purchasing workspace
           </span>
         </Link>
       </div>
-      <Avatar />
+      <UserMenu />
     </header>
   );
 }
@@ -396,7 +303,7 @@ function MobileMenu({
         role="dialog"
         aria-modal="true"
         aria-label="Menu"
-        className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col justify-between overflow-y-auto bg-surface-pure shadow-level-3"
+        className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col justify-between overflow-y-auto bg-workspace-panel shadow-level-3"
       >
         <div className="flex flex-col">
           <div className="flex h-16 items-center justify-between px-space-md">
@@ -411,10 +318,8 @@ function MobileMenu({
               <Icon name="close" className="text-[24px]" />
             </button>
           </div>
-          <HubBadge />
           <NavLinks conversations={conversations} onNavigate={onClose} />
         </div>
-        <AccountBlock onNavigate={onClose} />
       </div>
     </div>
   );
@@ -443,7 +348,7 @@ export function AppShell() {
     <div className="min-h-screen bg-canvas font-body text-on-surface">
       <Sidebar conversations={conversations} />
       <div
-        className={`flex min-w-0 flex-col md:pl-72 ${isChat ? "h-dvh overflow-hidden" : ""}`}
+        className={`flex min-w-0 flex-col md:pl-60 ${isChat ? "h-dvh overflow-hidden" : ""}`}
       >
         <DesktopHeader />
         <MobileTopBar

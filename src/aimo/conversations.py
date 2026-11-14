@@ -2,16 +2,19 @@
 
 from datetime import timedelta
 from decimal import Decimal
+from functools import partial
 from uuid import uuid4
 
 from aimo import approval_workflow as workflow
-from aimo import attachments, auth
+from aimo import attachments, auth, cancellations, scheduler
 from aimo.approval_policy import can_approve
+from aimo.chat_activity import record_progress
 from aimo.chat_schemas import AgentTurn
 from aimo.db import Problem, connection, fingerprint, js, now
 from aimo.guardrails import encode, proposal_view
 from aimo.observability import event, operation
 from aimo.purchases import context
+from aimo.turn_notice import NOTICE_KIND, failure_notice
 
 
 def owned(c, identity, cid, lock=False):
@@ -81,25 +84,48 @@ def detail(identity, cid, *, internal=False):
         context(c, identity)
         row = owned(c, identity, cid)
         messages = c.execute(
-            """SELECT id,role,text,created_at,meal_plan,proposal_id,image,attachments FROM conversation_messages
+            """SELECT id,role,text,created_at,meal_plan,proposal_id,image,attachments,notice FROM conversation_messages
             WHERE conversation_id=%s ORDER BY id""",
             (cid,),
         ).fetchall()
-        busy = (
-            c.execute(
-                "SELECT 1 FROM conversation_turns WHERE conversation_id=%s AND (state='queued' OR (state='running' AND lease_until>%s))",
-                (cid, now()),
-            ).fetchone()
-            is not None
-        )
+        turn = c.execute(
+            """SELECT id,state,lease_until,progress FROM conversation_turns
+            WHERE conversation_id=%s ORDER BY created_at DESC,id DESC LIMIT 1""",
+            (cid,),
+        ).fetchone()
+        state = turn["state"] if turn else None
+        if state == "running" and turn["lease_until"] <= now():
+            state = "failed"
+        busy = state in ("queued", "running")
         retry = c.execute(
             """SELECT t.key,t.constraints,m.text,m.attachments FROM conversation_turns t JOIN conversation_messages m
             ON m.turn_id=t.id AND m.role='user' WHERE t.conversation_id=%s AND t.state!='complete'
             ORDER BY t.created_at LIMIT 1""",
             (cid,),
         ).fetchone()
+        draft = c.execute(
+            """SELECT t.draft_cart FROM conversation_turns t WHERE t.conversation_id=%s
+            AND t.draft_cart IS NOT NULL AND (t.state='complete' OR
+                (t.state='running' AND t.lease_until>%s))
+            AND NOT EXISTS (SELECT 1 FROM conversation_messages m
+                JOIN conversation_turns newer ON newer.id=m.turn_id
+                WHERE newer.conversation_id=t.conversation_id AND m.proposal_id IS NOT NULL
+                AND newer.created_at>t.created_at)
+            ORDER BY t.created_at DESC,t.id DESC LIMIT 1""",
+            (cid, now()),
+        ).fetchone()
     pids = list(dict.fromkeys(str(m["proposal_id"]) for m in messages if m["proposal_id"]))
     purchases = [workflow.get_proposal(identity, pid) for pid in pids]
+    draft_cart = draft["draft_cart"] if draft else None
+    if draft_cart:
+        # Persisted quotes may have expired since the worker checked them.
+        from aimo.chat_schemas import DraftCart
+
+        cart = DraftCart.model_validate(draft_cart)
+        for item in cart.items:
+            if item.price and item.price.expires_at <= now():
+                item.price = None
+        draft_cart = cart.model_dump(mode="json")
     return {
         "id": str(row["id"]),
         "title": row["title"],
@@ -121,6 +147,11 @@ def detail(identity, cid, *, internal=False):
         ],
         "purchases": purchases,
         "busy": busy,
+        "draft_cart": draft_cart,
+        "activity": {"turn_id": str(turn["id"]), "state": state, "events": turn["progress"]}
+        if turn
+        else None,
+
         "retry_message": {
             "text": retry["text"],
             "idempotency_key": retry["key"],
@@ -171,12 +202,19 @@ def enqueue(identity, cid, body):
             limit_turns(c, identity, new=old is None)
             files = [attachments.prepare(a) for a in body.attachments] if not old else []
             tid = old["id"] if old else uuid4()
+            if old:
+                # A retry replaces the provider-failure notice of the earlier attempt (Q-108).
+                c.execute(
+                    "DELETE FROM conversation_messages WHERE turn_id=%s AND role='assistant' AND notice IS NOT NULL",
+                    (tid,),
+                )
             c.execute(
                 """INSERT INTO conversation_turns
                 (id,conversation_id,key,payload_hash,state,lease_until,attempt,requested_by,
                 worker_attempts,submitted_by,constraints)
                 VALUES(%s,%s,%s,%s,'queued',%s,%s,%s,0,%s,%s) ON CONFLICT(conversation_id,key)
-                DO UPDATE SET state='queued',requested_by=EXCLUDED.requested_by,worker_attempts=0""",
+                DO UPDATE SET state='queued',requested_by=EXCLUDED.requested_by,worker_attempts=0,
+                progress='[]'::jsonb,draft_cart=NULL""",
                 # A retry changes the executor (requested_by) but never the author.
                 (
                     tid,
@@ -261,6 +299,7 @@ def claim_turn(cid=None):
         ).fetchone()
         if turn["worker_attempts"] >= 3:
             c.execute("UPDATE conversation_turns SET state='failed' WHERE id=%s", (turn["id"],))
+            scheduler.settle_failed_system_turn(c, turn["id"], turn["conversation_id"])
             event(
                 "worker.attempt_limit",
                 turn_id=str(turn["id"]),
@@ -271,9 +310,35 @@ def claim_turn(cid=None):
             return None
         return c.execute(
             """UPDATE conversation_turns SET state='running',attempt=%s,lease_until=%s,
-            worker_attempts=worker_attempts+1 WHERE id=%s RETURNING *""",
+            worker_attempts=worker_attempts+1,progress='[]'::jsonb,draft_cart=NULL WHERE id=%s RETURNING *""",
             (uuid4(), now() + timedelta(seconds=240), turn["id"]),
         ).fetchone()
+
+
+def provider_failure(error):
+    """The model provider failed (every LLM_* code of the provider layer). Guardrail, policy,
+    fence and programming errors are not provider failures and store no notice."""
+    return isinstance(error, Problem) and error.code.startswith("LLM_")
+
+
+def store_failure_notice(cid, tid):
+    """Owner Q-108: one fixed, plain assistant notice for the failed turn, in the language of the
+    customer's message; no model call and no error detail. Best effort: a failure here never
+    hides the original error. The turn's single assistant slot holds it until a retry replaces it."""
+    try:
+        with connection() as c:
+            user = c.execute(
+                "SELECT text FROM conversation_messages WHERE turn_id=%s AND role='user'", (tid,)
+            ).fetchone()
+            if user:
+                c.execute(
+                    """INSERT INTO conversation_messages(conversation_id,turn_id,role,text,notice)
+                    VALUES(%s,%s,'assistant',%s,%s) ON CONFLICT(turn_id,role) DO NOTHING""",
+                    (cid, tid, failure_notice(user["text"]), NOTICE_KIND),
+                )
+                c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
+    except Exception:
+        event("chat.failure_notice_failed", conversation_id=str(cid), turn_id=str(tid))
 
 
 def customer_constraints(c, cid, tid):
@@ -300,7 +365,7 @@ def execute_turn(turn, service, runner=None):
     if runner is None:
         from aimo.agent import run_turn
 
-        runner = run_turn
+        runner = partial(run_turn, on_progress=partial(record_progress, turn))
     cid, tid, attempt = turn["conversation_id"], turn["id"], turn["attempt"]
     try:
         with connection() as c:
@@ -335,12 +400,14 @@ def execute_turn(turn, service, runner=None):
         data = detail(identity, cid, internal=True)
         with connection() as c:
             limits = customer_constraints(c, cid, tid)
+        # A stored failure notice is for the customer, not the model: it is left out of the history.
+        shown = [m for m in data["messages"] if not m["notice"]]
         history = [
-            {"role": m["role"], "content": m["text"], "attachments": m["attachments"]}
-            for m in data["messages"]
+            scheduler.provider_message(m["role"], m["text"]) | {"attachments": m["attachments"]}
+            for m in shown
         ]
         # Structured persisted plans and status survive refresh, restarts and a provider context reset.
-        for index, msg in enumerate(data["messages"]):
+        for index, msg in enumerate(shown):
             if msg["meal_plan"]:
                 history[index]["content"] += "\nStored meal plan: " + str(msg["meal_plan"])
             if msg["image"]:
@@ -419,12 +486,17 @@ def execute_turn(turn, service, runner=None):
             )
             c.execute("UPDATE conversation_turns SET state='complete' WHERE id=%s", (tid,))
             c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
-    except Exception:
+    except Exception as exc:
         with connection() as c:
-            c.execute(
-                "UPDATE conversation_turns SET state='failed' WHERE id=%s AND attempt=%s AND state='running'",
+            failed = c.execute(
+                "UPDATE conversation_turns SET state='failed' WHERE id=%s AND attempt=%s AND state='running' RETURNING id",
                 (tid, attempt),
-            )
+            ).fetchone()
+            if failed:
+                # a system-authored turn (the scheduler's chat) has no customer message to retry
+                scheduler.settle_failed_system_turn(c, tid, cid)
+        if failed and provider_failure(exc):
+            store_failure_notice(cid, tid)  # Q-108; a no-op for a system turn (no customer message)
         raise
     return detail(identity, cid)
 
@@ -454,6 +526,9 @@ def purchases(identity, offset, limit):
 
 
 def confirm(identity, pid, body, service):
+    # CNF-003: only a human customer role confirms, never an agent that happens to hold authority.
+    if identity["role"] != "approver":
+        raise Problem("FORBIDDEN", "Only a buyer session can confirm a purchase.", 403)
     if str(body.proposal_id) != str(pid):
         raise Problem(
             "PROPOSAL_MISMATCH", "Confirmation must identify the purchase being reviewed.", 422
@@ -465,6 +540,7 @@ def confirm(identity, pid, body, service):
         old = workflow.prior_result(c, identity, body, any_key=True)
         if old:
             return old
+        cancellations.ensure_not_cancelled(c, p["id"])  # CNF-035
         if r["revision"] != body.revision:
             raise Problem("STALE_REVISION", "Terms changed. Review and confirm the new revision.")
         if p["order_id"] or r["expires_at"] <= now() or r["policy_version"] != policy["version"]:
