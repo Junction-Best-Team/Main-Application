@@ -13,6 +13,10 @@ dependencies = [
   "torch>=2.5,<3",
   "argon2-cffi>=25,<26",
   "itsdangerous>=2.2,<3",
+  "pypdf>=6,<7",
+  "openpyxl>=3.1,<4",
+  "defusedxml>=0.7,<1",
+  "pillow>=12,<13",
 ]
 
 [dependency-groups]

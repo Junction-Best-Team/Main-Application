@@ -5,7 +5,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 from aimo import approval_workflow as workflow
-from aimo import auth
+from aimo import attachments, auth
 from aimo.approval_policy import can_approve
 from aimo.chat_schemas import AgentTurn
 from aimo.db import Problem, connection, fingerprint, js, now
@@ -63,12 +63,25 @@ def listing(identity, offset, limit):
     }
 
 
-def detail(identity, cid):
+def attachment(identity, cid, message_id, index):
+    with connection() as c:
+        context(c, identity)
+        owned(c, identity, cid)
+        row = c.execute(
+            "SELECT attachments FROM conversation_messages WHERE conversation_id=%s AND id=%s",
+            (cid, message_id),
+        ).fetchone()
+    if not row or not 0 <= index < len(row["attachments"]):
+        raise Problem("NOT_FOUND", "Attachment not found.", 404)
+    return row["attachments"][index]
+
+
+def detail(identity, cid, *, internal=False):
     with connection() as c:
         context(c, identity)
         row = owned(c, identity, cid)
         messages = c.execute(
-            """SELECT id,role,text,created_at,meal_plan,proposal_id,image FROM conversation_messages
+            """SELECT id,role,text,created_at,meal_plan,proposal_id,image,attachments FROM conversation_messages
             WHERE conversation_id=%s ORDER BY id""",
             (cid,),
         ).fetchall()
@@ -80,7 +93,7 @@ def detail(identity, cid):
             is not None
         )
         retry = c.execute(
-            """SELECT t.key,t.constraints,m.text FROM conversation_turns t JOIN conversation_messages m
+            """SELECT t.key,t.constraints,m.text,m.attachments FROM conversation_turns t JOIN conversation_messages m
             ON m.turn_id=t.id AND m.role='user' WHERE t.conversation_id=%s AND t.state!='complete'
             ORDER BY t.created_at LIMIT 1""",
             (cid,),
@@ -93,14 +106,34 @@ def detail(identity, cid):
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
         "messages": [
-            m | {"proposal_id": str(m["proposal_id"]) if m["proposal_id"] else None}
+            m
+            | {
+                "proposal_id": str(m["proposal_id"]) if m["proposal_id"] else None,
+                "attachments": m["attachments"]
+                if internal
+                else [
+                    {k: a[k] for k in ("name", "media_type", "size")}
+                    | {"url": f"/api/conversations/{cid}/attachments/{m['id']}/{index}"}
+                    for index, a in enumerate(m["attachments"])
+                ],
+            }
             for m in messages
         ],
         "purchases": purchases,
         "busy": busy,
-        "retry_message": {"text": retry["text"], "idempotency_key": retry["key"]}
-        | ({"constraints": {r["name"]: r["value"] for r in retry["constraints"]}} if retry["constraints"] else {})
-        if retry
+        "retry_message": {
+            "text": retry["text"],
+            "idempotency_key": retry["key"],
+            "attachments": [
+                {k: a[k] for k in ("name", "media_type", "data")} for a in retry["attachments"]
+            ],
+        }
+        | (
+            {"constraints": {r["name"]: r["value"] for r in retry["constraints"]}}
+            if retry["constraints"]
+            else {}
+        )
+        if retry and (not busy or not retry["attachments"])
         else None,
     }
 
@@ -117,9 +150,11 @@ def enqueue(identity, cid, body):
             (cid, body.idempotency_key),
         ).fetchone()
         records = body.constraints.records() if body.constraints else None
-        # The hash covers the text and, when present, the customer's limits (POL-008), so a retry
-        # with the same key and another record is a conflict. Without limits it is unchanged.
-        digest = fingerprint({"text": body.text} | ({"constraints": records} if records else {}))
+        # Keep historical text/constraint hashes while binding every attached file exactly.
+        payload = {"text": body.text} | ({"constraints": records} if records else {})
+        if body.attachments:
+            payload["attachments"] = [a.model_dump() for a in body.attachments]
+        digest = fingerprint(payload)
         if old and old["payload_hash"] != digest:
             raise Problem("IDEMPOTENCY_CONFLICT", "This key already identifies another message.")
         if old and old["state"] in ("complete", "queued", "running"):
@@ -134,6 +169,7 @@ def enqueue(identity, cid, body):
                     "RETRY_PREVIOUS_MESSAGE", "Retry the previous message before sending another."
                 )
             limit_turns(c, identity, new=old is None)
+            files = [attachments.prepare(a) for a in body.attachments] if not old else []
             tid = old["id"] if old else uuid4()
             c.execute(
                 """INSERT INTO conversation_turns
@@ -155,9 +191,9 @@ def enqueue(identity, cid, body):
                 ),
             )
             c.execute(
-                """INSERT INTO conversation_messages(conversation_id,turn_id,role,text)
-                VALUES(%s,%s,'user',%s) ON CONFLICT(turn_id,role) DO NOTHING""",
-                (cid, tid, body.text),
+                """INSERT INTO conversation_messages(conversation_id,turn_id,role,text,attachments)
+                VALUES(%s,%s,'user',%s,%s) ON CONFLICT(turn_id,role) DO NOTHING""",
+                (cid, tid, body.text, js(files)),
             )
             c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
     event(
@@ -296,10 +332,13 @@ def execute_turn(turn, service, runner=None):
             }
         else:
             actor["_memory_unavailable"] = True
-        data = detail(identity, cid)
+        data = detail(identity, cid, internal=True)
         with connection() as c:
             limits = customer_constraints(c, cid, tid)
-        history = [{"role": m["role"], "content": m["text"]} for m in data["messages"]]
+        history = [
+            {"role": m["role"], "content": m["text"], "attachments": m["attachments"]}
+            for m in data["messages"]
+        ]
         # Structured persisted plans and status survive refresh, restarts and a provider context reset.
         for index, msg in enumerate(data["messages"]):
             if msg["meal_plan"]:

@@ -637,3 +637,30 @@ def test_no_constraints_changes_nothing(empty):
     ]
     for case in cases:
         assert run(**case, constraints=empty) == run(**case)
+
+
+@pytest.mark.parametrize(
+    "cap,total,expected",
+    [
+        ("10.00", "10.00", "ready_to_commit"),
+        ("10.00", "10.01", "denied"),
+        ("0.00", "0.01", "denied"),
+        (None, "10.01", "ready_to_commit"),
+    ],
+)
+def test_account_cap_boundaries(cap, total, expected):
+    result = run(rule=rules(max_order_gross=cap), snap=snapshot(total=total))
+    assert result["policy_outcome"] == expected
+    assert ("ACCOUNT_CAP_EXCEEDED" in codes(result)) == (expected == "denied")
+
+
+def test_account_cap_never_grants_personal_approval_authority():
+    result = run(rule=rules(max_order_gross="9000"), snap=snapshot(total="5000.01"))
+    assert result["policy_outcome"] == "needs_resolution"
+    assert "NO_ELIGIBLE_APPROVER" in codes(result)
+
+
+def test_account_cap_does_not_replace_stricter_purchase_budget():
+    result = run(rule=rules(max_order_gross="100"), req=request(budget_gross="9"))
+    assert result["policy_outcome"] == "denied"
+    assert "HARD_BUDGET_EXCEEDED" in codes(result)

@@ -225,6 +225,13 @@ transcript, design tokens and Playwright route fixtures. Markdown and unsafe
 content examples are authored synthetic fixtures; no supplier or model calls,
 external images or customer messages were used.
 
+## Purchasing settings simplification — 2026-11-14
+
+Reused the owner-reviewed interactive mockup from this chat, existing Nordic UI
+tokens, authenticated settings transport, versioned policies and quantity/approval
+checks. The preview and browser tests use authored demo data; orders remain mocks.
+No supplier/model calls or live deployment are part of this change.
+
 ## Self-hosted UI fonts — 2026-11-14
 
 At the owner's request, replaced the Google Fonts stylesheet with locked
@@ -244,3 +251,11 @@ existing Overview design. Assistant-authored recipe bases remain labelled estima
 separate from imported saved recipes. Calculation and browser fixtures are authored
 synthetic examples, not verified recipes or live supplier records. No new external
 recipe source, dataset, visual asset or dependency was introduced.
+
+## Chat attachments — 2026-11-14
+
+Reused the existing composer, generated Python/OpenAPI contracts, authenticated conversation API,
+PostgreSQL queue, retry fencing and native Google/OpenRouter adapters. Added pypdf, openpyxl,
+defusedxml and an explicit Pillow dependency for bounded file parsing; lockfile updated. Tests use
+small authored text, Office archives, PDF pages and image bytes, with mocked model responses;
+no challenge documents, user files, credentials or remote material are committed.

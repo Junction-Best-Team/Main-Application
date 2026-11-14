@@ -1,43 +1,39 @@
-# Buyer policy settings
+# Buyer purchasing settings
 
-The owner's 2026-11-14 request replaces command-line product-scope management with
-`/settings`, reached through Account Settings in the desktop sidebar or mobile menu.
-This supersedes the earlier provisioning-only policy-editor deferral.
-Agents still read `get_purchase_policy`; they cannot change policies or permissions.
+The owner's 2026-11-14 simplification replaces the earlier manager-only editor.
+After sign-in, every active human buyer can edit `/settings`. Agents cannot edit.
+The page contains an account spending cap, alternatives/extra-quantity rules and
+whole-sales-unit rounding under Advanced. Product codes, delivery destinations,
+change history, version numbers and personal approval permissions are not shown.
 
-Signed-in buyers can view their account's current rules, personal approval authority
-and recent policy changes. A designated policy manager can save approved catalog
-product codes, allowed destinations, substitution/overbuy behavior and whole-sales-unit
-rounding. Currency stays EUR. An empty approved list has no standing approved products;
-all products follow the substitution rule. Missing scope blocks purchasing.
+The optional `max_order_gross` is a shared account cap including tax and charges.
+Blank clears the cap; zero permits only a zero-total basket. Existing accounts
+without the field gain no new limit. Above-cap baskets are denied during both
+preparation and commit revalidation. Each person's separately provisioned approval
+amount/exception permissions and each request's hard budget still apply. A cap
+never grants approval authority or automatic purchasing: every order needs an
+explicit authenticated confirmation of its exact revision.
 
-`GET` / `PUT /api/settings/policy` derive the account and actor from the browser session.
-Writes require the same Origin and session CSRF protections as purchase confirmation.
-Only active human approvers listed in `policy_managers` may save. This permission is
-separate from spending authority: Settings cannot edit personal spending limits or
-exception permissions. A policy edit never grants purchase confirmation.
+Alternatives include declared replacements and products outside the standing
+approved product scope. Extra quantities are derived from requested versus
+purchasable pack quantities. Each rule is Allow, Ask me first or Don't allow.
+Supplier minimums and pack increments always apply.
 
-Migration 014 creates manager grants and append-only `policy_changes` attribution.
-It designates the existing `buyer` of `demo-hotel`; `seed` does the same for fresh setup.
-Other manager grants remain privileged operator provisioning; permission maintenance
-must take the buyer lock before changing manager or identity rows. Apply the migration and
-runtime grants with the setup role before releasing the new API. Readiness probes
-check its tables, immutable change trigger and save function. No reset or catalog
-import is needed. No cluster migration or deployment is part of this feature task.
+`GET /api/settings/policy` retains the current policy, version and audit history.
+`PUT` accepts `expected_version` plus `rules` containing only `max_order_gross`,
+`substitution`, `overbuy` and `whole_sales_units`. Product/destination scopes and
+personal authority cannot be written through this endpoint. They are preserved
+server-side, including a missing product scope (which still blocks purchasing).
+All writes require the buyer session, exact Origin and session-bound CSRF token.
 
-The runtime role retains no direct policy, identity, manager-grant or buyer-provisioning
-write permission. A restricted `SECURITY DEFINER` function saves policy versions, locks
-the buyer before identities, rechecks the active manager and records actor/time. Its
-search path is fixed to the installation schema and `pg_temp`; PUBLIC cannot execute
-it. The browser handler validates typed rules and checks product codes against the
-active catalog. The function is not an agent tool.
+Apply additive migration `022_buyer_settings.sql` and reapply runtime grants with
+the setup role before running the new API. Its restricted `save_buyer_settings`
+function locks the buyer before identities, rechecks the active human role,
+limits writable keys, merges existing policy, and atomically appends a version
+and actor/time. Runtime identities/provisioning remain read only. The historical
+manager grants and old save function are retained; the browser no longer uses them.
+No existing policy, identity, approval or order is rewritten by this migration.
 
-Saves include the expected current version. Stale saves return 409 without overwriting
-changes; the page preserves the draft until the buyer reloads. Identical current-version
-saves create no new version. Changed rules append a new immutable policy and attribution
-row atomically with the buyer's current-version pointer. Old revisions and orders remain
-intact. Existing purchasing checks reject old policy confirmations and require a refreshed
-basket revision with a new explicit customer confirmation.
-
-The product-scope CLI is removed. Initial account/identity seeding and administrative
-approval-permission setup remain operator operations.
+Stale saves return 409 and preserve the draft until an explicit reload. Unchanged
+saves create no version. Changed policy invalidates pending confirmations; baskets
+need fresh review and confirmation. This feature does not deploy or migrate a cluster.

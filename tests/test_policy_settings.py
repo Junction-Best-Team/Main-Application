@@ -29,7 +29,12 @@ def change(buyer, **rules):
     current = policy_settings.get(buyer)
     return policy_settings.PolicyUpdate(
         expected_version=current["policy_version"],
-        rules=current["rules"].model_dump() | rules,
+        rules={
+            key: value
+            for key, value in current["rules"].model_dump().items()
+            if key in policy_settings.EditablePolicy.model_fields
+        }
+        | rules,
     )
 
 
@@ -40,7 +45,7 @@ def test_browser_save_history_stale_conflict_and_noop(service, buyer):
         headers = login(client)
         original = client.get(url).json()
         assert original["can_edit"] is True
-        body = change(buyer, approved_product_ids=["464398", "464306", "464398"]).model_dump()
+        body = change(buyer, max_order_gross="250.00").model_dump(mode="json")
         assert client.put(url, json=body).status_code == 403
         assert (
             client.put(
@@ -52,7 +57,9 @@ def test_browser_save_history_stale_conflict_and_noop(service, buyer):
         assert response.status_code == 200, response.text
         saved = response.json()
         assert saved["policy_version"] == 2
-        assert saved["rules"]["approved_product_ids"] == ["464306", "464398"]
+        assert saved["rules"]["max_order_gross"] == "250.00"
+        assert saved["rules"]["approved_product_ids"] == original["rules"]["approved_product_ids"]
+        assert saved["rules"]["destinations"] == original["rules"]["destinations"]
         assert saved["history"][0]["actor_id"] == "buyer"
         assert (
             saved["approval_authority"]["max_gross"] == original["approval_authority"]["max_gross"]
@@ -67,7 +74,9 @@ def test_browser_save_history_stale_conflict_and_noop(service, buyer):
             ] == ["464306"]
 
 
-def test_agent_nonmanager_revoked_and_cross_buyer_isolation(service, buyer, agent):
+def test_agent_and_revoked_buyer_denied_but_nonmanager_can_edit_with_account_isolation(
+    service, buyer, agent
+):
     body = change(buyer, substitution="allowed")
     with pytest.raises(Problem) as error:
         policy_settings.update(agent, body)
@@ -100,12 +109,14 @@ def test_agent_nonmanager_revoked_and_cross_buyer_isolation(service, buyer, agen
                 == 1
             )
             c.execute("DELETE FROM policy_managers WHERE identity_id='buyer'")
-        assert client.get("/api/settings/policy").json()["can_edit"] is False
-        body.expected_version = 2
-        assert (
-            client.put("/api/settings/policy", json=body.model_dump(), headers=headers).status_code
-            == 403
+        assert client.get("/api/settings/policy").json()["can_edit"] is True
+        body = change(buyer, overbuy="allowed")
+        saved = client.put(
+            "/api/settings/policy", json=body.model_dump(mode="json"), headers=headers
         )
+        assert saved.status_code == 200
+        assert saved.json()["policy_version"] == 3
+        assert saved.json()["rules"]["overbuy"] == "allowed"
         with connection() as c:
             c.execute("UPDATE identities SET active=false WHERE id='buyer'")
         assert (
@@ -124,6 +135,11 @@ def test_agent_nonmanager_revoked_and_cross_buyer_isolation(service, buyer, agen
         {"substitution": "sometimes"},
         {"approved_product_ids": None},
         {"max_gross": "999999"},
+        {"max_order_gross": "-1"},
+        {"max_order_gross": "NaN"},
+        {"max_order_gross": "Infinity"},
+        {"max_order_gross": "12.345"},
+        {"max_order_gross": "1000000000000"},
     ],
 )
 def test_invalid_configuration_does_not_change_policy(service, buyer, changes):
@@ -193,13 +209,70 @@ def test_restricted_runtime_uses_narrow_save_without_provisioning(buyer):
                 with pytest.raises(psycopg.errors.InsufficientPrivilege):
                     with c.transaction():
                         c.execute(statement)
-            rules = change(buyer, overbuy="forbidden").rules.model_dump()
+            rules = change(buyer, overbuy="forbidden").rules.model_dump(mode="json")
             with pytest.raises(psycopg.errors.RaiseException, match="POLICY_FORBIDDEN"):
                 with c.transaction():
-                    c.execute("SELECT save_buyer_policy('demo-agent',1,%s)", (js(rules),))
+                    c.execute("SELECT save_buyer_settings('demo-agent',1,%s)", (js(rules),))
+            # No separate manager grant is needed; SQL still restricts the editable keys.
+            c.execute("RESET ROLE")
+            c.execute("DELETE FROM policy_managers WHERE identity_id='buyer'")
+            c.execute(sql.SQL("SET LOCAL ROLE {}").format(sql.Identifier(role_name)))
+            with pytest.raises(psycopg.errors.RaiseException, match="POLICY_SETTINGS_INVALID"):
+                with c.transaction():
+                    c.execute(
+                        "SELECT save_buyer_settings('buyer',1,%s)",
+                        (js(rules | {"destinations": ["elsewhere"]}),),
+                    )
             assert (
-                c.execute("SELECT save_buyer_policy('buyer',1,%s)", (js(rules),)).fetchone()[0] == 2
+                c.execute("SELECT save_buyer_settings('buyer',1,%s)", (js(rules),)).fetchone()[0]
+                == 2
             )
             assert c.execute("SELECT actor_id FROM policy_changes").fetchone()[0] == "buyer"
         finally:
             c.rollback()
+
+
+@pytest.mark.parametrize("cap,expected", [("100", "100.00"), ("-0.00", "0.00")])
+def test_account_cap_can_be_cleared_without_changing_approval_authority(buyer, cap, expected):
+    original = policy_settings.get(buyer)
+    saved = policy_settings.update(buyer, change(buyer, max_order_gross=cap))
+    assert str(saved["rules"].max_order_gross) == expected
+    assert saved["approval_authority"] == original["approval_authority"]
+    assert saved["rules"].destinations == original["rules"].destinations
+    assert saved["rules"].approved_product_ids == original["rules"].approved_product_ids
+    cleared = policy_settings.update(buyer, change(buyer, max_order_gross=None))
+    assert cleared["rules"].max_order_gross is None
+    assert cleared["approval_authority"] == original["approval_authority"]
+
+
+@pytest.mark.parametrize("scope", [None, ["retired-product"]])
+def test_hidden_scope_is_preserved_even_when_missing_or_outside_active_catalog(buyer, scope):
+    with connection() as c:
+        c.execute(
+            "INSERT INTO policies(buyer_id,version,rules) SELECT buyer_id,2,rules || %s FROM policies WHERE buyer_id='demo-hotel' AND version=1",
+            (js({"approved_product_ids": scope}),),
+        )
+        c.execute("UPDATE buyers SET current_policy=2 WHERE id='demo-hotel'")
+    saved = policy_settings.update(buyer, change(buyer, overbuy="allowed"))
+    assert saved["rules"].approved_product_ids == scope
+    assert saved["rules"].destinations == ["hotel-helsinki"]
+
+
+def test_lowered_account_cap_blocks_commit_of_previously_confirmed_basket(
+    service, buyer, agent, request_data, confirm_terms
+):
+    from decimal import Decimal
+
+    from aimo.schemas import CommitRequest
+
+    p = service.prepare_order(agent, PrepareRequest(**request_data))
+    confirm_terms(p)
+    total = Decimal(p["snapshot"]["gross_total"])
+    policy_settings.update(buyer, change(buyer, max_order_gross=total - Decimal("0.01")))
+    revised = service.commit_order(
+        agent, CommitRequest(proposal_id=p["proposal_id"], revision=1, idempotency_key=str(uuid4()))
+    )
+    assert revised["status"] == "revised" and revised["policy_outcome"] == "denied"
+    assert "ACCOUNT_CAP_EXCEEDED" in {r["code"] for r in revised["reasons"]}
+    with connection() as c:
+        assert c.execute("SELECT count(*) AS n FROM orders").fetchone()["n"] == 0

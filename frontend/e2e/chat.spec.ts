@@ -514,12 +514,7 @@ for (const [width, height] of [
       .toBeGreaterThan(0);
     const composerBounds = await composer.boundingBox();
     expect(composerBounds!.height).toBeLessThanOrEqual(48);
-    for (const name of [
-      "Attach file",
-      "Start voice mode",
-      "Scan barcode",
-      "Send Order Request",
-    ]) {
+    const expectBesideComposer = async (name: string) => {
       const button = page.getByRole("button", { name, exact: true });
       const bounds = await button.boundingBox();
       expect(bounds!.y + bounds!.height / 2).toBeCloseTo(
@@ -529,8 +524,16 @@ for (const [width, height] of [
       expect(bounds!.x).toBeGreaterThanOrEqual(
         composerBounds!.x + composerBounds!.width,
       );
-    }
+    };
+    // Barcode was removed; voice and send take turns in one slot after Attach file.
+    await expect(
+      page.getByRole("button", { name: "Scan barcode" }),
+    ).toHaveCount(0);
+    await expectBesideComposer("Attach file");
     const voice = page.getByRole("button", { name: "Start voice mode" });
+    const send = page.getByRole("button", { name: "Send Order Request" });
+    await expectBesideComposer("Start voice mode");
+    await expect(send).toHaveCount(0);
     await expect(voice).toBeEnabled();
     expect(await voice.boundingBox()).toMatchObject({ width: 44, height: 44 });
     await expect(voice).toHaveCSS("border-radius", "9999px");
@@ -544,15 +547,19 @@ for (const [width, height] of [
     await expect.poll(() => history.evaluate((node) => node.scrollTop)).toBe(0);
     expect(await composer.boundingBox()).toEqual(composerBounds);
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    await composer.fill("   ");
+    await expect(voice).toBeVisible();
+    await expect(send).toHaveCount(0);
     await composer.fill("Please continue");
-    await expect(voice).toBeDisabled();
-    await page.getByRole("button", { name: "Send Order Request" }).click();
+    await expect(voice).toHaveCount(0);
+    await expectBesideComposer("Send Order Request");
+    await expect(send).toHaveCSS("border-radius", "9999px");
+    await send.click();
     await expect(
       page.getByText("Latest reply", { exact: true }),
     ).toBeInViewport();
-    await expect(
-      page.getByRole("button", { name: "Send Order Request" }),
-    ).toBeInViewport();
+    await expect(send).toHaveCount(0);
+    await expect(voice).toBeInViewport();
     expect(
       await page.evaluate(() => document.documentElement.scrollHeight),
     ).toBeLessThanOrEqual(height);
@@ -1170,7 +1177,10 @@ for (const width of [1440, 390]) {
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Attach file" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
+    await expect(
+      page.getByRole("button", { name: "Start voice mode" }),
+    ).toBeEnabled();
     await expect(
       page.getByRole("complementary", { name: "Overview" }),
     ).toContainText("Nothing staged");
@@ -1389,4 +1399,227 @@ test("Overview rejection retains the server decision without placing an order", 
     panel.getByRole("button", { name: "Approve & Push to Dispatch" }),
   ).toHaveCount(0);
   expect(confirmations).toBe(0);
+});
+
+const attachmentPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7VYAAAAASUVORK5CYII=",
+  "base64",
+);
+for (const width of [1440, 320]) {
+  test(`attachments preview, remove and send a file-only request at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await mockSession(page);
+    let current = { ...blankConversation };
+    let posted: components["schemas"]["MessageRequest"] | undefined;
+    await page.route(`**/api/conversations/${conversationId}`, (route) =>
+      route.fulfill({ json: current }),
+    );
+    await page.route(
+      `**/api/conversations/${conversationId}/messages`,
+      async (route) => {
+        posted = route.request().postDataJSON();
+        current = {
+          ...blankConversation,
+          messages: [
+            {
+              id: 1,
+              role: "user",
+              text: posted?.text ?? "",
+              created_at: timestamp,
+              attachments: [
+                {
+                  name: "menu.csv",
+                  media_type: "text/csv",
+                  size: 20,
+                  url: `/api/conversations/${conversationId}/attachments/1/0`,
+                },
+              ],
+            },
+          ],
+        };
+        await route.fulfill({ json: current });
+      },
+    );
+    await page.goto(`/conversations/${conversationId}`);
+    const picker = page.getByLabel("Choose attachments");
+    await picker.setInputFiles([
+      { name: "photo.png", mimeType: "image/png", buffer: attachmentPng },
+      {
+        name: "menu.csv",
+        mimeType: "text/csv",
+        buffer: Buffer.from("Ingredient,KG\nTomato,5"),
+      },
+    ]);
+    const files = page.getByRole("list", {
+      name: "Attached files",
+      exact: true,
+    });
+    await expect(files.getByText("photo.png")).toBeVisible();
+    await expect(
+      files.getByRole("img", { name: "Preview of photo.png" }),
+    ).toBeVisible();
+    // An attachment counts as a draft: the send arrow replaces voice mode.
+    await expect(
+      page.getByRole("button", { name: "Start voice mode" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Send Order Request" }),
+    ).toBeEnabled();
+    await page.screenshot({
+      path: testInfo.outputPath(`attachment-preview-${width}.png`),
+    });
+    await page.getByRole("button", { name: "Remove photo.png" }).click();
+    await expect(files.getByText("photo.png")).toHaveCount(0);
+    await page.getByRole("button", { name: "Send Order Request" }).click();
+    await expect.poll(() => posted?.attachments?.length).toBe(1);
+    expect(posted?.text).toBe("");
+    expect(posted?.attachments?.[0].data).toBe(
+      Buffer.from("Ingredient,KG\nTomato,5").toString("base64"),
+    );
+    await expect(
+      page
+        .getByRole("list", { name: "Message attachments", exact: true })
+        .getByRole("link", { name: "menu.csv" }),
+    ).toBeVisible();
+    await expect(files).toHaveCount(0);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await page.reload();
+    await expect(
+      page.getByRole("link", { name: "menu.csv", exact: true }),
+    ).toBeVisible();
+  });
+}
+
+test("drop and clipboard files produce removable composer previews", async ({
+  page,
+}) => {
+  await mockSession(page);
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: blankConversation }),
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  await page.getByRole("form", { name: "Chat message" }).evaluate((form) => {
+    const data = new DataTransfer();
+    data.items.add(
+      new File(["Tomato soup"], "dropped.txt", { type: "text/plain" }),
+    );
+    form.dispatchEvent(
+      new DragEvent("drop", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: data,
+      }),
+    );
+  });
+  await expect(page.getByText("dropped.txt", { exact: true })).toBeVisible();
+  await page.getByLabel("Continue the conversation").evaluate((input) => {
+    const data = new DataTransfer();
+    data.items.add(
+      new File(["Ingredient,KG\nTomato,5"], "pasted.csv", { type: "text/csv" }),
+    );
+    input.dispatchEvent(
+      new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: data,
+      }),
+    );
+  });
+  await expect(page.getByText("pasted.csv", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Remove dropped.txt" }).click();
+  await expect(page.getByText("dropped.txt", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("pasted.csv", { exact: true })).toBeVisible();
+});
+
+test("unsupported, empty, oversized and excessive files are rejected without losing the draft", async ({
+  page,
+}) => {
+  await mockSession(page);
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: blankConversation }),
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  await page.getByLabel("Continue the conversation").fill("Soup menu");
+  const picker = page.getByLabel("Choose attachments");
+  await picker.setInputFiles({
+    name: "script.exe",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from("abc"),
+  });
+  await expect(page.getByRole("alert")).toContainText("Use PDF");
+  await picker.setInputFiles({
+    name: "large.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.alloc(2 * 1024 * 1024 + 1),
+  });
+  await expect(page.getByRole("alert")).toContainText("at most 2 MB");
+  await picker.setInputFiles({
+    name: "empty.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.alloc(0),
+  });
+  await expect(page.getByRole("alert")).toContainText("nonempty");
+  await picker.setInputFiles(
+    ["a", "b", "c", "d"].map((name) => ({
+      name: `${name}.txt`,
+      mimeType: "text/plain",
+      buffer: Buffer.from(name),
+    })),
+  );
+  await expect(page.getByRole("alert")).toContainText("up to 3 files");
+  await picker.setInputFiles(
+    ["a", "b", "c"].map((name) => ({
+      name: `${name}.txt`,
+      mimeType: "text/plain",
+      buffer: Buffer.alloc(1500000, "x"),
+    })),
+  );
+  await expect(page.getByRole("alert")).toContainText("at most 4 MB");
+  await expect(page.getByLabel("Continue the conversation")).toHaveValue(
+    "Soup menu",
+  );
+  await expect(
+    page.getByRole("list", { name: "Attached files", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("failed worker retry restores attachments after refresh and retains the exact key", async ({
+  page,
+}) => {
+  await mockSession(page);
+  const retry = {
+    text: "Read this menu",
+    idempotency_key: "saved-file-turn-key",
+    constraints: { budget_gross: "150", lactose_free: true, milk_free: null },
+    attachments: [
+      {
+        name: "menu.txt",
+        media_type: "text/plain",
+        data: Buffer.from("Tomato soup").toString("base64"),
+      },
+    ],
+  };
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: { ...blankConversation, retry_message: retry } }),
+  );
+  let posted: unknown;
+  await page.route(
+    `**/api/conversations/${conversationId}/messages`,
+    async (route) => {
+      posted = route.request().postDataJSON();
+      await route.fulfill({ json: { ...blankConversation, busy: true } });
+    },
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  await expect(page.getByText("menu.txt", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("menu.txt", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Retry request" }).click();
+  await expect.poll(() => posted).toEqual(retry);
 });

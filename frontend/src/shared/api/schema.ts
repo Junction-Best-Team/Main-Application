@@ -313,6 +313,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/conversations/{conversation_id}/attachments/{message_id}/{index}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Conversation Attachment */
+        get: operations["conversation_attachment_api_conversations__conversation_id__attachments__message_id___index__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/conversations/{conversation_id}/messages": {
         parameters: {
             query?: never;
@@ -383,6 +400,26 @@ export interface components {
             /** Exceptions */
             exceptions: ("substitution" | "overbuy")[];
         };
+        /** AttachmentInfo */
+        AttachmentInfo: {
+            /** Name */
+            name: string;
+            /** Media Type */
+            media_type: string;
+            /** Size */
+            size: number;
+            /** Url */
+            url: string;
+        };
+        /** AttachmentInput */
+        AttachmentInput: {
+            /** Name */
+            name: string;
+            /** Media Type */
+            media_type: string;
+            /** Data */
+            data: string;
+        };
         /** ChatMessage */
         ChatMessage: {
             /** Id */
@@ -403,6 +440,8 @@ export interface components {
             /** Proposal Id */
             proposal_id?: string | null;
             image?: components["schemas"]["RecipeImage"] | null;
+            /** Attachments */
+            attachments?: components["schemas"]["AttachmentInfo"][];
         };
         /** CommitRequest */
         CommitRequest: {
@@ -505,13 +544,8 @@ export interface components {
         };
         /** EditablePolicy */
         EditablePolicy: {
-            /**
-             * Currency
-             * @constant
-             */
-            currency: "EUR";
-            /** Destinations */
-            destinations: string[];
+            /** Max Order Gross */
+            max_order_gross?: number | string | null;
             /**
              * Substitution
              * @enum {string}
@@ -524,8 +558,6 @@ export interface components {
             overbuy: "allowed" | "requires_approval" | "forbidden";
             /** Whole Sales Units */
             whole_sales_units: boolean;
-            /** Approved Product Ids */
-            approved_product_ids: string[];
         };
         /**
          * ErrorBody
@@ -794,12 +826,17 @@ export interface components {
         };
         /** MessageRequest */
         MessageRequest: {
-            /** Text */
+            /**
+             * Text
+             * @default
+             */
             text: string;
             /** Idempotency Key */
             idempotency_key: string;
             /** @description Optional hard limits set by the customer (budget, dietary toggles). They stay in force for the rest of the conversation until a later message changes them. */
             constraints?: components["schemas"]["MessageConstraints"] | null;
+            /** Attachments */
+            attachments?: components["schemas"]["AttachmentInput"][];
         };
         /** NextAction */
         NextAction: {
@@ -891,6 +928,11 @@ export interface components {
         /** PolicyRules */
         PolicyRules: {
             /**
+             * Max Order Gross
+             * @description Optional account-wide gross cap per order. Never grants personal approval authority.
+             */
+            max_order_gross?: string | null;
+            /**
              * Currency
              * @constant
              */
@@ -911,7 +953,7 @@ export interface components {
             whole_sales_units: boolean;
             /**
              * Approved Product Ids
-             * @description Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope always blocks a purchase until a policy manager configures it in Settings.
+             * @description Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope always blocks a purchase until an operator configures it.
              */
             approved_product_ids?: string[] | null;
         };
@@ -1149,7 +1191,7 @@ export interface components {
         };
         /**
          * RetryMessage
-         * @description An unfinished message the client can send again with the same key and the same limits.
+         * @description An unfinished message, including the same limits and files for an exact retry.
          */
         RetryMessage: {
             /** Text */
@@ -1157,6 +1199,8 @@ export interface components {
             /** Idempotency Key */
             idempotency_key: string;
             constraints?: components["schemas"]["RetryConstraints"] | null;
+            /** Attachments */
+            attachments?: components["schemas"]["AttachmentInput"][];
         };
         /** RevisedProposalResponse */
         RevisedProposalResponse: {
@@ -2275,6 +2319,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConversationResponse"];
+                };
+            };
+            /** @description Validation error. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    conversation_attachment_api_conversations__conversation_id__attachments__message_id___index__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                message_id: number;
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation error. */
