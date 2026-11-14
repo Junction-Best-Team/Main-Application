@@ -271,9 +271,12 @@ def test_purchase_ordering_migration_uses_latest_revision_audit(migration_area, 
         cli.migrate()
         with connection() as c:
             assert c.execute("SELECT to_regclass('recorded_policy_edits')").fetchone()[0]
-            assert c.execute(
-                "SELECT count(*) FROM schema_migrations WHERE version LIKE '008_%'"
-            ).fetchone()[0] == 2
+            assert (
+                c.execute(
+                    "SELECT count(*) FROM schema_migrations WHERE version LIKE '008_%'"
+                ).fetchone()[0]
+                == 2
+            )
 
 
 @pytest.mark.parametrize("duplicate", [False, True])
@@ -313,3 +316,59 @@ def test_recipe_proposal_link_backfills_or_rejects_ambiguous_history(migration_a
                 proposal_id,
                 True,
             )
+
+
+def test_memory_migration_upgrades_populated_chat_database(migration_area, monkeypatch):
+    from pathlib import Path
+
+    directory, private_connection, schema = migration_area
+    packaged = sorted((Path(__file__).resolve().parents[1] / "migrations").glob("*.sql"))
+
+    @contextmanager
+    def connection():
+        with private_connection() as c:
+            c.execute(sql.SQL("SET search_path TO {},public").format(sql.Identifier(schema)))
+            yield c
+
+    monkeypatch.setattr(cli, "connection", connection)
+    for path in packaged:
+        if path.name < "012_buyer_user_memory.sql":
+            (directory / path.name).write_text(path.read_text())
+    cli.migrate()
+    cid, tid = uuid4(), uuid4()
+    with connection() as c:
+        c.execute("INSERT INTO buyers VALUES('buyer','123',1)")
+        c.execute("INSERT INTO identities VALUES('person','buyer','approver',true,'test','{}')")
+        c.execute(
+            "INSERT INTO conversations(id,buyer_id,title,create_key,create_hash) VALUES(%s,'buyer','t','key','h')",
+            (cid,),
+        )
+        c.execute(
+            "INSERT INTO conversation_turns(id,conversation_id,key,payload_hash,state,lease_until,attempt,requested_by) "
+            "VALUES(%s,%s,'turn-key','h','complete',now(),%s,'person')",
+            (tid, cid, uuid4()),
+        )
+        message = c.execute(
+            "INSERT INTO conversation_messages(conversation_id,turn_id,role,text) VALUES(%s,%s,'user','Remember 200') RETURNING id",
+            (cid, tid),
+        ).fetchone()[0]
+    for path in packaged:
+        (directory / path.name).write_text(path.read_text())
+    cli.migrate()
+    cli.migrate()
+    with connection() as c:
+        assert c.execute("SELECT text FROM conversation_messages").fetchone() == ("Remember 200",)
+        assert c.execute("SELECT requested_by,submitted_by FROM conversation_turns").fetchone() == (
+            "person",
+            None,
+        )
+        c.execute(
+            "INSERT INTO memories(id,buyer_id,scope,kind,key,value,created_by,updated_by,"
+            "source_conversation_id,source_message_id) VALUES(%s,'buyer','buyer','default',"
+            "'default.portions','{\"portions\":200}','person','person',%s,%s)",
+            (uuid4(), cid, message),
+        )
+        assert c.execute(
+            "SELECT count(*) FROM memories WHERE search @@ to_tsquery('simple','portions')"
+        ).fetchone() == (1,)
+        assert c.execute("SELECT count(*) FROM schema_migrations").fetchone()[0] == len(packaged)

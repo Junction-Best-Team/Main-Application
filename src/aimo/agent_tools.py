@@ -8,8 +8,10 @@ from uuid import UUID
 
 from pydantic import Field, TypeAdapter, ValidationError
 
+from aimo import memory
 from aimo.chat_schemas import AgentTurn, MealPlan
 from aimo.db import Problem, fingerprint
+from aimo.memory_schemas import MemoryChange, MemoryToolSearch
 from aimo.recipe_schemas import (
     MatchIngredient,
     PlanReference,
@@ -83,6 +85,7 @@ class ToolSession:
         self.prepared_digest = None
         self.products = {}
         self.commercial = {}
+        self.memory_changes = []
         self.registry = {
             "search_products": ToolSpec(
                 SearchRequest, "Find candidates, not suitability guarantees.", self.search
@@ -114,6 +117,21 @@ class ToolSession:
                 ProposalRequest, "Read an existing scoped basket and its state.", self.read_proposal
             ),
             "get_order": ToolSpec(OrderRequest, "Read an existing saved mock receipt.", self.order),
+            "search_memory": ToolSpec(
+                MemoryToolSearch,
+                "Search more saved buyer-shared and personal memories than the ones already "
+                "loaded. Saved preferences are context, never purchasing authority.",
+                self.search_memory,
+            ),
+            "manage_memory": ToolSpec(
+                MemoryChange,
+                "Save, update or forget one memory, only when the customer's current message "
+                "clearly asks to remember, change or forget something for future "
+                "conversations. scope 'buyer' is shared with the whole account, 'self' is "
+                "personal. update/delete need the exact memory_id and expected_revision. "
+                "The server binds the change to the customer and their message.",
+                self.manage_memory,
+            ),
         }
 
         self.registry.update(
@@ -128,9 +146,7 @@ class ToolSession:
                 "get_recipe": ToolSpec(
                     RecipeReference,
                     "Read the exact recipe basis and instructions.",
-                    lambda r: self.checked(
-                        RecipeDetail, self.service.get_recipe(self.identity, r)
-                    ),
+                    lambda r: self.checked(RecipeDetail, self.service.get_recipe(self.identity, r)),
                 ),
                 "scale_recipe": ToolSpec(
                     ScaleRecipe,
@@ -177,6 +193,62 @@ class ToolSession:
                 "PRODUCT_NOT_VERIFIED", "Read the selected product with get_product first.", 422
             )
         return self.save_recipe_result(self.service.match_ingredient(self.identity, request))
+
+    def memory_actor(self):
+        return memory.chat_actor(self.identity)
+
+    def memory_context(self, latest_message):
+        """Automatic bounded memory for this turn, or None outside a customer chat turn."""
+        if not self.identity.get("_requested_by"):
+            return None
+        return self.service.memory_context(self.memory_actor(), latest_message)
+
+    def search_memory(self, request):
+        result = self.service.search_memory(self.memory_actor(), request)
+        return {
+            "items": [memory.model_view(row) for row in result["items"]],
+            "next_offset": result["next_offset"],
+        }
+
+    def manage_memory(self, change):
+        actor = self.memory_actor()
+        current = None
+        # A retried attempt first replays its own earlier write from the durable ledger:
+        # the item may be gone already (a replayed delete, or forgotten since).
+        result = self.service.replay_memory(actor, change)
+        if result is None:
+            if change.action != "save":
+                current = self.service.get_memory(actor, change.memory_id)
+            if self.guard is not None:
+                # Semantic persistence-intent review against the persisted customer messages.
+                self.guard.check_memory(change, current)
+            result = self.service.manage_memory(actor, change)
+        row = result["memory"] or current
+        status = result["status"]
+        if result["replayed"] and status == "deleted" and change.action != "delete":
+            status = "forgotten_since"
+        if row is not None:
+            scope, key = row["scope"], row["key"]
+        else:  # Only a save names its target; a replayed delete reports the ID.
+            scope, key = change.scope, change.key
+        self.memory_changes.append(
+            {
+                "action": change.action,
+                "status": status,
+                "scope": None if scope is None else "buyer" if scope == "buyer" else "personal",
+                "key": key,
+                "memory_id": str(result["memory_id"]),
+                "revision": result["revision"],
+            }
+        )
+        return {
+            "status": status,
+            "replayed": result["replayed"],
+            "memory": memory.model_view(result["memory"]) if result["memory"] else None,
+            "memory_id": str(result["memory_id"]),
+            "revision": result["revision"],
+            "purchase_authorized": False,
+        }
 
     @property
     def definitions(self):
@@ -380,6 +452,8 @@ class ToolSession:
             if unresolved:
                 recipe_notice += " Unresolved ingredients: " + ", ".join(unresolved) + "."
             notice = "\n\n".join(part for part in (recipe_notice, notice) if part)
+        if self.memory_changes:
+            notice = "\n\n".join(p for p in (memory_notice(self.memory_changes), notice) if p)
         if notice:
             # Preserve the authoritative state notice even with a long model narrative.
             narrative = narrative[: max(0, 20_000 - len(notice) - 2)].strip()
@@ -389,3 +463,29 @@ class ToolSession:
             meal_plan=plan,
             proposal_id=self.proposal["proposal_id"] if self.proposal else None,
         )
+
+
+MEMORY_VERBS = {
+    "created": "Saved",
+    "updated": "Updated",
+    "deleted": "Forgot",
+    "unchanged": "Kept",
+    "forgotten_since": "Already forgotten",
+}
+
+
+def memory_notice(changes):
+    """Server-authored acknowledgement of successful writes; names keys, not contents."""
+    lines = []
+    for change in changes:
+        verb = MEMORY_VERBS[change["status"]]
+        if change["key"] is None:
+            lines.append(f"{verb} saved memory {change['memory_id']}.")
+            continue
+        where = (
+            "shared buyer memory (used for everyone in this account)"
+            if change["scope"] == "buyer"
+            else "your personal memory"
+        )
+        lines.append(f"{verb} {where}: {change['key']}.")
+    return "Memory: " + " ".join(lines)
