@@ -3,7 +3,16 @@ from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, RootModel, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    RootModel,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 Amount = Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)]
 Money = Annotated[Decimal, Field(ge=0, max_digits=16, decimal_places=4)]
@@ -16,6 +25,41 @@ class Model(BaseModel):
 class Requirements(Model):
     lactose_free: bool = False
     milk_free: bool = False
+    free_from: list[Annotated[str, Field(pattern=r"^[A-Za-z][A-Za-z0-9]{0,3}$")]] = Field(
+        default_factory=list,
+        max_length=8,
+        description=(
+            "Allergen codes (for example AM milk, AE, AW) the product must explicitly declare "
+            "free from. A product with no declaration is excluded, not assumed safe."
+        ),
+    )
+    country_of_origin: list[Annotated[str, Field(pattern=r"^[A-Za-z]{2}$")]] = Field(
+        default_factory=list,
+        max_length=8,
+        description=(
+            "Two-letter origin codes (for example fi, se); the product must match one. "
+            "A product with no recorded origin is excluded."
+        ),
+    )
+
+    @field_validator("free_from")
+    @classmethod
+    def _upper_codes(cls, codes):
+        return list(dict.fromkeys(code.upper() for code in codes))
+
+    @field_validator("country_of_origin")
+    @classmethod
+    def _lower_codes(cls, codes):
+        return list(dict.fromkeys(code.lower() for code in codes))
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_filters(self, handler):
+        # Keeps stored request fingerprints from before these fields existed unchanged.
+        data = handler(self)
+        for name in ("free_from", "country_of_origin"):
+            if not data.get(name):
+                data.pop(name, None)
+        return data
 
 
 class SearchRequest(Model):
