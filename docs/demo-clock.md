@@ -32,3 +32,10 @@ start with it on while supplier lookups are live; the hosted fixture deployment 
 
 All three answer 404 while the clock is disabled. Jumps and resets are recorded in the append-only
 `demo_clock_events` (migration `025_demo_clock.sql`).
+
+## The scheduler follows the buyer's clock
+
+`scheduler.run_due_schedules` with no `now` (the worker) judges each standing order by its buyer's
+simulated Helsinki date. After a jump every date the jump skipped runs in date order, each at its own
+run time, with no `RUN_MISSED` and no `RAN_LATE`. A passed-in `now`, or the clock off, takes the
+unchanged path. Leases, retries, prepare and commit stay on real time.
