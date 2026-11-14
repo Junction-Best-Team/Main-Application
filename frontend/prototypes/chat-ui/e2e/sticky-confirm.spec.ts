@@ -7,11 +7,12 @@ async function signIn(page: Page, path: string) {
   await page.getByRole("button", { name: "Sign in" }).click();
 }
 
-test("there is no variant switcher and links never carry ?variant=", async ({ page }) => {
-  await signIn(page, "/");
+test("there is no variant switcher and links never carry ?variant=", async ({ page }, info) => {
+  await signIn(page, "/conversations/conv-carbonara");
   await expect(page.getByText("Confirmation variant")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Modal" })).toHaveCount(0);
-  await page.getByRole("link", { name: "Purchases" }).first().click();
+  if (info.project.name === "mobile") await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Past Orders" }).click();
   await expect(page).toHaveURL(/\/purchases$/);
   for (const href of await page.locator("a").evaluateAll((as) => as.map((a) => a.getAttribute("href")))) {
     expect(href).not.toContain("variant");

@@ -91,7 +91,7 @@ export function ChatPage() {
   return (
     <main className="chat-workspace">
       <aside className="conversation-sidebar" aria-label="Conversations">
-        <Link className="new-conversation" to="/">
+        <Link className="new-conversation" to="/request">
           New purchase
         </Link>
         <h2>Your conversations</h2>

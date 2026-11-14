@@ -1,9 +1,10 @@
 import React from "react";
-import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { store } from "./store";
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useStoreState } from "./useStoreState";
+import { AppShell, NoticeBar } from "./AppShell";
 import { DemoBar } from "./DemoBar";
 import { Login } from "./Login";
+import { HomePage } from "./HomePage";
 import { ChatPage } from "./ChatPage";
 import { PurchasesPage } from "./PurchasesPage";
 import { DetailPage } from "./DetailPage";
@@ -18,88 +19,36 @@ function Guard({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Topbar() {
-  const { session } = useStoreState();
-  const navigate = useNavigate();
-  async function logout() {
-    await store.logout();
-    navigate("/login", { replace: true });
-  }
-  return (
-    <header className="topbar">
-      <Link to="/" className="brand" aria-label="Aimo purchasing home (prototype)">
-        aimo<span className="brand-dot">.</span>
-      </Link>
-      <nav className="product-nav" aria-label="Main navigation">
-        <Link to="/">Plan a purchase</Link>
-        <Link to="/purchases">Purchases</Link>
-      </nav>
-      {session && (
-        <div className="account">
-          <span>{session.buyer_id}</span>
-          <button onClick={logout}>Sign out</button>
-        </div>
-      )}
-    </header>
-  );
-}
-
+// Routes: Home "/", Request "/request" and "/conversations/:id", Past Orders
+// "/purchases" and "/purchases/:id". Every signed-in screen renders inside
+// AppShell (sidebar / mobile top bar); Login stays outside it.
 function Shell() {
   return (
     <>
-      <div className="prototype-flag" role="note">
-        PROTOTYPE — chat purchasing UI. Fake JSON, nothing here is production.
-      </div>
-      <Topbar />
+      <NoticeBar />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/approvals" element={<Navigate to="/purchases" replace />} />
         <Route
-          path="/purchases/:proposalId"
           element={
             <Guard>
-              <DetailPage />
+              <AppShell />
             </Guard>
           }
-        />
-        <Route
-          path="/approvals/:approvalId"
-          element={
-            <Guard>
-              <DetailPage />
-            </Guard>
-          }
-        />
-        <Route
-          path="/"
-          element={
-            <Guard>
-              <ChatPage />
-            </Guard>
-          }
-        />
-        <Route
-          path="/conversations/:conversationId"
-          element={
-            <Guard>
-              <ChatPage />
-            </Guard>
-          }
-        />
-        <Route
-          path="/purchases"
-          element={
-            <Guard>
-              <PurchasesPage />
-            </Guard>
-          }
-        />
+        >
+          <Route path="/" element={<HomePage />} />
+          <Route path="/request" element={<ChatPage />} />
+          <Route path="/conversations/:conversationId" element={<ChatPage />} />
+          <Route path="/purchases" element={<PurchasesPage />} />
+          <Route path="/purchases/:proposalId" element={<DetailPage />} />
+          <Route path="/approvals/:approvalId" element={<DetailPage />} />
+        </Route>
         <Route
           path="*"
           element={
             <main className="workspace">
               <h1>Page not found</h1>
-              <Link to="/">Plan a purchase</Link>
+              <Link to="/">Go to Home</Link>
             </main>
           }
         />

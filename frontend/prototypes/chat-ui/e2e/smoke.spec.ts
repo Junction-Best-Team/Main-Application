@@ -13,7 +13,7 @@ test("signs in and screenshots each existing screen", async ({ page }, info) => 
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).not.toHaveURL(/login/);
   await page.waitForLoadState("networkidle");
-  await shot("chat");
+  await shot("home");
 
   await page.goto("/purchases");
   await expect(page.getByRole("heading").first()).toBeVisible();

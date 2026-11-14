@@ -1,4 +1,8 @@
-/* No preflight: existing screens keep their current look until restyled. */
+/* No preflight: existing screens keep their current look until restyled.
+   The old stylesheet sits in the lowest cascade layer so Tailwind utilities
+   always win over its element rules (button, a, h1, ...) on restyled screens. */
+@layer legacy, theme, utilities;
+@import "./style.css" layer(legacy);
 @import "tailwindcss/theme" layer(theme);
 @import "tailwindcss/utilities" layer(utilities);
 

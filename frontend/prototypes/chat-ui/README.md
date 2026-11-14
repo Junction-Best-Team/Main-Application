@@ -53,7 +53,9 @@ deliberate simplifications for a throwaway prototype (see `src/store.ts`):
 ## Files
 
 Entirely self-contained under this folder (own `package.json`/lockfile/`tsconfig.json`), so it
-can't affect the real `frontend/` build, lint, or tests. See `src/App.tsx` for routing, `src/store.ts`
+can't affect the real `frontend/` build, lint, or tests. See `src/App.tsx` for routing (Home `/`, Request
+`/request` and `/conversations/:id`, Past Orders `/purchases`), `src/AppShell.tsx` for the sidebar / mobile
+menu shell, `src/mock.ts` + `src/placeholders.tsx` for inert MOCK placeholders, `src/store.ts`
 for the fake backend, `src/ConfirmPanels.tsx` for the sticky confirmation panel, and `src/fixtures.ts` for the carbonara-style meal plan + proposal fixtures.
 
 ## E2E
