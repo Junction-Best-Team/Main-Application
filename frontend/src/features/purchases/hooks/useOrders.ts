@@ -51,7 +51,7 @@ export function useOrders({
         const visited = new Set<number>();
         while (offset !== null && !visited.has(offset)) {
           visited.add(offset);
-          const page = await listOrders(offset, pageSize);
+          const page = await listOrders(offset, pageSize, status);
           pages += 1;
           all = [
             ...all,

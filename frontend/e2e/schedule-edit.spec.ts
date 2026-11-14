@@ -443,6 +443,29 @@ test.describe("restart after a disruption", () => {
     });
   });
 
+  test("the select asks the server for placed orders only and says when more exist", async ({
+    page,
+  }) => {
+    const urls: string[] = [];
+    await mockApi(page, {
+      [GET]: getSchedule(stopped),
+      [ORDERS]: (route) => {
+        urls.push(route.request().url());
+        return json(route, ordersPage(placedOrders, null, 73));
+      },
+    });
+    await openEdit(page, "", RESTART);
+    await expect(
+      page.getByLabel("Revised order to restart from"),
+    ).toBeVisible();
+    expect(urls.length).toBeGreaterThan(0);
+    expect(
+      urls.every((u) => /status=placed/.test(u) && /limit=50/.test(u)),
+    ).toBe(true);
+    // total (73) is larger than the 50 shown, although the page has no next_offset.
+    await expect(page.getByText(/most recent orders/)).toBeVisible();
+  });
+
   test("?restart=1 on an active standing order uses the same order select", async ({
     page,
   }) => {

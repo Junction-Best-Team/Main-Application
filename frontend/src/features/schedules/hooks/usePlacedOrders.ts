@@ -6,8 +6,8 @@ import { useAuth } from "../../auth/useAuth";
 
 const PAGE = 50;
 
-// The customer's placed orders (the choices when restarting a stopped standing order). The list
-// endpoint has no status filter, so the first page is filtered here.
+// The customer's placed orders (the choices when restarting a stopped standing order): the
+// server filters with ?status=placed and `total` says whether more exist than the page shows.
 export function usePlacedOrders(enabled: boolean) {
   const { setSession } = useAuth();
   const [orders, setOrders] = useState<OrderListItem[]>([]);
@@ -19,9 +19,9 @@ export function usePlacedOrders(enabled: boolean) {
     setLoading(true);
     setError("");
     try {
-      const page = await listOrders(0, PAGE);
+      const page = await listOrders(0, PAGE, "placed");
       setOrders(page.items.filter((o) => o.status === "placed" && o.order_id));
-      setMore(page.next_offset != null);
+      setMore(page.next_offset != null || page.total > page.items.length);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) setSession(null);
       else setError((e as Error).message);

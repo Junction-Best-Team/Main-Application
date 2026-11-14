@@ -158,6 +158,8 @@ test("Recent Past Orders shows the placed rows of GET /api/orders", async ({
   await expect(recent.getByRole("link", { name: /Carbonara/ })).toHaveCount(0);
   expect(requests[0]).toMatch(/^\?offset=0&limit=/);
   expect(orders.filter((o) => o.status === "placed")).toHaveLength(1);
+  // The server filters: only placed rows are asked for (GET /api/orders?status=placed).
+  expect(requests.every((r) => r.includes("status=placed"))).toBe(true);
 });
 
 test("Recent Past Orders keeps reading until it finds placed rows", async ({

@@ -83,6 +83,21 @@ test("every row kind shows its status chip, date and link", async ({
   ).toHaveCount(0);
 });
 
+test("a placed row shows its placement time, not the last update", async ({
+  page,
+}) => {
+  const placed = {
+    ...orders[3]!,
+    placed_at: "2026-11-10T08:30:00Z",
+    updated_at: "2026-11-14T10:00:00+02:00",
+  };
+  await mockOrders(page, [placed]);
+  await page.goto("/purchases");
+  const placedRow = row(page, "Hotel breakfast");
+  await expect(placedRow).toContainText("Placed 10 Nov 2026");
+  await expect(placedRow).not.toContainText("Updated 14 Nov 2026");
+});
+
 test("placed rows offer Schedule this order and expand to the receipt details", async ({
   page,
 }) => {

@@ -964,6 +964,25 @@
               "default": 20,
               "title": "Limit"
             }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 80
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma list of scheduled, pending, placed, cancelled; empty means all",
+              "title": "Status"
+            },
+            "description": "Comma list of scheduled, pending, placed, cancelled; empty means all"
           }
         ],
         "responses": {
@@ -2683,6 +2702,18 @@
             ],
             "title": "Cancel Reason"
           },
+          "placed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Placed At"
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time",
@@ -2842,12 +2873,17 @@
               }
             ],
             "title": "Next Offset"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "items"
+          "items",
+          "total"
         ],
         "title": "OrdersResponse"
       },

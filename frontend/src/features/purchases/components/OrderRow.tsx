@@ -69,7 +69,11 @@ export function OrderRow({
                 {item.order_id}
               </span>
             )}
-            <span>Updated {dateTime(item.updated_at)}</span>
+            <span>
+              {item.status === "placed" && item.placed_at
+                ? `Placed ${dateTime(item.placed_at)}`
+                : `Updated ${dateTime(item.updated_at)}`}
+            </span>
           </div>
           <h2 className="m-0 font-headline text-headline-sm text-primary wrap-anywhere">
             {titleTarget ? (

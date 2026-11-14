@@ -928,6 +928,8 @@ export interface components {
             line_count: number;
             /** Cancel Reason */
             cancel_reason?: ("run_disrupted" | "run_retry" | "customer_revised" | "customer_cancelled") | null;
+            /** Placed At */
+            placed_at?: string | null;
             /**
              * Updated At
              * Format: date-time
@@ -1006,6 +1008,8 @@ export interface components {
             items: components["schemas"]["OrderListItem"][];
             /** Next Offset */
             next_offset?: number | null;
+            /** Total */
+            total: number;
         };
         /** ProposalResponse */
         ProposalResponse: {
@@ -2419,6 +2423,8 @@ export interface operations {
             query?: {
                 offset?: number;
                 limit?: number;
+                /** @description Comma list of scheduled, pending, placed, cancelled; empty means all */
+                status?: string | null;
             };
             header?: never;
             path?: never;

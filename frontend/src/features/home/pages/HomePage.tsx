@@ -116,7 +116,8 @@ export function HomePage() {
                         {p.title}
                       </span>
                       <span className="font-label text-label-sm text-on-surface-variant">
-                        Accepted (demo) • {dateTime(p.updated_at)}
+                        Accepted (demo) •{" "}
+                        {dateTime(p.placed_at ?? p.updated_at)}
                       </span>
                     </span>
                   </span>

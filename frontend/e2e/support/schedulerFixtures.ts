@@ -240,9 +240,11 @@ export const orders: OrderListItem[] = [
 export const ordersPage = (
   items = orders,
   next: number | null = null,
+  total = items.length,
 ): OrdersResponse => ({
   items,
   next_offset: next,
+  total,
 });
 
 export const json = (route: Route, body: unknown, status = 200) =>
