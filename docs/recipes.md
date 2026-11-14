@@ -1,11 +1,11 @@
 # Recipe planning
 
-Opt-in recipe discovery and purchasing inside the existing chat worker. It uses the
-existing Service, PostgreSQL/pgvector and purchasing/confirmation controls. All
-orders remain mock. The merged release pipeline applies schema/grants before rollout;
-recipe import and feature activation remain explicit operator actions.
+Recipe discovery and purchasing are a standard part of the chat worker (no feature
+flag). It uses the existing Service, PostgreSQL/pgvector and purchasing/confirmation
+controls. All orders remain mock. The merged release pipeline applies schema/grants
+before rollout; recipe import remains an explicit operator action.
 
-## Enablement and import
+## Setup and import
 
 1. After the migration credential bootstrap, the release pipeline applies
    the recipe migrations (`005_recipe_planning.sql`, `006_recipe_proposal_link.sql`,
@@ -20,11 +20,9 @@ recipe import and feature activation remain explicit operator actions.
 3. Add reviewed recipe-form/quantity overrides and matching product evidence for
    recipes intended for purchasing. Discovery alone does not establish readiness
    for an executable basket.
-4. Set `RECIPE_PLANNING_ENABLED=true` for local/Compose API and worker execution, or set
-   Terraform `recipe_planning_enabled=true` for the shared ConfigMap, and restart
-   API and worker through the authorized rollout. Leave the flag
-   false until import succeeds. Enabled recipe tools report `RECIPES_NOT_READY` or
-   `RECIPE_MODEL_MISMATCH` if the corpus/profile is unavailable. No invented fallback.
+4. Recipe tools are always registered. Before an import, or if the active corpus
+   was built with a different embedding profile, they report `RECIPES_NOT_READY` or
+   `RECIPE_MODEL_MISMATCH`. No invented fallback.
 
 Download a selected revision of [UniTools World Recipes](https://github.com/farcrak/unitools-recipes),
 retain it privately, independently check its SHA-256, then run:
