@@ -308,15 +308,7 @@ function DesktopHeader() {
   return (
     <header className="sticky top-0 z-40 hidden h-16 shrink-0 items-center justify-end gap-space-md border-b border-border-subtle bg-surface/80 px-margin backdrop-blur-xl md:flex">
       <div className="flex items-center gap-space-md">
-        <div className="flex items-center">
-          <NotificationsButton />
-          <InertButton
-            label="Help"
-            className="flex h-11 w-11 items-center justify-center text-on-surface-variant"
-          >
-            <Icon name="help_outline" className="text-[22px]" />
-          </InertButton>
-        </div>
+        <NotificationsButton />
         <span
           aria-hidden="true"
           className="h-5 w-px bg-surface-container-high"
