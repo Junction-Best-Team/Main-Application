@@ -701,13 +701,13 @@ A guard that fails if a new table starts referencing `proposals` or `proposal_re
 
 A customer cancels a pending order request (approver role only, own buyer only, idempotent); the first record stands; a placed order cannot be cancelled by the function or by the database trigger; a cancellation cannot be updated or deleted; the engine function `cancel_request` writes inside the caller's transaction and returns False on a repeat; a cancelled request cannot be committed or confirmed (`REQUEST_CANCELLED`), shows `approval_status` "cancelled" and leaves the approval inbox.
 
-#### `tests/test_orders_list.py` (CNF-034, Q-77, Q-78): 19 passed
+#### `tests/test_orders_list.py` (CNF-034, Q-77, Q-78): 25 passed
 
-The derived orders list: pending, placed (with the order id), cancelled (with the reason; `run_retry` hidden), expired unconfirmed requests hidden, scheduled and paused standing orders with their next run date and the source order's label, requests produced by a run carrying `schedule_id` and `schedule_title`, newest-first paging without gaps, buyer scope, no writes, orders untouched, agent forbidden.
+The derived orders list: pending, placed (with the order id), cancelled (with the reason; `run_retry` hidden), expired unconfirmed requests hidden, scheduled and paused standing orders with their next run date and the source order's label, requests produced by a run carrying `schedule_id` and `schedule_title`, newest-first paging without gaps, buyer scope, no writes, orders untouched, agent forbidden; the `status` filter (one, several, empty, unknown refused), `total` over every matching row and not just the page, and `placed_at` on placed rows only.
 
-#### `tests/test_orders_routes.py` (CNF-034, CNF-035 over HTTP): 9 passed
+#### `tests/test_orders_routes.py` (CNF-034, CNF-035 over HTTP): 11 passed
 
-`GET /api/orders` needs a session, has bounded paging and the declared item shape; `POST /api/purchases/{id}/cancel` needs CSRF and a same-origin request, is idempotent, makes the request `cancelled` in the list and unconfirmable, and is refused for a placed order; unknown and malformed ids; the routes and models are in OpenAPI.
+`GET /api/orders` needs a session, has bounded paging and the declared item shape; `POST /api/purchases/{id}/cancel` needs CSRF and a same-origin request, is idempotent, makes the request `cancelled` in the list and unconfirmable, and is refused for a placed order; unknown and malformed ids; the `?status=` filter and `total` over HTTP, and an unknown status as a clear 422 `INVALID_ORDER_STATUS`; the routes and models are in OpenAPI.
 
 #### `tests/test_schedule_routes.py` (CNF-022 to CNF-037 over HTTP): 28 passed
 

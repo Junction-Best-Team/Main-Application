@@ -454,9 +454,15 @@ def create_app(service=None):
     def orders(
         offset: int = Query(0, ge=0, le=10000),
         limit: int = Query(20, ge=1, le=50),
+        status: str | None = Query(
+            None,
+            max_length=80,
+            description="Comma list of scheduled, pending, placed, cancelled; empty means all",
+        ),
         identity=Depends(buyer),
     ):
-        return orders_list.orders_page(identity, offset, limit)
+        statuses = [s.strip() for s in (status or "").split(",") if s.strip()]
+        return orders_list.orders_page(identity, offset, limit, statuses=statuses)
 
     def csrf(identity, request: Request):
         auth.csrf_check(
