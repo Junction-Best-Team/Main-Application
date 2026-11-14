@@ -72,6 +72,8 @@ PY
   uv run python - <<'PY'
 from aimo.db import connection
 with connection() as c:
+    # History tables refuse TRUNCATE unless this flag is on; the CI database is disposable.
+    c.execute("SET LOCAL aimo.allow_history_truncate = 'on'")
     c.execute("TRUNCATE buyers, login_attempts RESTART IDENTITY CASCADE")
 PY
   aimo_cli seed
