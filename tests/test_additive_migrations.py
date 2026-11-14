@@ -244,7 +244,7 @@ REVIEWED = {
         "no row changes."
     ),
     (
-        "023_scheduled_orders.sql",
+        "025_scheduled_orders.sql",
         "DROP_CONSTRAINT",
         "identities",
         "identities_role_check",
@@ -254,7 +254,7 @@ REVIEWED = {
         "pattern as 004 for conversation_turns_state_check."
     ),
     (
-        "023_scheduled_orders.sql",
+        "025_scheduled_orders.sql",
         "DROP_CONSTRAINT",
         "conversation_messages",
         "conversation_messages_role_check",
@@ -278,7 +278,7 @@ REVIEWED = {
 ALLOWED_INSERTS = {
     "003_chat_purchasing.sql": {"identities", "internal_agents"},
     "014_policy_settings.sql": {"policy_managers", "policies", "policy_changes"},
-    "023_scheduled_orders.sql": {"identities", "scheduler_identities"},
+    "025_scheduled_orders.sql": {"identities", "scheduler_identities"},
     "022_buyer_settings.sql": {"policies", "policy_changes"},
 }
 

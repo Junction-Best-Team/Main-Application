@@ -1,5 +1,5 @@
 -- WS-E scheduled (standing) re-orders. Additive. Every order it places is a MOCK order.
--- Number 023: the next free one after WS-D's 018 and 019, Otto's 020_chat_attachments, 021_turn_constraints and 022_buyer_settings.
+-- Number 025: the next free one after 023_chat_draft_cart and the in-flight 024_message_notice (earlier files: 018, 019 WS-D; 020 to 022 Otto).
 
 -- 1. A separate scheduler identity per buyer: no login, no model, no authority.
 ALTER TABLE identities DROP CONSTRAINT identities_role_check;

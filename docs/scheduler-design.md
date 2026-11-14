@@ -1,7 +1,7 @@
 # WS-E scheduler: design (no feature code)
 
 > **Status note (implementation).** This is the design written before the build and kept as the record of
-> the questions and the code evidence. The owner's later answers changed it: migration number **023**; a price
+> the questions and the code evidence. The owner's later answers changed it: migration number **025**; a price
 > outside the agreed range with no accepted substitute is a **disruption** (no `needs_customer` run state);
 > pause, `placed` orders, per-ingredient accepted substitutes with a percentage range, and restart by
 > `replace` were added; sections 1-5 were built as described otherwise. What exists and how it runs:

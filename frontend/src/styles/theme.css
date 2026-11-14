@@ -4,6 +4,7 @@
 @import "tailwindcss/preflight" layer(base);
 @import "./settings.css" layer(components);
 @import "./chat-markdown.css" layer(components);
+@import "./home.css" layer(components);
 @import "tailwindcss/utilities" layer(utilities);
 
 /* All tokens from ui/DESIGN.md (source of truth over per-screen HTML configs). */
@@ -62,6 +63,8 @@
   --color-border-subtle: #e2e7e9;
   --color-text-on-dark: #ffffff;
   --color-canvas: #f4f4f4;
+  --color-workspace-panel: #f1f5f6;
+  --color-workspace-active: #dfe9eb;
 
   --font-sans: "Hanken Grotesk", sans-serif;
   --font-headline: "Hanken Grotesk", sans-serif;
@@ -184,5 +187,27 @@
   }
   button:disabled {
     cursor: not-allowed;
+  }
+}
+
+/* Indeterminate activity: no fabricated percentage or completion time. */
+@keyframes activity-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(400%);
+  }
+}
+
+@layer components {
+  .activity-sweep {
+    animation: activity-sweep 1.6s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .activity-sweep {
+      animation: none;
+      transform: translateX(100%);
+    }
   }
 }

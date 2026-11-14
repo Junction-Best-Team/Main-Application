@@ -30,6 +30,10 @@ PACKAGED = sorted(
 
 # (drop statement, the migration whose object it removes)
 DROPS = [
+    ("ALTER TABLE conversation_turns DROP COLUMN progress", "022_chat_activity.sql"),
+    ("ALTER TABLE conversation_turns DROP COLUMN draft_cart", "023_chat_draft_cart.sql"),
+
+
     ("DROP FUNCTION save_buyer_settings(text,integer,jsonb)", "022_buyer_settings.sql"),
     ("ALTER TABLE conversation_messages DROP COLUMN attachments", "020_chat_attachments.sql"),
     ("DROP TRIGGER immutable_orders ON orders", "008_orders_immutable.sql"),
@@ -62,23 +66,23 @@ DROPS = [
     ),
     ("DROP TRIGGER immutable_recipe_versions ON recipe_versions", "019_history_immutability.sql"),
     ("DROP TRIGGER immutable_truncate ON orders", "019_history_immutability.sql"),
-    ("DROP TABLE scheduler_identities", "023_scheduled_orders.sql"),
-    ("DROP TABLE order_request_cancellations", "023_scheduled_orders.sql"),
-    ("DROP TRIGGER sched_auth_guard ON scheduled_authorizations", "023_scheduled_orders.sql"),
-    ("DROP TABLE scheduled_run_events", "023_scheduled_orders.sql"),
-    ("DROP TABLE scheduled_authorization_events", "023_scheduled_orders.sql"),
-    ("DROP TRIGGER scheduled_run_guard ON scheduled_runs", "023_scheduled_orders.sql"),
+    ("DROP TABLE scheduler_identities", "025_scheduled_orders.sql"),
+    ("DROP TABLE order_request_cancellations", "025_scheduled_orders.sql"),
+    ("DROP TRIGGER sched_auth_guard ON scheduled_authorizations", "025_scheduled_orders.sql"),
+    ("DROP TABLE scheduled_run_events", "025_scheduled_orders.sql"),
+    ("DROP TABLE scheduled_authorization_events", "025_scheduled_orders.sql"),
+    ("DROP TRIGGER scheduled_run_guard ON scheduled_runs", "025_scheduled_orders.sql"),
     (
         "DROP TRIGGER cancellation_no_order ON order_request_cancellations",
-        "023_scheduled_orders.sql",
+        "025_scheduled_orders.sql",
     ),
     (
         "DROP TRIGGER immutable_order_request_cancellations ON order_request_cancellations",
-        "023_scheduled_orders.sql",
+        "025_scheduled_orders.sql",
     ),
     (
         "DROP TRIGGER immutable_scheduled_run_events ON scheduled_run_events",
-        "023_scheduled_orders.sql",
+        "025_scheduled_orders.sql",
     ),
 ]
 
