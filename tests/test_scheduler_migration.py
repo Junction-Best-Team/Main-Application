@@ -145,9 +145,8 @@ def test_pause_and_resume_can_repeat_but_a_finished_authorization_is_final(order
             )
     assert status(aid) == "paused"
     update(aid, status="stopped", stop_reason="RUN_MISSED", paused_at=None)
-    for target in ("active", "cancelled"):
-        with pytest.raises(psycopg.errors.RaiseException, match="never changes"):
-            update(aid, status=target, stop_reason=None)
+    with pytest.raises(psycopg.errors.RaiseException, match="never changes"):
+        update(aid, status="active", stop_reason=None)
 
 
 def test_only_the_movable_columns_change_while_active(order):
@@ -326,3 +325,22 @@ def test_the_title_is_part_of_the_authorized_terms(order):
         authorization(order, title="")
     with pytest.raises(psycopg.errors.CheckViolation):
         authorization(order, title="x" * 81)
+
+
+def test_a_stopped_authorization_can_only_be_cancelled(order):
+    aid = authorization(order)
+    update(aid, status="stopped", stop_reason="RUN_MISSED")
+    with pytest.raises(psycopg.errors.RaiseException, match="never changes"):
+        update(aid, status="active", stop_reason=None)
+    with pytest.raises(psycopg.errors.RaiseException, match="never changes"):
+        update(aid, price_ceiling_gross="99.00")  # nothing else moves on a stopped one
+    with pytest.raises(psycopg.errors.RaiseException, match="immutable"):
+        update(aid, status="cancelled", price_ceiling_gross="99.00")  # and the terms never do
+    update(aid, status="cancelled")
+    assert status(aid) == "cancelled"
+    with pytest.raises(psycopg.errors.RaiseException, match="never changes"):
+        update(aid, status="active")
+    expired = authorization(order)
+    update(expired, status="expired", next_run_date=None)
+    with pytest.raises(psycopg.errors.RaiseException, match="never changes"):
+        update(expired, status="cancelled")

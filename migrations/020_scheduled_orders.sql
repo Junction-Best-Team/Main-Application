@@ -55,11 +55,13 @@ CREATE TABLE scheduled_authorizations (
 CREATE INDEX sched_auth_due ON scheduled_authorizations(next_run_date)
  WHERE status IN ('active','paused');
 CREATE INDEX sched_auth_buyer ON scheduled_authorizations(buyer_id, created_at DESC);
--- Active <-> paused may repeat (CNF-037); any other status is final. Terms never change.
+-- Active <-> paused may repeat (CNF-037); a stopped one can only be cancelled by the customer
+-- (CNF-027); any other status is final. Terms never change.
 CREATE FUNCTION scheduled_authorization_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
  IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'immutable history; append a new record instead'; END IF;
- IF OLD.status NOT IN ('active','paused') THEN
+ IF OLD.status NOT IN ('active','paused')
+    AND NOT (OLD.status = 'stopped' AND NEW.status = 'cancelled') THEN
   RAISE EXCEPTION 'a finished authorization never changes; create a new one';
  END IF;
  IF (NEW.id, NEW.buyer_id, NEW.created_by, NEW.source_order_id, NEW.supersedes_id,

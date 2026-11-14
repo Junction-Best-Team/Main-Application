@@ -433,8 +433,27 @@ def agree(terms, agreed_fingerprint):
         )
 
 
+def stored_by_key(identity, key, digest):
+    """The schedule an earlier request with this key created, found before any supplier lookup."""
+    with connection() as c:
+        context(c, identity)
+        row = c.execute(
+            "SELECT * FROM scheduled_authorizations WHERE buyer_id=%s AND create_key=%s",
+            (identity["buyer_id"], key),
+        ).fetchone()
+        if not row:
+            return None
+        if row["create_hash"] != digest:
+            raise Problem("IDEMPOTENCY_CONFLICT", "This key already identifies another schedule.")
+        return response(c, row)
+
+
 def create(identity, body: ScheduleCreateRequest, service):
     require_customer(identity)
+    digest = fingerprint(body.model_dump(mode="json", exclude={"idempotency_key"}))
+    again = stored_by_key(identity, body.idempotency_key, digest)
+    if again:  # a retry never calls the supplier again
+        return again
     terms = build_terms(
         identity,
         service,
@@ -445,7 +464,6 @@ def create(identity, body: ScheduleCreateRequest, service):
         body.title,
     )
     agree(terms, body.agreed_terms_fingerprint)
-    digest = fingerprint(body.model_dump(mode="json", exclude={"idempotency_key"}))
     with connection() as c:
         context(c, identity, lock=True)
         lock_buyer(c, identity)
@@ -567,7 +585,13 @@ def move(identity, schedule_id, event_name, wanted, *, allowed_from):
 
 
 def cancel(identity, schedule_id):
-    return move(identity, schedule_id, "cancelled", "cancelled", allowed_from=("active", "paused"))
+    return move(
+        identity,
+        schedule_id,
+        "cancelled",
+        "cancelled",
+        allowed_from=("active", "paused", "stopped"),
+    )
 
 
 def pause(identity, schedule_id):

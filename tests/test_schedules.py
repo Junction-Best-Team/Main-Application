@@ -529,3 +529,75 @@ def test_the_schedule_list_can_be_filtered_by_status(buyer, service, placed_orde
     assert err.status == 422
     page = schedules.list_schedules(buyer, 0, 1, ("active", "paused"))
     assert len(page["items"]) == 1 and page["next_offset"] == 1  # filtered before paging
+
+
+# --- cancel a stopped schedule; a repeated create never calls the supplier ---------------------
+
+
+def stop(schedule_id):
+    with connection() as c:
+        c.execute(
+            "UPDATE scheduled_authorizations SET status='stopped',stop_reason='RUN_MISSED',"
+            "next_run_date=NULL WHERE id=%s",
+            (schedule_id,),
+        )
+
+
+def test_a_stopped_schedule_can_be_cancelled(buyer, service, placed_order):
+    s = make(buyer, service, placed_order)
+    stop(s["id"])
+    done = schedules.cancel(buyer, s["id"])
+    assert done["status"] == "cancelled" and done["next_run_date"] is None
+    assert schedules.cancel(buyer, s["id"])["status"] == "cancelled"  # and again
+    refused("SCHEDULE_NOT_ACTIVE", schedules.resume, buyer, s["id"])
+
+
+@pytest.mark.parametrize("final", ["expired", "superseded"])
+def test_an_expired_or_replaced_schedule_cannot_be_cancelled(buyer, service, placed_order, final):
+    s = make(buyer, service, placed_order)
+    with connection() as c:
+        c.execute(
+            "UPDATE scheduled_authorizations SET status=%s,next_run_date=NULL WHERE id=%s",
+            (final, s["id"]),
+        )
+    refused("SCHEDULE_NOT_ACTIVE", schedules.cancel, buyer, s["id"])
+    assert schedules.get(buyer, s["id"])["status"] == final
+
+
+def counting(connector, monkeypatch):
+    calls = []
+    real = connector.lookup
+    monkeypatch.setattr(connector, "lookup", lambda *a, **k: (calls.append(1), real(*a, **k))[1])
+    return calls
+
+
+def test_a_repeated_create_returns_the_stored_schedule_without_the_supplier(
+    buyer, service, connector, placed_order, monkeypatch
+):
+    terms = schedules.preview(buyer, preview_body(placed_order), service)
+    body = create_body(placed_order, terms)
+    first = schedules.create(buyer, body, service)
+    calls = counting(connector, monkeypatch)
+    again = schedules.create(buyer, body, service)
+    assert again["id"] == first["id"] and calls == []
+    other = create_body(
+        placed_order, terms, idempotency_key=body.idempotency_key, price_ceiling_gross="101.00"
+    )
+    refused("IDEMPOTENCY_CONFLICT", schedules.create, buyer, other, service)
+    assert calls == []  # the conflict is found before any supplier lookup too
+
+
+def test_a_repeated_replace_returns_the_stored_schedule_without_the_supplier(
+    buyer, service, connector, placed_order, monkeypatch
+):
+    from aimo.schedule_schemas import ScheduleEditPreviewRequest
+
+    old = make(buyer, service, placed_order)
+    edit = schedules.preview_edit(buyer, old["id"], ScheduleEditPreviewRequest(), service)
+    body = ScheduleReplaceRequest.model_validate(
+        {"agreed_terms_fingerprint": edit["terms_fingerprint"], "idempotency_key": str(uuid4())}
+    )
+    first = schedules.replace(buyer, old["id"], body, service)
+    calls = counting(connector, monkeypatch)
+    assert schedules.replace(buyer, old["id"], body, service)["id"] == first["id"]
+    assert calls == []
