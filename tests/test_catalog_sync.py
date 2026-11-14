@@ -1,13 +1,16 @@
 """Unattended `aimo sync-catalog`: skip unchanged data, rebuild only when needed, never expose a
 partial catalog, coordinate concurrent runs, and keep serving consistent while it publishes.
 
-Synthetic snapshots in tmp_path and httpx.MockTransport only; no network, model or real data.
+Synthetic snapshots, mocked suppliers and loopback HTTP only; no model or real data.
 The shared fixture catalog is restored after every test.
 """
 
+import asyncio
 import hashlib
 import json
+import socketserver
 import threading
+import time
 from uuid import uuid4
 
 import httpx
@@ -267,6 +270,11 @@ def test_embedding_failure_keeps_serving_and_retry_reuses_completed_batches(
 # --- download --------------------------------------------------------------------------------
 
 
+async def async_chunks(*chunks):
+    for chunk in chunks:
+        yield chunk
+
+
 def mock_supplier(monkeypatch, handler, **updates):
     tune(
         monkeypatch,
@@ -274,9 +282,11 @@ def mock_supplier(monkeypatch, handler, **updates):
         valio_aimo_base_url="https://api.test",
         **updates,
     )
-    real = httpx.Client
+    real = httpx.AsyncClient
     monkeypatch.setattr(
-        ingestion.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(handler), **kw)
+        ingestion.httpx,
+        "AsyncClient",
+        lambda **kw: real(transport=httpx.MockTransport(handler), **kw),
     )
     monkeypatch.setattr(ingestion, "_sleep", lambda seconds: None)
 
@@ -338,7 +348,10 @@ def test_transport_errors_are_retried_then_succeed(tmp_path, monkeypatch):
     "response,code",
     [
         (lambda r: httpx.Response(200, content=b"x" * 11), "DOWNLOAD_TOO_LARGE"),
-        (lambda r: httpx.Response(200, content=iter([b"x" * 6, b"x" * 6])), "DOWNLOAD_TOO_LARGE"),
+        (
+            lambda r: httpx.Response(200, content=async_chunks(b"x" * 6, b"x" * 6)),
+            "DOWNLOAD_TOO_LARGE",
+        ),
         (lambda r: httpx.Response(302), "DOWNLOAD_REJECTED"),
         (lambda r: httpx.Response(302, headers={"location": "/again"}), "DOWNLOAD_REJECTED"),
         (lambda r: httpx.Response(404), "DOWNLOAD_FAILED"),
@@ -366,11 +379,9 @@ def test_download_deadline_is_bounded(tmp_path, monkeypatch):
 
 
 def test_slow_trickle_of_small_chunks_cannot_outlast_the_deadline(tmp_path, monkeypatch):
-    import time
-
-    def trickle():
+    async def trickle():
         for _ in range(100):  # 5 s of 100-byte chunks, never idle long enough to time out
-            time.sleep(0.05)
+            await asyncio.sleep(0.05)
             yield b"x" * 100
 
     mock_supplier(
@@ -397,6 +408,104 @@ def test_each_request_read_timeout_is_capped_by_the_remaining_deadline(tmp_path,
     mock_supplier(monkeypatch, handler, catalog_download_deadline_seconds=5)
     ingestion.download(tmp_path / "s.json")
     assert 0 < seen[0]["read"] <= 5 and seen[0]["connect"] <= 5
+
+
+@pytest.mark.parametrize("stage", ["headers", "body"])
+def test_cancelled_attempt_finishes_cleanup_before_retry(tmp_path, monkeypatch, stage):
+    requests, cancelled = [], []
+    out = tmp_path / "s.json"
+
+    async def stall():
+        try:
+            await asyncio.sleep(2)
+        finally:
+            cancelled.append(stage)
+
+    async def body():
+        yield b"partial"
+        await stall()
+
+    async def handler(request):
+        requests.append(request)
+        if len(requests) == 1:
+            if stage == "headers":
+                await stall()
+            return httpx.Response(200, content=body())
+        assert cancelled == [stage]
+        assert not out.with_name("s.json.part").exists()
+        return httpx.Response(200, content=b"[]")
+
+    mock_supplier(
+        monkeypatch,
+        handler,
+        catalog_download_deadline_seconds=0.05,
+        catalog_download_attempts=2,
+    )
+    assert ingestion.download(out) == hashlib.sha256(b"[]").hexdigest()
+    assert out.read_bytes() == b"[]"
+    assert len(requests) == 2 and requests[0].url == requests[1].url
+    assert list(tmp_path.iterdir()) == [out]
+
+
+@pytest.mark.parametrize("stage", ["headers", "redirect-headers", "body"])
+def test_deadline_cancels_trickling_network_reads(tmp_path, monkeypatch, stage):
+    disconnected = threading.Event()
+    requests = []
+
+    class Supplier(socketserver.BaseRequestHandler):
+        def handle(self):
+            request = self.request.recv(65536)
+            requests.append(request)
+            try:
+                if stage == "redirect-headers" and b"/api/products/download " in request:
+                    self.request.sendall(b"HTTP/1.1 302 Found\r\nLocation: /file\r\n\r\n")
+                    return
+                self.request.sendall(b"HTTP/1.1 200 OK\r\n")
+                if stage == "body":
+                    self.request.sendall(b"Content-Length: 100\r\n\r\nx")
+                # Frequent reads keep the idle timeout from firing for two seconds.
+                for _ in range(40):
+                    time.sleep(0.05)
+                    self.request.sendall(b"x" if stage == "body" else b"X-Trickle: x\r\n")
+            except OSError:
+                disconnected.set()
+
+    with socketserver.TCPServer(("127.0.0.1", 0), Supplier) as server:
+        worker = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.05})
+        worker.start()
+        tune(
+            monkeypatch,
+            valio_aimo_api_key="synthetic-loopback-key",
+            valio_aimo_base_url=f"https://127.0.0.1:{server.server_address[1]}",
+            catalog_download_deadline_seconds=0.25,
+            catalog_download_timeout_seconds=0.25,
+            catalog_download_attempts=1,
+        )
+        real = httpx.AsyncClient
+
+        async def loopback(request):
+            # Exercise the real HTTP transport locally, with no TLS fixture required.
+            request.url = request.url.copy_with(scheme="http")
+
+        monkeypatch.setattr(
+            ingestion.httpx,
+            "AsyncClient",
+            lambda **kw: real(event_hooks={"request": [loopback]}, trust_env=False, **kw),
+        )
+        try:
+            started = time.monotonic()
+            with pytest.raises(CatalogError) as failure:
+                ingestion.download(tmp_path / "s.json")
+            assert failure.value.code == "DOWNLOAD_FAILED"
+            assert time.monotonic() - started < 1.25
+            assert disconnected.wait(0.5), "the timed-out socket must be closed"
+            assert len(requests) == (2 if stage == "redirect-headers" else 1)
+            if stage == "redirect-headers":
+                assert b"x-api-key:" not in requests[1].lower()
+            assert list(tmp_path.iterdir()) == []
+        finally:
+            server.shutdown()
+            worker.join(timeout=3)
 
 
 def test_second_redirect_hop_must_stay_https(tmp_path, monkeypatch):

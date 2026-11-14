@@ -27,9 +27,10 @@ flowchart LR
    HTTPS only. The `X-API-Key` header goes only to the configured base URL and is
    never forwarded to a redirect. At most three redirects are followed, each must
    be HTTPS, and signed URLs are never logged. Each download attempt has a
-   900-second deadline that covers redirects and every network read of the body, so
-   a slow trickle of small chunks cannot outlast it. Each read also has a 60-second
-   timeout, capped at the time remaining, and there is a 256 MiB size limit. Up to
+   900-second cancellable deadline that covers redirects, response headers and the
+   body, so a slow trickle of headers or body chunks cannot outlast it. Cancellation
+   closes the connection and removes partial files before retrying. Each read has a
+   60-second timeout, capped at the time remaining, and there is a 256 MiB size limit. Up to
    three attempts are made, and only on timeouts, transport errors, 408/425/429 and
    5xx responses. The file is streamed into the pod's bounded `/tmp` volume and
    deleted when the run ends.

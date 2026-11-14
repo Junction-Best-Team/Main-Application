@@ -165,10 +165,10 @@ def test_publish_rejects_wrong_number_of_vectors(monkeypatch):
 def configure(monkeypatch, handler, key="test-key-not-real"):
     cfg = Settings(_env_file=None, valio_aimo_api_key=key, valio_aimo_base_url="https://api.test")
     monkeypatch.setattr(ingestion, "settings", lambda: cfg)
-    real = httpx.Client
+    real = httpx.AsyncClient
     monkeypatch.setattr(
         ingestion.httpx,
-        "Client",
+        "AsyncClient",
         lambda **kw: real(transport=httpx.MockTransport(handler), **kw),
     )
 
