@@ -18,11 +18,21 @@ All four teammates need write access. Before building, each person should confir
 - Start a task from the latest `develop`: `git switch develop`, then `git pull --ff-only` with a clean working tree. For an existing clone without that branch, first run `git fetch origin` and `git switch --track origin/develop`.
 - Use a short task branch, for example `git switch -c otto/map-view`. Do not commit or push directly to `develop` or `main`.
 - Say which feature/files you are changing. Coordinate edits to shared APIs, schemas, dependency files, and deployment configuration.
-- Check the affected feature works, then open a PR into `develop`: `gh pr create --base develop`. All feature, fix, documentation, and maintenance PRs must target `develop`. You can merge your own work; reviews are optional.
+- Check the affected feature works, then open a PR into `develop`: `gh pr create --base develop`. All feature, fix, documentation, and maintenance PRs must target `develop`. Wait for the latest CI run to pass, then self-merge. Human approval is optional; request teammate review for risky authentication, database schema, or shared-interface changes.
 - Keep `main` ready to demonstrate. Promote a tested snapshot with a release PR from `develop` to `main` only when a release is explicitly requested. Avoid force pushes to shared branches and preserve teammates' uncommitted work.
 - Use a separate checkout/worktree and branch for each concurrent agent on the same machine.
 
-No required pipelines, approval gates, or special GitHub board. Use the team chat to coordinate.
+## Lightweight CI
+
+GitHub Actions runs on PRs into `develop` and `main`, and pushes to either branch:
+
+- Python lint: `ruff check src tests scripts`.
+- Backend regression tests: `pytest -q` against temporary PostgreSQL/pgvector, using fixture embeddings and supplier responses. Test dependencies come from `uv.lock`; the unused ML stack is pruned to keep installation small.
+- Frontend TypeScript checks and production build: `npm ci` then `npm run build` in `frontend`.
+
+Backend and frontend jobs run in parallel, dependency downloads are cached, and a new commit cancels outdated runs. Components are explicitly skipped only while their application code has not been added; incomplete manifests fail the workflow. No model weights, full catalog imports, Docker builds, browser tests, production credentials, or deployments are needed for this pipeline. Run broader demo/browser checks locally when the change warrants them.
+
+Our workflow is **task PR → green CI → self-merge**. Reviews are optional, and the optional `skip-review` label does not bypass CI. GitHub's current plan blocks branch protection for this private repository, so teammates and agents must follow this convention; the merge button is not technically gated. No approval gates or special GitHub board are required. Use the team chat to coordinate.
 
 ## Application setup — fill in once the stack is chosen
 
