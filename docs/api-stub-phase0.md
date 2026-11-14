@@ -26,7 +26,7 @@ returns a `Problem` (`ORIGIN_REJECTED` / `CSRF_REJECTED`, 403).
 
 | Method | Path | Purpose | Response |
 | --- | --- | --- | --- |
-| POST | `/api/login` | Sign in, set `aimo_session` cookie | `SessionResponse` |
+| POST | `/api/login` | Sign in, set `aimo_session` cookie (response carries `role`) | `SessionResponse` |
 | GET | `/api/session` | Restore session on reload | `SessionResponse` |
 | POST | `/api/logout` | Clear session | 204 |
 | GET | `/api/conversations` | List conversations | `ConversationList` |
@@ -37,6 +37,18 @@ returns a `Problem` (`ORIGIN_REJECTED` / `CSRF_REJECTED`, 403).
 | GET | `/api/purchases` | Buyer's purchase history | `InboxResponse` |
 | GET | `/api/purchases/{proposal_id}` | Proposal/purchase detail | `ProposalResponse` |
 | POST | `/api/purchases/{proposal_id}/confirm` | Revision-bound confirm (idempotent) | `CommitResponse` |
+| POST | `/api/purchases/{proposal_id}/cancel` | Cancel a pending order request (idempotent; a placed order is refused, 409 `ORDER_ALREADY_PLACED`) | `CancellationResponse` |
+| GET | `/api/orders` | Orders list, newest first: `scheduled` (with date, `paused`), `pending`, `placed`, `cancelled`; expired requests hidden | `OrdersResponse` |
+| GET | `/api/schedules` | Standing orders of the buyer | `ScheduleList` |
+| GET | `/api/schedules/{id}` | One standing order with its runs | `ScheduleDetail` |
+| GET | `/api/schedules/substitute-candidates?product_id=` | Substitutes the customer may accept | `SubstituteCandidates` |
+| POST | `/api/schedules/preview` | Terms and fingerprint for a past order (writes nothing) | `ScheduleTerms` |
+| POST | `/api/schedules` | Create from a past order (idempotent on `idempotency_key`) | `ScheduleResponse` |
+| POST | `/api/schedules/{id}/preview` | Terms of an edit (writes nothing) | `ScheduleTerms` |
+| POST | `/api/schedules/{id}/replace` | Edit or restart: a new schedule that supersedes this one | `ScheduleResponse` |
+| POST | `/api/schedules/{id}/cancel` | Stop all later runs | `ScheduleResponse` |
+| POST | `/api/schedules/{id}/pause` | Pause (resume continues) | `ScheduleResponse` |
+| POST | `/api/schedules/{id}/resume` | Resume a paused schedule | `ScheduleResponse` |
 | GET | `/api/approvals` | Buyer's approval inbox | `InboxResponse` |
 | GET | `/api/approvals/{approval_id}` | Approval detail | `ProposalResponse` |
 | POST | `/api/approvals/{approval_id}/decision` | Legacy approve/reject | `ProposalResponse` |

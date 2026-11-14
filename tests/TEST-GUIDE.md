@@ -696,3 +696,19 @@ Every row-locking statement across a prepare, a decision, a confirmation and a c
 
 #### `tests/test_unfinished_cleanup_contract.py` (CNF-021): 1 passed, 1 strict xfail
 A guard that fails if a new table starts referencing `proposals` or `proposal_revisions` without the cleanup design covering it (and shows history deletes are rejected today). Strict xfail: the proposed `purge_unfinished_proposals`: nothing removed inside the 30-day period, afterwards unfinished proposals and approvals disappear with their rows and one `purged_proposals` row each, while an ordered proposal, its audit history and the immutable orders stay. Nothing is built yet.
+
+#### `tests/test_cancellations.py` (CNF-035): 14 passed
+
+A customer cancels a pending order request (approver role only, own buyer only, idempotent); the first record stands; a placed order cannot be cancelled by the function or by the database trigger; a cancellation cannot be updated or deleted; the engine function `cancel_request` writes inside the caller's transaction and returns False on a repeat; a cancelled request cannot be committed or confirmed (`REQUEST_CANCELLED`), shows `approval_status` "cancelled" and leaves the approval inbox.
+
+#### `tests/test_orders_list.py` (CNF-034, Q-77, Q-78): 19 passed
+
+The derived orders list: pending, placed (with the order id), cancelled (with the reason; `run_retry` hidden), expired unconfirmed requests hidden, scheduled and paused standing orders with their next run date and the source order's label, requests produced by a run carrying `schedule_id` and `schedule_title`, newest-first paging without gaps, buyer scope, no writes, orders untouched, agent forbidden.
+
+#### `tests/test_orders_routes.py` (CNF-034, CNF-035 over HTTP): 9 passed
+
+`GET /api/orders` needs a session, has bounded paging and the declared item shape; `POST /api/purchases/{id}/cancel` needs CSRF and a same-origin request, is idempotent, makes the request `cancelled` in the list and unconfirmable, and is refused for a placed order; unknown and malformed ids; the routes and models are in OpenAPI.
+
+#### `tests/test_schedule_routes.py` (CNF-022 to CNF-037 over HTTP): 28 passed
+
+Every schedule read needs a session and every POST needs the session, CSRF and a same-origin request; preview, create (idempotent), list, get, stale agreement 409, low ceiling 422, cancel, pause and resume, edit preview and replace (supersedes the old schedule), the literal substitute-candidates path, bounds and OpenAPI. The Service behaviour itself is in `test_schedules.py`.
