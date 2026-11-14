@@ -1,34 +1,95 @@
-import { Link } from "react-router-dom";
-import type { Inbox } from "../../../shared/api/types";
-import { Badge } from "../../../shared/components/Badge";
+import type { Proposal } from "../../../shared/api/types";
 import { currency, dateTime } from "../../../shared/lib/format";
-import { getPurchaseStatus } from "../model/purchaseStatus";
-export function PurchaseList({ items }: { items: Inbox["items"] }) {
+import { Icon } from "../../../shared/components/DesignPrimitives";
+import { placedAt } from "../model/acceptedOrders";
+import { PurchaseSheet } from "./PurchaseSheet";
+export function PurchaseList({
+  orders,
+  expanded,
+  toggle,
+}: {
+  orders: Proposal[];
+  expanded: Set<string>;
+  toggle: (id: string) => void;
+}) {
   return (
-    <div className="purchase-list flex flex-col gap-4">
-      {items.map((p) => (
-        <Link
-          className="purchase-row flex min-w-0 flex-col justify-between gap-5 rounded-xl border border-border-subtle bg-surface-pure p-5 text-on-surface hover:border-wholesale-teal hover:shadow-level-2 hover:no-underline md:flex-row md:p-6"
-          key={p.proposal_id}
-          to={`/purchases/${p.proposal_id}`}
-        >
-          <div className="min-w-0 [&_h2]:mt-3 [&_h2]:mb-2 [&_h2]:wrap-anywhere [&_h2]:text-headline-sm [&_p]:mb-2 [&_p]:wrap-anywhere [&_p]:text-body-sm">
-            <Badge value={getPurchaseStatus(p)} />
-            <h2>{p.request.request_id}</h2>
-            <p>{p.snapshot.lines.map((l) => l.name).join(", ")}</p>
-            <span className="text-secondary">
-              {p.agent_id} • {p.request.destination}
-            </span>
-          </div>
-          <div className="flex shrink-0 flex-col gap-1 font-label text-label-sm text-secondary md:text-right [&_strong]:text-headline-md [&_strong]:font-bold [&_strong]:text-primary">
-            <strong>{currency(p.snapshot.gross_total)}</strong>
-            <span>Including tax & deposits</span>
-            <span className="mt-2 text-label-sm">
-              Expires {dateTime(p.expires_at)}
-            </span>
-          </div>
-        </Link>
-      ))}
-    </div>
+    <>
+      {" "}
+      {orders.map((p) => {
+        const open = expanded.has(p.proposal_id);
+        const title = p.request.request_id;
+        return (
+          <article
+            key={p.proposal_id}
+            id={`order-${p.proposal_id}`}
+            className="purchase-row min-w-0 scroll-mt-space-lg rounded-xl bg-surface-pure p-space-md shadow-level-2 md:p-space-lg"
+          >
+            <div className="flex flex-col justify-between gap-space-md lg:flex-row lg:items-center">
+              <div className="flex flex-1 flex-col gap-space-xs">
+                <div className="flex flex-wrap items-center gap-space-sm font-label text-label-sm text-secondary">
+                  <span className="order-reference rounded bg-surface-container-high px-2 py-0.5 font-bold uppercase text-primary">
+                    {p.order_id}
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-status-fresh-green/20 px-2 py-0.5 font-bold text-primary">
+                    <span
+                      aria-hidden="true"
+                      className="inline-block size-2 rounded-full bg-status-fresh-green"
+                    />
+                    Accepted (demo)
+                  </span>
+                  <span>{dateTime(placedAt(p))}</span>
+                </div>
+                <h2 className="m-0 font-headline text-headline-sm text-primary wrap-anywhere">
+                  {title}
+                </h2>
+                <div className="font-body text-body-sm text-on-surface-variant">
+                  {p.snapshot.lines.length}{" "}
+                  {p.snapshot.lines.length === 1 ? "item" : "items"} ·{" "}
+                  {p.request.destination}
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-space-md lg:justify-end">
+                <div className="lg:text-right">
+                  <div className="font-headline text-headline-md font-bold text-primary">
+                    <span>{currency(p.snapshot.gross_total)}</span>{" "}
+                    <span className="font-label text-label-sm font-normal text-secondary">
+                      incl. VAT
+                    </span>
+                  </div>
+                  <div className="font-label text-label-sm text-secondary">
+                    {currency(p.snapshot.net_total)} excl. VAT
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  aria-label={`Order details: ${title}`}
+                  aria-expanded={open}
+                  aria-controls={`details-${p.proposal_id}`}
+                  onClick={() => toggle(p.proposal_id)}
+                  className="cursor-pointer rounded-lg border-0 bg-surface-container-low p-3 text-primary hover:bg-surface-container-high"
+                >
+                  <Icon name={open ? "expand_less" : "expand_more"} />
+                </button>
+              </div>
+            </div>
+            {open && (
+              <div
+                id={`details-${p.proposal_id}`}
+                className="mt-space-md flex flex-col gap-space-sm rounded-lg bg-surface-container-low p-space-md"
+              >
+                <div className="font-label text-label-md uppercase tracking-wider text-secondary">
+                  Ordered items
+                </div>
+                <PurchaseSheet p={p} />
+                <div className="font-label text-label-sm text-secondary">
+                  Delivery to {p.request.destination} on{" "}
+                  {p.request.delivery_date} · Accepted by demo order service
+                </div>
+              </div>
+            )}
+          </article>
+        );
+      })}
+    </>
   );
 }

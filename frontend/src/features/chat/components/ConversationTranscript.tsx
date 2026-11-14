@@ -1,59 +1,82 @@
 import type { Ref } from "react";
-import { Link } from "react-router-dom";
 import type { Conversation } from "../../../shared/api/types";
+import { Icon } from "../../../shared/components/DesignPrimitives";
 import { dateTime } from "../../../shared/lib/format";
 import { MealPlanCard } from "./MealPlanCard";
-type Props = {
-  conversation: Conversation | null;
-  busy: boolean;
-  transcript: Ref<HTMLDivElement>;
-};
+import { SkuCards } from "./SkuCards";
 export function ConversationTranscript({
   conversation,
   busy,
   transcript,
-}: Props) {
+}: {
+  conversation: Conversation | null;
+  busy: boolean;
+  transcript: Ref<HTMLDivElement>;
+}) {
   return (
     <div
-      className="transcript flex min-w-0 flex-col gap-6"
+      role="log"
       aria-label="Conversation messages"
       aria-live="polite"
       aria-relevant="additions"
+      className="flex flex-col gap-space-lg"
     >
-      {conversation?.messages.map((message) => (
-        <article
-          className={`chat-message ${message.role} max-w-[94%] rounded-xl border p-4 md:max-w-[88%] md:p-5 ${message.role === "user" ? "ml-auto rounded-tr-none border-primary bg-primary text-on-primary" : "rounded-tl-none border-border-subtle bg-surface-pure text-on-surface"}`}
-          key={message.id}
-        >
-          <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 font-label text-label-sm [&_time]:opacity-80">
-            <strong>{message.role === "user" ? "You" : "Aimo"}</strong>
-            <time dateTime={message.created_at}>
-              {dateTime(message.created_at)}
-            </time>
-          </div>
-          <p className="mb-0 whitespace-pre-wrap wrap-anywhere text-body-md">
-            {message.text}
-          </p>
-          {message.meal_plan && <MealPlanCard plan={message.meal_plan} />}
-          {message.proposal_id && (
-            <Link
-              className="mt-4 inline-flex rounded border border-wholesale-teal bg-surface-pure px-4 py-3 font-label text-label-md font-bold text-wholesale-teal hover:bg-secondary-container hover:no-underline"
-              to={`/purchases/${message.proposal_id}`}
-            >
-              Review basket and purchasing checks
-            </Link>
-          )}
-        </article>
-      ))}
+      {conversation?.messages.map((message) =>
+        message.role === "user" ? (
+          <article
+            key={message.id}
+            className="ml-auto flex max-w-2xl flex-row-reverse items-start gap-space-sm"
+          >
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary shadow-sm">
+              <Icon name="person" className="text-[18px]" />
+            </div>
+            <div className="flex min-w-0 flex-col items-end">
+              <p className="whitespace-pre-wrap wrap-anywhere rounded-xl rounded-tr-none bg-primary px-space-md py-space-sm text-body-md text-on-primary shadow-sm">
+                {message.text}
+              </p>
+              <MessageByline who="You" at={message.created_at} />
+            </div>
+          </article>
+        ) : (
+          <article
+            key={message.id}
+            className="flex max-w-3xl items-start gap-space-sm"
+          >
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-wholesale-teal text-on-primary shadow-sm">
+              <Icon name="smart_toy" className="text-[18px]" />
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col gap-space-xs">
+              <div className="rounded-xl rounded-tl-none bg-surface-container-low p-space-md shadow-sm">
+                <p className="whitespace-pre-wrap wrap-anywhere text-body-md text-on-surface">
+                  {message.text}
+                </p>
+                {message.meal_plan && <MealPlanCard plan={message.meal_plan} />}
+                {message.proposal_id && (
+                  <SkuCards
+                    proposal={conversation.purchases.find(
+                      (p) => p.proposal_id === message.proposal_id,
+                    )}
+                  />
+                )}
+              </div>
+              <MessageByline who="Aimo" at={message.created_at} />
+            </div>
+          </article>
+        ),
+      )}
       {busy && (
-        <p
-          className="rounded-lg bg-secondary-container p-4 text-body-sm text-primary"
-          role="status"
-        >
+        <p className="text-body-sm text-secondary" role="status">
           Aimo is checking your request… You can return to this conversation.
         </p>
       )}
       <div ref={transcript} />
     </div>
+  );
+}
+function MessageByline({ who, at }: { who: string; at: string }) {
+  return (
+    <span className="mt-1 font-label text-label-sm text-secondary">
+      {who} • <time dateTime={at}>{dateTime(at)}</time>
+    </span>
   );
 }

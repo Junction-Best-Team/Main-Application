@@ -1,117 +1,182 @@
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Badge } from "../../../shared/components/Badge";
 import { ErrorMessage } from "../../../shared/components/ErrorMessage";
 import { currency } from "../../../shared/lib/format";
+import { Icon } from "../../../shared/components/DesignPrimitives";
+import { DESIGN_PLACEHOLDERS as MOCK } from "../../../shared/lib/designPlaceholders";
+import { useAuth } from "../../auth/useAuth";
 import { getPurchaseStatus } from "../../purchases/model/purchaseStatus";
+import { StagedOverview } from "../../purchases/components/StagedOverview";
 import { useChat } from "../hooks/useChat";
-import { ConversationSidebar } from "../components/ConversationSidebar";
 import { ConversationTranscript } from "../components/ConversationTranscript";
 import { ChatComposer } from "../components/ChatComposer";
 export function ChatPage() {
   const { conversationId } = useParams();
+  const [selection, setSelection] = useState<{
+    conversationId?: string;
+    proposalId: string;
+  } | null>(null);
+  const { session } = useAuth();
   const {
     conversation,
-    conversations,
     text,
     setText,
     error,
     loading,
     reconnecting,
-    loadingOlder,
-    loadOlder,
     transcript,
     send,
     busy,
   } = useChat(conversationId);
   return (
-    <main className="chat-workspace mx-auto grid w-full max-w-[1600px] grid-cols-1 md:grid-cols-[224px_minmax(0,1fr)]">
-      <ConversationSidebar
-        conversations={conversations}
-        conversationId={conversationId}
-        loadingOlder={loadingOlder}
-        loadOlder={loadOlder}
-      />
-      <section className="conversation-main mx-auto flex w-full min-w-0 max-w-[1100px] flex-col gap-6 p-4 md:p-8 lg:p-10">
-        <div className="chat-heading border-b border-border-subtle pb-6 [&_h1]:wrap-anywhere [&_h1]:text-headline-lg-mobile md:[&_h1]:text-headline-lg [&_p]:mb-0 [&_p]:text-secondary">
-          <h1>
-            {conversation?.title ||
-              (conversationId ? "Your conversation" : "What are we cooking?")}
-          </h1>
-          <p>
-            {conversationId
-              ? "Meal planning and purchasing, in one conversation."
-              : "Tell us the meal and how many people. We’ll help build the basket."}
-          </p>
-        </div>
-        <ErrorMessage message={error} />
-        {loading && <p role="status">Loading your conversation…</p>}
-        {!conversationId && (
-          <div className="meal-start flex flex-col items-start gap-5 rounded-xl border border-border-subtle bg-surface-pure p-5 sm:flex-row sm:items-center md:p-6">
-            <div
-              className="flex size-20 shrink-0 flex-col items-center justify-center rounded-full bg-primary-container font-label text-on-primary [&_span:first-child]:text-[32px] [&_span:first-child]:font-bold [&_span:last-child]:text-label-sm md:size-28"
-              aria-hidden="true"
-            >
-              <span>200</span>
-              <span>portions</span>
+    <main className="mx-auto flex w-full max-w-[1720px] flex-col gap-space-md p-margin-sm pb-48 lg:flex-row lg:items-start md:gap-space-lg md:p-space-lg">
+      <div className="flex min-w-0 flex-1 flex-col gap-space-md">
+        <header className="flex items-center gap-space-md">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary-container text-on-primary shadow-sm">
+            <Icon name="smart_toy" className="text-[26px]" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="font-headline text-headline-lg-mobile tracking-tight text-primary md:text-headline-md">
+              Aimo Kitchen Assistant
+            </h1>
+            <p className="text-body-sm text-secondary">
+              {MOCK.request.assistantSubtitle}
+            </p>
+          </div>
+        </header>
+
+        <div className="flex min-h-[560px] flex-col overflow-hidden rounded-xl bg-surface-pure shadow-sm md:min-h-[640px]">
+          <div className="flex flex-wrap items-center justify-between gap-x-space-md gap-y-space-xs bg-surface-container-low px-space-md py-space-sm">
+            <div className="flex items-center gap-space-xs">
+              <Icon
+                name="restaurant_menu"
+                className="text-[18px] text-wholesale-teal"
+              />
+              <span className="font-label text-label-md text-primary">
+                {conversation?.title ?? session?.buyer_id}
+              </span>
             </div>
-            <div>
-              <h2>A menu is a good place to start.</h2>
-              <button
-                className="rounded border border-border-subtle bg-surface-container-low px-4 py-3 text-left font-semibold text-primary hover:enabled:bg-secondary-container"
-                onClick={() =>
-                  setText("I need ingredients for 200 portions of carbonara.")
-                }
-              >
-                I need ingredients for 200 portions of carbonara.
-              </button>
-              <p className="text-body-sm text-secondary">
-                We’ll clarify the details, check actual catalog products and
-                show the exact purchase for your confirmation.
-              </p>
+            <div className="flex items-center gap-space-xs font-label text-label-sm text-secondary">
+              <Icon name="verified" className="text-[16px]" />
+              <span>Exact-revision confirmation</span>
             </div>
           </div>
-        )}
-        <ConversationTranscript
-          conversation={conversation}
-          busy={busy}
-          transcript={transcript}
-        />
-        {Boolean(conversation?.purchases.length) && (
-          <section
-            className="conversation-baskets flex flex-col gap-2 [&_h2]:text-headline-sm [&>a]:flex [&>a]:flex-wrap [&>a]:items-center [&>a]:gap-3 [&>a]:rounded-lg [&>a]:border [&>a]:border-border-subtle [&>a]:bg-surface-pure [&>a]:p-4 [&>a]:text-body-sm [&>a:hover]:border-wholesale-teal [&>a:hover]:no-underline [&>a>span:first-child]:min-w-36 [&>a>span:first-child]:flex-1"
-            aria-label="Conversation baskets"
-          >
-            <h2>Baskets in this conversation</h2>
-            {conversation?.purchases.map((purchase) => (
-              <Link
-                key={purchase.proposal_id}
-                to={`/purchases/${purchase.proposal_id}`}
+
+          <div className="flex flex-1 flex-col gap-space-lg p-space-md md:p-space-lg">
+            <ErrorMessage message={error} />
+            {loading && <p role="status">Loading your conversation…</p>}
+            {!conversationId && (
+              <div className="flex flex-col items-start gap-space-sm rounded-xl bg-surface-container-low p-space-md">
+                <h2 className="font-headline text-headline-sm text-primary">
+                  A menu is a good place to start.
+                </h2>
+                <button
+                  type="button"
+                  className="rounded-lg bg-surface-pure px-space-md py-space-sm text-left text-body-sm font-bold text-primary shadow-sm"
+                  onClick={() =>
+                    setText("I need ingredients for 200 portions of carbonara.")
+                  }
+                >
+                  I need ingredients for 200 portions of carbonara.
+                </button>
+                <p className="text-body-sm text-secondary">
+                  We’ll clarify the details, check actual catalog products and
+                  show the exact purchase for your confirmation.
+                </p>
+              </div>
+            )}
+            <ConversationTranscript
+              conversation={conversation}
+              busy={busy}
+              transcript={transcript}
+            />
+
+            {Boolean(conversation?.purchases.length) && (
+              <section
+                aria-label="Conversation baskets"
+                className="flex flex-col gap-space-xs"
               >
-                <span>{purchase.request.request_id}</span>
-                <Badge value={getPurchaseStatus(purchase)} />
-                <strong>{currency(purchase.snapshot.gross_total)}</strong>
-              </Link>
-            ))}
-          </section>
-        )}
-        <ChatComposer
-          conversationId={conversationId}
-          text={text}
-          onTextChange={setText}
-          error={error}
-          busy={busy}
-          onSubmit={send}
-        />
+                <h2 className="font-label text-label-md uppercase tracking-wider text-secondary">
+                  Baskets in this conversation
+                </h2>
+                {conversation?.purchases.map((purchase) => {
+                  const row = (
+                    <>
+                      <span className="min-w-36 flex-1">
+                        {purchase.request.request_id}
+                      </span>
+                      <Badge value={getPurchaseStatus(purchase)} />
+                      <strong className="text-primary">
+                        {currency(purchase.snapshot.gross_total)}
+                      </strong>
+                    </>
+                  );
+                  const rowClass =
+                    "flex flex-wrap items-center gap-space-md rounded-lg bg-surface-container-low px-space-md py-space-sm text-body-sm";
+                  // Only placed orders link to Past Orders; open baskets are decided in the Overview panel.
+                  return purchase.order_status === "accepted_mock" ? (
+                    <Link
+                      key={purchase.proposal_id}
+                      to={`/purchases/${purchase.proposal_id}`}
+                      className={rowClass}
+                    >
+                      {row}
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelection({
+                          conversationId,
+                          proposalId: purchase.proposal_id,
+                        })
+                      }
+                      key={purchase.proposal_id}
+                      className={rowClass}
+                    >
+                      {row}
+                    </button>
+                  );
+                })}
+              </section>
+            )}
+          </div>
+
+          <ChatComposer
+            conversationId={conversationId}
+            text={text}
+            onTextChange={setText}
+            error={error}
+            busy={busy}
+            onSubmit={send}
+          />
+        </div>
+
+        <p className="text-body-sm text-secondary">
+          Messages never authorize a purchase. You confirm the exact basket
+          separately.
+        </p>
         {reconnecting && (
           <p className="text-body-sm text-secondary" role="status">
             Reconnecting to updates. Your conversation is saved; refresh to
             check the latest state.
           </p>
         )}
-        <p className="mt-0 text-body-sm text-secondary">
+        <p className="text-label-md text-secondary">
           Demo ordering only. No real supplier orders or stock reservations.
+          Signed in as {session?.buyer_id}.
         </p>
-      </section>
+      </div>
+      {/* Overview: right-hand column on desktop, fixed bottom drawer on mobile. */}
+      <StagedOverview
+        conversation={conversation}
+        selectedId={
+          selection?.conversationId === conversationId
+            ? selection?.proposalId
+            : undefined
+        }
+      />
     </main>
   );
 }

@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import type { Proposal } from "../../../shared/api/types";
 import { Badge } from "../../../shared/components/Badge";
+import { InertButton } from "../../../shared/components/DesignPrimitives";
 import { currency } from "../../../shared/lib/format";
 import { getPurchaseStatus } from "../model/purchaseStatus";
 type Props = {
@@ -22,12 +23,16 @@ export function PurchaseDecisionPanel({
   load,
 }: Props) {
   return (
-    <aside className="decision-panel rounded-xl border border-border-subtle bg-surface-pure p-5 xl:sticky xl:top-28 xl:p-6 [&_h2]:text-headline-sm [&_h3]:font-label [&_h3]:text-label-md [&_h3]:text-secondary">
-      <h2>Review your basket</h2>
-      <p className="mb-6 border-b border-border-subtle pb-5 font-label text-headline-lg font-bold text-primary">
-        {currency(p.snapshot.gross_total)}
-      </p>
+    <section className="decision-panel [&_h3]:font-label [&_h3]:text-label-md [&_h3]:text-secondary">
       <h3>Purchasing checks</h3>
+      {["denied", "needs_resolution"].includes(p.policy_outcome) && (
+        <p
+          role="alert"
+          className="mb-3 rounded-lg bg-error-container p-3 text-body-sm text-on-error-container"
+        >
+          This purchase cannot be approved. Resolve the purchasing checks below.
+        </p>
+      )}
       <ul className="m-0 mb-5 list-none space-y-3 p-0 text-body-sm">
         {p.reasons.map((r, i) => (
           <li key={i}>
@@ -61,15 +66,21 @@ export function PurchaseDecisionPanel({
             disabled={busy}
             onClick={confirm}
           >
-            {busy ? "Verifying purchase…" : "Confirm this purchase"}
+            {busy ? "Verifying purchase…" : "Approve & Push to Dispatch"}
           </button>
+          <InertButton
+            label="Save as Draft"
+            className="mt-2 w-full rounded-lg bg-surface-container px-space-sm py-2.5 font-label text-label-sm font-bold"
+          >
+            Save as Draft
+          </InertButton>
           {p.can_decide && getPurchaseStatus(p) === "pending" && (
             <button
               className="danger full mt-3 block w-full rounded border border-error bg-transparent px-4 py-3 font-label text-label-md font-bold text-error hover:enabled:bg-error-container"
               disabled={busy}
               onClick={reject}
             >
-              Reject purchase
+              Reject
             </button>
           )}
         </>
@@ -108,6 +119,6 @@ export function PurchaseDecisionPanel({
       >
         Refresh status
       </button>
-    </aside>
+    </section>
   );
 }

@@ -2,7 +2,6 @@ import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "../features/auth/AuthProvider";
 import { useAuth } from "../features/auth/useAuth";
 import { ErrorMessage } from "../shared/components/ErrorMessage";
-import { AppHeader } from "./layout/AppHeader";
 import { AppRoutes } from "./AppRoutes";
 function AppContent() {
   const { loading, error } = useAuth();
@@ -17,7 +16,6 @@ function AppContent() {
     );
   return (
     <>
-      <AppHeader />
       <ErrorMessage message={error} />
       <AppRoutes />
     </>

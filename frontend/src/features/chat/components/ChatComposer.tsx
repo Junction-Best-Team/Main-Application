@@ -1,4 +1,6 @@
 import type { FormEvent } from "react";
+import { Icon, InertButton } from "../../../shared/components/DesignPrimitives";
+import { DESIGN_PLACEHOLDERS as MOCK } from "../../../shared/lib/designPlaceholders";
 type Props = {
   conversationId?: string;
   text: string;
@@ -17,10 +19,10 @@ export function ChatComposer({
 }: Props) {
   return (
     <form
-      className="chat-composer rounded-xl border border-border-subtle bg-surface-pure p-4 md:p-5 [&_label]:mb-3 [&_label]:block [&_label]:font-label [&_label]:text-label-md [&_label]:font-semibold [&_textarea]:block [&_textarea]:max-h-80 [&_textarea]:min-h-28 [&_textarea]:w-full [&_textarea]:resize-y [&_textarea]:rounded-lg [&_textarea]:border-0 [&_textarea]:bg-surface-container-low [&_textarea]:p-3 [&_textarea]:text-body-md [&_textarea]:leading-relaxed"
       onSubmit={onSubmit}
+      className="m-space-md mt-0 rounded-xl bg-surface-container-low p-space-sm shadow-sm"
     >
-      <label htmlFor="purchase-message">
+      <label htmlFor="purchase-message" className="sr-only">
         {conversationId
           ? "Continue the conversation"
           : "Your meal or purchasing request"}
@@ -29,22 +31,43 @@ export function ChatComposer({
         id="purchase-message"
         value={text}
         onChange={(event) => onTextChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            event.currentTarget.form?.requestSubmit();
+          }
+        }}
         rows={3}
         maxLength={4000}
-        placeholder="A meal, the number of portions, dietary needs…"
+        placeholder={MOCK.request.composerPlaceholder}
         disabled={Boolean(busy)}
-        required
+        className="w-full resize-none font-body rounded-lg bg-transparent p-space-sm text-body-md text-on-surface placeholder:text-outline focus-visible:outline-2 focus-visible:outline-primary-container"
       />
-      <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center [&_p]:m-0 [&_p]:flex-1 [&_button]:shrink-0">
-        <p className="text-body-sm text-secondary">
-          Messages never authorize a purchase. You confirm the exact basket
-          separately.
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-space-sm">
+        <div className="flex items-center gap-space-sm text-on-surface-variant">
+          <InertButton label="Attach file" className="flex">
+            <Icon name="attach_file" />
+          </InertButton>
+          <InertButton label="Voice input" className="flex">
+            <Icon name="mic" />
+          </InertButton>
+          <InertButton label="Scan barcode" className="flex">
+            <Icon name="barcode_scanner" />
+          </InertButton>
+          <span className="hidden font-label text-label-sm text-secondary md:inline">
+            {MOCK.request.composerHint}
+          </span>
+        </div>
         <button
-          className="primary rounded border border-wholesale-teal bg-wholesale-teal px-5 py-3 font-label text-label-lg font-semibold text-on-primary hover:enabled:bg-deep-ocean-navy"
           disabled={Boolean(busy) || !text.trim()}
+          className="flex items-center gap-space-xs rounded-lg bg-primary-container px-space-md py-space-sm font-label text-label-lg text-on-primary disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {busy ? "Working…" : error && text ? "Retry request" : "Send request"}
+          {busy
+            ? "Working…"
+            : error && text
+              ? "Retry request"
+              : "Send Order Request"}
+          <Icon name="arrow_upward" className="text-[18px]" />
         </button>
       </div>
     </form>
