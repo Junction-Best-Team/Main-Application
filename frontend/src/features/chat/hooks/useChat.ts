@@ -28,7 +28,7 @@ export function useChat(conversationId?: string) {
   const [reconnecting, setReconnecting] = useState(false);
   const sendingRef = useRef(false);
   const createKey = useRef(crypto.randomUUID());
-  const transcript = useRef<HTMLDivElement>(null);
+  const messageViewport = useRef<HTMLDivElement>(null);
   const loadedConversation = useRef<string | null>(null);
   const snapshotVersion = useRef(0);
   const activeConversation = useRef(conversationId);
@@ -107,7 +107,9 @@ export function useChat(conversationId?: string) {
     };
   }, [conversationId, load, setSession]);
   useEffect(() => {
-    transcript.current?.scrollIntoView({ block: "end", behavior: "instant" });
+    if (conversation?.messages.length === undefined) return;
+    const viewport = messageViewport.current;
+    viewport?.scrollTo({ top: viewport.scrollHeight, behavior: "instant" });
   }, [conversation?.messages.length, conversation?.busy]);
   async function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -192,7 +194,7 @@ export function useChat(conversationId?: string) {
     error,
     loading,
     reconnecting,
-    transcript,
+    messageViewport,
     send,
     busy,
   };

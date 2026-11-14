@@ -48,6 +48,7 @@ RECIPE_TOOLS = [
     "get_recipe",
     "get_recipe_plan",
     "match_ingredient",
+    "match_ingredients",
     "scale_recipe",
     "search_recipes",
 ]
@@ -98,9 +99,9 @@ def assert_agent_safe(problem):
 def test_the_full_tool_list_is_always_exposed():
     """Purchasing, recipe and explicit memory tools are always registered."""
     memory_tools = {"search_memory", "manage_memory"}
-    assert len(ALL_TOOLS) == 15, ALL_TOOLS
+    assert len(ALL_TOOLS) == 18, ALL_TOOLS
     assert set(RECIPE_TOOLS) | memory_tools <= set(ALL_TOOLS)
-    assert len(set(ALL_TOOLS) - set(RECIPE_TOOLS) - memory_tools) == 8
+    assert len(set(ALL_TOOLS) - set(RECIPE_TOOLS) - memory_tools - {"generate_recipe_image"}) == 9
 
 
 @pytest.mark.parametrize("name", ALL_TOOLS)
@@ -122,22 +123,19 @@ def test_tct002_each_tool_has_its_own_input_model():
     assert len(models) == len(set(models)), "two tools share one input model class"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="JNP3-TCT-002 (Draft): no tool input model carries an example "
-    "(no json_schema_extra / examples anywhere in the 13 model schemas)",
-)
 @pytest.mark.parametrize("name", ALL_TOOLS)
 def test_tct002_each_input_model_has_an_example(name):
     schema = registry()[name].request.model_json_schema()
     assert schema.get("examples"), name + " has no example in its input schema"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="JNP3-TCT-002 (Draft): ToolSpec holds only `request`, `description`, `handler`; "
-    "there is no declared output model per tool (outputs are validated ad hoc in handlers)",
-)
+@pytest.mark.parametrize("name", ALL_TOOLS)
+def test_tct002_every_example_is_valid_input_for_its_own_tool(name):
+    request = registry()[name].request
+    for example in request.model_json_schema()["examples"]:
+        request.model_validate(example)  # an example the tool would reject is worse than none
+
+
 @pytest.mark.parametrize("name", ALL_TOOLS)
 def test_tct002_each_tool_declares_one_output_model(name):
     spec = registry()[name]
@@ -221,6 +219,7 @@ def test_tct003_missing_required_fields_and_range_violations_are_rejected():
         ("scale_recipe", {"recipe_id": "r", "version": "v", "portions": 0}),
         ("get_recipe_plan", {"plan_id": "zz"}),
         ("match_ingredient", {"plan_id": str(uuid4()), "revision": 0, "ingredient_id": "i"}),
+        ("match_ingredients", {"plan_id": str(uuid4()), "revision": 1, "matches": []}),
     ]
     assert {name for name, _ in cases} <= set(ALL_TOOLS)
     for name, arguments in cases:
@@ -238,12 +237,6 @@ def test_tct003_unregistered_tool_names_are_refused_with_the_customer_route():
         assert_agent_safe(problem)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="JNP3-TCT-003: INVALID_TOOL_ARGUMENTS is one fixed text "
-    "(agent_tools.py invoke: `except ValidationError` discards the details); "
-    "it does not name the field to correct",
-)
 @pytest.mark.parametrize("name", ALL_TOOLS)
 def test_tct003_invalid_argument_message_names_the_field_to_correct(name):
     properties = registry()[name].request.model_json_schema().get("properties", {})
@@ -293,17 +286,21 @@ def test_tct003_workflow_precondition_errors_say_which_tool_to_use_first(session
         {"plan_id": str(uuid4()), "revision": 1, "ingredient_id": "i", "product_id": "464306"},
     )
     assert problem.code == "PRODUCT_NOT_VERIFIED" and "get_product" in problem.message
+    problem = rejected(
+        session,
+        "match_ingredients",
+        {
+            "plan_id": str(uuid4()),
+            "revision": 1,
+            "matches": [{"ingredient_id": "i", "product_id": "464306"}],
+        },
+    )
+    assert problem.code == "PRODUCT_NOT_VERIFIED" and "get_product" in problem.message
 
 
 NUL = "\u0000"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="JNP3-TCT-003: a NUL byte in a string argument reaches PostgreSQL and raises a raw "
-    "psycopg DataError (not Problem); agent.py turns that into TOOL_EXECUTION_FAILED, 503, "
-    "which ends the whole turn instead of telling the agent what to correct",
-)
 @pytest.mark.parametrize(
     "name,arguments",
     [
@@ -342,11 +339,6 @@ def recipe_data(tmp_path, meal_products, actor):  # noqa: F811
     return versions
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="JNP3-TCT-003: a NUL byte in a recipe tool string argument raises a raw psycopg "
-    "DataError (same cause as the product tools)",
-)
 @pytest.mark.parametrize(
     "name,arguments",
     [
@@ -427,12 +419,6 @@ def test_tct003_runner_returns_the_error_envelope_for_a_malformed_call(monkeypat
     assert not LEAKS.search(messages[0]["content"])
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="JNP3-TCT-003: a tool call whose argument the database rejects (NUL byte) aborts the "
-    "turn with TOOL_EXECUTION_FAILED (agent.py: `except Exception` -> raise Problem 503); the "
-    "agent never receives an error envelope it could act on",
-)
 def test_tct003_runner_survives_a_database_rejected_argument(monkeypatch, actor, service):
     outcome, messages = drive(
         monkeypatch, actor, service, [tool_call("get_product", json.dumps({"product_id": "a\0b"}))]
@@ -633,15 +619,19 @@ def test_tct005_every_registered_tool_is_covered_by_a_result_check_here():
         "get_purchase_policy": "no product or quantity (a currency limit; see the audit)",
         "search_memory": "no calculated quantity; compact memory results tested in test_memory.py",
         "manage_memory": "no calculated quantity; persistence and replay tested in test_memory.py",
+        "generate_recipe_image": "illustration only; hosted result and retry semantics tested in test_recipe_images.py",
         "check_price_and_availability": "test_tct005_lookup_result_carries_mode_time_currency",
         "publish_meal_plan": "test_tct005_publish_meal_plan_echoes_every_amount_with_its_unit",
         "prepare_order": "test_tct005_prepare_order_lines_carry_quantity_unit_basis_and_evidence",
         "get_proposal": "test_tct005_proposal_view_given_to_the_model_keeps_units_basis_mode",
         "get_order": "test_tct005_get_order_receipt_names_currency_and_evidence_mode",
+        "list_substitution_candidates": "candidates carry the product facts and a checks block; "
+        "test_the_agent_can_list_substitution_candidates_after_reading_the_product",
         "search_recipes": "test_tct005_recipe_tool_results_carry_units_basis_and_attribution",
         "get_recipe": "test_tct005_recipe_tool_results_carry_units_basis_and_attribution",
         "scale_recipe": "test_tct005_recipe_tool_results_carry_units_basis_and_attribution",
         "get_recipe_plan": "test_tct005_recipe_tool_results_carry_units_basis_and_attribution",
         "match_ingredient": "test_tct005_recipe_tool_results_carry_units_basis_and_attribution",
+        "match_ingredients": "same plan result as match_ingredient; test_batch_match_tool_matches_every_ingredient_in_one_revision",
     }
     assert set(covered) == set(ALL_TOOLS), set(covered) ^ set(ALL_TOOLS)

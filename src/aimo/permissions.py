@@ -2,6 +2,25 @@
 
 from psycopg import sql
 
+# Pure history (owner decision Q-99): the app only inserts into and reads these (no UPDATE, DELETE or
+# row lock anywhere in src; the immutable triggers already refuse changes), so the runtime role gets
+# no UPDATE, DELETE or TRUNCATE on them. purged_proposals is written only by the purge, which an
+# operator runs as the schema owner, so the runtime role cannot even insert into it.
+HISTORY_TABLES = (
+    "proposal_revisions",
+    "audit_events",
+    "customer_confirmations",
+    "meal_authorization_withdrawals",
+    "orders",
+    "recipe_plan_revisions",
+    "recipe_versions",
+    "purged_proposals",
+    # WS-E: append-only logs of the scheduler and the cancelled order requests.
+    "scheduled_run_events",
+    "scheduled_authorization_events",
+    "order_request_cancellations",
+)
+
 
 def configure_runtime_role(conn, role_name):
     role = sql.Identifier(role_name)
@@ -16,11 +35,39 @@ def configure_runtime_role(conn, role_name):
         sql.SQL("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {}").format(role)
     )
     conn.execute(sql.SQL("REVOKE ALL ON TABLE schema_migrations FROM {}").format(role))
+    # Defence in depth (PER-002): the runtime role never needs TRUNCATE, REFERENCES or TRIGGER, and
+    # a later grant must not survive the release Job re-applying these grants.
+    conn.execute(
+        sql.SQL(
+            "REVOKE TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA public FROM {}"
+        ).format(role)
+    )
+    # The privilege layer under the history triggers: the runtime role cannot even attempt to change
+    # or delete history (HISTORY_TABLES), nor write the purge record. Only tables that exist yet are
+    # named, so partially migrated schemas (older checkpoints) still work.
+    existing = []
+    for table_name in HISTORY_TABLES:
+        row = conn.execute("SELECT to_regclass(%s) IS NOT NULL AS ok", (table_name,)).fetchone()
+        if row["ok"] if isinstance(row, dict) else row[0]:
+            existing.append(sql.Identifier(table_name))
+    if existing:
+        conn.execute(
+            sql.SQL("REVOKE UPDATE, DELETE, TRUNCATE ON {} FROM {}").format(
+                sql.SQL(", ").join(existing), role
+            )
+        )
+        if sql.Identifier("purged_proposals") in existing:
+            conn.execute(sql.SQL("REVOKE INSERT ON purged_proposals FROM {}").format(role))
     # Provisioning authority never belongs to ordinary serving/agent code.
     conn.execute(
         sql.SQL(
-            "REVOKE INSERT, UPDATE, DELETE ON buyers,identities,policies,internal_agents FROM {}"
+            "REVOKE INSERT, UPDATE, DELETE ON buyers,identities,policies,internal_agents,policy_managers,policy_changes FROM {}"
         ).format(role)
+    )
+    conn.execute(
+        sql.SQL("GRANT EXECUTE ON FUNCTION save_buyer_policy(text,integer,jsonb) TO {}").format(
+            role
+        )
     )
     # PostgreSQL requires UPDATE privilege on at least one column for SELECT
     # FOR UPDATE/FOR SHARE. Grant only the identifier column, then reject actual

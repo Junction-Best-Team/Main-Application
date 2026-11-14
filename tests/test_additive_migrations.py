@@ -262,9 +262,19 @@ REVIEWED = {
         "Only fills the NEW column updated_at (guarded so it runs once, inside the block that "
         "adds the column). No existing column of proposals changes."
     ),
+    ("014_policy_settings.sql", "UPDATE", "buyers", "current_policy"): (
+        "Inside the new save_buyer_policy function, not executed by the migration. The owner "
+        "requested browser policy settings: runtime saves append an immutable policy, then "
+        "move only the current-version pointer under the buyer lock and record actor/time. "
+        "No historical policy row is rewritten; test_policy_settings covers the operation."
+    ),
 }
-# INSERT targets that migrations may use (new reference rows only).
-ALLOWED_INSERT_TABLES = {"identities", "internal_agents", "scheduler_identities"}
+# The scanner descends into callable function bodies as well as migration statements.
+ALLOWED_INSERTS = {
+    "003_chat_purchasing.sql": {"identities", "internal_agents"},
+    "014_policy_settings.sql": {"policy_managers", "policies", "policy_changes"},
+    "020_scheduled_orders.sql": {"identities", "scheduler_identities"},
+}
 
 
 def key(finding):
@@ -368,11 +378,8 @@ def test_no_migration_touches_the_four_immutable_tables_except_to_create_them():
 def test_inserts_only_add_reference_rows_to_known_tables():
     _, inserts = scan_all()
     assert inserts, "003_chat_purchasing.sql inserts the internal agents"
-    assert {table for _, _, table in inserts} <= ALLOWED_INSERT_TABLES, inserts
-    assert {file for file, _, _ in inserts} == {
-        "003_chat_purchasing.sql",
-        "020_scheduled_orders.sql",
-    }
+    assert all(table in ALLOWED_INSERTS.get(file, set()) for file, _, table in inserts), inserts
+    assert {file for file, _, _ in inserts} == set(ALLOWED_INSERTS)
 
 
 def test_immutable_trigger_definitions_cover_the_four_tables_and_never_replace_the_function():
@@ -394,7 +401,12 @@ def test_immutable_trigger_definitions_cover_the_four_tables_and_never_replace_t
     extra = {t: f for t, f in guarded.items() if t not in IMMUTABLE}
     # 008 (WS-D) additionally guards `orders`, a base table created in 001: a saved receipt is
     # history. It only adds protection; nothing is unguarded.
-    guarded_later = {"orders": "008_orders_immutable.sql"}
+    # 019 (PER-004) likewise guards the recipe history tables created in 005.
+    guarded_later = {
+        "orders": "008_orders_immutable.sql",
+        "recipe_plan_revisions": "019_history_immutability.sql",
+        "recipe_versions": "019_history_immutability.sql",
+    }
     assert all(created.get(t) == f or guarded_later.get(t) == f for t, f in extra.items()), extra
     definitions = [
         p.name
@@ -415,7 +427,8 @@ def test_database_catalog_shows_the_guard_on_each_immutable_table():
             "SELECT c.relname AS tbl, t.tgenabled AS enabled, t.tgtype AS tgtype "
             "FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid "
             "JOIN pg_proc p ON p.oid=t.tgfoid "
-            "WHERE p.proname='immutable_record' AND NOT t.tgisinternal"
+            "WHERE p.proname IN ('immutable_record','immutable_unless_purging') "
+            "AND NOT t.tgisinternal"
         ).fetchall()
     by_table = {r["tbl"]: r for r in rows}
     assert set(IMMUTABLE) <= set(by_table), set(IMMUTABLE) - set(by_table)
@@ -424,6 +437,39 @@ def test_database_catalog_shows_the_guard_on_each_immutable_table():
         assert row["enabled"] == "O", table
         assert row["tgtype"] & (1 | 2 | 8 | 16) == (1 | 2 | 8 | 16), table
         assert not row["tgtype"] & 4, table
+
+
+def test_018_swaps_the_guard_of_exactly_four_tables_for_the_purge_aware_function():
+    """CNF-021: DELETE is allowed only under the local purge flag and only without an order.
+
+    The review of migration 018 in code form: the function refuses every UPDATE, checks the flag
+    AND that neither orders nor proposals.order_id exist for the row's proposal, and is attached to
+    exactly the four history tables that hold per-proposal rows. (The scanner above does not see
+    `DROP TRIGGER IF EXISTS`, so this test pins what 018 does.)
+    """
+    text = strip_comments((MIGRATIONS / "018_purge_unfinished_proposals.sql").read_text())
+    body = re.search(
+        r"CREATE\s+FUNCTION\s+immutable_unless_purging\(\).*?\$\$(.*?)\$\$", text, re.S | re.I
+    )
+    assert body, "018 must define immutable_unless_purging"
+    code = " ".join(body.group(1).split())
+    assert "TG_OP = 'DELETE'" in code and "aimo.purge_unfinished" in code
+    assert "FROM orders" in code and "p.order_id IS NOT NULL" in code
+    assert "FROM purged_proposals" in code  # the permanent record must exist first
+    assert "RAISE EXCEPTION 'immutable history; append a new record instead'; END" in code
+    swapped = re.findall(
+        r"CREATE\s+TRIGGER\s+(\w+)\s+BEFORE\s+UPDATE\s+OR\s+DELETE\s+ON\s+(\w+)\s+"
+        r"FOR\s+EACH\s+ROW\s+EXECUTE\s+FUNCTION\s+immutable_unless_purging\(\)",
+        text,
+        re.I,
+    )
+    assert sorted(t for _, t in swapped) == [
+        "audit_events",
+        "customer_confirmations",
+        "meal_authorization_withdrawals",
+        "proposal_revisions",
+    ]
+    assert "immutable_record()" in text  # purged_proposals itself keeps the plain guard
 
 
 def test_every_packaged_migration_is_in_the_ledger_under_its_original_name():
@@ -524,12 +570,7 @@ def test_immutable_tables_still_accept_appended_history(history_rows, table):
         assert c.execute(f"SELECT count(*) AS n FROM {table}").fetchone()["n"] == before + 1
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="GAP: immutable_record is a row-level UPDATE/DELETE trigger; PostgreSQL does not fire "
-    "it for TRUNCATE. The runtime role lacks the TRUNCATE privilege (permissions.py grants "
-    "SELECT, INSERT, UPDATE, DELETE only) but the schema owner can erase the history tables.",
-)
+# PER-002 (Approved): migration 019 adds a statement-level TRUNCATE guard to the history tables.
 @pytest.mark.parametrize("table", IMMUTABLE)
 def test_immutable_tables_also_reject_truncate(history_rows, table):
     with connection() as c:

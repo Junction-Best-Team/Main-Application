@@ -66,23 +66,40 @@ def purchase(lines):
 # --- MEA-011: a configured maximum quantity per portion --------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="MEA-011 Draft: scaled_plan has no maximum quantity per portion (value pending)",
-)
 def test_absurd_quantity_per_portion_is_rejected():
-    # 9,999,999 kg per serving x 10,000 portions = 99,999,990,000 kg is accepted today.
+    # 9,999,999 kg per serving x 10,000 portions = 99,999,990,000 kg is accepted without a bound.
     with pytest.raises(Problem):
         scaled_plan(recipe(quantity=9999999, unit="kg"), 10000)
+
+
+@pytest.mark.parametrize(
+    "quantity,unit,expected_unit",
+    [(5, "kg", "KG"), (5000, "g", "KG"), (5, "l", "L"), (5000, "ml", "L"), (50, "piece", "piece")],
+)
+def test_the_per_portion_limit_itself_is_allowed(quantity, unit, expected_unit):
+    plan = scaled_plan(recipe(quantity=quantity, unit=unit), 200)
+    assert plan.ingredients[0].unit == expected_unit and plan.ingredients[0].amount
+
+
+@pytest.mark.parametrize(
+    "quantity,unit",
+    [("5.0001", "kg"), (5001, "g"), ("5.0001", "l"), (5001, "ml"), (51, "piece")],
+)
+def test_more_than_the_per_portion_limit_is_refused_with_a_correctable_code(quantity, unit):
+    with pytest.raises(Problem) as error:
+        scaled_plan(recipe(quantity=quantity, unit=unit), 1)
+    assert error.value.code == "QUANTITY_PER_PORTION_EXCEEDED" and error.value.status == 422
+    assert "ingredient 0" in error.value.message
+
+
+def test_the_limit_applies_per_portion_not_to_the_total():
+    # 1 kg per serving x 10,000 portions = 10,000 kg is a big event, not an absurd recipe.
+    assert scaled_plan(recipe(quantity=1, unit="kg"), 10000).ingredients[0].amount == "10000"
 
 
 # --- MEA-012: round a scaled quantity UP to four decimal places ------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="MEA-012 Draft: a quantity needing more than 4 decimals is left unresolved, not rounded up",
-)
 @pytest.mark.parametrize(
     "grams,base_servings,portions,expected",
     [
@@ -109,10 +126,6 @@ def test_exactly_terminating_scaled_quantity_stays_unchanged():
 BIG = 1000
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="MEA-013 Approved: MealPlan.ingredients (chat_schemas.py, person 1) is still capped at 30",
-)
 def test_meal_plan_accepts_one_thousand_ingredients():
     ingredients = [Ingredient(name=f"ingredient {n}", amount="1", unit="KG") for n in range(BIG)]
     assert len(MealPlan(title="Big", portions=1, ingredients=ingredients).ingredients) == BIG
@@ -123,10 +136,6 @@ def test_purchase_request_accepts_one_thousand_lines():
     assert len(PurchaseRequest.model_validate(purchase(lines)).lines) == BIG
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="MEA-013 Approved: Recipe (100) and scaled_plan (30) in person 2's recipe files are not raised",
-)
 def test_recipe_with_one_thousand_ingredients_can_be_scaled():
     plan = scaled_plan(recipe(count=BIG), 2)
     assert len(plan.ingredients) == BIG
@@ -198,6 +207,9 @@ class RecordingService:
     def __init__(self):
         self.prepared = None
 
+    def ensure_saved_plan_resolved(self, identity, title):
+        return None
+
     def get_product(self, identity, product_id):
         from copy import deepcopy
 
@@ -214,10 +226,6 @@ class RecordingService:
         raise CapturedPrepare
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="BAS-009 Draft: the same product in two units is rejected, not combined into one KG line",
-)
 def test_product_requested_in_two_units_becomes_one_line_in_the_priority_unit():
     # Layer chosen: ToolSession.prepare with a recording fake service (pattern of test_agent.py).
     # It is the simplest layer without network that sees both the plan keyed on (product, unit)

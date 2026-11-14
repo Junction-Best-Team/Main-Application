@@ -19,6 +19,11 @@ os.environ["PUBLIC_BASE_URL"] = "http://testserver"
 os.environ["DEMO_BUYER_PASSWORD"] = "test-buyer-password-only"
 # Tests never reach the semantic classifier; guardrail tests inject explicit fakes.
 os.environ["GUARDRAIL_MODE"] = "off"
+# Existing authored chat transcripts use the OpenAI-compatible transport.
+# Native Google adapters have separate mocked contract and integration coverage.
+os.environ["LLM_PROVIDER"] = "openrouter"
+os.environ["GUARDRAIL_PROVIDER"] = "openrouter"
+os.environ["GEMINI_API_KEY"] = ""
 
 from aimo.cli import migrate, seed
 from aimo.config import settings
@@ -50,7 +55,7 @@ def reset_buyers():
     with connection() as c:
         # The history tables refuse TRUNCATE unless the transaction says it is a deliberate reset.
         c.execute("SET LOCAL aimo.allow_history_truncate = 'on'")
-        c.execute("TRUNCATE buyers,login_attempts RESTART IDENTITY CASCADE")
+        c.execute("TRUNCATE buyers,login_attempts,purged_proposals RESTART IDENTITY CASCADE")
     seed()
 
 

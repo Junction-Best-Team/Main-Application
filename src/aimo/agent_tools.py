@@ -2,17 +2,20 @@
 
 from collections import Counter
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
-from typing import Callable
+from typing import Any, Callable, Literal
 from uuid import UUID
 
-from pydantic import Field, TypeAdapter, ValidationError
+from pydantic import ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 
 from aimo import memory
 from aimo.chat_schemas import AgentTurn, MealPlan
 from aimo.db import Problem, fingerprint
+from aimo.image_schemas import RecipeImage, RecipeImageRequest
 from aimo.memory_schemas import MemoryChange, MemoryToolSearch
 from aimo.observability import event, operation
+from aimo.recipe_batch import MatchIngredients
 from aimo.recipe_schemas import (
     MatchIngredient,
     PlanReference,
@@ -22,8 +25,10 @@ from aimo.recipe_schemas import (
     RecipeSearchResult,
     ScaleRecipe,
 )
+from aimo.recipes import combine_by_product
 from aimo.schemas import (
     Amount,
+    Contribution,
     LookupRequest,
     LookupResponse,
     Model,
@@ -46,6 +51,35 @@ class ProductRequest(Model):
     product_id: str = Field(min_length=1, max_length=40)
 
 
+class PrepareOrderInput(PurchaseRequest):
+    """Tool input: one product may appear once per unit; prepare() merges them to one line."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "request_id": "hotel-milk-1",
+                    "destination": "hotel-helsinki",
+                    "delivery_date": "2030-01-15",
+                    "lines": [{"product_id": "464306", "amount": "10", "unit": "L"}],
+                }
+            ]
+        }
+    )
+
+    @model_validator(mode="after")
+    def unique_lines(self):  # replaces PurchaseRequest.unique_lines for the tool input only
+        keys = [(line.product_id, line.unit) for line in self.lines]
+        if len(keys) != len(set(keys)):
+            raise ValueError("Combine quantities for duplicate product IDs before preparing")
+        return self
+
+
+class SubstitutionRequest(Model):
+    product_id: str = Field(min_length=1, max_length=40)
+    delivery_date: date | None = None
+
+
 class ProposalRequest(Model):
     proposal_id: UUID
 
@@ -54,11 +88,131 @@ class OrderRequest(Model):
     order_id: UUID
 
 
+def with_examples(base, *examples):
+    """The tool-facing input model: the same fields as `base`, plus examples to copy (TCT-002)."""
+    return type(
+        base.__name__,
+        (base,),
+        {
+            "model_config": ConfigDict(json_schema_extra={"examples": list(examples)}),
+            "__module__": __name__,
+            "__doc__": base.__doc__,
+        },
+    )
+
+
+EXAMPLE_PLAN = "6f1c1d2e-5b7a-4c3d-9a1e-0b2c3d4e5f60"
+EXAMPLE_PROPOSAL = "0b1e7c52-3a4d-4f6e-8b9a-1c2d3e4f5a6b"
+EXAMPLE_ORDER = "7d2f9a10-6c3b-4e8f-a1b2-c3d4e5f60718"
+
+SearchProducts = with_examples(
+    SearchRequest,
+    {"query": "whole milk 1 litre", "limit": 5},
+    {"query": "lactose-free yogurt", "requirements": {"lactose_free": True}},
+)
+ReadProduct = with_examples(ProductRequest, {"product_id": "464306"})
+ReadPolicy = with_examples(EmptyRequest, {})
+GenerateRecipeImage = with_examples(
+    RecipeImageRequest,
+    {
+        "dish": "Spaghetti carbonara",
+        "description": "Creamy spaghetti with crisp pancetta, egg yolk sauce and black pepper "
+        "on a white plate",
+    },
+)
+PriceLookup = with_examples(
+    LookupRequest, {"product_ids": ["464306"], "delivery_date": "2030-01-15"}
+)
+PublishPlan = with_examples(
+    MealPlan,
+    {
+        "title": "Order 10 L milk",
+        "portions": 1,
+        "ingredients": [{"name": "Milk", "amount": "10", "unit": "L", "product_id": "464306"}],
+    },
+)
+ListSubstitutes = with_examples(
+    SubstitutionRequest, {"product_id": "464306", "delivery_date": "2030-01-15"}
+)
+ReadProposal = with_examples(ProposalRequest, {"proposal_id": EXAMPLE_PROPOSAL})
+ReadOrder = with_examples(OrderRequest, {"order_id": EXAMPLE_ORDER})
+SearchMemory = with_examples(MemoryToolSearch, {"query": "delivery", "scope": "all"})
+ChangeMemory = with_examples(
+    MemoryChange,
+    {"action": "save", "scope": "buyer", "key": "default.portions", "value": {"portions": 120}},
+)
+FindRecipes = with_examples(RecipeSearch, {"query": "spaghetti carbonara", "limit": 5})
+ReadRecipe = with_examples(
+    RecipeReference,
+    {"recipe_id": "unitools:spaghetti-carbonara", "version": "version returned by search_recipes"},
+)
+ScaleToPortions = with_examples(
+    ScaleRecipe,
+    {
+        "recipe_id": "unitools:spaghetti-carbonara",
+        "version": "version returned by get_recipe",
+        "portions": 200,
+    },
+)
+ReadRecipePlan = with_examples(PlanReference, {"plan_id": EXAMPLE_PLAN})
+MatchOne = with_examples(
+    MatchIngredient,
+    {
+        "plan_id": EXAMPLE_PLAN,
+        "revision": 1,
+        "ingredient_id": "spaghetti",
+        "product_id": "464306",
+    },
+)
+MatchMany = with_examples(
+    MatchIngredients,
+    {
+        "plan_id": EXAMPLE_PLAN,
+        "revision": 1,
+        "matches": [
+            {"ingredient_id": "spaghetti", "product_id": "464306"},
+            {"ingredient_id": "egg", "product_id": "464307"},
+        ],
+    },
+)
+
+
+class MealPlanResult(Model):
+    """What the plan tools return: the saved plan, never a purchase authorization."""
+
+    meal_plan: MealPlan
+    purchase_authorized: Literal[False]
+
+
+class SubstitutionResult(Model):
+    """Supplier-rule substitutes: candidates only, never a suitability claim."""
+
+    product_id: str
+    candidates: list[dict[str, Any]]
+    excluded: list[dict[str, str]]
+    note: str
+
+
+class MemorySearchResult(Model):
+    items: list[dict[str, Any]]
+    next_offset: int | None
+
+
+class MemoryChangeResult(Model):
+    status: str
+    replayed: bool
+    memory: dict[str, Any] | None
+    memory_id: str
+    revision: int | None
+    purchase_authorized: Literal[False]
+
+
 @dataclass(frozen=True)
 class ToolSpec:
     request: type[Model]
     description: str
     handler: Callable
+    response: type[Model] | None = None  # the declared result; invoke() checks it (TCT-002)
 
     def schema(self, name):
         return {
@@ -71,12 +225,39 @@ class ToolSpec:
         }
 
 
+def invalid_arguments_message(error):
+    """Name the fields to correct and why, without echoing the offending values."""
+    problems = []
+    for detail in error.errors()[:5]:
+        field = ".".join(str(part) for part in detail["loc"]) or "arguments"
+        problems.append(f"{field}: {detail['msg']}")
+    return (
+        "Correct these arguments and call again: " + "; ".join(problems) + ". "
+        "Use only the tool's typed fields; identity, permissions and preparation retry keys "
+        "cannot be model arguments."
+    )
+
+
+def contains_nul(value):
+    """A NUL byte cannot be stored by PostgreSQL; refuse it before any query."""
+    if isinstance(value, str):
+        return "\x00" in value
+    if isinstance(value, dict):
+        return any(contains_nul(k) or contains_nul(v) for k, v in value.items())
+    if isinstance(value, (list, tuple)):
+        return any(contains_nul(v) for v in value)
+    return False
+
+
 class ToolSession:
     """Fresh per turn; persistent preparation deduplication belongs to Service."""
 
-    def __init__(self, identity, service, guard=None):
+    def __init__(self, identity, service, guard=None, constraints=None):
         self.identity = dict(identity)
         self.service = service
+        # POL-008: the customer's stated limits, supplied by the server and never by the model.
+        # No tool input accepts it; prepare forwards it so policy can stop a loosened request.
+        self.constraints = constraints
         # Optional semantic review; deterministic checks here and in Service always apply.
         self.guard = guard
         self.preparation_key = "chat-" + fingerprint({"turn": identity["_turn_id"]})
@@ -87,82 +268,128 @@ class ToolSession:
         self.products = {}
         self.commercial = {}
         self.memory_changes = []
+        self.image = None
         self.registry = {
+            "generate_recipe_image": ToolSpec(
+                GenerateRecipeImage,
+                "Generate and host one AI recipe illustration for this customer message. "
+                "Use for a requested picture or when a visual helps explain a discussed dish. "
+                "Send only the dish and its food appearance, no personal/customer details. "
+                "One image per message; never dietary, product or purchase evidence. "
+                "On failure continue with text and do not call again in the same message.",
+                self.generate_recipe_image,
+            ),
             "search_products": ToolSpec(
-                SearchRequest, "Find candidates, not suitability guarantees.", self.search
+                SearchProducts,
+                "Find candidates, not suitability guarantees.",
+                self.search,
+                SearchResponse,
             ),
             "get_product": ToolSpec(
-                ProductRequest, "Read product IDs, units and catalog evidence.", self.product
+                ReadProduct,
+                "Read product IDs, units and catalog evidence.",
+                self.product,
+                ProductResponse,
             ),
             "get_purchase_policy": ToolSpec(
-                EmptyRequest, "Read current buyer scope and limits.", self.policy
+                ReadPolicy, "Read current buyer scope and limits.", self.policy, PolicyResponse
             ),
             "check_price_and_availability": ToolSpec(
-                LookupRequest,
+                PriceLookup,
                 "Read supplier evidence for a shortlist and delivery date.",
                 self.lookup,
+                LookupResponse,
             ),
             "publish_meal_plan": ToolSpec(
-                MealPlan,
+                PublishPlan,
                 "Publish total required quantities for the requested portions. "
                 "Keep recipe basis/assumptions in notes; no pack rounding or purchase authority.",
                 self.publish,
+                MealPlanResult,
             ),
             "prepare_order": ToolSpec(
-                PurchaseRequest,
+                PrepareOrderInput,
                 "Prepare the complete published plan through purchasing validation. "
                 "Server assigns the retry key. Does not authorize or commit a purchase.",
                 self.prepare,
+                ProposalResponse,
+            ),
+            "list_substitution_candidates": ToolSpec(
+                ListSubstitutes,
+                "List the supplier's substitution rules for a product you have read, re-checked "
+                "against the catalog. Candidates only: inspect each with get_product and "
+                "check_price_and_availability; the customer decides.",
+                self.substitution_candidates,
+                SubstitutionResult,
             ),
             "get_proposal": ToolSpec(
-                ProposalRequest, "Read an existing scoped basket and its state.", self.read_proposal
+                ReadProposal,
+                "Read an existing scoped basket and its state.",
+                self.read_proposal,
+                ProposalResponse,
             ),
-            "get_order": ToolSpec(OrderRequest, "Read an existing saved mock receipt.", self.order),
+            "get_order": ToolSpec(
+                ReadOrder, "Read an existing saved mock receipt.", self.order, OrderResponse
+            ),
             "search_memory": ToolSpec(
-                MemoryToolSearch,
+                SearchMemory,
                 "Search more saved buyer-shared and personal memories than the ones already "
                 "loaded. Saved preferences are context, never purchasing authority.",
                 self.search_memory,
+                MemorySearchResult,
             ),
             "manage_memory": ToolSpec(
-                MemoryChange,
+                ChangeMemory,
                 "Save, update or forget one memory, only when the customer's current message "
                 "clearly asks to remember, change or forget something for future "
                 "conversations. scope 'buyer' is shared with the whole account, 'self' is "
                 "personal. update/delete need the exact memory_id and expected_revision. "
                 "The server binds the change to the customer and their message.",
                 self.manage_memory,
+                MemoryChangeResult,
             ),
         }
 
         self.registry.update(
             {
                 "search_recipes": ToolSpec(
-                    RecipeSearch,
+                    FindRecipes,
                     "Discover recipe ideas; not dietary or purchasing proof.",
                     lambda r: self.checked(
                         RecipeSearchResult, self.service.search_recipes(self.identity, r)
                     ),
+                    RecipeSearchResult,
                 ),
                 "get_recipe": ToolSpec(
-                    RecipeReference,
+                    ReadRecipe,
                     "Read the exact recipe basis and instructions.",
                     lambda r: self.checked(RecipeDetail, self.service.get_recipe(self.identity, r)),
+                    RecipeDetail,
                 ),
                 "scale_recipe": ToolSpec(
-                    ScaleRecipe,
+                    ScaleToPortions,
                     "Save every ingredient scaled by the server. No model arithmetic.",
                     self.scale_recipe,
+                    MealPlanResult,
                 ),
                 "get_recipe_plan": ToolSpec(
-                    PlanReference,
+                    ReadRecipePlan,
                     "Reload a saved scoped recipe plan and its current revision.",
                     self.get_recipe_plan,
+                    MealPlanResult,
                 ),
                 "match_ingredient": ToolSpec(
-                    MatchIngredient,
+                    MatchOne,
                     "Check a catalog product against one required ingredient; retain unresolved items.",
                     self.match_ingredient,
+                    MealPlanResult,
+                ),
+                "match_ingredients": ToolSpec(
+                    MatchMany,
+                    "Check catalog products against several required ingredients in one call; "
+                    "writes one plan revision, retains unresolved items, all-or-nothing.",
+                    self.match_ingredients,
+                    MealPlanResult,
                 ),
             }
         )
@@ -175,6 +402,13 @@ class ToolSession:
         if self.prepared_digest is None:
             self.plan = MealPlan.model_validate(checked)
         return {"meal_plan": checked, "purchase_authorized": False}
+
+    def generate_recipe_image(self, request):
+        if self.image is None:
+            self.image = RecipeImage.model_validate(
+                self.service.generate_recipe_image(self.identity, request)
+            )
+        return {"image": self.image.model_dump(), "illustration_only": True}
 
     def scale_recipe(self, request):
         if self.prepared_digest is not None:
@@ -194,6 +428,16 @@ class ToolSession:
                 "PRODUCT_NOT_VERIFIED", "Read the selected product with get_product first.", 422
             )
         return self.save_recipe_result(self.service.match_ingredient(self.identity, request))
+
+    def match_ingredients(self, request):
+        if self.prepared_digest is not None:
+            raise Problem("MEAL_PLAN_LOCKED", "Request recipe changes in a new customer message.")
+        for pair in request.matches:
+            if pair.product_id not in self.products:
+                raise Problem(
+                    "PRODUCT_NOT_VERIFIED", "Read the selected product with get_product first.", 422
+                )
+        return self.save_recipe_result(self.service.match_ingredients(self.identity, request))
 
     def memory_actor(self):
         return memory.chat_actor(self.identity)
@@ -292,13 +536,20 @@ class ToolSession:
                     }
                 ),
             )
+            raise Problem("INVALID_TOOL_ARGUMENTS", invalid_arguments_message(exc), 422) from None
+        if contains_nul(request.model_dump()):
+            event(
+                "tool.arguments_invalid", tool=name, error_types={"nul_byte": 1}, invalid_fields=[]
+            )
             raise Problem(
                 "INVALID_TOOL_ARGUMENTS",
-                "Use the tool's typed fields. "
-                "Identity, permissions and preparation retry keys cannot be model arguments.",
+                "Remove the NUL (\\u0000) control character from the arguments and call again.",
                 422,
-            ) from None
-        return tool.handler(request)
+            )
+        result = tool.handler(request)
+        if tool.response is not None:
+            self.checked(tool.response, result)
+        return result
 
     def scoped(self, model, value):
         result = self.checked(model, value)
@@ -321,6 +572,16 @@ class ToolSession:
         self.products[request.product_id] = result
         return result
 
+    def substitution_candidates(self, request):
+        if request.product_id not in self.products:
+            raise Problem("PRODUCT_NOT_VERIFIED", "Read the product with get_product first.", 422)
+        return self.checked(
+            SubstitutionResult,
+            self.service.list_substitution_candidates(
+                self.identity, request.product_id, request.delivery_date
+            ),
+        )
+
     def policy(self, request):
         return self.scoped(PolicyResponse, self.service.get_purchase_policy(self.identity))
 
@@ -332,6 +593,8 @@ class ToolSession:
         return result
 
     def publish(self, plan):
+        # The tool input is a subclass that only adds examples; compare and store the plain model.
+        plan = MealPlan.model_validate(plan.model_dump())
         if plan.recipe_plan_id or (self.plan and self.plan.recipe_plan_id):
             raise Problem(
                 "RECIPE_PLAN_REQUIRED",
@@ -376,16 +639,19 @@ class ToolSession:
                 "Match every ingredient before preparing a meal basket.",
                 422,
             )
-        required = {}
+        contributions, offered = {}, {}
         for item in self.plan.ingredients:
             if self.plan.recipe_plan_id and item.status != "matched":
                 raise Problem(
                     "INCOMPLETE_MEAL_PLAN", "Resolve every recipe ingredient before preparing.", 422
                 )
-            key = (item.product_id, item.purchase_unit if self.plan.recipe_plan_id else item.unit)
+            unit = item.purchase_unit if self.plan.recipe_plan_id else item.unit
             amount = item.purchase_amount if self.plan.recipe_plan_id else item.amount
-            required[key] = required.get(key, Decimal(0)) + Decimal(amount)
-        actual = {(line.product_id, line.unit): line.amount for line in request.lines}
+            contributions.setdefault(item.product_id, []).append((Decimal(amount), unit))
+        for line in request.lines:
+            offered.setdefault(line.product_id, []).append((line.amount, line.unit))
+        required = combine_by_product(contributions, self.products)
+        actual = combine_by_product(offered, self.products)
         if required != actual:
             raise Problem(
                 "MEAL_BASKET_MISMATCH",
@@ -393,6 +659,11 @@ class ToolSession:
                 "Combine duplicate SKUs; purchasing tools perform pack rounding.",
                 422,
             )
+        merged = []
+        for product_id, (amount, unit) in actual.items():
+            first = next(line for line in request.lines if line.product_id == product_id)
+            merged.append(first.model_copy(update={"amount": amount, "unit": unit}))
+        request = request.model_copy(update={"lines": merged})
         if self.plan.recipe_plan_id:
             if request.recipe_plan_id and str(request.recipe_plan_id) != self.plan.recipe_plan_id:
                 raise Problem("MEAL_BASKET_MISMATCH", "Use the current saved recipe plan.", 422)
@@ -411,6 +682,24 @@ class ToolSession:
             raise Problem(
                 "RECIPE_PLAN_REQUIRED", "Load the saved recipe plan before preparing it.", 422
             )
+        else:
+            # MEA-008: no free-form basket for a dish whose own saved plan is still unresolved.
+            self.service.ensure_saved_plan_resolved(self.identity, self.plan.title)
+        if not self.plan.recipe_plan_id:
+            # BAS-002: the line names the ingredients it combines (server-made, never client input).
+            parts = {}
+            for item in self.plan.ingredients:
+                parts.setdefault(item.product_id, []).append(
+                    Contribution(ingredient=item.name, amount=item.amount, unit=item.unit)
+                )
+            request = request.model_copy(
+                update={
+                    "lines": [
+                        line.model_copy(update={"contributions": parts[line.product_id]})
+                        for line in request.lines
+                    ]
+                }
+            )
         digest = fingerprint(request.model_dump(mode="json"))
         if self.prepared_digest is not None and self.prepared_digest != digest:
             raise Problem("IDEMPOTENCY_CONFLICT", "This turn already prepared different terms.")
@@ -421,6 +710,7 @@ class ToolSession:
             self.service.prepare_order(
                 self.identity,
                 PrepareRequest(**request.model_dump(), idempotency_key=self.preparation_key),
+                **({"constraints": self.constraints} if self.constraints else {}),
             ),
         )
         self.proposal, self.prepared_digest = result, digest
@@ -474,9 +764,17 @@ class ToolSession:
             narrative = narrative[: max(0, 20_000 - len(notice) - 2)].strip()
         text = "\n\n".join(part for part in (narrative, notice) if part)
         return AgentTurn(
-            text=(text or "Review the recipe and resolve missing ingredient evidence.")[:20_000],
+            text=(
+                text
+                or (
+                    "Your recipe illustration is ready."
+                    if self.image
+                    else "Review the recipe and resolve missing ingredient evidence."
+                )
+            )[:20_000],
             meal_plan=plan,
             proposal_id=self.proposal["proposal_id"] if self.proposal else None,
+            image=self.image,
         )
 
 

@@ -23,7 +23,15 @@ from aimo.schedule_schemas import (
 from aimo.schemas import PurchaseRequest
 
 PAGE_OF_RUNS = 20
-NOT_A_SCHEDULE_DATE = ("request_id", "delivery_date", "recipe_plan_id", "recipe_plan_revision")
+# Dates and the recipe link do not belong to a standing order; `constraints` is a server-only key of
+# a stored request (the limits of that one purchase) and is not accepted by PrepareRequest.
+NOT_A_SCHEDULE_DATE = (
+    "request_id",
+    "delivery_date",
+    "recipe_plan_id",
+    "recipe_plan_revision",
+    "constraints",
+)
 
 
 def require_customer(identity):
@@ -76,12 +84,14 @@ def delivery_offset(order):
     return max(1, min(60, (asked - placed).days))
 
 
-def check_line_rules(c, rules_in, request, scope):
+def check_line_rules(c, rules_in, request, scope, keep_known=False):
     """Per-ingredient accepted substitutes: real, not withdrawn, other than the line itself and
     inside the buyer's approved product scope (standing product authority, POL-004/POL-012)."""
     lines = {line["product_id"] for line in request["lines"]}
     rules = {}
     for product_id, rule in (rules_in or {}).items():
+        if keep_known and product_id not in lines:
+            continue  # carried over from the old schedule: it no longer has this product
         subs = list(dict.fromkeys(rule.accepted_substitutes))
         found = load_products(c, subs) if subs else {}
         if (
@@ -98,7 +108,16 @@ def check_line_rules(c, rules_in, request, scope):
     return rules
 
 
-def build_terms(identity, service, order_id, recurrence, first_run_date, line_rules):
+def build_terms(
+    identity,
+    service,
+    order_id,
+    recurrence,
+    first_run_date,
+    line_rules,
+    title=None,
+    keep_known=False,
+):
     if first_run_date < scheduler.helsinki_today():
         raise Problem("INVALID_FIRST_RUN_DATE", "The first run date is in the past.", 422)
     rule = scheduler.normalize_recurrence(recurrence.model_dump(exclude_none=True))
@@ -121,7 +140,7 @@ def build_terms(identity, service, order_id, recurrence, first_run_date, line_ru
     with connection() as c:
         _, policy, _, approvers = context(c, identity)
         scope = policy["rules"].get("approved_product_ids")
-        rules = check_line_rules(c, line_rules, request, scope)
+        rules = check_line_rules(c, line_rules, request, scope, keep_known)
         names = load_products(c, [s for r in rules.values() for s in r["accepted_substitutes"]])
     evaluated = evaluate_purchase(
         probe, snapshot, policy["rules"], [a["authority"] for a in approvers]
@@ -129,7 +148,7 @@ def build_terms(identity, service, order_id, recurrence, first_run_date, line_ru
     lines = [agreed_line(line, rules.get(line["product_id"]), names) for line in snapshot["lines"]]
     return {
         "source_order_id": str(order["id"]),
-        "title": str(order["request"].get("request_id") or "Standing order"),
+        "title": title or str(order["request"].get("request_id") or "Standing order"),
         "lines": lines,
         "currency": snapshot["currency"],
         "gross_total": snapshot["gross_total"],
@@ -184,7 +203,13 @@ def public_terms(terms):
 def preview(identity, body: SchedulePreviewRequest, service):
     require_customer(identity)
     terms = build_terms(
-        identity, service, body.order_id, body.recurrence, body.first_run_date, body.line_rules
+        identity,
+        service,
+        body.order_id,
+        body.recurrence,
+        body.first_run_date,
+        body.line_rules,
+        body.title,
     )
     return public_terms(terms)
 
@@ -244,7 +269,7 @@ def response(c, row):
     ]
     return {
         "id": str(row["id"]),
-        "title": order,
+        "title": row["title"] or order,
         "status": row["status"],
         "stop_reason": row["stop_reason"],
         "source_order_id": str(row["source_order_id"]),
@@ -288,13 +313,23 @@ def owned(c, identity, schedule_id, lock=False):
     return row
 
 
-def list_schedules(identity, offset, limit):
+STATUSES = ("active", "paused", "stopped", "cancelled", "expired", "superseded")
+
+
+def list_schedules(identity, offset, limit, statuses=()):
+    """The customer's schedules, newest first; `statuses` filters before paging (empty: all)."""
+    wanted = list(dict.fromkeys(statuses))
+    if any(item not in STATUSES for item in wanted):
+        raise Problem(
+            "INVALID_SCHEDULE_STATUS", f"Status must be one of {', '.join(STATUSES)}.", 422
+        )
     with connection() as c:
         context(c, identity)
         rows = c.execute(
             """SELECT * FROM scheduled_authorizations WHERE buyer_id=%s
+            AND (cardinality(%s::text[])=0 OR status=ANY(%s::text[]))
             ORDER BY created_at DESC,id LIMIT %s OFFSET %s""",
-            (identity["buyer_id"], limit + 1, offset),
+            (identity["buyer_id"], wanted, wanted, limit + 1, offset),
         ).fetchall()
         return {
             "items": [response(c, r) for r in rows[:limit]],
@@ -348,9 +383,9 @@ def insert(c, identity, terms, *, key, digest, ceiling, supersedes=None):
     aid = uuid4()
     row = c.execute(
         """INSERT INTO scheduled_authorizations(id,buyer_id,created_by,source_order_id,supersedes_id,
-        create_key,create_hash,request,line_rules,agreed_lines,terms_fingerprint,currency,
+        create_key,create_hash,title,request,line_rules,agreed_lines,terms_fingerprint,currency,
         agreed_gross_total,price_ceiling_gross,delivery_offset_days,recurrence,first_run_date,
-        valid_until,next_run_date) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        valid_until,next_run_date) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         RETURNING *""",
         (
             aid,
@@ -360,6 +395,7 @@ def insert(c, identity, terms, *, key, digest, ceiling, supersedes=None):
             supersedes,
             key,
             digest,
+            terms["title"],
             js(terms["_request"]),
             js(terms["_rules"]),
             js(terms["lines"]),
@@ -386,17 +422,27 @@ def agree(terms, agreed_fingerprint):
             "SCHEDULE_NOT_REORDERABLE",
             "This order needs a decision each time and cannot be scheduled as it is.",
             422,
+            public_details={"blocking_reasons": terms["blocking_reasons"]},
         )
     if terms["terms_fingerprint"] != agreed_fingerprint:
         raise Problem(
-            "SCHEDULE_TERMS_CHANGED", "Prices or products changed; review the new terms.", 409
+            "SCHEDULE_TERMS_CHANGED",
+            "Prices or products changed; review the new terms.",
+            409,
+            public_details={"terms": public_terms(terms)},
         )
 
 
 def create(identity, body: ScheduleCreateRequest, service):
     require_customer(identity)
     terms = build_terms(
-        identity, service, body.order_id, body.recurrence, body.first_run_date, body.line_rules
+        identity,
+        service,
+        body.order_id,
+        body.recurrence,
+        body.first_run_date,
+        body.line_rules,
+        body.title,
     )
     agree(terms, body.agreed_terms_fingerprint)
     digest = fingerprint(body.model_dump(mode="json", exclude={"idempotency_key"}))
@@ -427,6 +473,8 @@ def edited(old, body):
         "recurrence": body.recurrence or Recurrence.model_validate(old["recurrence"]),
         "first_run_date": body.first_run_date or max(today, old["next_run_date"] or today),
         "line_rules": rules,
+        "title": body.title or old["title"],
+        "keep_known": body.line_rules is None,  # carried-over rules only where they still apply
     }
 
 

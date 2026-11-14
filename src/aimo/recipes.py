@@ -2,10 +2,11 @@
 
 from decimal import Decimal
 from fractions import Fraction
+from math import ceil
 from uuid import uuid4
 
 from aimo import recipe_search
-from aimo.catalog import quantity
+from aimo.catalog import combine_in_priority_unit, quantity
 from aimo.chat_schemas import MealPlan
 from aimo.db import Problem, connection, fingerprint, js
 from aimo.numeric import fraction_text
@@ -114,10 +115,17 @@ def get_recipe(identity, request):
     }
 
 
+# MEA-011: the most one portion of a recipe may need, in the unit the plan uses. These are
+# deliberately generous sanity bounds (a corrupt base quantity, not a menu rule); the owner may
+# retune them. They apply to recipe-scaled plans only: a direct order such as 600 L of milk is
+# not a recipe and carries no per-portion meaning.
+MAX_QUANTITY_PER_PORTION = {"KG": Fraction(5), "L": Fraction(5), "piece": Fraction(50)}
+
+
 def scaled_plan(recipe, portions):
-    if len(recipe.ingredients) > 30:
+    if len(recipe.ingredients) > 1000:
         raise Problem(
-            "RECIPE_TOO_LARGE", "This recipe exceeds the 30-ingredient purchasing limit.", 422
+            "RECIPE_TOO_LARGE", "This recipe exceeds the 1000-ingredient purchasing limit.", 422
         )
     ingredients = []
     for item in recipe.ingredients:
@@ -137,13 +145,19 @@ def scaled_plan(recipe, portions):
             }
             if unit in factors:
                 factor, unit = factors[unit]
-                # The purchasing contract allows at most four decimal places; never silently round.
                 value *= factor
+                if value > MAX_QUANTITY_PER_PORTION[unit] * portions:
+                    raise Problem(
+                        "QUANTITY_PER_PORTION_EXCEEDED",
+                        f"{item.name} needs more than {MAX_QUANTITY_PER_PORTION[unit]} {unit} per "
+                        "portion, which is not plausible. Review the recipe quantity and base "
+                        "servings.",
+                        422,
+                    )
+                # MEA-012: round UP to four decimal places (never down); exact values are unchanged.
+                value = Fraction(ceil(value * 10_000), 10_000)
                 amount = fraction_text(value)
-                if (
-                    Decimal(amount).as_tuple().exponent < -4
-                    or len(Decimal(amount).as_tuple().digits) > 14
-                ):
+                if len(Decimal(amount).as_tuple().digits) > 14:
                     amount = None
                     reason = "Scaled quantity exceeds supported precision; review the recipe basis."
             else:
@@ -230,6 +244,34 @@ def read_plan(c, identity, plan_id, lock=False):
     return row, data
 
 
+def get_plan_revision(identity, plan_id, revision=None):
+    """A plan's data at one revision (default: the current one), scoped to the caller's buyer.
+
+    A buyer session reads any plan of its buyer; an agent identity only its own plans, as
+    read_plan does. Another buyer, an unknown plan and an unknown revision are all 404.
+    """
+    with connection() as c:
+        context(c, identity)
+        row = c.execute(
+            "SELECT id, revision FROM recipe_plans WHERE id=%s AND buyer_id=%s"
+            + (" AND agent_id=%s" if identity["role"] == "agent" else ""),
+            (
+                plan_id,
+                identity["buyer_id"],
+                *((identity["id"],) if identity["role"] == "agent" else ()),
+            ),
+        ).fetchone()
+        if not row:
+            raise Problem("NOT_FOUND", "Recipe plan not found.", 404)
+        data = c.execute(
+            "SELECT data FROM recipe_plan_revisions WHERE plan_id=%s AND revision=%s",
+            (plan_id, row["revision"] if revision is None else revision),
+        ).fetchone()
+        if not data:
+            raise Problem("NOT_FOUND", "Recipe plan revision not found.", 404)
+        return data["data"]
+
+
 def get_plan(identity, request):
     with connection() as c:
         context(c, identity)
@@ -269,8 +311,8 @@ def match_ingredient(identity, request):
             pass  # Preserve the scaling/unit blocker.
         elif item["form"] == "unspecified":
             item["reason"] = "Review the required ingredient form before product matching."
-        elif not p or p["deleted"] or p["variable_weight"]:
-            item["reason"] = "Product is absent, withdrawn or has unresolved variable weight."
+        elif not p or p["deleted"]:
+            item["reason"] = "Product is absent or withdrawn."
         elif not evidence:
             item["reason"] = (
                 "No current reviewed evidence that this product fits the ingredient and form."
@@ -302,6 +344,11 @@ def match_ingredient(identity, request):
                 item["reason"] = (
                     "Structured product data cannot convert the ingredient quantity into sales units."
                 )
+        if item["status"] == "unresolved" and item["amount"] and item.get("reason"):
+            # MEA-005: keep a refused product choice (appended, never removed) with its reason.
+            item.setdefault("rejected", []).append(
+                {"product_id": request.product_id, "reason": item["reason"]}
+            )
         plan["recipe_plan_revision"] = row["revision"] + 1
         c.execute(
             "INSERT INTO recipe_plan_revisions VALUES(%s,%s,%s,now())",
@@ -312,6 +359,35 @@ def match_ingredient(identity, request):
             (plan["recipe_plan_revision"], row["id"]),
         )
     return plan
+
+
+def combine_by_product(contributions, products):
+    """{product_id: [(amount, unit), ...]} -> {product_id: (amount, unit)}, one line per product.
+
+    One unit is a plain sum. Several units are converted with catalog evidence and combined in
+    the configured priority unit (KG, then L, then pieces); no evidence means no basket (BAS-009).
+    """
+    combined = {}
+    for product_id, items in contributions.items():
+        units = {unit for _, unit in items}
+        if len(units) == 1:
+            combined[product_id] = (sum(amount for amount, _ in items), items[0][1])
+            continue
+        product = products.get(product_id)
+        result = (
+            combine_in_priority_unit(product, items)
+            if product
+            else {"status": "unknown", "reason": "The product facts are not loaded."}
+        )
+        if result["status"] != "derived":
+            raise Problem(
+                "UNIT_CONVERSION_UNKNOWN",
+                f"Product {product_id} is needed in {', '.join(sorted(units))}: "
+                f"{result['reason']} Order it in one unit.",
+                422,
+            )
+        combined[product_id] = (Decimal(result["amount"]), result["unit"])
+    return combined
 
 
 def validate_basket(c, identity, request):
@@ -351,13 +427,17 @@ def validate_basket(c, identity, request):
             422,
         )
     products = load_products(c, [i["product_id"] for i in plan["ingredients"]])
-    required = {}
+    contributions, offered = {}, {}
     for item in plan["ingredients"]:
         if fingerprint(products.get(item["product_id"])) != item["product_fingerprint"]:
             raise Problem("RECIPE_PRODUCT_CHANGED", "Catalog facts changed; rematch ingredients.")
-        key = (item["product_id"], item["purchase_unit"])
-        required[key] = required.get(key, Decimal(0)) + Decimal(item["purchase_amount"])
-    actual = {(line.product_id, line.unit): line.amount for line in request.lines}
+        contributions.setdefault(item["product_id"], []).append(
+            (Decimal(item["purchase_amount"]), item["purchase_unit"])
+        )
+    for line in request.lines:
+        offered.setdefault(line.product_id, []).append((line.amount, line.unit))
+    required = combine_by_product(contributions, products)
+    actual = combine_by_product(offered, products)
     if required != actual:
         raise Problem(
             "MEAL_BASKET_MISMATCH",
@@ -381,7 +461,7 @@ def purchase_count_evidence(c, identity, request, products):
         evidence = c.execute(
             """SELECT * FROM recipe_product_evidence WHERE product_id=%s
             AND product_fingerprint=%s AND ingredient_id=%s AND form=%s""",
-            (pid, fingerprint(products[pid]), item["ingredient_id"], item["form"]),
+            (pid, fingerprint(products.get(pid)), item["ingredient_id"], item["form"]),
         ).fetchone()
         if not evidence:
             raise Problem(

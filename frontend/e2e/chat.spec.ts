@@ -153,6 +153,197 @@ async function mockSession(page: Page, signedIn = true) {
   );
 }
 
+for (const width of [1440, 1024, 390, 320]) {
+  test(`recipe illustration persists beside text at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await mockSession(page);
+    const imageUrl =
+      "https://res.cloudinary.com/test-cloud/image/upload/v123/recipe.png";
+    const saved: Conversation = {
+      ...blankConversation,
+      messages: [
+        {
+          id: 2,
+          role: "assistant",
+          text: "Here is an illustration of the tomato pasta.",
+          created_at: timestamp,
+          image: { url: imageUrl, width: 1024, height: 768 },
+        },
+      ],
+    };
+    await page.route(imageUrl, (route) =>
+      route.fulfill({
+        contentType: "image/svg+xml",
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="768"><rect width="1024" height="768" fill="#c7e8f6"/><text x="64" y="384" font-size="48">Recipe image fixture</text></svg>',
+      }),
+    );
+    await page.route(`**/api/conversations/${conversationId}`, (route) =>
+      route.fulfill({ json: saved }),
+    );
+    await page.goto(`/conversations/${conversationId}`);
+    const image = page.getByRole("img", {
+      name: "AI-generated recipe illustration",
+    });
+    await expect(image).toBeVisible();
+    await expect
+      .poll(() => image.evaluate((node: HTMLImageElement) => node.naturalWidth))
+      .toBeGreaterThan(0);
+    await expect(
+      page.getByText("Here is an illustration of the tomato pasta."),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "AI-generated illustration · Actual presentation may vary.",
+      ),
+    ).toBeVisible();
+    await expect(image).toHaveAttribute("referrerpolicy", "no-referrer");
+    const bounds = await image.boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(bounds!.width / bounds!.height).toBeCloseTo(4 / 3, 2);
+    expect(bounds!.x).toBeGreaterThanOrEqual(0);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await page.reload();
+    await expect(image).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath("recipe-image.png"),
+      fullPage: true,
+    });
+  });
+}
+
+for (const [width, height] of [
+  [1440, 900],
+  [1024, 768],
+  [390, 844],
+  [320, 740],
+  [390, 568],
+]) {
+  test(`chat scrolls messages while keeping the composer visible at ${width}x${height}`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height });
+    await mockSession(page);
+    let saved: Conversation = {
+      ...blankConversation,
+      messages: Array.from({ length: 30 }, (_, index) => ({
+        id: index + 1,
+        role: index % 2 ? "assistant" : "user",
+        text: `Message ${index + 1}: ${"Meal planning details. ".repeat(10)}`,
+        created_at: timestamp,
+      })),
+    };
+    await page.route(`**/api/conversations/${conversationId}`, (route) =>
+      route.fulfill({ json: saved }),
+    );
+    await page.route(
+      `**/api/conversations/${conversationId}/messages`,
+      async (route) => {
+        saved = {
+          ...saved,
+          messages: [
+            ...saved.messages,
+            {
+              id: 31,
+              role: "assistant",
+              text: "Latest reply",
+              created_at: timestamp,
+            },
+          ],
+        };
+        await route.fulfill({ json: saved });
+      },
+    );
+    await page.goto(`/conversations/${conversationId}`);
+    const history = page.getByRole("region", { name: "Conversation history" });
+    const composer = page.getByLabel("Continue the conversation");
+    await expect(history).toBeVisible();
+    await expect(composer).toBeInViewport();
+    await expect
+      .poll(() => history.evaluate((node) => node.scrollTop))
+      .toBeGreaterThan(0);
+    const composerBounds = await composer.boundingBox();
+    expect(composerBounds!.height).toBeLessThanOrEqual(48);
+    for (const name of [
+      "Attach file",
+      "Voice input",
+      "Scan barcode",
+      "Send Order Request",
+    ]) {
+      const button = page.getByRole("button", { name, exact: true });
+      const bounds = await button.boundingBox();
+      expect(bounds!.y + bounds!.height / 2).toBeCloseTo(
+        composerBounds!.y + composerBounds!.height / 2,
+        0,
+      );
+      expect(bounds!.x).toBeGreaterThanOrEqual(
+        composerBounds!.x + composerBounds!.width,
+      );
+    }
+    await expect(
+      page.getByText("Send Order Request", { exact: true }),
+    ).toHaveCount(0);
+    await history.hover();
+    await page.mouse.wheel(0, -100000);
+    await expect.poll(() => history.evaluate((node) => node.scrollTop)).toBe(0);
+    expect(await composer.boundingBox()).toEqual(composerBounds);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    await composer.fill("Please continue");
+    await page.getByRole("button", { name: "Send Order Request" }).click();
+    await expect(
+      page.getByText("Latest reply", { exact: true }),
+    ).toBeInViewport();
+    await expect(
+      page.getByRole("button", { name: "Send Order Request" }),
+    ).toBeInViewport();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollHeight),
+    ).toBeLessThanOrEqual(height);
+    await page.screenshot({ path: testInfo.outputPath("chat-scroll.png") });
+  });
+}
+
+test("an expired hosted image leaves the recipe text readable", async ({
+  page,
+}) => {
+  await mockSession(page);
+  const saved: Conversation = {
+    ...blankConversation,
+    messages: [
+      {
+        id: 2,
+        role: "assistant",
+        text: "Cook the pasta and add tomato sauce.",
+        created_at: timestamp,
+        image: {
+          url: "https://res.cloudinary.com/test-cloud/image/upload/v123/expired.png",
+          width: 1024,
+          height: 768,
+        },
+      },
+    ],
+  };
+  await page.route("https://res.cloudinary.com/**", (route) =>
+    route.fulfill({ status: 404 }),
+  );
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: saved }),
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  await expect(
+    page.getByText("This illustration is currently unavailable."),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Cook the pasta and add tomato sauce."),
+  ).toBeVisible();
+});
+
 test("request starts a meal conversation and keeps messages through refresh", async ({
   page,
 }) => {
@@ -213,7 +404,7 @@ test("request starts a meal conversation and keeps messages through refresh", as
       name: "I need ingredients for 200 portions of carbonara.",
     })
     .click();
-  await page.getByRole("button", { name: "Send Order Request" }).click();
+  await page.getByLabel("Your meal or purchasing request").press("Enter");
   await expect(page).toHaveURL(new RegExp(`/conversations/${conversationId}$`));
   await expect(
     page.getByRole("heading", { name: "Carbonara", exact: true }),

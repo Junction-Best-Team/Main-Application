@@ -23,12 +23,14 @@ class OrderListItem(Model):
     cancel_reason: (
         Literal["run_disrupted", "run_retry", "customer_revised", "customer_cancelled"] | None
     ) = None
+    placed_at: datetime | None = None  # the mock order's time, `placed` rows only
     updated_at: datetime
 
 
 class OrdersResponse(Model):
     items: list[OrderListItem]
     next_offset: int | None = None
+    total: int  # every row matching the status filter, not just this page
 
 
 class CancellationResponse(Model):

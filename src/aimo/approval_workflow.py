@@ -6,6 +6,8 @@ No network call or human wait occurs while these locks are held.
 from decimal import Decimal
 from uuid import uuid4
 
+from psycopg import sql
+
 from aimo import cancellations
 from aimo import meal_authorization as meals
 from aimo.approval_policy import can_approve, evaluate_purchase
@@ -14,10 +16,21 @@ from aimo.db import Problem, connection, fingerprint, js, now
 from aimo.purchases import build_snapshot, context, material_fingerprint
 from aimo.schemas import (
     CommitRequest,
+    Constraint,
     DecisionRequest,
     PrepareRequest,
     PurchaseRequest,
 )
+
+
+def stored_constraints(request):
+    """The server-written POL-008 record inside a stored request; absent for most requests."""
+    return request.get("constraints")
+
+
+def public_request(request):
+    """What callers see: the stored request without the server-only constraint record."""
+    return {k: v for k, v in request.items() if k != "constraints"}
 
 
 def audit(c, pid, actor, event, detail):
@@ -54,7 +67,11 @@ def append_revision(
     c, pid, revision, identity, request, snapshot, expires, policy, actor, approvers, evaluated=None
 ):
     evaluated = evaluated or evaluate_purchase(
-        request, snapshot, policy["rules"], [a["authority"] for a in approvers]
+        request,
+        snapshot,
+        policy["rules"],
+        [a["authority"] for a in approvers],
+        stored_constraints(request),
     )
     fp = material_fingerprint(request, snapshot, policy["version"])
     c.execute(
@@ -139,6 +156,7 @@ def render(
                     r["snapshot"],
                     policy["rules"],
                     [x["authority"] for x in approvers],
+                    stored_constraints(r["request"]),
                 )
                 if evaluation_changed(r, evaluated):
                     status = "authority_changed"
@@ -211,7 +229,7 @@ def render(
         "order_id": str(order["id"]) if committed else None,
         "buyer_id": buyer["id"],
         "agent_id": p["agent_id"],
-        "request": r["request"],
+        "request": public_request(r["request"]),
         "snapshot": r["snapshot"],
         "can_decide": can_decide,
         "history": history
@@ -226,9 +244,27 @@ def render(
     }
 
 
-def get_proposal(identity, pid):
+def get_proposal(identity, pid, revision=None):
+    """A proposal by ID: the current revision, or an earlier one by number (PER-003).
+
+    Scoped like every read (another buyer or an agent that did not prepare it gets 404). An
+    earlier revision renders as superseded with its own totals, approval row (if any) and a
+    pointer to the current revision; an unknown revision is 404.
+    """
     with connection() as c:
-        return render(c, *proposal(c, pid, identity), identity)
+        p, r, a = proposal(c, pid, identity)
+        if revision is not None and revision != p["current_revision"]:
+            r = c.execute(
+                "SELECT * FROM proposal_revisions WHERE proposal_id=%s AND revision=%s",
+                (p["id"], revision),
+            ).fetchone()
+            if not r:
+                raise Problem("NOT_FOUND", "Revision not found.", 404)
+            a = c.execute(
+                "SELECT * FROM approvals WHERE proposal_id=%s AND revision=%s",
+                (p["id"], revision),
+            ).fetchone()
+        return render(c, p, r, a, identity)
 
 
 def prior_preparation(c, identity, key, payload_hash):
@@ -246,8 +282,15 @@ def prior_preparation(c, identity, key, payload_hash):
     return None
 
 
-def prepare_order(identity, request: PrepareRequest, connector):
+def prepare_order(identity, request: PrepareRequest, connector, constraints=None):
+    """`constraints` is the server-only POL-008 record (never a model or API field). It is stored
+    in the revision's request JSON under `constraints`, so the fingerprint and the retry hash
+    cover it; the key is omitted when there is none, leaving older requests unchanged."""
     payload = request.model_dump(mode="json", exclude={"idempotency_key"})
+    if constraints:
+        payload["constraints"] = [
+            Constraint.model_validate(entry).model_dump(mode="json") for entry in constraints
+        ]
     payload_hash = fingerprint(payload)
     with connection() as c:
         context(c, identity)
@@ -551,7 +594,7 @@ def commit_order(identity, request: CommitRequest, connector):
             raise Problem("ALREADY_COMMITTED", "Use the original idempotency key or get_order.")
         if r["expires_at"] <= now():
             raise Problem("PROPOSAL_EXPIRED", "Prepare a fresh proposal.")
-        purchase = PurchaseRequest.model_validate(r["request"])
+        purchase = PurchaseRequest.model_validate(public_request(r["request"]))
     snapshot, expires, version = build_snapshot(identity, purchase, connector)
     with connection() as c:
         _, policy, actor, approvers = context(c, identity, lock=True)
@@ -579,6 +622,7 @@ def commit_order(identity, request: CommitRequest, connector):
             snapshot,
             policy["rules"],
             [x["authority"] for x in approvers],
+            stored_constraints(r["request"]),
         )
         # Commercial terms can be identical while effective purchasing authority changes.
         # Persist the new decision and any approval in this same locked transaction.
@@ -673,3 +717,190 @@ def get_order(identity, oid):
             raise Problem("NOT_FOUND", "Order not found.", 404)
         proposal(c, order["proposal_id"], identity)
         return order["receipt"]
+
+
+# --- CNF-021: remove proposals and approvals that never became orders ---------------------------
+
+# Records that must stay forever (owner principle: keep history). A proposal that any of these
+# tables references is not "unfinished" and is never purged, wherever the column is called.
+# They are scheduler tables created by a later migration, so they may not exist yet.
+PROTECTED_TABLES = ("scheduled_runs", "order_request_cancellations")
+
+
+def _protected(c):
+    """SQL that excludes proposals referenced by a protected table (found via its foreign key)."""
+    rows = c.execute(
+        """SELECT cl.relname AS tbl, a.attname AS col FROM pg_constraint k
+        JOIN pg_class cl ON cl.oid=k.conrelid
+        JOIN pg_attribute a ON a.attrelid=k.conrelid AND a.attnum = ANY(k.conkey)
+        WHERE k.contype='f' AND k.confrelid='proposals'::regclass AND cl.relname = ANY(%s)
+        AND cl.relnamespace=current_schema()::regnamespace ORDER BY 1,2""",
+        (list(PROTECTED_TABLES),),
+    ).fetchall()
+    return "".join(
+        " AND NOT EXISTS (SELECT 1 FROM {} x WHERE x.{} = p.id)".format(
+            sql.Identifier(r["tbl"]).as_string(c), sql.Identifier(r["col"]).as_string(c)
+        )
+        for r in rows
+    )
+
+
+# A proposal is unfinished when it has no order, no protected record points at it, and the
+# expiry of its current revision is older than the cutoff. Rows are locked with SKIP LOCKED, under
+# the buyer lock, like every purchasing transaction, so a commit racing the cleanup is serialized
+# by the same lock.
+def _unfinished(c):
+    return """FROM proposals p
+ JOIN proposal_revisions r ON r.proposal_id=p.id AND r.revision=p.current_revision
+ WHERE p.buyer_id=%s AND p.order_id IS NULL
+ AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.proposal_id=p.id)
+ AND r.expires_at < %s""" + _protected(c)
+
+
+def purge_batch(c, proposal_ids, older_than):
+    """Remove these proposals if they still have no order; the caller holds the buyer lock.
+
+    Writes one purged_proposals record per proposal, deletes children first, unlinks the recipe
+    plan (it becomes reusable) and the chat messages (their text stays), then the revisions and
+    the proposal. The history triggers allow these DELETEs only under the local flag and only
+    for a proposal with no order. Returns counts per table.
+    """
+    c.execute("SET LOCAL aimo.purge_unfinished = 'on'")
+    ids = [
+        r["id"]
+        for r in c.execute(
+            """SELECT p.id FROM proposals p WHERE p.id = ANY(%s::uuid[]) AND p.order_id IS NULL
+            AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.proposal_id=p.id)"""
+            + _protected(c)
+            + " ORDER BY p.id FOR UPDATE",
+            ([str(i) for i in proposal_ids],),
+        ).fetchall()
+    ]
+    counts = dict.fromkeys(
+        (
+            "proposals",
+            "proposal_revisions",
+            "approvals",
+            "audit_events",
+            "customer_confirmations",
+            "meal_authorization_withdrawals",
+            "prepare_requests",
+            "recipe_plans_unlinked",
+            "conversation_messages_unlinked",
+        ),
+        0,
+    )
+    if not ids:
+        return counts
+    days = round(older_than.total_seconds() / 86400)
+    c.execute(
+        """INSERT INTO purged_proposals(proposal_id,buyer_id,created_at,last_revision,
+        last_outcome,last_expires_at,period_days)
+        SELECT p.id,p.buyer_id,p.created_at,p.current_revision,r.policy_outcome,r.expires_at,%s
+        FROM proposals p JOIN proposal_revisions r
+        ON r.proposal_id=p.id AND r.revision=p.current_revision WHERE p.id = ANY(%s)""",
+        (days, ids),
+    )
+    for table, key in (
+        ("meal_authorization_withdrawals", "meal_authorization_withdrawals"),
+        ("customer_confirmations", "customer_confirmations"),
+        ("approvals", "approvals"),
+        ("audit_events", "audit_events"),
+        ("prepare_requests", "prepare_requests"),
+    ):
+        counts[key] = c.execute(f"DELETE FROM {table} WHERE proposal_id = ANY(%s)", (ids,)).rowcount
+    counts["recipe_plans_unlinked"] = c.execute(
+        "UPDATE recipe_plans SET proposal_id=NULL, locked=false WHERE proposal_id = ANY(%s)", (ids,)
+    ).rowcount
+    counts["conversation_messages_unlinked"] = c.execute(
+        "UPDATE conversation_messages SET proposal_id=NULL WHERE proposal_id = ANY(%s)", (ids,)
+    ).rowcount
+    counts["proposal_revisions"] = c.execute(
+        "DELETE FROM proposal_revisions WHERE proposal_id = ANY(%s)", (ids,)
+    ).rowcount
+    counts["proposals"] = c.execute("DELETE FROM proposals WHERE id = ANY(%s)", (ids,)).rowcount
+    return counts
+
+
+def purge_unfinished_proposals(older_than, *, as_of=None, dry_run=False, batch_size=100, conn=None):
+    """Remove unfinished proposals whose current revision expired more than `older_than` ago.
+
+    `as_of` defaults to now. Short transactions of `batch_size` proposals per buyer (no network
+    call, no human wait); `dry_run` only counts. With `conn` everything runs on that connection
+    and the caller commits (used to run it as the restricted runtime role). Orders and anything
+    on an ordered proposal are never selected. Returns the summed counts.
+    """
+    cutoff = (as_of or now()) - older_than
+    totals = {"dry_run": dry_run, "cutoff": cutoff.isoformat()}
+
+    def add(counts):
+        for key, value in counts.items():
+            totals[key] = totals.get(key, 0) + value
+
+    def run(c):
+        buyers = [
+            r["buyer_id"]
+            for r in c.execute(
+                f"SELECT DISTINCT p.buyer_id {_unfinished(c).replace('p.buyer_id=%s', 'TRUE')} "
+                "ORDER BY 1",
+                (cutoff,),
+            ).fetchall()
+        ]
+        return buyers
+
+    def one_batch(c, buyer_id):
+        c.execute("SELECT id FROM buyers WHERE id=%s FOR UPDATE", (buyer_id,))
+        ids = [
+            r["id"]
+            for r in c.execute(
+                f"SELECT p.id {_unfinished(c)} ORDER BY p.id LIMIT %s FOR UPDATE OF p SKIP LOCKED",
+                (buyer_id, cutoff, batch_size),
+            ).fetchall()
+        ]
+        if not ids:
+            return 0
+        if dry_run:
+            return None
+        counts = purge_batch(c, ids, older_than)
+        add(counts)
+        return counts["proposals"]
+
+    if dry_run:
+        with _use(conn) as c:
+            total = c.execute(
+                f"SELECT count(*) AS n {_unfinished(c).replace('p.buyer_id=%s', 'TRUE')}", (cutoff,)
+            ).fetchone()["n"]
+            revisions = c.execute(
+                f"SELECT count(*) AS n FROM proposal_revisions WHERE proposal_id IN "
+                f"(SELECT p.id {_unfinished(c).replace('p.buyer_id=%s', 'TRUE')})",
+                (cutoff,),
+            ).fetchone()["n"]
+        totals.update(proposals=total, proposal_revisions=revisions)
+        return totals
+    totals.update(proposals=0)
+    with _use(conn) as c:
+        buyers = run(c)
+    for buyer_id in buyers:
+        while True:
+            with _use(conn) as c:
+                removed = one_batch(c, buyer_id)
+            if not removed:
+                break
+    return totals
+
+
+class _use:
+    """Use the given connection as is (caller commits), or a pooled one in its own transaction."""
+
+    def __init__(self, conn):
+        self.conn, self.cm = conn, None
+
+    def __enter__(self):
+        if self.conn is not None:
+            return self.conn
+        self.cm = connection()
+        return self.cm.__enter__()
+
+    def __exit__(self, *exc):
+        if self.cm is not None:
+            return self.cm.__exit__(*exc)

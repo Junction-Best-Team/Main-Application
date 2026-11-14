@@ -158,6 +158,60 @@
         }
       }
     },
+    "/api/settings/policy": {
+      "get": {
+        "summary": "Get Policy Settings",
+        "operationId": "get_policy_settings_api_settings_policy_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicySettings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Save Policy Settings",
+        "operationId": "save_policy_settings_api_settings_policy_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicyUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicySettings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/approvals/{approval_id}": {
       "get": {
         "summary": "Detail",
@@ -212,6 +266,25 @@
               "format": "uuid",
               "title": "Proposal Id"
             }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "An earlier revision of this proposal; default the current one.",
+              "title": "Revision"
+            },
+            "description": "An earlier revision of this proposal; default the current one."
           }
         ],
         "responses": {
@@ -1037,6 +1110,24 @@
               "default": 20,
               "title": "Limit"
             }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma list of schedule statuses",
+              "title": "Status"
+            },
+            "description": "Comma list of schedule statuses"
           }
         ],
         "responses": {
@@ -1453,6 +1544,39 @@
   },
   "components": {
     "schemas": {
+      "ApproverAuthority": {
+        "properties": {
+          "currency": {
+            "type": "string",
+            "const": "EUR",
+            "title": "Currency"
+          },
+          "max_gross": {
+            "type": "string",
+            "title": "Max Gross"
+          },
+          "exceptions": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "substitution",
+                "overbuy"
+              ]
+            },
+            "type": "array",
+            "title": "Exceptions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "currency",
+          "max_gross",
+          "exceptions"
+        ],
+        "title": "ApproverAuthority",
+        "description": "A human approver's limits: the maximum gross amount and the exceptions they may approve."
+      },
       "CancellationResponse": {
         "properties": {
           "proposal_id": {
@@ -1533,6 +1657,16 @@
               }
             ],
             "title": "Proposal Id"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecipeImage"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -1801,6 +1935,68 @@
         ],
         "title": "DecisionRequest"
       },
+      "EditablePolicy": {
+        "properties": {
+          "currency": {
+            "type": "string",
+            "const": "EUR",
+            "title": "Currency"
+          },
+          "destinations": {
+            "items": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Destinations"
+          },
+          "substitution": {
+            "type": "string",
+            "enum": [
+              "allowed",
+              "requires_approval",
+              "forbidden"
+            ],
+            "title": "Substitution"
+          },
+          "overbuy": {
+            "type": "string",
+            "enum": [
+              "allowed",
+              "requires_approval",
+              "forbidden"
+            ],
+            "title": "Overbuy"
+          },
+          "whole_sales_units": {
+            "type": "boolean",
+            "title": "Whole Sales Units"
+          },
+          "approved_product_ids": {
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,80}$"
+            },
+            "type": "array",
+            "maxItems": 1000,
+            "title": "Approved Product Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "currency",
+          "destinations",
+          "substitution",
+          "overbuy",
+          "whole_sales_units",
+          "approved_product_ids"
+        ],
+        "title": "EditablePolicy"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1932,7 +2128,8 @@
                 "type": "null"
               }
             ],
-            "title": "Purchase Amount"
+            "title": "Purchase Amount",
+            "description": "The REQUIRED amount in the unit the basket uses (a copy of amount, converted to the plan unit). It is not the pack-rounded purchase: see conversion.proposed_amount."
           },
           "purchase_unit": {
             "anyOf": [
@@ -1943,7 +2140,8 @@
                 "type": "null"
               }
             ],
-            "title": "Purchase Unit"
+            "title": "Purchase Unit",
+            "description": "Unit of purchase_amount (KG, L or piece). Not the pack or sales unit."
           },
           "product_fingerprint": {
             "anyOf": [
@@ -1965,6 +2163,17 @@
                 "type": "null"
               }
             ]
+          },
+          "rejected": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Rejected"
           }
         },
         "additionalProperties": false,
@@ -2106,7 +2315,7 @@
               "$ref": "#/components/schemas/Ingredient"
             },
             "type": "array",
-            "maxItems": 30,
+            "maxItems": 1000,
             "minItems": 1,
             "title": "Ingredients"
           },
@@ -2887,6 +3096,153 @@
         ],
         "title": "OrdersResponse"
       },
+      "PolicyChange": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "actor_id": {
+            "type": "string",
+            "title": "Actor Id"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "actor_id",
+          "created_at"
+        ],
+        "title": "PolicyChange"
+      },
+      "PolicyRules": {
+        "properties": {
+          "currency": {
+            "type": "string",
+            "const": "EUR",
+            "title": "Currency"
+          },
+          "destinations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Destinations"
+          },
+          "substitution": {
+            "type": "string",
+            "enum": [
+              "allowed",
+              "requires_approval",
+              "forbidden"
+            ],
+            "title": "Substitution"
+          },
+          "overbuy": {
+            "type": "string",
+            "enum": [
+              "allowed",
+              "requires_approval",
+              "forbidden"
+            ],
+            "title": "Overbuy"
+          },
+          "whole_sales_units": {
+            "type": "boolean",
+            "title": "Whole Sales Units"
+          },
+          "approved_product_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved Product Ids",
+            "description": "Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope always blocks a purchase until a policy manager configures it in Settings."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "currency",
+          "destinations",
+          "substitution",
+          "overbuy",
+          "whole_sales_units"
+        ],
+        "title": "PolicyRules"
+      },
+      "PolicySettings": {
+        "properties": {
+          "buyer_id": {
+            "type": "string",
+            "title": "Buyer Id"
+          },
+          "policy_version": {
+            "type": "integer",
+            "title": "Policy Version"
+          },
+          "rules": {
+            "$ref": "#/components/schemas/PolicyRules"
+          },
+          "can_edit": {
+            "type": "boolean",
+            "title": "Can Edit"
+          },
+          "approval_authority": {
+            "$ref": "#/components/schemas/ApproverAuthority"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyChange"
+            },
+            "type": "array",
+            "title": "History"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "buyer_id",
+          "policy_version",
+          "rules",
+          "can_edit",
+          "approval_authority",
+          "history"
+        ],
+        "title": "PolicySettings"
+      },
+      "PolicyUpdate": {
+        "properties": {
+          "expected_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Version"
+          },
+          "rules": {
+            "$ref": "#/components/schemas/EditablePolicy"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_version",
+          "rules"
+        ],
+        "title": "PolicyUpdate"
+      },
       "ProposalResponse": {
         "properties": {
           "proposal_id": {
@@ -3369,7 +3725,8 @@
             "enum": [
               "denied",
               "unresolved",
-              "exception"
+              "exception",
+              "warning"
             ],
             "title": "Severity"
           }
@@ -3382,6 +3739,36 @@
           "severity"
         ],
         "title": "Reason"
+      },
+      "RecipeImage": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "maxLength": 2048,
+            "pattern": "^https://res\\.cloudinary\\.com/[A-Za-z0-9_-]+/image/upload/[A-Za-z0-9_.,/-]+$",
+            "title": "Url"
+          },
+          "width": {
+            "type": "integer",
+            "maximum": 8192.0,
+            "minimum": 1.0,
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "maximum": 8192.0,
+            "minimum": 1.0,
+            "title": "Height"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "url",
+          "width",
+          "height"
+        ],
+        "title": "RecipeImage"
       },
       "Recurrence": {
         "properties": {
@@ -3800,6 +4187,20 @@
             "format": "uuid",
             "title": "Order Id"
           },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "The customer's own name; omitted: derived from the past order"
+          },
           "recurrence": {
             "$ref": "#/components/schemas/Recurrence"
           },
@@ -4050,6 +4451,20 @@
       },
       "ScheduleEditPreviewRequest": {
         "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "Omitted: the schedule keeps its name"
+          },
           "recurrence": {
             "anyOf": [
               {
@@ -4252,6 +4667,20 @@
             "format": "uuid",
             "title": "Order Id"
           },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "The customer's own name; omitted: derived from the past order"
+          },
           "recurrence": {
             "$ref": "#/components/schemas/Recurrence"
           },
@@ -4280,6 +4709,20 @@
       },
       "ScheduleReplaceRequest": {
         "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "Omitted: the schedule keeps its name"
+          },
           "recurrence": {
             "anyOf": [
               {

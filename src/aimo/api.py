@@ -19,6 +19,7 @@ from aimo import (
     conversations,
     memory,
     orders_list,
+    policy_settings,
     schedules,
     schema_state,
     upstream,
@@ -67,7 +68,7 @@ from aimo.schemas import (
 from aimo.service import Service
 
 CONTENT_SECURITY_POLICY = (
-    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://res.cloudinary.com; "
     "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 )
 
@@ -116,8 +117,11 @@ def create_app(service=None):
     @app.exception_handler(Problem)
     async def problem_handler(request, exc):
         event("http.problem", error_code=exc.code, status=exc.status, retry_after=exc.retry_after)
+        error = {"code": exc.code, "message": exc.message}
+        if exc.public_details is not None:
+            error["details"] = jsonable_encoder(exc.public_details)
         return JSONResponse(
-            {"error": {"code": exc.code, "message": exc.message}},
+            {"error": error},
             status_code=exc.status,
             headers={"Retry-After": str(exc.retry_after)} if exc.retry_after is not None else None,
         )
@@ -271,13 +275,32 @@ def create_app(service=None):
     ):
         return workflow.list_approvals(identity, offset, limit)
 
+    @app.get("/api/settings/policy", response_model=policy_settings.PolicySettings)
+    def get_policy_settings(identity=Depends(buyer)):
+        return policy_settings.get(identity)
+
+    @app.put("/api/settings/policy", response_model=policy_settings.PolicySettings)
+    def save_policy_settings(
+        body: policy_settings.PolicyUpdate, request: Request, identity=Depends(buyer)
+    ):
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+        return policy_settings.update(identity, body)
+
     @app.get("/api/approvals/{approval_id}", response_model=ProposalResponse)
     def detail(approval_id: UUID, identity=Depends(buyer)):
         return workflow.approval_detail(identity, approval_id)
 
     @app.get("/api/purchases/{proposal_id}", response_model=ProposalResponse)
-    def current_purchase(proposal_id: UUID, identity=Depends(buyer)):
-        return workflow.get_proposal(identity, proposal_id)
+    def current_purchase(
+        proposal_id: UUID,
+        revision: int | None = Query(
+            None, ge=1, description="An earlier revision of this proposal; default the current one."
+        ),
+        identity=Depends(buyer),
+    ):
+        return workflow.get_proposal(identity, proposal_id, revision)
 
     @app.post("/api/approvals/{approval_id}/decision", response_model=ProposalResponse)
     def decision(
@@ -454,9 +477,15 @@ def create_app(service=None):
     def orders(
         offset: int = Query(0, ge=0, le=10000),
         limit: int = Query(20, ge=1, le=50),
+        status: str | None = Query(
+            None,
+            max_length=80,
+            description="Comma list of scheduled, pending, placed, cancelled; empty means all",
+        ),
         identity=Depends(buyer),
     ):
-        return orders_list.orders_page(identity, offset, limit)
+        statuses = [s.strip() for s in (status or "").split(",") if s.strip()]
+        return orders_list.orders_page(identity, offset, limit, statuses=statuses)
 
     def csrf(identity, request: Request):
         auth.csrf_check(
@@ -469,9 +498,11 @@ def create_app(service=None):
     def schedule_list(
         offset: int = Query(0, ge=0, le=10000),
         limit: int = Query(20, ge=1, le=50),
+        status: str | None = Query(None, description="Comma list of schedule statuses"),
         identity=Depends(buyer),
     ):
-        return schedules.list_schedules(identity, offset, limit)
+        wanted = tuple(x.strip() for x in status.split(",") if x.strip()) if status else ()
+        return schedules.list_schedules(identity, offset, limit, wanted)
 
     # Registered before /api/schedules/{schedule_id}, or "substitute-candidates" is parsed as an id.
     @app.get("/api/schedules/substitute-candidates", response_model=SubstituteCandidates)

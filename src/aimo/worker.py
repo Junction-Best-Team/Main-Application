@@ -17,8 +17,13 @@ def check_readiness():
     from aimo.search import dimensions, model_key
     from aimo.search_provider import require_credentials
 
-    if not settings().llm_api_key:
+    cfg = settings()
+    if not (cfg.gemini_api_key if cfg.llm_provider == "google" else cfg.llm_api_key):
         raise RuntimeError("Worker provider credential is not configured")
+    if cfg.embedding_backend == "google":
+        from aimo.google_search import require_credentials
+
+        require_credentials()
     if settings().embedding_backend == "openrouter":
         require_credentials()
     with connection() as c:

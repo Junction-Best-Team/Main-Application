@@ -524,7 +524,7 @@ Drives `evaluate_purchase` (the pure policy function) through a grid of invented
 | Unresolved or denied snapshot reasons (13 cases) and unknown total (3 tests) | Each of 13 snapshot reason codes; total `None`; total `None` plus an existing total reason; total `None` plus a bad destination | Never ready; total `None` gives needs_resolution once (no duplicate reason); a denial is not hidden | Readiness with a missing fact |
 | Service level (5 tests) | Missing scope with each rule; `allowed` substitution; `requires_approval` substitution through a real proposal | Missing scope gives `COMMIT_BLOCKED` and zero orders; allowed commits (mock receipt) and the reason is in the stored `proposal_prepared` audit event; requires_approval needs customer confirmation, then approval, then commits | The pure rules not being wired into the real flow |
 
-STRICT XFAIL (1): `test_unconfirmed_assumption_never_loosens_hard_limits` stands for JNP3-POL-008 (an unconfirmed assumed constraint must never loosen a stated hard limit). It fails today with `TypeError` because `evaluate_purchase` has no `constraints` input; there is no per-constraint provenance yet (owner Q-53, waiting on other tracks).
+POL-008 (`test_unconfirmed_assumption_never_loosens_hard_limits`, formerly a strict xfail) now passes: `evaluate_purchase` takes a server-only `constraints` record (see `docs/internal-agent.md`). Extra pure-function cases follow it in `test_policy_rules.py`; transport, revision, commit re-read and the model-cannot-set-it checks are in `test_constraints_transport.py`. Nothing yet fills the record in production (person 1, #75).
 
 #### `test_spend_authority.py` (JNP3-POL-013, POL-014; 64 passed)
 
@@ -701,13 +701,13 @@ A guard that fails if a new table starts referencing `proposals` or `proposal_re
 
 A customer cancels a pending order request (approver role only, own buyer only, idempotent); the first record stands; a placed order cannot be cancelled by the function or by the database trigger; a cancellation cannot be updated or deleted; the engine function `cancel_request` writes inside the caller's transaction and returns False on a repeat; a cancelled request cannot be committed or confirmed (`REQUEST_CANCELLED`), shows `approval_status` "cancelled" and leaves the approval inbox.
 
-#### `tests/test_orders_list.py` (CNF-034, Q-77, Q-78): 19 passed
+#### `tests/test_orders_list.py` (CNF-034, Q-77, Q-78): 25 passed
 
-The derived orders list: pending, placed (with the order id), cancelled (with the reason; `run_retry` hidden), expired unconfirmed requests hidden, scheduled and paused standing orders with their next run date and the source order's label, requests produced by a run carrying `schedule_id` and `schedule_title`, newest-first paging without gaps, buyer scope, no writes, orders untouched, agent forbidden.
+The derived orders list: pending, placed (with the order id), cancelled (with the reason; `run_retry` hidden), expired unconfirmed requests hidden, scheduled and paused standing orders with their next run date and the source order's label, requests produced by a run carrying `schedule_id` and `schedule_title`, newest-first paging without gaps, buyer scope, no writes, orders untouched, agent forbidden; the `status` filter (one, several, empty, unknown refused), `total` over every matching row and not just the page, and `placed_at` on placed rows only.
 
-#### `tests/test_orders_routes.py` (CNF-034, CNF-035 over HTTP): 9 passed
+#### `tests/test_orders_routes.py` (CNF-034, CNF-035 over HTTP): 11 passed
 
-`GET /api/orders` needs a session, has bounded paging and the declared item shape; `POST /api/purchases/{id}/cancel` needs CSRF and a same-origin request, is idempotent, makes the request `cancelled` in the list and unconfirmable, and is refused for a placed order; unknown and malformed ids; the routes and models are in OpenAPI.
+`GET /api/orders` needs a session, has bounded paging and the declared item shape; `POST /api/purchases/{id}/cancel` needs CSRF and a same-origin request, is idempotent, makes the request `cancelled` in the list and unconfirmable, and is refused for a placed order; unknown and malformed ids; the `?status=` filter and `total` over HTTP, and an unknown status as a clear 422 `INVALID_ORDER_STATUS`; the routes and models are in OpenAPI.
 
 #### `tests/test_schedule_routes.py` (CNF-022 to CNF-037 over HTTP): 28 passed
 

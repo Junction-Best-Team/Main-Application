@@ -9,20 +9,13 @@ import { SchedulesPage } from "../features/schedules/pages/SchedulesPage";
 import { ScheduleDetailPage } from "../features/schedules/pages/ScheduleDetailPage";
 import { ScheduleCreatePage } from "../features/schedules/pages/ScheduleCreatePage";
 import { ScheduleEditPage } from "../features/schedules/pages/ScheduleEditPage";
+import { PreferencesPage } from "../features/preferences/pages/PreferencesPage";
+import { SettingsPage } from "../features/settings/pages/SettingsPage";
 import { AppShell } from "./layout/AppShell";
-import { NoticeBar } from "../shared/components/NoticeBar";
 export function AppRoutes() {
   return (
     <Routes>
-      <Route
-        path="/login"
-        element={
-          <>
-            <NoticeBar />
-            <LoginPage />
-          </>
-        }
-      />
+      <Route path="/login" element={<LoginPage />} />
       <Route path="/approvals" element={<Navigate to="/purchases" replace />} />
       <Route
         element={
@@ -32,6 +25,7 @@ export function AppRoutes() {
         }
       >
         <Route path="/" element={<HomePage />} />
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="/request" element={<ChatPage />} />
         <Route path="/conversations/:conversationId" element={<ChatPage />} />
         <Route path="/schedules" element={<SchedulesPage />} />
@@ -44,17 +38,15 @@ export function AppRoutes() {
         <Route path="/purchases" element={<PurchasesPage />} />
         <Route path="/purchases/:proposalId" element={<PurchasesPage />} />
         <Route path="/approvals/:approvalId" element={<PurchaseDetailPage />} />
+        <Route path="/settings/preferences" element={<PreferencesPage />} />
       </Route>
       <Route
         path="*"
         element={
-          <>
-            <NoticeBar />
-            <main className="mx-auto max-w-6xl p-8">
-              <h1>Page not found</h1>
-              <Link to="/">Go to Home</Link>
-            </main>
-          </>
+          <main className="mx-auto max-w-6xl p-8">
+            <h1>Page not found</h1>
+            <Link to="/">Go to Home</Link>
+          </main>
         }
       />
     </Routes>

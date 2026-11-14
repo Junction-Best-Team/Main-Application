@@ -470,17 +470,9 @@ def test_service_requires_approval_substitution_still_needs_a_decision(
     assert service.commit_order(agent, commit(p))["status"] == "accepted_mock"
 
 
-# --- POL-008: an unconfirmed assumption never loosens a hard limit (waits for provenance) -----
+# --- POL-008: an unconfirmed assumption never loosens a hard limit -----------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=TypeError,
-    reason="POL-008 is not enforceable yet: no per-constraint provenance exists. Constraint sources "
-    "will be stored as a JSON field on the request record (owner Q-53, no migration); person 2's "
-    "#92 and person 1's extraction/persistence are still pending. evaluate_purchase has no "
-    "trusted `constraints` input; see evidence/ws-c/pol-008-design.md.",
-)
 def test_unconfirmed_assumption_never_loosens_hard_limits():
     """Target behaviour. `constraints` is a SERVER-supplied record (never a model argument) of what
     the customer stated, each entry {name, value, source, confirmed}; the request carries the
@@ -543,3 +535,105 @@ def test_unconfirmed_assumption_never_loosens_hard_limits():
         )["policy_outcome"]
         == "denied"
     )
+
+
+def stated(name, value, source="user_request", confirmed=True):
+    return {"name": name, "value": value, "source": source, "confirmed": confirmed}
+
+
+def test_a_looser_budget_is_a_named_reason_and_is_enforced_at_the_customers_number():
+    result = run(
+        req=request(budget_gross="500.00"),
+        snap=snapshot(total="100.00"),
+        constraints=[stated("budget_gross", "50.00")],
+    )
+    loosened = [r for r in result["reasons"] if r["code"] == "CONSTRAINT_LOOSENED"]
+    assert len(loosened) == 1 and loosened[0]["severity"] == "unresolved"
+    assert "budget_gross" in loosened[0]["message"]
+    assert "HARD_BUDGET_EXCEEDED" in codes(result) and result["policy_outcome"] == "denied"
+
+
+def test_a_looser_budget_under_the_customers_number_needs_resolution_not_ready():
+    result = run(
+        req=request(budget_gross="500.00"),
+        snap=snapshot(total="30.00"),
+        constraints=[stated("budget_gross", "50.00")],
+    )
+    assert result["policy_outcome"] == "needs_resolution"
+    assert "CONSTRAINT_LOOSENED" in codes(result) and "HARD_BUDGET_EXCEEDED" not in codes(result)
+
+
+def test_a_missing_request_budget_is_replaced_by_the_stored_one():
+    over = run(snap=snapshot(total="100.00"), constraints=[stated("budget_gross", "50.00")])
+    assert over["policy_outcome"] == "denied" and "HARD_BUDGET_EXCEEDED" in codes(over)
+    under = run(snap=snapshot(total="30.00"), constraints=[stated("budget_gross", "50.00")])
+    assert under["policy_outcome"] == "ready_to_commit"
+
+
+@pytest.mark.parametrize("flag", ["lactose_free", "milk_free"])
+@pytest.mark.parametrize("requirements", [{}, {"lactose_free": False, "milk_free": False}])
+def test_a_dropped_dietary_flag_is_named_for_each_flag(flag, requirements):
+    result = run(req=request(requirements=requirements), constraints=[stated(flag, True)])
+    assert result["policy_outcome"] == "needs_resolution"
+    reason = next(r for r in result["reasons"] if r["code"] == "CONSTRAINT_LOOSENED")
+    assert flag in reason["message"]
+
+
+def test_a_kept_dietary_flag_and_a_stricter_request_are_not_loosening():
+    result = run(
+        req=request(requirements={"milk_free": True}, budget_gross="20.00"),
+        constraints=[stated("milk_free", True), stated("budget_gross", "50.00")],
+    )
+    assert "CONSTRAINT_LOOSENED" not in codes(result)
+    assert result["policy_outcome"] == "ready_to_commit"
+
+
+def test_a_stored_unsupported_requirement_missing_from_the_request_is_loosening():
+    constraint = stated("unsupported:gluten-free", True)
+    dropped = run(constraints=[constraint])
+    assert dropped["policy_outcome"] == "needs_resolution"
+    assert "CONSTRAINT_LOOSENED" in codes(dropped)
+    kept = run(req=request(requirements={"unsupported": ["Gluten-Free"]}), constraints=[constraint])
+    assert "CONSTRAINT_LOOSENED" not in codes(kept)  # still blocked by POL-009 itself
+    assert "REQUIREMENT_UNSUPPORTED" in codes(kept)
+
+
+def test_an_unconfirmed_assumption_alone_is_never_trusted_in_either_direction():
+    assumed = [
+        stated("budget_gross", "5.00", "stated_assumption", False),
+        stated("milk_free", True, "stated_assumption", False),
+    ]
+    with_assumption = run(req=request(budget_gross="50.00"), constraints=assumed)
+    without = run(req=request(budget_gross="50.00"))
+    assert with_assumption == without and with_assumption["policy_outcome"] == "ready_to_commit"
+
+
+def test_a_confirmed_assumption_is_a_trusted_customer_value():
+    confirmed = [stated("budget_gross", "5.00", "stated_assumption", True)]
+    result = run(req=request(budget_gross="50.00"), constraints=confirmed)
+    assert "CONSTRAINT_LOOSENED" in codes(result) and result["policy_outcome"] == "denied"
+
+
+def test_the_stricter_of_several_trusted_budgets_wins():
+    result = run(
+        req=request(budget_gross="500.00"),
+        snap=snapshot(total="30.00"),
+        constraints=[
+            stated("budget_gross", "50.00"),
+            stated("budget_gross", "20.00", "reviewed_plan"),
+        ],
+    )
+    assert "HARD_BUDGET_EXCEEDED" in codes(result)
+
+
+@pytest.mark.parametrize("empty", [None, []])
+def test_no_constraints_changes_nothing(empty):
+    cases = [
+        dict(),
+        dict(req=request(budget_gross="9.99")),
+        dict(req=request(requirements={"milk_free": True, "unsupported": ["x"]})),
+        dict(req=request("Y"), rule=rules(substitution="forbidden")),
+        dict(snap=snapshot(total=None)),
+    ]
+    for case in cases:
+        assert run(**case, constraints=empty) == run(**case)

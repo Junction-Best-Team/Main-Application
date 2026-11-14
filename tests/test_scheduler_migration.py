@@ -316,3 +316,13 @@ def test_the_scheduler_history_refuses_truncate_unless_the_reset_is_deliberate(t
         raw.execute("SET LOCAL aimo.allow_history_truncate = 'on'")
         raw.execute(f"TRUNCATE {table} CASCADE")  # a deliberate reset, rolled back below
         raw.rollback()
+
+
+def test_the_title_is_part_of_the_authorized_terms(order):
+    aid = authorization(order, title="Friday milk")
+    with pytest.raises(psycopg.errors.RaiseException, match="immutable"):
+        update(aid, title="Another name")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        authorization(order, title="")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        authorization(order, title="x" * 81)

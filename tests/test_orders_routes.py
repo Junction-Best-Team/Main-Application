@@ -32,7 +32,7 @@ def test_the_orders_list_needs_a_session(http):
 def test_the_orders_list_shows_the_pending_request_in_the_declared_shape(http, pending):
     login(http)
     body = http.get("/api/orders").json()
-    assert body["next_offset"] is None
+    assert body["next_offset"] is None and body["total"] == 1
     item = body["items"][0]
     assert item["status"] == "pending" and item["proposal_id"] == pending["proposal_id"]
     assert set(item) == {
@@ -46,6 +46,7 @@ def test_the_orders_list_shows_the_pending_request_in_the_declared_shape(http, p
         "currency",
         "line_count",
         "cancel_reason",
+        "placed_at",
         "paused",
         "schedule_title",
         "updated_at",
@@ -145,3 +146,36 @@ def test_openapi_declares_the_routes_and_their_models(http):
         "placed",
         "cancelled",
     ]
+
+
+def test_the_status_filter_and_total_over_http(http, service, buyer, pending):
+    service.commit_order(
+        buyer,
+        CommitRequest(
+            proposal_id=pending["proposal_id"],
+            revision=pending["revision"],
+            idempotency_key=str(uuid4()),
+        ),
+    )
+    login(http)
+    everything = http.get("/api/orders").json()
+    assert everything["total"] == 1
+    placed = http.get("/api/orders?status=placed").json()
+    assert [i["status"] for i in placed["items"]] == ["placed"] and placed["total"] == 1
+    assert placed["items"][0]["placed_at"]
+    assert http.get("/api/orders?status=pending").json() == {
+        "items": [],
+        "next_offset": None,
+        "total": 0,
+    }
+    both = http.get("/api/orders?status=pending,placed").json()
+    assert both["total"] == 1
+    assert http.get("/api/orders?status=").json()["total"] == 1  # empty means everything
+
+
+def test_an_unknown_status_filter_is_a_clear_422(http):
+    login(http)
+    response = http.get("/api/orders?status=placed,shipped")
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "INVALID_ORDER_STATUS"
+    assert "shipped" in response.json()["error"]["message"]

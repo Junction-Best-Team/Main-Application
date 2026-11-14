@@ -2,7 +2,7 @@ import type React from "react";
 
 const NOT_AVAILABLE = "Not available in this demo";
 
-/** Placeholder button (notifications, help, Save as Draft, ...). */
+/** Placeholder button (account switcher, Save as Draft, ...). */
 export function InertButton({
   label,
   className = "",

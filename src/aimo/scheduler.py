@@ -676,7 +676,7 @@ def step(service, run, now):
 def basket(auth, run, plan):
     """The request of one run: the agreed lines with this date's delivery, planned swaps applied."""
     swaps = {item["product_id"]: item["substitute_product_id"] for item in plan}
-    request = dict(auth["request"])
+    request = {k: v for k, v in auth["request"].items() if k != "constraints"}  # server-only key
     request["lines"] = [
         line | {"product_id": swaps.get(line["product_id"], line["product_id"])}
         for line in request["lines"]

@@ -25,45 +25,66 @@ export function ChatPage() {
     error,
     loading,
     reconnecting,
-    transcript,
+    messageViewport,
     send,
     busy,
   } = useChat(conversationId);
   return (
-    <main className="mx-auto flex w-full max-w-[1720px] flex-col gap-space-md p-margin-sm pb-48 lg:flex-row lg:items-start md:gap-space-lg md:p-space-lg">
-      <div className="flex min-w-0 flex-1 flex-col gap-space-md">
-        <header className="flex items-center gap-space-md">
+    <main className="mx-auto flex min-h-0 w-full max-w-[1720px] flex-1 flex-col gap-space-md p-margin-sm pb-28 lg:flex-row lg:items-start lg:pb-space-lg md:gap-space-lg md:p-space-lg md:pb-28">
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-space-sm md:gap-space-md">
+        <header className="flex shrink-0 items-center gap-space-md [@media(max-height:650px)]:hidden">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary-container text-on-primary shadow-sm">
             <Icon name="smart_toy" className="text-[26px]" />
           </div>
           <div className="min-w-0">
-            <h1 className="font-headline text-headline-lg-mobile tracking-tight text-primary md:text-headline-md">
+            <h1 className="font-headline text-headline-sm tracking-tight text-primary md:text-headline-md">
               Aimo Kitchen Assistant
             </h1>
-            <p className="text-body-sm text-secondary">
+            <p className="hidden text-body-sm text-secondary md:block">
               {MOCK.request.assistantSubtitle}
             </p>
           </div>
         </header>
 
-        <div className="flex min-h-[560px] flex-col overflow-hidden rounded-xl bg-surface-pure shadow-sm md:min-h-[640px]">
-          <div className="flex flex-wrap items-center justify-between gap-x-space-md gap-y-space-xs bg-surface-container-low px-space-md py-space-sm">
-            <div className="flex items-center gap-space-xs">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface-pure shadow-sm">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-space-md gap-y-space-xs bg-surface-container-low px-space-md py-space-sm">
+            <div className="flex min-w-0 flex-1 items-center gap-space-xs">
               <Icon
                 name="restaurant_menu"
                 className="text-[18px] text-wholesale-teal"
               />
-              <span className="font-label text-label-md text-primary">
+              <span className="truncate font-label text-label-md text-primary">
                 {conversation?.title ?? session?.buyer_id}
               </span>
             </div>
-            <div className="flex items-center gap-space-xs font-label text-label-sm text-secondary">
-              <Icon name="verified" className="text-[16px]" />
-              <span>Exact-revision confirmation</span>
+            <div className="flex flex-wrap items-center gap-x-space-md gap-y-space-xs font-label text-label-sm text-secondary">
+              <span className="flex items-center gap-space-xs">
+                <Icon name="verified" className="text-[16px]" />
+                <span className="sr-only md:not-sr-only">
+                  Exact-revision confirmation
+                </span>
+              </span>
+              <Link
+                to="/settings/preferences"
+                className="flex items-center gap-space-xs text-wholesale-teal"
+              >
+                <Icon name="tune" className="text-[16px]" />
+                Assistant preferences
+              </Link>
             </div>
           </div>
 
-          <div className="flex flex-1 flex-col gap-space-lg p-space-md md:p-space-lg">
+          <div
+            ref={messageViewport}
+            role="region"
+            aria-label="Conversation history"
+            tabIndex={0}
+            className="flex min-h-0 flex-1 flex-col gap-space-lg overflow-y-auto overscroll-contain p-space-md md:p-space-lg"
+          >
+            <p className="shrink-0 text-label-sm text-secondary">
+              Demo ordering only. No real supplier orders or stock reservations.
+              Signed in as {session?.buyer_id}.
+            </p>
             <ErrorMessage message={error} />
             {loading && <p role="status">Loading your conversation…</p>}
             {!conversationId && (
@@ -86,11 +107,7 @@ export function ChatPage() {
                 </p>
               </div>
             )}
-            <ConversationTranscript
-              conversation={conversation}
-              busy={busy}
-              transcript={transcript}
-            />
+            <ConversationTranscript conversation={conversation} busy={busy} />
 
             {Boolean(conversation?.purchases.length) && (
               <section
@@ -141,6 +158,12 @@ export function ChatPage() {
                 })}
               </section>
             )}
+            {reconnecting && (
+              <p className="text-body-sm text-secondary" role="status">
+                Reconnecting to updates. Your conversation is saved; refresh to
+                check the latest state.
+              </p>
+            )}
           </div>
 
           <ChatComposer
@@ -153,19 +176,9 @@ export function ChatPage() {
           />
         </div>
 
-        <p className="text-body-sm text-secondary">
+        <p className="shrink-0 text-label-sm text-secondary">
           Messages never authorize a purchase. You confirm the exact basket
           separately.
-        </p>
-        {reconnecting && (
-          <p className="text-body-sm text-secondary" role="status">
-            Reconnecting to updates. Your conversation is saved; refresh to
-            check the latest state.
-          </p>
-        )}
-        <p className="text-label-md text-secondary">
-          Demo ordering only. No real supplier orders or stock reservations.
-          Signed in as {session?.buyer_id}.
         </p>
       </div>
       {/* Overview: right-hand column on desktop, fixed bottom drawer on mobile. */}

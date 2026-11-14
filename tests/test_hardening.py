@@ -16,9 +16,8 @@ from starlette.responses import JSONResponse
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from aimo import approval_workflow as workflow
-from aimo import auth
+from aimo import auth, policy_settings
 from aimo.catalog import quantity
-from aimo.cli import set_product_scope
 from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, js, now, pool
 from aimo.fixtures import fixture_facts
@@ -81,14 +80,20 @@ def test_undeclared_replacement_cannot_bypass_buyer_scope(
 
 
 def test_missing_product_scope_fails_closed_and_provisioning_versions_policy(
-    service, agent, request_data
+    service, agent, request_data, buyer
 ):
     policy(approved_product_ids=None)
     p = service.prepare_order(agent, PrepareRequest(**request_data))
     assert p["policy_outcome"] == "needs_resolution" and p["approval_id"] is None
     assert "PRODUCT_SCOPE_UNCONFIGURED" in {r["code"] for r in p["reasons"]}
-    version = set_product_scope("demo-hotel", ["464306"])
-    assert version == 3 and set_product_scope("demo-hotel", ["464306"]) == 3
+    current = policy_settings.get(buyer)
+    body = policy_settings.PolicyUpdate(
+        expected_version=current["policy_version"],
+        rules=current["rules"].model_dump() | {"approved_product_ids": ["464306"]},
+    )
+    assert policy_settings.update(buyer, body)["policy_version"] == 3
+    body.expected_version = 3
+    assert policy_settings.update(buyer, body)["policy_version"] == 3
     with connection() as c:
         assert (
             c.execute(

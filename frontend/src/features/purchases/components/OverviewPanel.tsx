@@ -128,7 +128,7 @@ export function OverviewPanel({
     <aside
       id="overview"
       aria-label="Overview"
-      className={`${drawer ? "fixed inset-x-3 bottom-4 z-30 max-h-[70dvh] lg:sticky lg:inset-x-auto lg:bottom-auto lg:top-[88px] lg:z-auto lg:max-h-[calc(100dvh-112px)] lg:w-80 lg:shrink-0 xl:w-96" : "w-full"} flex min-w-0 flex-col overflow-y-auto rounded-xl border border-border-subtle bg-surface-pure p-space-md shadow-level-3 lg:shadow-sm`}
+      className={`${drawer ? "fixed inset-x-3 bottom-4 z-30 max-h-[70dvh] lg:sticky lg:inset-x-auto lg:bottom-auto lg:top-0 lg:z-auto lg:max-h-full lg:w-80 lg:shrink-0 xl:w-96" : "w-full"} flex min-w-0 flex-col overflow-y-auto rounded-xl border border-border-subtle bg-surface-pure p-space-md shadow-level-3 lg:shadow-sm`}
     >
       <div className="flex items-center justify-between gap-space-sm border-b border-border-subtle pb-space-sm">
         <h2 className="m-0 font-headline text-headline-sm font-bold text-primary">

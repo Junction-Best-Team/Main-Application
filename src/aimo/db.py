@@ -95,7 +95,15 @@ def connection():
 
 
 class Problem(Exception):
-    def __init__(self, code: str, message: str, status: int = 409, retry_after: int | None = None):
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        status: int = 409,
+        retry_after: int | None = None,
+        public_details: dict | None = None,
+    ):
         self.code, self.message, self.status = code, message, status
         self.retry_after = retry_after
+        self.public_details = public_details  # shown to the browser as error.details
         super().__init__(message)

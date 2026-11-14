@@ -21,3 +21,9 @@ export type RunLine = components["schemas"]["RunLine"];
 export type SubstituteCandidate = components["schemas"]["SubstituteCandidate"];
 export type SubstituteCandidates =
   components["schemas"]["SubstituteCandidates"];
+export type MemoryItem = components["schemas"]["MemoryItem"];
+export type MemoryList = components["schemas"]["MemoryList"];
+export type MemoryCreate = components["schemas"]["MemoryCreate"];
+export type MemoryUpdate = components["schemas"]["MemoryUpdate"];
+export type MemoryDelete = components["schemas"]["MemoryDelete"];
+export type MemoryMutation = components["schemas"]["MemoryMutationResponse"];

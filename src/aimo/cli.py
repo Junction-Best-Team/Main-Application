@@ -7,7 +7,6 @@ from pathlib import Path
 from aimo.auth import hasher
 from aimo.db import connection, fingerprint, js
 from aimo.observability import configure_logging
-from aimo.schemas import PolicyRules
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -114,31 +113,9 @@ def seed():
             ),
         )
 
-
-def set_product_scope(buyer_id, product_ids):
-    """Privileged provisioning only; no browser/agent policy-editing surface."""
-    with connection() as c:
-        buyer = c.execute("SELECT * FROM buyers WHERE id=%s FOR UPDATE", (buyer_id,)).fetchone()
-        if not buyer:
-            raise ValueError("Unknown buyer")
-        policy = c.execute(
-            "SELECT * FROM policies WHERE buyer_id=%s AND version=%s",
-            (buyer_id, buyer["current_policy"]),
-        ).fetchone()
-        current = {k: v for k, v in policy["rules"].items() if k != "autonomous_limit"}
-        rules = current | {"approved_product_ids": sorted(set(product_ids))}
-        PolicyRules.model_validate(rules)
-        if rules == current:
-            return policy["version"]
-        version = c.execute(
-            "SELECT max(version)+1 AS version FROM policies WHERE buyer_id=%s", (buyer_id,)
-        ).fetchone()["version"]
         c.execute(
-            "INSERT INTO policies(buyer_id,version,rules) VALUES(%s,%s,%s)",
-            (buyer_id, version, js(rules)),
+            "INSERT INTO policy_managers(buyer_id,identity_id) VALUES('demo-hotel','buyer') ON CONFLICT DO NOTHING"
         )
-        c.execute("UPDATE buyers SET current_policy=%s WHERE id=%s", (version, buyer_id))
-        return version
 
 
 def configure():
@@ -170,11 +147,6 @@ def main():
         default=os.getenv("CATALOG_SYNC_DATABASE_USER") or None,
         help="Reapply catalog-sync-only grants (default: $CATALOG_SYNC_DATABASE_USER)",
     )
-    scope = sub.add_parser(
-        "set-product-scope", help="Privileged provisioning: version a buyer's approved product IDs"
-    )
-    scope.add_argument("--buyer", required=True)
-    scope.add_argument("--product-id", action="append", required=True)
     recipes = sub.add_parser("ingest-recipes", help="Explicit versioned UniTools recipe import")
     recipes.add_argument("--file", type=Path, required=True)
     recipes.add_argument("--expected-sha256", required=True)
@@ -189,6 +161,17 @@ def main():
     ing.add_argument(
         "--stage", action="store_true", help="Import without replacing the active catalog"
     )
+    purge = sub.add_parser(
+        "purge-proposals",
+        help="Operator command, run as the schema owner (DATABASE_URL of the owner, not the runtime "
+        "role): remove proposals and approvals that never became orders (CNF-021); orders are kept",
+    )
+    purge.add_argument(
+        "--older-than-days",
+        type=int,
+        help="Days after the current revision expired (default: $UNFINISHED_PROPOSAL_RETENTION_DAYS, 30)",
+    )
+    purge.add_argument("--dry-run", action="store_true", help="Count only; delete nothing")
     activation = sub.add_parser("activate-catalog", help="Explicit catalog cutover or rollback")
     activation.add_argument("--generation", required=True)
     from aimo.ingest import CATALOG_PRODUCT_COUNT, CATALOG_SHA256
@@ -209,13 +192,20 @@ def main():
         migrate(runtime_role=args.runtime_role, catalog_role=args.catalog_role)
     elif args.command == "seed":
         seed()
-    elif args.command == "set-product-scope":
+    elif args.command == "purge-proposals":
+        from datetime import timedelta
+
+        from aimo import approval_workflow
+        from aimo.config import settings
+
+        if args.older_than_days is not None and args.older_than_days < 1:
+            parser.error("--older-than-days must be at least 1")
+        days = args.older_than_days or settings().unfinished_proposal_retention_days
         print(
             json.dumps(
-                {
-                    "buyer_id": args.buyer,
-                    "policy_version": set_product_scope(args.buyer, args.product_id),
-                }
+                approval_workflow.purge_unfinished_proposals(
+                    timedelta(days=days), dry_run=args.dry_run
+                )
             )
         )
     elif args.command == "activate-catalog":

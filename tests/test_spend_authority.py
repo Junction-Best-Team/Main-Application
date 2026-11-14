@@ -252,7 +252,7 @@ def test_hard_budget_equal_to_total_is_ready_to_commit():
 def test_evaluate_purchase_takes_no_agent_authority_parameter():
     parameters = list(inspect.signature(evaluate_purchase).parameters)
     assert "authority" not in parameters
-    assert parameters == ["request", "snapshot", "rules", "approvers"]
+    assert parameters == ["request", "snapshot", "rules", "approvers", "constraints"]  # POL-008
 
 
 # --- 4b. Same at Service level, with the seeded demo agent -------------------------

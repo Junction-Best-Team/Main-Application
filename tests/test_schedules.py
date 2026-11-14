@@ -343,3 +343,189 @@ def test_events_record_who_did_what(buyer, service, placed_order):
             ).fetchall()
         ]
     assert events == [(e, "buyer") for e in ("created", "paused", "resumed", "cancelled")]
+
+
+# --- server-only keys of a source order's stored request -------------------------------------
+
+
+def order_with_server_constraints(placed_order):
+    """A past order whose stored request carries the server-only `constraints` key (PR #133)."""
+    with connection() as c:
+        old = c.execute(
+            "SELECT p.agent_id,r.* FROM proposals p JOIN proposal_revisions r ON r.proposal_id=p.id "
+            "WHERE p.id=%s AND r.revision=1",
+            (placed_order["proposal_id"],),
+        ).fetchone()
+        pid, oid = uuid4(), uuid4()
+        c.execute(
+            "INSERT INTO proposals(id,buyer_id,agent_id,current_revision) VALUES(%s,'demo-hotel',%s,1)",
+            (pid, old["agent_id"]),
+        )
+        request = old["request"] | {
+            "constraints": [
+                {"name": "budget_gross", "value": "500", "source": "chat", "confirmed": True}
+            ]
+        }
+        c.execute(
+            "INSERT INTO proposal_revisions(proposal_id,revision,policy_version,request,snapshot,"
+            "fingerprint,policy_outcome,reasons,required_exceptions,expires_at) "
+            "SELECT %s,1,policy_version,%s,snapshot,fingerprint,policy_outcome,reasons,"
+            "required_exceptions,expires_at FROM proposal_revisions WHERE proposal_id=%s AND revision=1",
+            (pid, js(request), placed_order["proposal_id"]),
+        )
+        c.execute(
+            "INSERT INTO orders(id,proposal_id,buyer_id,revision,receipt) VALUES(%s,%s,'demo-hotel',1,'{}')",
+            (oid, pid),
+        )
+    return {"order_id": str(oid), "proposal_id": str(pid)}
+
+
+def test_a_source_orders_server_only_constraints_never_enter_the_standing_order(
+    buyer, service, placed_order
+):
+    source = order_with_server_constraints(placed_order)
+    s = make(buyer, service, source)
+    with connection() as c:
+        stored = c.execute(
+            "SELECT request FROM scheduled_authorizations WHERE id=%s", (s["id"],)
+        ).fetchone()["request"]
+    assert "constraints" not in stored  # the limits are the ones the customer agrees now
+
+
+# --- the customer's own name for a standing order (owner Q-93) -------------------------------
+
+
+def test_the_title_is_optional_stripped_and_bounded():
+    from pydantic import ValidationError
+
+    base = {"order_id": str(uuid4()), "recurrence": WEEKLY, "first_run_date": str(first_run())}
+    assert SchedulePreviewRequest.model_validate(base).title is None
+    assert SchedulePreviewRequest.model_validate(base | {"title": "  Friday milk  "}).title == (
+        "Friday milk"
+    )
+    for bad in ("", "   ", "x" * 81):
+        with pytest.raises(ValidationError):
+            SchedulePreviewRequest.model_validate(base | {"title": bad})
+
+
+def test_a_chosen_title_is_echoed_by_preview_and_stored(buyer, service, placed_order):
+    terms = schedules.preview(buyer, preview_body(placed_order, title="Friday milk"), service)
+    assert terms["title"] == "Friday milk"
+    made = schedules.create(buyer, create_body(placed_order, terms, title="Friday milk"), service)
+    assert made["title"] == "Friday milk"
+    assert schedules.get(buyer, made["id"])["title"] == "Friday milk"
+    assert schedules.list_schedules(buyer, 0, 5)["items"][0]["title"] == "Friday milk"
+
+
+def test_without_a_title_it_is_derived_from_the_source_order(buyer, service, placed_order):
+    terms = schedules.preview(buyer, preview_body(placed_order), service)
+    made = schedules.create(buyer, create_body(placed_order, terms), service)
+    assert terms["title"] == made["title"] and made["title"]
+
+
+def test_a_replacement_keeps_the_title_unless_a_new_one_is_given(buyer, service, placed_order):
+    from aimo.schedule_schemas import ScheduleEditPreviewRequest
+
+    terms = schedules.preview(buyer, preview_body(placed_order, title="Friday milk"), service)
+    old = schedules.create(buyer, create_body(placed_order, terms, title="Friday milk"), service)
+    edit = schedules.preview_edit(buyer, old["id"], ScheduleEditPreviewRequest(), service)
+    assert edit["title"] == "Friday milk"
+    kept = schedules.replace(
+        buyer,
+        old["id"],
+        ScheduleReplaceRequest.model_validate(
+            {"agreed_terms_fingerprint": edit["terms_fingerprint"], "idempotency_key": str(uuid4())}
+        ),
+        service,
+    )
+    assert kept["title"] == "Friday milk"
+    renamed = schedules.replace(
+        buyer,
+        kept["id"],
+        ScheduleReplaceRequest.model_validate(
+            {
+                "agreed_terms_fingerprint": edit["terms_fingerprint"],
+                "idempotency_key": str(uuid4()),
+                "title": "Weekend milk",
+            }
+        ),
+        service,
+    )
+    assert renamed["title"] == "Weekend milk"
+
+
+def test_the_same_key_with_another_title_conflicts(buyer, service, placed_order):
+    terms = schedules.preview(buyer, preview_body(placed_order), service)
+    body = create_body(placed_order, terms, title="One")
+    schedules.create(buyer, body, service)
+    other = create_body(placed_order, terms, title="Two", idempotency_key=body.idempotency_key)
+    refused("IDEMPOTENCY_CONFLICT", schedules.create, buyer, other, service)
+
+
+# --- restart from another order, status filter ------------------------------------------------
+
+
+def test_a_restart_from_another_order_drops_rules_for_products_it_no_longer_has(
+    buyer, service, request_data, placed_order
+):
+    from test_scheduler_engine import widen_scope
+
+    from aimo import conversations
+    from aimo.schedule_schemas import ScheduleEditPreviewRequest
+    from aimo.schemas import CommitRequest, PrepareRequest
+
+    widen_scope("464398", "463380")
+    rules = {"464306": {"accepted_substitutes": ["463380"], "price_range_pct": "5"}}
+    terms = schedules.preview(buyer, preview_body(placed_order, line_rules=rules), service)
+    old = schedules.create(buyer, create_body(placed_order, terms, line_rules=rules), service)
+    request_data["lines"] = [{"product_id": "464398", "amount": "10", "unit": "L"}]
+    request_data["idempotency_key"] = str(uuid4())
+    p = service.prepare_order(
+        auth.internal_agent(buyer), PrepareRequest.model_validate(request_data)
+    )
+    receipt = conversations.confirm(
+        buyer,
+        p["proposal_id"],
+        CommitRequest(proposal_id=p["proposal_id"], revision=1, idempotency_key=str(uuid4())),
+        service,
+    )
+    # the old rules belong to the old product: omitted rules are kept only where they still apply
+    edit = ScheduleEditPreviewRequest(source_order_id=receipt["order_id"])
+    terms = schedules.preview_edit(buyer, old["id"], edit, service)
+    assert [line["product_id"] for line in terms["lines"]] == ["464398"]
+    new = schedules.replace(
+        buyer,
+        old["id"],
+        ScheduleReplaceRequest.model_validate(
+            {
+                "source_order_id": receipt["order_id"],
+                "agreed_terms_fingerprint": terms["terms_fingerprint"],
+                "idempotency_key": str(uuid4()),
+            }
+        ),
+        service,
+    )
+    assert new["lines"][0]["accepted_substitutes"] == []
+    # rules sent explicitly for a product that is not a line are still refused
+    explicit = ScheduleEditPreviewRequest(source_order_id=receipt["order_id"], line_rules=rules)
+    err = refused("INVALID_LINE_RULE", schedules.preview_edit, buyer, old["id"], explicit, service)
+    assert err.status == 422
+
+
+def test_the_schedule_list_can_be_filtered_by_status(buyer, service, placed_order):
+    active = make(buyer, service, placed_order)
+    paused = make(buyer, service, placed_order)
+    schedules.pause(buyer, paused["id"])
+    cancelled = make(buyer, service, placed_order)
+    schedules.cancel(buyer, cancelled["id"])
+
+    def ids(*statuses):
+        return {s["id"] for s in schedules.list_schedules(buyer, 0, 20, statuses)["items"]}
+
+    assert ids() == {active["id"], paused["id"], cancelled["id"]}
+    assert ids("active") == {active["id"]}
+    assert ids("active", "paused") == {active["id"], paused["id"]}
+    err = refused("INVALID_SCHEDULE_STATUS", schedules.list_schedules, buyer, 0, 20, ("nope",))
+    assert err.status == 422
+    page = schedules.list_schedules(buyer, 0, 1, ("active", "paused"))
+    assert len(page["items"]) == 1 and page["next_offset"] == 1  # filtered before paging

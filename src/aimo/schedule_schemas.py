@@ -15,12 +15,13 @@ from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, StringConstraints
 
 from aimo.schemas import Model, Money
 
 MAX_SUBSTITUTES_PER_LINE = 5
 
+Title = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
 Percent = Annotated[Decimal, Field(ge=0, le=100, max_digits=6, decimal_places=2)]
 ScheduleStatus = Literal["active", "paused", "stopped", "cancelled", "expired", "superseded"]
 RunStatus = Literal["due", "prepared", "committed", "disrupted", "skipped"]
@@ -56,6 +57,9 @@ class LineRule(Model):
 
 class SchedulePreviewRequest(Model):
     order_id: UUID
+    title: Title | None = Field(
+        default=None, description="The customer's own name; omitted: derived from the past order"
+    )
     recurrence: Recurrence
     first_run_date: date
     line_rules: dict[str, LineRule] = Field(default_factory=dict, description="Key: product_id")
@@ -70,6 +74,7 @@ class ScheduleCreateRequest(SchedulePreviewRequest):
 class ScheduleEditPreviewRequest(Model):
     """Preview the terms of an existing schedule with optional changes (the edit page)."""
 
+    title: Title | None = Field(default=None, description="Omitted: the schedule keeps its name")
     recurrence: Recurrence | None = None
     first_run_date: date | None = None
     line_rules: dict[str, LineRule] | None = None
