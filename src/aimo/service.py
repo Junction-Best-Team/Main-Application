@@ -32,7 +32,8 @@ class Service:
     def get_purchase_policy(self, identity):
         with connection() as c:
             buyer, policy, actor, _ = context(c, identity)
-        # No spending limit is shown for the agent: it has none (Q-35). Legacy key is dropped.
+        # Agents hold no spending authority (Q-35). Account purchasing caps remain visible;
+        # the obsolete autonomous authority key is ignored.
         rules = {k: v for k, v in policy["rules"].items() if k != "autonomous_limit"}
         return {
             "buyer_id": buyer["id"],

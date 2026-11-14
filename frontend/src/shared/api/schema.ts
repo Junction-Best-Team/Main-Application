@@ -544,13 +544,8 @@ export interface components {
         };
         /** EditablePolicy */
         EditablePolicy: {
-            /**
-             * Currency
-             * @constant
-             */
-            currency: "EUR";
-            /** Destinations */
-            destinations: string[];
+            /** Max Order Gross */
+            max_order_gross?: number | string | null;
             /**
              * Substitution
              * @enum {string}
@@ -563,8 +558,6 @@ export interface components {
             overbuy: "allowed" | "requires_approval" | "forbidden";
             /** Whole Sales Units */
             whole_sales_units: boolean;
-            /** Approved Product Ids */
-            approved_product_ids: string[];
         };
         /**
          * ErrorBody
@@ -935,6 +928,11 @@ export interface components {
         /** PolicyRules */
         PolicyRules: {
             /**
+             * Max Order Gross
+             * @description Optional account-wide gross cap per order. Never grants personal approval authority.
+             */
+            max_order_gross?: string | null;
+            /**
              * Currency
              * @constant
              */
@@ -955,7 +953,7 @@ export interface components {
             whole_sales_units: boolean;
             /**
              * Approved Product Ids
-             * @description Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope always blocks a purchase until a policy manager configures it in Settings.
+             * @description Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope always blocks a purchase until an operator configures it.
              */
             approved_product_ids?: string[] | null;
         };

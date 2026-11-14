@@ -225,6 +225,13 @@ transcript, design tokens and Playwright route fixtures. Markdown and unsafe
 content examples are authored synthetic fixtures; no supplier or model calls,
 external images or customer messages were used.
 
+## Purchasing settings simplification — 2026-11-14
+
+Reused the owner-reviewed interactive mockup from this chat, existing Nordic UI
+tokens, authenticated settings transport, versioned policies and quantity/approval
+checks. The preview and browser tests use authored demo data; orders remain mocks.
+No supplier/model calls or live deployment are part of this change.
+
 ## Self-hosted UI fonts — 2026-11-14
 
 At the owner's request, replaced the Google Fonts stylesheet with locked
