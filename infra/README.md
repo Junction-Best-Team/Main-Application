@@ -1,6 +1,6 @@
 # Weekend infrastructure
 
-Terraform configuration only. Creating a PR or passing CI never provisions resources.
+Terraform provisioning and release helpers. Creating a PR or passing its CI never provisions resources.
 Run plans for review; applying a plan is a separate operator action. This work was
 prepared without applying either stack.
 
@@ -70,7 +70,9 @@ contents. This PR uses local state, ignored by Git; restrict its permissions and
 use one operator. Before sharing operations across the team, configure an
 access-controlled encrypted remote backend with locking for **each** stack and
 migrate state. Never commit state, tfvars, kubeconfig or saved plans. There is no
-cloud token or deployment permission in GitHub Actions.
+cloud token in PR validation. Release deployment uses a separate GitHub secret
+with Kubernetes read, access-cluster and update scopes only; no cloud creation
+or deletion permissions are needed for the release workflow.
 
 ## Review the cloud plan — safe before provisioning
 
@@ -88,6 +90,8 @@ seven managed resources: VPC, tag, Kubernetes cluster, PostgreSQL cluster,
 database firewall, database and runtime user. It does not mutate the account's
 existing Droplets or default VPC. Its database firewall trusts only this cluster;
 PostgreSQL uses its private endpoint and verified TLS.
+Check that the resource names are unused and `vpc_cidr` does not overlap an
+existing VPC; override the range in your private tfvars when necessary.
 
 ## Later rollout — requires an operator to apply reviewed plans
 
@@ -136,7 +140,18 @@ These steps document the future deployment; none were performed for this PR.
    Bootstrap may take time; inspect its logs if it fails. It stops on any error,
    does not silently substitute fixtures, and preserves completed Job state so
    later Terraform runs do not unexpectedly repeat setup.
-5. After successful import, set `bootstrap_generation=null`,
+5. Before enabling serving, add `FORWARDED_ALLOW_IPS` to `runtime_secrets` with
+   the actual ingress proxy IPs/CIDRs. Never use `*` or a publicly routable
+   catch-all network. Ensure ingress replaces untrusted forwarded headers and
+   restrict direct application access to trusted proxies. This lets login
+   throttling distinguish clients instead of locking every buyer behind one
+   ingress address. The plan rejects enabling replicas without explicit proxy
+   trust. The application image supplies its own shared model name/revision pin.
+   For upgrades from earlier PR #4 revisions, also follow the migration 002,
+   prepare-key and privileged product-scope steps in [README](../README.md).
+   Migration with an admin role must grant the runtime role access to any new
+   tables, including `prepare_requests`; bootstrap's grant step covers them.
+   After successful import, set `bootstrap_generation=null`,
    `bootstrap_credentials=null`, and `app_replicas=1`. Plan/apply again. This
    removes the temporary admin/seed Kubernetes Secret and completed setup Job,
    then starts serving with the restricted database role. Keep the private demo
@@ -151,6 +166,70 @@ Future migrations/imports require an intentional new setup generation with the
 app stopped and temporary setup credentials re-supplied. Renew the kubeconfig
 through the provider/CLI when its credentials expire. The helper does not rotate
 demo credentials on reruns.
+
+## Simple main-to-cluster release pipeline
+
+The main CI workflow calls `Build and deploy` only after its `CI gate` passes on
+a push to `main`. It builds the PR #4 Dockerfile for `linux/amd64`, pushes
+`ghcr.io/junction-best-team/main-application:sha-COMMIT`, and records the immutable
+digest in the run summary. PRs and pushes to `develop` never publish or deploy.
+Docker layers are cached. Main releases are serialized so a new commit cannot
+cancel a deployment halfway through.
+
+### One-time setup
+
+1. Merge the application and pipeline into `develop`, then release `develop` to
+   `main`. Deployment is **off by default**: the first release only builds the
+   image. There must be a Dockerfile on `main` before building. To rebuild manually,
+   run **Build and deploy** in Actions, select `main`, and leave **deploy** off.
+2. Open the new container package's settings and make it **public** so the demo
+   cluster can pull it without registry credentials. New GHCR packages start
+   private even when the source repository is public. Alternatively configure a
+   persistent registry pull Secret through `image_pull_secret_names`. Do not use
+   the short-lived Actions token as a cluster image-pull credential.
+3. Use the image digest from the run summary in `prepare-runtime.py --image ...`.
+   Complete the cloud provisioning and rollout steps above, including DNS,
+   database migration/seeding, full catalog import, and `app_replicas=1`.
+   Verify the demo is healthy before enabling automatic deployment.
+4. Create a deployment DigitalOcean token with `kubernetes:read`,
+   `kubernetes:access_cluster`, and `kubernetes:update` scopes. Its account must
+   have permission to administer the demo cluster. Add it as the repository
+   secret **DIGITALOCEAN_TOKEN**. This token is for deployment, not an application
+   pod. Set repository variables **DIGITALOCEAN_CLUSTER_ID** (the cloud stack's
+   `cluster_id` output), **DEPLOY_NAMESPACE** if different from `junction`, and
+   finally **DEPLOY_ENABLED=true**. For example:
+
+   ```sh
+   gh secret set DIGITALOCEAN_TOKEN --repo Junction-Best-Team/Main-Application
+   gh variable set DIGITALOCEAN_CLUSTER_ID --repo Junction-Best-Team/Main-Application
+   gh variable set DEPLOY_ENABLED --body true --repo Junction-Best-Team/Main-Application
+   ```
+
+5. Run **Build and deploy** manually on `main` with **deploy** checked for the
+   first end-to-end deployment. Subsequent checked releases into `main` build and
+   deploy automatically. To pause automatic deployment, set `DEPLOY_ENABLED=false`.
+   A manual run with **deploy** checked explicitly requests deployment regardless
+   of that variable.
+
+The deploy job temporarily adds only its runner's IPv4 `/32` to the existing
+DOKS control-plane allowlist, gets a 30-minute kubeconfig, updates `deployment/aimo`
+to the published digest, and waits for readiness. Cleanup removes that temporary
+IP and local kubeconfig even after a rollout failure. If a runner is forcibly
+terminated and cleanup cannot run, remove its `/32` through the cloud console
+or reapply the cloud stack's operator allowlist. A failed rollout restores the
+previous image and leaves the workflow failed. The job refuses to enable a
+stopped or unbootstrapped app.
+
+Terraform owns initial infrastructure/configuration and the first image; it
+ignores later Deployment image changes so an infrastructure apply cannot undo
+the CI release. For a schema change, stop the app and run an explicit reviewed
+setup generation with the matching image before releasing compatible serving
+code. CI never runs Terraform apply, migrations, seed, or catalog import.
+
+Rollback can also be done manually with `kubectl -n junction set image
+deployment/aimo aimo=ghcr.io/...@sha256:PREVIOUS_DIGEST`, followed by `kubectl -n
+junction rollout status deployment/aimo`. The deployment uses `Recreate`, so
+brief downtime during releases is expected on the single demo worker.
 
 ## Another cloud or an existing cluster
 

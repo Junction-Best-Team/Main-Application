@@ -175,7 +175,15 @@ def test_main_serve_runs_uvicorn_on_all_interfaces(monkeypatch):
     seen = {}
     monkeypatch.setattr(uvicorn, "run", lambda app, **kw: seen.update(app=app, **kw))
     run_main(monkeypatch, "serve")
-    assert seen == {"app": "aimo.api:app", "host": "0.0.0.0", "port": 8000}
+    from aimo.config import settings
+
+    # Proxy headers are trusted only from the configured addresses (default: loopback).
+    assert seen == {
+        "app": "aimo.api:app",
+        "host": "0.0.0.0",
+        "port": 8000,
+        "forwarded_allow_ips": settings().forwarded_allow_ips,
+    }
 
 
 def test_main_cache_model_loads_the_pinned_model(monkeypatch, capsys):

@@ -561,6 +561,43 @@ export interface components {
             overbuy: "allowed" | "requires_approval" | "forbidden";
             /** Whole Sales Units */
             whole_sales_units: boolean;
+            /**
+             * Approved Product Ids
+             * @description Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope blocks regulated substitutions until privileged setup supplies it.
+             */
+            approved_product_ids?: string[] | null;
+        };
+        /** PrepareRequest */
+        PrepareRequest: {
+            /** Request Id */
+            request_id: string;
+            /** Lines */
+            lines: components["schemas"]["LineRequest-Input"][];
+            /** Destination */
+            destination: string;
+            /**
+             * Delivery Date
+             * Format: date
+             */
+            delivery_date: string;
+            requirements?: components["schemas"]["Requirements"];
+            /** Budget Gross */
+            budget_gross?: number | string | null;
+            /**
+             * Allow Substitution
+             * @default true
+             */
+            allow_substitution: boolean;
+            /**
+             * Allow Overbuy
+             * @default true
+             */
+            allow_overbuy: boolean;
+            /**
+             * Idempotency Key
+             * @description Stable key for retries of this preparation, scoped to buyer and agent. Use a new key for a new purchase or fresh proposal after expiry.
+             */
+            idempotency_key: string;
         };
         /** ProductResponse */
         ProductResponse: {
@@ -664,7 +701,7 @@ export interface components {
             buyer_id: string;
             /** Agent Id */
             agent_id: string;
-            request: components["schemas"]["PurchaseRequest-Output"];
+            request: components["schemas"]["PurchaseRequest"];
             snapshot: components["schemas"]["PurchaseSnapshot"];
             /** History */
             history?: {
@@ -684,34 +721,7 @@ export interface components {
             product_id: string;
         };
         /** PurchaseRequest */
-        "PurchaseRequest-Input": {
-            /** Request Id */
-            request_id: string;
-            /** Lines */
-            lines: components["schemas"]["LineRequest-Input"][];
-            /** Destination */
-            destination: string;
-            /**
-             * Delivery Date
-             * Format: date
-             */
-            delivery_date: string;
-            requirements?: components["schemas"]["Requirements"];
-            /** Budget Gross */
-            budget_gross?: number | string | null;
-            /**
-             * Allow Substitution
-             * @default true
-             */
-            allow_substitution: boolean;
-            /**
-             * Allow Overbuy
-             * @default true
-             */
-            allow_overbuy: boolean;
-        };
-        /** PurchaseRequest */
-        "PurchaseRequest-Output": {
+        PurchaseRequest: {
             /** Request Id */
             request_id: string;
             /** Lines */
@@ -853,7 +863,7 @@ export interface components {
             buyer_id: string;
             /** Agent Id */
             agent_id: string;
-            request: components["schemas"]["PurchaseRequest-Output"];
+            request: components["schemas"]["PurchaseRequest"];
             snapshot: components["schemas"]["PurchaseSnapshot"];
             /** History */
             history?: {
@@ -1384,7 +1394,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PurchaseRequest-Input"];
+                "application/json": components["schemas"]["PrepareRequest"];
             };
         };
         responses: {

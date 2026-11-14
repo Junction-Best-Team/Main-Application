@@ -1,23 +1,23 @@
 """Read-only sponsor integration. The supplier has no order-placement API."""
 
 import logging
+import math
+import random
 import time
 from datetime import date, datetime, timedelta
 from datetime import time as daytime
-from decimal import Decimal, InvalidOperation
+from decimal import InvalidOperation
+from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
 
 import httpx
 
 from aimo.config import settings
 from aimo.db import Problem, now
+from aimo.numeric import D
 
 log = logging.getLogger(__name__)
 HELSINKI = ZoneInfo("Europe/Helsinki")
-
-
-def D(value):
-    return Decimal(str(value))
 
 
 def timestamp(value: str, end=False) -> datetime:
@@ -27,6 +27,21 @@ def timestamp(value: str, end=False) -> datetime:
         )
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=HELSINKI)
+
+
+def retry_delay(response, attempt):
+    fallback = 0.25 * 2**attempt + random.uniform(0, 0.1)
+    value = response.headers.get("Retry-After") if response is not None else None
+    if value:
+        try:
+            seconds = int(value)
+        except ValueError:
+            try:
+                seconds = (parsedate_to_datetime(value) - now()).total_seconds()
+            except (ValueError, TypeError, OverflowError):
+                return fallback
+        return max(fallback, seconds)
+    return fallback
 
 
 class ValioClient:
@@ -40,9 +55,10 @@ class ValioClient:
                 "Live mode needs the server-side Valio API key.",
                 503,
             )
-        for attempt in range(3):
-            try:
-                with httpx.Client(timeout=15, follow_redirects=False) as client:
+        with httpx.Client(timeout=15, follow_redirects=False) as client:
+            for attempt in range(3):
+                response = None
+                try:
                     response = client.post(
                         cfg.valio_aimo_base_url + endpoint,
                         json=payload,
@@ -51,19 +67,45 @@ class ValioClient:
                             "User-Agent": "Junction-Aimo-Gateway/0.1",
                         },
                     )
-                if response.status_code == 429 or response.status_code >= 500:
-                    if attempt < 2:
-                        time.sleep(0.25 * 2**attempt)
-                        continue
-                response.raise_for_status()
-                return response.json()
-            except (httpx.HTTPError, ValueError):
-                if attempt == 2:
+                except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError):
+                    pass  # Retry only transient transport failures, within the same small budget.
+                except httpx.HTTPError:
                     raise Problem(
                         "UPSTREAM_UNAVAILABLE",
-                        "Supplier lookup failed; no commercial terms were confirmed.",
-                        503,
+                        "Supplier transport rejected the lookup; no automatic retry.",
+                        502,
                     ) from None
+                else:
+                    if 200 <= response.status_code < 300:
+                        try:
+                            return response.json()
+                        except ValueError:
+                            raise Problem(
+                                "UPSTREAM_SCHEMA_INVALID", "Supplier returned invalid JSON.", 502
+                            ) from None
+                    if response.status_code not in (408, 429, 500, 502, 503, 504):
+                        raise Problem(
+                            "UPSTREAM_REJECTED",
+                            f"Supplier rejected the lookup (HTTP {response.status_code}); no automatic retry.",
+                            502,
+                        )
+                delay = retry_delay(response, attempt)
+                # Never truncate a long Retry-After and then retry earlier than requested.
+                # Return it to the caller instead of blocking a worker for a long period.
+                if attempt == 2 or delay > 5:
+                    code = (
+                        "UPSTREAM_RATE_LIMITED"
+                        if response is not None and response.status_code == 429
+                        else "UPSTREAM_UNAVAILABLE"
+                    )
+                    wait = math.ceil(delay)
+                    raise Problem(
+                        code,
+                        f"Supplier lookup unavailable; retry after {wait} seconds.",
+                        503,
+                        retry_after=wait,
+                    )
+                time.sleep(delay)
         raise Problem("UPSTREAM_UNAVAILABLE", "Supplier lookup failed.", 503)
 
     def lookup(self, customer: str, ids: list[str], delivery_date: date):

@@ -50,6 +50,7 @@ async def main():
                 product = await session.call_tool("get_product", {"product_id": "464306"})
                 assert not product.isError and product.structuredContent["id"] == "464306"
                 purchase = {
+                    "idempotency_key": str(uuid4()),
                     "request_id": "MCP autonomous smoke",
                     "destination": "hotel-helsinki",
                     "delivery_date": str(date.today() + timedelta(days=2)),

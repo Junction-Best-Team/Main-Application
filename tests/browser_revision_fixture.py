@@ -12,7 +12,7 @@ from aimo import approval_workflow as workflow
 from aimo.auth import agent_identity
 from aimo.config import settings
 from aimo.db import connection
-from aimo.schemas import CommitRequest, DecisionRequest, PurchaseRequest
+from aimo.schemas import CommitRequest, DecisionRequest, PrepareRequest
 from aimo.service import Service
 from aimo.upstream import FixtureClient
 
@@ -28,7 +28,8 @@ def main():
     service = Service(connector)
     proposal = service.prepare_order(
         agent,
-        PurchaseRequest(
+        PrepareRequest(
+            idempotency_key=str(uuid4()),
             request_id=f"Historical terms regression {uuid4()}",
             destination="hotel-helsinki",
             delivery_date=date.today() + timedelta(days=2),

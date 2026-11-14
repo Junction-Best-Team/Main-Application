@@ -73,7 +73,9 @@ def test_post_retries_429_with_exponential_backoff_then_succeeds(monkeypatch, sl
 
     serve(monkeypatch, handler)
     assert ValioClient().post("/api/price", {}) == {"attempt": "last"}
-    assert sleeps == [0.25, 0.5]
+    # Exponential backoff (0.25 s, 0.5 s) plus up to 0.1 s of jitter.
+    assert len(sleeps) == 2
+    assert 0.25 <= sleeps[0] <= 0.35 and 0.5 <= sleeps[1] <= 0.6
 
 
 def test_post_retries_a_server_error_then_succeeds(monkeypatch, sleeps):
@@ -83,7 +85,7 @@ def test_post_retries_a_server_error_then_succeeds(monkeypatch, sleeps):
         lambda r: httpx.Response(next(answers), json={"v": 1}),
     )
     assert ValioClient().post("/api/price", {}) == {"v": 1}
-    assert sleeps == [0.25]
+    assert len(sleeps) == 1 and 0.25 <= sleeps[0] <= 0.35
 
 
 def test_post_retries_a_transport_error_then_succeeds(monkeypatch, sleeps):
@@ -111,18 +113,28 @@ def test_post_exhausted_retries_fail_closed_without_leaking_the_key(monkeypatch,
     serve(monkeypatch, handler)
     with pytest.raises(Problem) as error:
         ValioClient().post("/api/price", {})
-    assert (error.value.code, error.value.status) == ("UPSTREAM_UNAVAILABLE", 503)
-    assert "no commercial terms were confirmed" in error.value.message
+    expected = "UPSTREAM_RATE_LIMITED" if status == 429 else "UPSTREAM_UNAVAILABLE"
+    assert (error.value.code, error.value.status) == (expected, 503)
+    assert "retry after" in error.value.message
     assert KEY not in error.value.message
     assert len(calls) == 3
-    assert sleeps == [0.25, 0.5]
+    assert len(sleeps) == 2
 
 
-def test_post_client_error_is_reported_as_unavailable(monkeypatch, sleeps):
-    serve(monkeypatch, lambda r: httpx.Response(401, json={"detail": "bad key"}))
+@pytest.mark.parametrize("status", [400, 401, 403, 404])
+def test_post_permanent_client_error_is_rejected_without_retrying(monkeypatch, sleeps, status):
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        return httpx.Response(status, json={"detail": "bad key"})
+
+    serve(monkeypatch, handler)
     with pytest.raises(Problem) as error:
         ValioClient().post("/api/price", {})
-    assert error.value.code == "UPSTREAM_UNAVAILABLE"
+    assert (error.value.code, error.value.status) == ("UPSTREAM_REJECTED", 502)
+    assert str(status) in error.value.message
+    assert len(calls) == 1 and sleeps == []
 
 
 def test_post_a_redirect_is_not_followed_and_is_an_error(monkeypatch, sleeps):
@@ -135,7 +147,7 @@ def test_post_a_redirect_is_not_followed_and_is_an_error(monkeypatch, sleeps):
     serve(monkeypatch, handler)
     with pytest.raises(Problem) as error:
         ValioClient().post("/api/price", {})
-    assert error.value.code == "UPSTREAM_UNAVAILABLE"
+    assert error.value.code == "UPSTREAM_REJECTED"  # a 302 is not retried and not followed
     assert all(url.startswith("https://valio.test/") for url in seen)
 
 
@@ -143,7 +155,42 @@ def test_post_malformed_json_body_fails_closed(monkeypatch, sleeps):
     serve(monkeypatch, lambda r: httpx.Response(200, text="<html>not json</html>"))
     with pytest.raises(Problem) as error:
         ValioClient().post("/api/price", {})
-    assert error.value.code == "UPSTREAM_UNAVAILABLE"
+    assert error.value.code == "UPSTREAM_SCHEMA_INVALID"
+
+
+def test_post_non_http_transport_error_is_not_retried(monkeypatch, sleeps):
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        raise httpx.UnsupportedProtocol("bad scheme")
+
+    serve(monkeypatch, handler)
+    with pytest.raises(Problem) as error:
+        ValioClient().post("/api/price", {})
+    assert (error.value.code, error.value.status) == ("UPSTREAM_UNAVAILABLE", 502)
+    assert len(calls) == 1
+
+
+def test_post_honours_a_short_retry_after(monkeypatch, sleeps):
+    answers = iter([429, 200])
+
+    def handler(request):
+        if next(answers) == 429:
+            return httpx.Response(429, headers={"Retry-After": "2"})
+        return httpx.Response(200, json={"ok": 1})
+
+    serve(monkeypatch, handler)
+    assert ValioClient().post("/api/price", {}) == {"ok": 1}
+    assert sleeps == [2]  # never earlier than requested
+
+
+def test_post_returns_a_long_retry_after_to_the_caller_instead_of_sleeping(monkeypatch, sleeps):
+    serve(monkeypatch, lambda r: httpx.Response(429, headers={"Retry-After": "60"}))
+    with pytest.raises(Problem) as error:
+        ValioClient().post("/api/price", {})
+    assert error.value.code == "UPSTREAM_RATE_LIMITED"
+    assert error.value.retry_after == 60 and sleeps == []  # not blocking a worker for a minute
 
 
 def test_post_without_a_key_makes_no_request(monkeypatch):

@@ -2,12 +2,13 @@ mock_provider "kubernetes" {}
 mock_provider "helm" {}
 
 variables {
-  image          = "ghcr.io/junction-best-team/main-application:test-commit"
-  hostname       = "aimo.test.example.com"
-  acme_email     = "demo@example.com"
-  database_url   = "postgresql://test:synthetic@postgres.test:5432/aimo?sslmode=verify-full&sslrootcert=/etc/aimo-db/ca.crt"
-  database_ca    = "synthetic-test-ca"
-  session_secret = "synthetic-test-session-secret-at-least-32-chars"
+  image           = "ghcr.io/junction-best-team/main-application:test-commit"
+  hostname        = "aimo.test.example.com"
+  acme_email      = "demo@example.com"
+  database_url    = "postgresql://test:synthetic@postgres.test:5432/aimo?sslmode=verify-full&sslrootcert=/etc/aimo-db/ca.crt"
+  database_ca     = "synthetic-test-ca"
+  session_secret  = "synthetic-test-session-secret-at-least-32-chars"
+  runtime_secrets = { FORWARDED_ALLOW_IPS = "10.23.0.0/24" }
 }
 
 run "safe_initial_plan" {
@@ -47,6 +48,24 @@ run "reject_unverified_database_tls" {
   command = plan
   variables { database_url = "postgresql://test:synthetic@postgres.test/aimo?sslmode=disable" }
   expect_failures = [var.database_url]
+}
+
+run "reject_serving_without_trusted_proxy" {
+  command = plan
+  variables {
+    app_replicas    = 1
+    runtime_secrets = {}
+  }
+  expect_failures = [kubernetes_deployment_v1.aimo]
+}
+
+run "reject_wildcard_proxy_trust" {
+  command = plan
+  variables {
+    app_replicas    = 1
+    runtime_secrets = { FORWARDED_ALLOW_IPS = "*" }
+  }
+  expect_failures = [kubernetes_deployment_v1.aimo]
 }
 
 run "reject_import_with_serving_app" {

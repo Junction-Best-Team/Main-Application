@@ -39,30 +39,75 @@ def signer():
     return URLSafeTimedSerializer(secret, salt="aimo-buyer-session-v1")
 
 
+def increment_attempts(c, key, current, window):
+    return c.execute(
+        """INSERT INTO login_attempts(key,attempts,window_start) VALUES(%s,1,%s)
+        ON CONFLICT(key) DO UPDATE SET
+          attempts=CASE WHEN login_attempts.window_start <= %s THEN 1 ELSE login_attempts.attempts+1 END,
+          window_start=CASE WHEN login_attempts.window_start <= %s THEN %s ELSE login_attempts.window_start END
+        RETURNING attempts,window_start""",
+        (key, current, current - window, current - window, current),
+    ).fetchone()
+
+
 def login(username, password, remote):
     current = now()
-    key = digest(remote + ":" + username)
-    # Persist the limiter before password verification, including failed login attempts.
+    request_key = digest("requests:" + remote)
+    failure_key = digest("failures:" + remote + ":" + username)
+    # Bound expensive password checks across all usernames from one verified client IP.
+    # This is separate from the failed-password counter: successful logins never add
+    # failures or cause an account-wide lockout for clients at other addresses.
     with connection() as c:
-        row = c.execute(
-            """INSERT INTO login_attempts(key,attempts,window_start) VALUES(%s,1,%s)
-          ON CONFLICT(key) DO UPDATE SET attempts=CASE WHEN login_attempts.window_start < %s THEN 1 ELSE login_attempts.attempts+1 END,
-          window_start=CASE WHEN login_attempts.window_start < %s THEN %s ELSE login_attempts.window_start END RETURNING attempts""",
-            (key, current, current - timedelta(minutes=5), current - timedelta(minutes=5), current),
+        c.execute(
+            """DELETE FROM login_attempts WHERE key IN (
+            SELECT key FROM login_attempts WHERE window_start <= %s
+            ORDER BY window_start LIMIT 100 FOR UPDATE SKIP LOCKED)""",
+            (current - timedelta(minutes=5),),
+        )
+        c.execute(
+            """DELETE FROM sessions WHERE token_hash IN (
+            SELECT token_hash FROM sessions WHERE expires_at <= %s
+            ORDER BY expires_at LIMIT 100 FOR UPDATE SKIP LOCKED)""",
+            (current,),
+        )
+        requests = increment_attempts(c, request_key, current, timedelta(minutes=1))
+        failures = c.execute(
+            "SELECT attempts,window_start FROM login_attempts WHERE key=%s AND window_start>%s",
+            (failure_key, current - timedelta(minutes=5)),
         ).fetchone()
-    if row["attempts"] > 10:
-        raise Problem("LOGIN_RATE_LIMIT", "Too many attempts. Try again after five minutes.", 429)
+    if requests["attempts"] > 60:
+        raise Problem(
+            "LOGIN_RATE_LIMIT",
+            "Too many login requests from this client; retry later.",
+            429,
+            retry_after=60,
+        )
+    if failures and failures["attempts"] >= 10:
+        remaining = max(
+            1, int((failures["window_start"] + timedelta(minutes=5) - current).total_seconds())
+        )
+        raise Problem(
+            "LOGIN_RATE_LIMIT",
+            "Too many failed attempts from this client; retry later.",
+            429,
+            retry_after=remaining,
+        )
     with connection() as c:
         identity = c.execute(
-            "SELECT * FROM identities WHERE id=%s AND role='approver' AND active", (username,)
+            "SELECT * FROM identities WHERE id=%s AND role='approver' AND active",
+            (username,),
         ).fetchone()
-        try:
-            valid = hasher.verify(identity["credential_hash"] if identity else DUMMY_HASH, password)
-        except VerificationError:
-            valid = False
-        if not identity or not valid:
-            raise Problem("LOGIN_FAILED", "Username or password is incorrect.", 401)
-        token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+    try:
+        valid = hasher.verify(identity["credential_hash"] if identity else DUMMY_HASH, password)
+    except VerificationError:
+        valid = False
+    if not identity or not valid:
+        with connection() as c:
+            increment_attempts(c, failure_key, current, timedelta(minutes=5))
+        raise Problem("LOGIN_FAILED", "Username or password is incorrect.", 401)
+    token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+    with connection() as c:
+        c.execute("DELETE FROM login_attempts WHERE key=%s", (failure_key,))
         c.execute(
             "INSERT INTO sessions VALUES(%s,%s,%s,%s)",
             (digest(token), username, digest(csrf), current + timedelta(hours=8)),

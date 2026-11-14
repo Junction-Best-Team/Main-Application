@@ -12,7 +12,13 @@ from aimo.approval_policy import can_approve, evaluate_purchase
 from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, js, now
 from aimo.purchases import build_snapshot, context, material_fingerprint
-from aimo.schemas import AgentAuthority, CommitRequest, DecisionRequest, PurchaseRequest
+from aimo.schemas import (
+    AgentAuthority,
+    CommitRequest,
+    DecisionRequest,
+    PrepareRequest,
+    PurchaseRequest,
+)
 
 
 def audit(c, pid, actor, event, detail):
@@ -40,9 +46,9 @@ def proposal(c, pid, identity, lock=False):
 
 
 def append_revision(
-    c, pid, revision, identity, request, snapshot, expires, policy, actor, approvers
+    c, pid, revision, identity, request, snapshot, expires, policy, actor, approvers, evaluated=None
 ):
-    evaluated = evaluate_purchase(
+    evaluated = evaluated or evaluate_purchase(
         request, snapshot, policy["rules"], actor["authority"], [a["authority"] for a in approvers]
     )
     fp = material_fingerprint(request, snapshot, policy["version"])
@@ -84,10 +90,10 @@ def evaluation_changed(revision, evaluated):
     return any(revision[key] != evaluated[key] for key in evaluated)
 
 
-def render(c, p, r, a, identity):
+def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, history=None):
     current = now()
     status = a["status"] if a else "not_required"
-    buyer, policy, actor, approvers = context(c, identity)
+    buyer, policy, actor, approvers = auth_context or context(c, identity)
     historical = r["revision"] != p["current_revision"]
     order = (
         c.execute("SELECT id,revision FROM orders WHERE id=%s", (p["order_id"],)).fetchone()
@@ -104,10 +110,11 @@ def render(c, p, r, a, identity):
             status = "policy_changed"
         elif status != "rejected":
             # Buyer views must evaluate the purchasing agent, not the approver's authority.
-            purchasing_agent = c.execute(
-                "SELECT authority,active FROM identities WHERE id=%s AND buyer_id=%s",
-                (p["agent_id"], p["buyer_id"]),
-            ).fetchone()
+            if purchasing_agent is None:
+                purchasing_agent = c.execute(
+                    "SELECT authority,active FROM identities WHERE id=%s AND buyer_id=%s",
+                    (p["agent_id"], p["buyer_id"]),
+                ).fetchone()
             try:
                 authority = AgentAuthority.model_validate(
                     purchasing_agent["authority"]
@@ -184,7 +191,9 @@ def render(c, p, r, a, identity):
         "request": r["request"],
         "snapshot": r["snapshot"],
         "can_decide": can_decide,
-        "history": [
+        "history": history
+        if history is not None
+        else [
             dict(row)
             for row in c.execute(
                 "SELECT event,actor_id,detail,created_at FROM audit_events WHERE proposal_id=%s ORDER BY id",
@@ -199,10 +208,35 @@ def get_proposal(identity, pid):
         return render(c, *proposal(c, pid, identity), identity)
 
 
-def prepare_order(identity, request: PurchaseRequest, connector):
+def prior_preparation(c, identity, key, payload_hash):
+    old = c.execute(
+        "SELECT proposal_id,payload_hash FROM prepare_requests WHERE buyer_id=%s AND agent_id=%s AND key=%s",
+        (identity["buyer_id"], identity["id"], key),
+    ).fetchone()
+    if old:
+        if old["payload_hash"] != payload_hash:
+            raise Problem(
+                "IDEMPOTENCY_CONFLICT",
+                "This preparation key already identifies a different purchase request.",
+            )
+        return render(c, *proposal(c, old["proposal_id"], identity), identity)
+    return None
+
+
+def prepare_order(identity, request: PrepareRequest, connector):
+    payload = request.model_dump(mode="json", exclude={"idempotency_key"})
+    payload_hash = fingerprint(payload)
+    with connection() as c:
+        context(c, identity)
+        old = prior_preparation(c, identity, request.idempotency_key, payload_hash)
+        if old:
+            return old
     snapshot, expires, version = build_snapshot(identity, request, connector)
     with connection() as c:
         _, policy, actor, approvers = context(c, identity, lock=True)
+        old = prior_preparation(c, identity, request.idempotency_key, payload_hash)
+        if old:
+            return old
         if version != policy["version"]:
             raise Problem("POLICY_CHANGED", "Policy changed during lookup; prepare again.")
         pid = uuid4()
@@ -215,12 +249,16 @@ def prepare_order(identity, request: PurchaseRequest, connector):
             pid,
             1,
             identity,
-            request.model_dump(mode="json"),
+            payload,
             snapshot,
             expires,
             policy,
             actor,
             approvers,
+        )
+        c.execute(
+            "INSERT INTO prepare_requests(buyer_id,agent_id,key,payload_hash,proposal_id) VALUES(%s,%s,%s,%s,%s)",
+            (identity["buyer_id"], identity["id"], request.idempotency_key, payload_hash, pid),
         )
         return render(c, *proposal(c, pid, identity), identity)
 
@@ -245,17 +283,53 @@ def approval_detail(identity, aid):
 
 def list_approvals(identity, offset=0, limit=20):
     with connection() as c:
-        context(c, identity)
+        # One consistent read snapshot; permissions are always rechecked on a decision.
+        c.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        auth_context = context(c, identity)
         rows = c.execute(
-            """SELECT p.id FROM proposals p JOIN approvals a ON a.proposal_id=p.id AND a.revision=p.current_revision
+            """SELECT p.*,r.revision,r.policy_version,r.request,r.snapshot,r.fingerprint,
+          r.policy_outcome,r.reasons,r.required_exceptions,r.expires_at,
+          a.id AS approval_id,a.status AS approval_status,a.actor_id AS approval_actor,
+          a.fingerprint AS approval_fingerprint,i.authority AS agent_authority,i.active AS agent_active
+          FROM proposals p JOIN approvals a ON a.proposal_id=p.id AND a.revision=p.current_revision
           JOIN proposal_revisions r ON r.proposal_id=p.id AND r.revision=p.current_revision
           JOIN buyers b ON b.id=p.buyer_id
+          JOIN identities i ON i.id=p.agent_id AND i.buyer_id=p.buyer_id
           WHERE p.buyer_id=%s AND a.status='pending' AND p.order_id IS NULL AND r.expires_at>%s AND r.policy_version=b.current_policy
           ORDER BY r.expires_at,p.id LIMIT %s OFFSET %s""",
             (identity["buyer_id"], now(), limit + 1, offset),
         ).fetchall()
+        page = rows[:limit]
+        histories = {row["id"]: [] for row in page}
+        if page:
+            for event in c.execute(
+                "SELECT proposal_id,event,actor_id,detail,created_at FROM audit_events WHERE proposal_id=ANY(%s) ORDER BY id",
+                (list(histories),),
+            ).fetchall():
+                pid = event.pop("proposal_id")
+                histories[pid].append(event)
         return {
-            "items": [render(c, *proposal(c, r["id"], identity), identity) for r in rows[:limit]],
+            "items": [
+                render(
+                    c,
+                    row,
+                    row,
+                    {
+                        "id": row["approval_id"],
+                        "status": row["approval_status"],
+                        "actor_id": row["approval_actor"],
+                        "fingerprint": row["approval_fingerprint"],
+                    },
+                    identity,
+                    auth_context=auth_context,
+                    purchasing_agent={
+                        "authority": row["agent_authority"],
+                        "active": row["agent_active"],
+                    },
+                    history=histories[row["id"]],
+                )
+                for row in page
+            ],
             "next_offset": offset + limit if len(rows) > limit else None,
         }
 
@@ -329,16 +403,9 @@ def prior_result(c, identity, request):
     return None
 
 
-def authorize_commit(c, p, r, a, policy, actor, approvers, snapshot):
+def authorize_commit(r, a, approvers, snapshot, evaluation):
     if r["expires_at"] <= now():
         raise Problem("PROPOSAL_EXPIRED", "Prepare a fresh proposal.")
-    evaluation = evaluate_purchase(
-        r["request"],
-        snapshot,
-        policy["rules"],
-        actor["authority"],
-        [x["authority"] for x in approvers],
-    )
     if a and a["status"] == "rejected":
         raise Problem("APPROVAL_REJECTED", "Buyer rejected this purchase.")
     if evaluation["policy_outcome"] == "ready_to_commit":
@@ -419,12 +486,13 @@ def commit_order(identity, request: CommitRequest, connector):
                 policy,
                 actor,
                 approvers,
+                evaluated=evaluated,
             )
             return {
                 "status": "revised",
                 **render(c, *proposal(c, p["id"], identity), identity),
             }
-        authorize_commit(c, p, r, a, policy, actor, approvers, snapshot)
+        authorize_commit(r, a, approvers, snapshot, evaluated)
         oid = uuid4()
         receipt = {
             "order_id": str(oid),

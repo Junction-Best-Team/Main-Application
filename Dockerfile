@@ -13,7 +13,8 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 # Pinned, untrusted-code-disabled model is cached during build, not fetched at pod startup.
 ENV HF_HOME=/opt/aimo-model
-RUN .venv/bin/python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('intfloat/multilingual-e5-small', revision='614241f622f53c4eeff9890bdc4f31cfecc418b3', device='cpu', trust_remote_code=False)"
+COPY src/aimo/model_spec.py /tmp/model_spec.py
+RUN .venv/bin/python -c "import sys; sys.path.insert(0, '/tmp'); from model_spec import EMBEDDING_MODEL, EMBEDDING_REVISION; from sentence_transformers import SentenceTransformer; SentenceTransformer(EMBEDDING_MODEL, revision=EMBEDDING_REVISION, device='cpu', trust_remote_code=False)"
 COPY src/ src/
 RUN uv sync --frozen --no-dev
 

@@ -27,6 +27,7 @@ RULES = {
     "destinations": ["hotel"],
     "substitution": "requires_approval",
     "overbuy": "requires_approval",
+    "approved_product_ids": ["464306"],
 }
 AUTHORITY = {"currency": "EUR", "autonomous_limit": "1500"}
 APPROVER = {"currency": "EUR", "max_gross": "5000", "exceptions": ["spend", "overbuy"]}
@@ -42,7 +43,10 @@ def snapshot(total="10.00", currency="EUR", excess="0"):
 
 
 def evaluate(request=None, snap=None, rules=RULES, authority=AUTHORITY, approvers=(APPROVER,)):
-    request = request or {"destination": "hotel", "lines": [{"substitutes_for": None}]}
+    request = request or {
+        "destination": "hotel",
+        "lines": [{"product_id": "464306", "substitutes_for": None}],
+    }
     return evaluate_purchase(request, snap or snapshot(), rules, authority, list(approvers))
 
 
@@ -85,6 +89,26 @@ def test_an_unrecognised_exception_rule_neither_forbids_nor_asks():
     assert result["policy_outcome"] == "ready_to_commit"
 
 
+def test_missing_product_scope_blocks_substitution_rules_instead_of_assuming_one():
+    rules = {k: v for k, v in RULES.items() if k != "approved_product_ids"}
+    result = evaluate(rules=rules)
+    assert "PRODUCT_SCOPE_UNCONFIGURED" in reason_codes(result)
+    assert result["policy_outcome"] == "needs_resolution"
+
+
+def test_product_outside_the_approved_scope_counts_as_a_substitution_needing_approval():
+    request = {"destination": "hotel", "lines": [{"product_id": "999999", "substitutes_for": None}]}
+    capable = {**APPROVER, "exceptions": ["substitution"]}
+    result = evaluate(request=request, approvers=[capable])
+    assert "SUBSTITUTION_REQUIRES_APPROVAL" in reason_codes(result)
+    assert result["required_exceptions"] == ["substitution"]
+    assert result["policy_outcome"] == "approval_required"
+    # With only an approver who cannot clear substitutions, it needs resolution, not approval.
+    stuck = evaluate(request=request)
+    assert "NO_ELIGIBLE_APPROVER" in reason_codes(stuck)
+    assert stuck["policy_outcome"] == "needs_resolution"
+
+
 def test_missing_exception_rule_defaults_to_forbidden():
     rules = {k: v for k, v in RULES.items() if k != "overbuy"}
     result = evaluate(snap=snapshot(excess="3"), rules=rules)
@@ -96,7 +120,7 @@ def test_request_can_forbid_what_policy_would_allow_with_approval():
     request = {
         "destination": "hotel",
         "allow_overbuy": False,
-        "lines": [{"substitutes_for": None}],
+        "lines": [{"product_id": "464306", "substitutes_for": None}],
     }
     result = evaluate(request=request, snap=snapshot(excess="3"))
     assert "OVERBUY_FORBIDDEN" in reason_codes(result)
@@ -308,7 +332,7 @@ def test_search_limit_is_respected_and_scores_descend(agent):
 def test_real_model_key_embeds_with_query_and_passage_prefixes_and_pins_the_revision(monkeypatch):
     cfg = Settings(_env_file=None, embedding_backend="sentence_transformers")
     monkeypatch.setattr(search, "settings", lambda: cfg)
-    assert search.model_key() == (f"intfloat/multilingual-e5-small@{search.PINNED_REVISION}")
+    assert search.model_key() == (f"intfloat/multilingual-e5-small@{search.EMBEDDING_REVISION}")
     pinned = Settings(
         _env_file=None,
         embedding_backend="sentence_transformers",
@@ -347,7 +371,7 @@ def test_real_model_key_embeds_with_query_and_passage_prefixes_and_pins_the_revi
     assert len(built) == 1  # the model is built once and cached
     name, kwargs = built[0]
     assert name == "intfloat/multilingual-e5-small"
-    assert kwargs["revision"] == search.PINNED_REVISION
+    assert kwargs["revision"] == search.EMBEDDING_REVISION
     assert kwargs["trust_remote_code"] is False and kwargs["device"] == "cpu"
 
 
@@ -389,11 +413,11 @@ def test_csrf_check_needs_the_matching_token_and_origin():
 def test_duplicate_product_lines_are_rejected_with_a_validation_error(request_data):
     from pydantic import ValidationError
 
-    from aimo.schemas import PurchaseRequest
+    from aimo.schemas import PrepareRequest
 
     request_data["lines"] = [
         {"product_id": "464306", "amount": "1", "unit": "L"},
         {"product_id": "464306", "amount": "2", "unit": "L"},
     ]
     with pytest.raises(ValidationError, match="duplicate product IDs"):
-        PurchaseRequest.model_validate(request_data)
+        PrepareRequest.model_validate(request_data)

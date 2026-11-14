@@ -48,3 +48,17 @@ frontend/playwright-report/
 
 # Local-only notes (not for GitHub).
 *.local.md
+
+# Terraform state, saved plans, generated credentials and machine-specific inputs.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfplan.*
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+infra/**/kubeconfig*.yaml
+infra/**/kubeconfig*.yml
+infra/**/database-ca*.crt

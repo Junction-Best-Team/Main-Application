@@ -12,12 +12,12 @@ import pytest
 from aimo import purchases
 from aimo.db import Problem, connection, js
 from aimo.purchases import build_snapshot, context, material_fingerprint
-from aimo.schemas import PurchaseRequest
+from aimo.schemas import PrepareRequest
 from aimo.upstream import FixtureClient
 
 
 def req(request_data, lines, **patch):
-    return PurchaseRequest.model_validate({**request_data, "lines": lines, **patch})
+    return PrepareRequest.model_validate({**request_data, "lines": lines, **patch})
 
 
 def codes(snapshot):

@@ -8,7 +8,7 @@ import pytest
 from aimo import approval_workflow as workflow
 from aimo.cli import seed
 from aimo.db import Problem, connection, js, now
-from aimo.schemas import CommitRequest, DecisionRequest, PurchaseRequest
+from aimo.schemas import CommitRequest, DecisionRequest, PrepareRequest
 from aimo.service import Service
 from aimo.upstream import FixtureClient
 
@@ -32,7 +32,7 @@ def expect_code(code, fn):
 
 
 def test_autonomous_and_idempotent_after_restart(service, agent, request_data):
-    p = service.prepare_order(agent, PurchaseRequest(**request_data))
+    p = service.prepare_order(agent, PrepareRequest(**request_data))
     assert p["policy_outcome"] == "ready_to_commit"
     assert p["snapshot"]["gross_total"] == "17.00"
     req = commit(p)
@@ -76,7 +76,7 @@ def test_independent_inbox_and_agent_resume(service, agent, buyer, mission):
 def test_reduced_agent_authority_revises_without_policy_change(
     service, agent, buyer, request_data, eligible_approver
 ):
-    p = service.prepare_order(agent, PurchaseRequest(**request_data))
+    p = service.prepare_order(agent, PrepareRequest(**request_data))
     assert p["snapshot"]["gross_total"] == "17.00"
     with connection() as c:
         c.execute("SELECT id FROM buyers WHERE id='demo-hotel' FOR UPDATE")
@@ -148,7 +148,7 @@ def test_reduced_agent_authority_revises_without_policy_change(
 )
 def test_four_outcomes_and_hard_requirements(service, agent, request_data, patch, outcome, code):
     request_data.update(patch)
-    p = service.prepare_order(agent, PurchaseRequest(**request_data))
+    p = service.prepare_order(agent, PrepareRequest(**request_data))
     assert p["policy_outcome"] == outcome
     assert code in [r["code"] for r in p["reasons"]]
     assert p["approval_id"] is None
@@ -159,7 +159,7 @@ def test_denied_precedes_unknown(service, agent, request_data):
     request_data.update(
         destination="forbidden", lines=[{"product_id": "465039", "amount": "1", "unit": "boxes"}]
     )
-    p = service.prepare_order(agent, PurchaseRequest(**request_data))
+    p = service.prepare_order(agent, PrepareRequest(**request_data))
     assert p["policy_outcome"] == "denied"
     assert {"DESTINATION_NOT_ALLOWED", "QUANTITY_UNRESOLVED"} <= {r["code"] for r in p["reasons"]}
 
@@ -209,14 +209,14 @@ def test_rejection_expiry_and_revocation(service, agent, buyer, mission, monkeyp
     decide(buyer, p, "reject")
     expect_code("APPROVAL_REJECTED", lambda: service.commit_order(agent, commit(p)))
     expect_code("DECISION_CONFLICT", lambda: decide(buyer, p))
-    p2 = service.prepare_order(agent, mission)
+    p2 = service.prepare_order(agent, mission.model_copy(update={"idempotency_key": str(uuid4())}))
     decide(buyer, p2)
     with connection() as c:
         c.execute("UPDATE identities SET active=false WHERE id='buyer'")
     revised = service.commit_order(agent, commit(p2))
     assert revised["status"] == "revised" and revised["policy_outcome"] == "needs_resolution"
     expect_code("COMMIT_BLOCKED", lambda: service.commit_order(agent, commit(revised)))
-    p3 = service.prepare_order(agent, mission)
+    p3 = service.prepare_order(agent, mission.model_copy(update={"idempotency_key": str(uuid4())}))
     monkeypatch.setattr(workflow, "now", lambda: now() + timedelta(hours=1))
     expect_code("PROPOSAL_EXPIRED", lambda: service.commit_order(agent, commit(p3)))
     assert service.get_proposal(agent, p3["proposal_id"])["approval_status"] == "expired"
@@ -252,13 +252,15 @@ def test_approver_amount_and_exception_scope(service, agent, buyer, mission):
         )
     expect_code("APPROVAL_SCOPE", lambda: decide(buyer, p))
     assert workflow.approval_detail(buyer, p["approval_id"])["can_decide"] is False
-    fresh = service.prepare_order(agent, mission)
+    fresh = service.prepare_order(
+        agent, mission.model_copy(update={"idempotency_key": str(uuid4())})
+    )
     assert fresh["policy_outcome"] == "needs_resolution"
     assert "NO_ELIGIBLE_APPROVER" in [r["code"] for r in fresh["reasons"]]
 
 
 def test_concurrent_same_key_one_order(service, agent, request_data):
-    p = service.prepare_order(agent, PurchaseRequest(**request_data))
+    p = service.prepare_order(agent, PrepareRequest(**request_data))
     req = commit(p)
     with ThreadPoolExecutor(max_workers=8) as executor:
         receipts = list(executor.map(lambda _: service.commit_order(agent, req), range(8)))
@@ -269,7 +271,7 @@ def test_concurrent_same_key_one_order(service, agent, request_data):
 
 
 def test_concurrent_different_keys_and_conflicting_payloads(service, agent, request_data):
-    p = service.prepare_order(agent, PurchaseRequest(**request_data))
+    p = service.prepare_order(agent, PrepareRequest(**request_data))
 
     def submit(_):
         try:
@@ -280,10 +282,14 @@ def test_concurrent_different_keys_and_conflicting_payloads(service, agent, requ
     with ThreadPoolExecutor(max_workers=4) as executor:
         results = list(executor.map(submit, range(4)))
     assert results.count("accepted_mock") == 1 and results.count("ALREADY_COMMITTED") == 3
-    p2 = service.prepare_order(agent, PurchaseRequest(**request_data))
+    p2 = service.prepare_order(
+        agent, PrepareRequest(**(request_data | {"idempotency_key": str(uuid4())}))
+    )
     req = commit(p2, "same-key-for-different-purchases")
     service.commit_order(agent, req)
-    p3 = service.prepare_order(agent, PurchaseRequest(**request_data))
+    p3 = service.prepare_order(
+        agent, PrepareRequest(**(request_data | {"idempotency_key": str(uuid4())}))
+    )
     expect_code(
         "IDEMPOTENCY_CONFLICT", lambda: service.commit_order(agent, commit(p3, req.idempotency_key))
     )
@@ -313,17 +319,19 @@ def test_deposit_totals_and_overbuy(service, agent, buyer, request_data):
     request_data.update(
         requirements={}, lines=[{"product_id": "460123", "amount": "10", "unit": "KI"}]
     )
-    p = service.prepare_order(agent, PurchaseRequest(**request_data))
+    p = service.prepare_order(agent, PrepareRequest(**request_data))
     assert p["snapshot"]["lines"][0]["deposit_lines"][0]["quantity"] == "120"
     assert p["snapshot"]["deposits_gross"] == "15.60"
     assert p["snapshot"]["gross_total"] == "32.60"
+    request_data["idempotency_key"] = str(uuid4())
     request_data["lines"] = [{"product_id": "464306", "amount": "10.5", "unit": "L"}]
-    p = service.prepare_order(agent, PurchaseRequest(**request_data))
+    p = service.prepare_order(agent, PrepareRequest(**request_data))
     assert Decimal(p["snapshot"]["lines"][0]["quantity"]["sales_quantity"]) == 11
     assert p["policy_outcome"] == "approval_required"
+    request_data["idempotency_key"] = str(uuid4())
     request_data["allow_overbuy"] = False
     assert (
-        service.prepare_order(agent, PurchaseRequest(**request_data))["policy_outcome"] == "denied"
+        service.prepare_order(agent, PrepareRequest(**request_data))["policy_outcome"] == "denied"
     )
 
 
@@ -339,5 +347,5 @@ def test_invalid_policy_does_not_default_to_permission(service, agent, request_d
         c.execute("UPDATE buyers SET current_policy=2 WHERE id='demo-hotel'")
     expect_code(
         "INVALID_POLICY_CONFIGURATION",
-        lambda: service.prepare_order(agent, PurchaseRequest(**request_data)),
+        lambda: service.prepare_order(agent, PrepareRequest(**request_data)),
     )

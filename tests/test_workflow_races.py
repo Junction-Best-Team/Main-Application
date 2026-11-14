@@ -13,7 +13,7 @@ import pytest
 
 from aimo import approval_workflow as workflow
 from aimo.db import Problem, connection, js, now
-from aimo.schemas import CommitRequest, DecisionRequest, PurchaseRequest
+from aimo.schemas import CommitRequest, DecisionRequest, PrepareRequest
 from aimo.upstream import FixtureClient
 
 
@@ -66,7 +66,7 @@ def test_prepare_refuses_when_the_policy_changes_during_lookup(
     monkeypatch, service, agent, request_data
 ):
     after_lookup(monkeypatch, add_policy_version)
-    assert code_of(lambda: service.prepare_order(agent, PurchaseRequest(**request_data))) == (
+    assert code_of(lambda: service.prepare_order(agent, PrepareRequest(**request_data))) == (
         "POLICY_CHANGED"
     )
     with connection() as c:
@@ -76,7 +76,7 @@ def test_prepare_refuses_when_the_policy_changes_during_lookup(
 def test_commit_refuses_when_the_policy_changes_during_lookup(
     monkeypatch, service, agent, request_data
 ):
-    p = service.prepare_order(agent, PurchaseRequest(**request_data))
+    p = service.prepare_order(agent, PrepareRequest(**request_data))
     after_lookup(monkeypatch, add_policy_version)
     assert code_of(lambda: service.commit_order(agent, commit(p))) == "POLICY_CHANGED"
     with connection() as c:
@@ -86,7 +86,7 @@ def test_commit_refuses_when_the_policy_changes_during_lookup(
 def test_commit_refuses_when_another_caller_revised_during_lookup(
     monkeypatch, service, agent, request_data
 ):
-    p = service.prepare_order(agent, PurchaseRequest(**request_data))
+    p = service.prepare_order(agent, PrepareRequest(**request_data))
     dearer = FixtureClient()
     dearer.price_multiplier = Decimal(2)
     revised = []
@@ -103,7 +103,7 @@ def test_commit_refuses_when_another_caller_revised_during_lookup(
 def test_commit_refuses_when_the_proposal_expires_during_lookup(
     monkeypatch, service, agent, request_data
 ):
-    p = service.prepare_order(agent, PurchaseRequest(**request_data))
+    p = service.prepare_order(agent, PrepareRequest(**request_data))
     after_lookup(
         monkeypatch,
         lambda: monkeypatch.setattr(workflow, "now", lambda: now() + timedelta(hours=1)),
@@ -112,7 +112,7 @@ def test_commit_refuses_when_the_proposal_expires_during_lookup(
 
 
 def test_a_second_commit_with_a_new_key_cannot_create_a_second_order(service, agent, request_data):
-    p = service.prepare_order(agent, PurchaseRequest(**request_data))
+    p = service.prepare_order(agent, PrepareRequest(**request_data))
     first = service.commit_order(agent, commit(p))
     assert code_of(lambda: service.commit_order(agent, commit(p))) == "ALREADY_COMMITTED"
     with connection() as c:
@@ -158,26 +158,20 @@ def test_unknown_approval_is_not_found(buyer):
 
 def test_authorize_commit_guards_expiry_and_rejection_on_its_own():
     future, past = now() + timedelta(hours=1), now() - timedelta(minutes=1)
-    request = {"destination": "hotel-helsinki", "lines": []}
-    snapshot = {"reasons": [], "currency": "EUR", "gross_total": "10.00", "lines": []}
-    rules = {"currency": "EUR", "autonomous_limit": "1500", "destinations": ["hotel-helsinki"]}
-    authority = {"currency": "EUR", "autonomous_limit": "1500"}
+    ready = {"policy_outcome": "ready_to_commit", "required_exceptions": []}
 
-    def run(expires, approval):
+    def run(expires, approval, evaluation=ready):
         workflow.authorize_commit(
-            {},
-            {},
-            {"expires_at": expires, "request": request},
-            approval,
-            {"rules": rules},
-            {"authority": authority},
-            [],
-            snapshot,
+            {"expires_at": expires, "fingerprint": "f"}, approval, [], {}, evaluation
         )
 
     assert code_of(lambda: run(past, None)) == "PROPOSAL_EXPIRED"
     assert code_of(lambda: run(future, {"status": "rejected"})) == "APPROVAL_REJECTED"
     run(future, None)  # ready_to_commit passes without an approval
+    blocked = {"policy_outcome": "denied", "required_exceptions": []}
+    assert code_of(lambda: run(future, None, blocked)) == "COMMIT_BLOCKED"
+    needs = {"policy_outcome": "approval_required", "required_exceptions": ["spend"]}
+    assert code_of(lambda: run(future, None, needs)) == "APPROVAL_REQUIRED"
 
 
 # --- authority drift as seen by readers ----------------------------------------------------------

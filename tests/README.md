@@ -71,7 +71,7 @@ Uses only the public HTTP and MCP surface, like an external agent. The mode actu
 | `get_order` | Returns the receipt; unknown ID is 404 |
 | MCP | All eight tools discovered; `get_purchase_policy` callable |
 
-A check that cannot run is reported as `SKIP` with its reason, never as a pass. In live mode the approval and reject paths skip when real stock does not produce an approvable proposal (see F-MVP-006 in `docs/findings.md`); `SWEEP_ARGS="--product 463380"` uses a product with finite live stock.
+A check that cannot run is reported as `SKIP` with its reason, never as a pass. In live mode the approval and reject paths skip when real stock does not produce an approvable proposal (see F-MVP-007 in `docs/findings.md`); `SWEEP_ARGS="--product 463380"` uses a product with finite live stock.
 
 ## Browser tests (`frontend/e2e/approval.spec.ts`)
 
@@ -110,7 +110,7 @@ Known gaps: the approval flow is not exercised against live stock; there are no 
 ## Modes, and what a pass means
 
 - **Hermetic (default).** Own database `aimo_ci`, authored fixture catalog, fixture price and stock. Proves the code works; says nothing about Valio's real data.
-- **Live (`--live`).** `UPSTREAM_MODE=live`, so it fails closed without `VALIO_AIMO_API_KEY`. The key exists and teammates have it. Run with your `.env` database and the full catalog ingested. Live stock for the default product `464306` is an unknown-quantity sentinel, so expect skips; `SWEEP_ARGS="--product 463380"` commits for real (F-MVP-006).
+- **Live (`--live`).** `UPSTREAM_MODE=live`, so it fails closed without `VALIO_AIMO_API_KEY`. The key exists and teammates have it. Run with your `.env` database and the full catalog ingested. Live stock for the default product `464306` is an unknown-quantity sentinel, so expect skips; `SWEEP_ARGS="--product 463380"` commits for real (F-MVP-007).
 - The agent token, buyer password and API key are never printed or logged.
 
 ## Coverage
@@ -125,8 +125,8 @@ uv run python tests/coverage_report.py     # pytest only / sweep only / combined
 - **Gate: 95%.** `fail_under` in `pyproject.toml` (`[tool.coverage.report]`) is applied to the combined total by `coverage_report.py` (exit 1 below it). It is the only place to change it, and it is required: the CI job "Coverage (95% minimum)" is part of the `CI gate`. Do not run bare `pytest --cov` expecting a pass: pytest alone is lower than the combined total, so add `--cov-fail-under=0` when you only want the table.
 - **CI.** The `Python lint and tests`, `Tool sweep` and `Browser tests` jobs each upload their coverage data; the `Coverage` job downloads and combines them, prints the table in the log and the job summary, uploads the HTML/XML report and fails below the gate.
 - **Excluded.** Only `if __name__ == "__main__":` blocks. `tests/`, `scripts/`, `frontend/` and the live Valio path (not reachable without a key) are not measured.
-- **Frontend: not measured.** Browser tests need a `.env` and a coverage fixture in the specs; see F-MVP-007 for the options.
-- **Measured 2026-11-14** (fixture mode, after the coverage tests landed): pytest only 99.8%, combined 99.8% (the end-to-end server alone reaches 75.5%). The gate is 95%, so the margin is about 5 points. Two statements are knowingly not reached: an unreachable trailing `raise` after the retry loop in `ValioClient.post`, and a `main()` branch argparse makes impossible.
+- **Frontend: not measured.** Browser tests need a `.env` and a coverage fixture in the specs; see F-MVP-008 for the options.
+- **Measured 2026-11-14** (fixture mode, on the merge with `develop`): combined 99.4% with 282 pytest tests, re-measured after merging `develop` (Otto's hardening). The gate is 95%, so the margin is about 4 points. The few unreached lines are listed by `tests/coverage_report.py`.
 
 ## Running pieces on their own
 

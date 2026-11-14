@@ -67,7 +67,7 @@ def active():
     return row, ids
 
 
-def test_ingest_file_publishes_active_products_and_skips_deleted(tmp_path):
+def test_ingest_file_keeps_withdrawn_products_for_exact_denial(tmp_path):
     records = [
         raw_product("t-1"),
         raw_product("t-2", "Synthetic cream 2 dl"),
@@ -75,14 +75,25 @@ def test_ingest_file_publishes_active_products_and_skips_deleted(tmp_path):
     ]
     path, sha = write_snapshot(tmp_path, records)
     result = ingest_file(path, 3, sha)
-    assert result["products"] == 2
+    # Withdrawn products stay in the snapshot so a lookup can be denied exactly; discovery hides them.
+    assert result["products"] == 3
+    assert result["withdrawn_products"] == 1
     assert result["source_hash"] == sha
-    assert result["volume_evidence"] == {"known": 1, "conflicting": 1}  # "2 dl" name vs 1 L data
+    assert result["volume_evidence"] == {"known": 2, "conflicting": 1}  # "2 dl" name vs 1 L data
     row, ids = active()
     assert str(row["id"]) == result["generation"]
-    assert ids == {"t-1", "t-2"}
+    assert ids == {"t-1", "t-2", "t-gone"}
     assert row["source"] == f"snapshot.json; sha256:{sha}"
-    assert row["product_count"] == 2
+    assert row["product_count"] == 3
+    with connection() as c:
+        flags = {
+            r["id"]: r["deleted"]
+            for r in c.execute(
+                "SELECT id, COALESCE((facts->>'deleted')::boolean,false) AS deleted FROM products WHERE generation=%s",
+                (row["id"],),
+            )
+        }
+    assert flags == {"t-1": False, "t-2": False, "t-gone": True}
 
 
 def test_ingest_file_reuses_embeddings_on_second_import(tmp_path):
@@ -120,12 +131,11 @@ def test_duplicate_identifiers_are_refused(tmp_path):
         ingest_file(path, 2, sha)
 
 
-def test_snapshot_of_only_deleted_products_publishes_nothing(tmp_path):
-    before, _ = active()
+def test_snapshot_of_only_withdrawn_products_publishes_them_as_withdrawn(tmp_path):
     path, sha = write_snapshot(tmp_path, [raw_product("t-1", deleted=True)])
-    with pytest.raises(ValueError, match="Empty or duplicate import"):
-        ingest_file(path, 1, sha)
-    assert active()[0]["id"] == before["id"]
+    result = ingest_file(path, 1, sha)
+    assert result["products"] == 1 and result["withdrawn_products"] == 1
+    assert active()[1] == {"t-1"}
 
 
 def test_publish_rejects_duplicate_ids_and_wrong_embedding_shape(monkeypatch):

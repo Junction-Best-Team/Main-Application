@@ -67,6 +67,7 @@ def main():
             )
         )
         body = {
+            "idempotency_key": str(uuid4()),
             "request_id": "Autonomous breakfast " + str(uuid4())[:8],
             "destination": "hotel-helsinki",
             "delivery_date": str(date.today() + timedelta(days=2)),
@@ -76,10 +77,16 @@ def main():
         p = post("prepare_order", body)
         assert p["policy_outcome"] == "ready_to_commit", p["reasons"]
         print(json.dumps({"autonomous_receipt": commit(p)}, indent=2))
-        denied = post("prepare_order", body | {"budget_gross": "1"})
+        denied = post(
+            "prepare_order", body | {"budget_gross": "1", "idempotency_key": str(uuid4())}
+        )
         shortage = post(
             "prepare_order",
-            body | {"lines": [{"product_id": "464306", "amount": "1000", "unit": "L"}]},
+            body
+            | {
+                "idempotency_key": str(uuid4()),
+                "lines": [{"product_id": "464306", "amount": "1000", "unit": "L"}],
+            },
         )
         assert (
             denied["policy_outcome"] == "denied"
@@ -89,6 +96,7 @@ def main():
             "prepare_order",
             body
             | {
+                "idempotency_key": str(uuid4()),
                 "request_id": "Mission breakfast " + str(uuid4())[:8],
                 "lines": [
                     {"product_id": "464306", "amount": "600", "unit": "L"},

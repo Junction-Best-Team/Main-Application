@@ -70,6 +70,7 @@ class Sweep:
     def purchase(self, **over):
         body = {
             "request_id": "sweep-" + str(uuid4())[:8],
+            "idempotency_key": "sweep-prepare-" + str(uuid4()),  # one per preparation (retries reuse it)
             "destination": "hotel-helsinki",
             "delivery_date": self.date,
             "requirements": {"lactose_free": True},
@@ -145,7 +146,9 @@ class Sweep:
 
     def search_rejects_unsupported_filter(self):
         r = self.post("search_products", {"query": "milk", "requirements": {"organic": True}})
-        need(r.status_code in (400, 422), f"unsupported filter must be rejected, got {r.status_code}")
+        need(
+            r.status_code in (400, 422), f"unsupported filter must be rejected, got {r.status_code}"
+        )
 
     def get_product(self):
         r = self.get("products/" + self.product)
@@ -194,7 +197,10 @@ class Sweep:
                 "idempotency_key": "sweep-" + str(uuid4()),
             },
         )
-        need(400 <= r.status_code < 500, f"denied proposal must be refused with a 4xx, got {r.status_code}")
+        need(
+            400 <= r.status_code < 500,
+            f"denied proposal must be refused with a 4xx, got {r.status_code}",
+        )
         return f"denied proposal refused with HTTP {r.status_code}"
 
     def commit_order(self):
@@ -266,7 +272,10 @@ class Sweep:
         p = self.split_proposal()
         body = self.commit_body(p)
         early = self.post("commit_order", body)
-        need(400 <= early.status_code < 500, f"commit before the buyer decides must be a 4xx refusal, got {early.status_code}")
+        need(
+            400 <= early.status_code < 500,
+            f"commit before the buyer decides must be a 4xx refusal, got {early.status_code}",
+        )
         self.buyer_login()
         inbox = self.buyer.get("/api/approvals")
         need(inbox.status_code == 200, f"inbox HTTP {inbox.status_code}")
@@ -289,7 +298,10 @@ class Sweep:
         rejected = self.decide(p, "reject")
         need(rejected.status_code == 200, f"buyer rejection HTTP {rejected.status_code}")
         after = self.post("commit_order", self.commit_body(p))
-        need(400 <= after.status_code < 500, f"rejected proposal must be refused with a 4xx, got {after.status_code}")
+        need(
+            400 <= after.status_code < 500,
+            f"rejected proposal must be refused with a 4xx, got {after.status_code}",
+        )
         state = self.get("proposals/" + p["proposal_id"]).json()
         need("reject" in state["approval_status"].lower(), f"status: {state['approval_status']}")
         need(state["next_action"]["type"] != "commit", "next_action must not say commit")

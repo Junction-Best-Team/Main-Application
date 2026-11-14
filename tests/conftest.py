@@ -1,6 +1,7 @@
 import os
 from datetime import date, timedelta
 from urllib.parse import urlsplit, urlunsplit
+from uuid import uuid4
 
 import psycopg
 import pytest
@@ -23,7 +24,7 @@ from aimo.config import settings
 from aimo.db import connection, fingerprint
 from aimo.fixtures import fixture_facts
 from aimo.ingest import publish
-from aimo.schemas import PurchaseRequest
+from aimo.schemas import PrepareRequest
 from aimo.service import Service
 from aimo.upstream import FixtureClient
 
@@ -76,6 +77,7 @@ def service(connector):
 def request_data():
     return {
         "request_id": "Hotel breakfast",
+        "idempotency_key": str(uuid4()),
         "destination": "hotel-helsinki",
         "delivery_date": str(date.today() + timedelta(days=2)),
         "requirements": {"lactose_free": True},
@@ -89,4 +91,4 @@ def mission(request_data):
         {"product_id": "464306", "amount": "600", "unit": "L"},
         {"product_id": "464398", "amount": "400", "unit": "L", "substitutes_for": "464306"},
     ]
-    return PurchaseRequest.model_validate(request_data)
+    return PrepareRequest.model_validate(request_data)
