@@ -48,6 +48,11 @@ DROPS = [
     ),
     ("DROP VIEW catalog_protected_products", "013_catalog_sync_withdrawals.sql"),
     ("DROP TABLE purged_proposals", "018_purge_unfinished_proposals.sql"),
+    (
+        "DROP TRIGGER immutable_recipe_plan_revisions ON recipe_plan_revisions",
+        "019_history_immutability.sql",
+    ),
+    ("DROP TRIGGER immutable_recipe_versions ON recipe_versions", "019_history_immutability.sql"),
 ]
 
 

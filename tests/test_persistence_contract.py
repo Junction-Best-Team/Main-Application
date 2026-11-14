@@ -452,12 +452,7 @@ def test_history_tables_reject_update_and_delete(internal_planned, internal, buy
                 c.execute(statement)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PER-004 Draft: recipe_plan_revisions and recipe_versions have no immutable_record "
-    "trigger (only proposal_revisions, audit_events, policies, customer_confirmations do), "
-    "although docs/recipes.md calls plan revisions immutable.",
-)
+# PER-004 (Approved): migration 019 guards recipe_plan_revisions and recipe_versions.
 @pytest.mark.parametrize(
     "statement",
     [

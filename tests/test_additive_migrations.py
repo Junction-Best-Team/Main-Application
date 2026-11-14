@@ -371,7 +371,12 @@ def test_immutable_trigger_definitions_cover_the_four_tables_and_never_replace_t
     extra = {t: f for t, f in guarded.items() if t not in IMMUTABLE}
     # 008 (WS-D) additionally guards `orders`, a base table created in 001: a saved receipt is
     # history. It only adds protection; nothing is unguarded.
-    guarded_later = {"orders": "008_orders_immutable.sql"}
+    # 019 (PER-004) likewise guards the recipe history tables created in 005.
+    guarded_later = {
+        "orders": "008_orders_immutable.sql",
+        "recipe_plan_revisions": "019_history_immutability.sql",
+        "recipe_versions": "019_history_immutability.sql",
+    }
     assert all(created.get(t) == f or guarded_later.get(t) == f for t, f in extra.items()), extra
     definitions = [
         p.name
