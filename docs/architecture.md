@@ -9,7 +9,8 @@ Deploying the code alone retains the existing local E5 profile.
 
 ## D2 system and harness views
 
-These compact views show the main components and execution flow. They describe repository
+These views separate the browser application, static-file server, public router, application
+API and background worker, and show the persisted purchasing flow. They describe repository
 configuration rather than live cluster state. Detailed behavior and data ownership are explained
 below. [Edit the diagrams with free D2](diagrams/README.md).
 

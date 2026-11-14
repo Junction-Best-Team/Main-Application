@@ -1,6 +1,6 @@
 # Architecture diagrams
 
-Compact diagrams with short labels, generated using **free D2 0.9.0 + ELK**.
+Architecture and purchasing-flow diagrams with explicit component responsibilities, generated using **free D2 0.9.0 + ELK**.
 No paid layout engine or hosted account is required.
 
 | Diagram | View | Editable source |
@@ -20,10 +20,13 @@ d2 docs/diagrams/harness.d2 docs/diagrams/harness.svg
 
 D2 also supports PNG output by changing the output extension to `.png`; this needs its
 browser export dependencies. Update the source, SVG and PNG together in the same PR.
-Keep diagram labels short; put explanations in [architecture.md](../architecture.md).
+Keep each component label to its role and two or three supporting lines.
+Detailed contracts remain in [architecture.md](../architecture.md).
 
 ## Reading the views
 
+- The React web app executes in the buyer’s browser. Nginx serves its files;
+  Traefik routes HTTPS to Nginx or the FastAPI API. These are distinct responsibilities.
 - Blue: application components. Green: people, data and persisted results. Purple:
   external AI/supplier providers. Gold: deterministic purchasing checks.
 - PostgreSQL is both the application database and durable job queue. It also stores

@@ -9,30 +9,32 @@ vars: {
 direction: right
 classes: {
   app: {
-    style: {fill: "#EAF1FF"; stroke: "#6984AE"; border-radius: 12; font-size: 22}
+    style: {fill: "#EAF1FF"; stroke: "#6984AE"; border-radius: 12; font-size: 20}
   }
   human: {
-    style: {fill: "#E2F5EF"; stroke: "#65A08D"; border-radius: 12; font-size: 22}
+    style: {fill: "#E2F5EF"; stroke: "#65A08D"; border-radius: 12; font-size: 20}
   }
   check: {
-    style: {fill: "#FFF2D9"; stroke: "#B29963"; border-radius: 12; font-size: 22}
+    style: {fill: "#FFF2D9"; stroke: "#B29963"; border-radius: 12; font-size: 20}
   }
 }
-# Read left to right, then follow the turn into the second row.
+# Read across the first row, back across the second, then across the third.
 grid-rows: 3
-grid-columns: 3
-horizontal-gap: 100
+grid-columns: 4
+horizontal-gap: 70
 vertical-gap: 85
-message: Buyer message {class: human; width: 250; height: 110}
-queue: Saved turn {class: app; width: 250; height: 110; shape: cylinder}
-model: Model loop {class: app; width: 250; height: 110}
-basket: Saved proposal {class: app; width: 250; height: 110}
-checks: Policy + evidence {class: check; width: 250; height: 110}
-tools: Typed tools {class: app; width: 250; height: 110}
-confirm: Buyer confirms {class: human; width: 250; height: 110}
-recheck: Revalidate {class: check; width: 250; height: 110}
-receipt: Mock receipt {class: human; width: 250; height: 110}
-message -> queue -> model
+message: "Buyer sends message\nReact chat interface" {class: human; width: 285; height: 145}
+api: "API authenticates\nSession · Origin · CSRF" {class: app; width: 285; height: 145}
+queue: "PostgreSQL saves turn\nMessage + durable queue" {class: app; width: 285; height: 145; shape: cylinder}
+worker: "Worker claims turn\nLease + buyer-scoped identity" {class: app; width: 285; height: 145}
+basket: "Save proposal revision\nExact basket + reasons" {class: app; width: 285; height: 145}
+checks: "Purchasing checks\nScope · quantity · dietary\nPrice · stock · budget" {class: check; width: 285; height: 145}
+tools: "Typed tool registry\nSearch · plan · prepare · read\nNo approve / commit tool" {class: app; width: 285; height: 145}
+model: "Bounded model loop\nSaved context + instructions\nProposes typed tool calls" {class: app; width: 285; height: 145}
+review: "Buyer reviews basket\nSaved chat + proposal via API" {class: human; width: 285; height: 145}
+confirm: "Buyer clicks Confirm\nAuthenticated exact revision" {class: human; width: 285; height: 145}
+recheck: "API revalidates\nFresh price / stock + authority" {class: check; width: 285; height: 145}
+receipt: "Save mock order + receipt\nIdempotency + audit\nNo supplier checkout" {class: human; width: 285; height: 145}
+message -> api -> queue -> worker -> model
 model <-> tools
-tools -> checks -> basket
-basket -> confirm -> recheck -> receipt
+tools -> checks -> basket -> review -> confirm -> recheck -> receipt

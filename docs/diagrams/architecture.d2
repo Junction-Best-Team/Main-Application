@@ -1,46 +1,44 @@
-# Render with free D2 + ELK. See README.md in this directory.
-vars: {
-  d2-config: {
-    layout-engine: elk
-    theme-id: 0
-    pad: 40
-  }
-}
-direction: right
+vars: {d2-config: {layout-engine: elk; theme-id: 0; pad: 35}}
+direction: down
 classes: {
-  app: {
-    style: {fill: "#EAF1FF"; stroke: "#6984AE"; border-radius: 12; font-size: 22}
-  }
-  external: {
-    style: {fill: "#F1EAFF"; stroke: "#9B85BE"; border-radius: 12; font-size: 22}
-  }
-  data: {
-    style: {fill: "#E2F5EF"; stroke: "#65A08D"; font-size: 22}
-  }
+  app: {style: {fill: "#EAF1FF"; stroke: "#6984AE"; border-radius: 12; font-size: 22}}
+  human: {style: {fill: "#E2F5EF"; stroke: "#65A08D"; border-radius: 12; font-size: 22}}
+  external: {style: {fill: "#F1EAFF"; stroke: "#9B85BE"; border-radius: 12; font-size: 21}}
+  ops: {style: {fill: "#FFF2D9"; stroke: "#B29963"; border-radius: 12; font-size: 21}}
 }
-buyer: Buyer {class: data; shape: person}
-cluster: Kubernetes {
+browser: "BUYER'S BROWSER" {
+  style: {fill: "#F5FCF9"; stroke: "#A7CABD"; font-size: 24}
+  ui: "Aimo web app\nReact + TypeScript\nChat · basket · purchase history" {class: human}
+}
+cluster: "Kubernetes cluster" {
+  label.near: top-left
   style: {fill: "#FAFBFE"; stroke: "#C6D2E2"; stroke-dash: 4; font-size: 24}
-  ingress: HTTPS / Traefik {class: app}
-  frontend: React / Nginx {class: app}
-  api: FastAPI {class: app}
-  worker: AI worker {class: app}
-  import: Import job {class: app}
-  ingress -> frontend: pages
-  ingress -> api: API + SSE
+  entry: "Public entry point\nTraefik · HTTPS routing" {class: app}
+  web: "Frontend server\nNginx\nServes React files" {class: app}
+  api: "Application API\nFastAPI\nSessions · chat · purchases" {class: app}
+  worker: "AI worker\nAgent tools + hybrid search\nLocal E5 / hosted embeddings" {class: app}
+  job: "Operator jobs\nDataset imports · schema setup" {class: ops}
+  entry -> web: load app
+  entry -> api: API + events
 }
-db: PostgreSQL + pgvector {class: data; shape: cylinder}
-ai: OpenRouter {
-  class: external
-  label: "OpenRouter\nChat + optional search"
+db: "PostgreSQL + pgvector\nCatalog + vectors · optional recipes\nChat + job queue · buyer identities\nPolicies · approvals · mock orders · audit" {
+  shape: cylinder
+  style: {fill: "#E2F5EF"; stroke: "#65A08D"; font-size: 22}
 }
-valio: Valio API {class: external}
-catalog: Private datasets {class: data; shape: page}
-buyer -> cluster.ingress
-cluster.api -> db: state + queue
-cluster.worker -> db: claim + save
-cluster.worker -> ai
-cluster.worker -> valio: price / stock
-cluster.api -> valio: recheck
-catalog -> cluster.import
-cluster.import -> db: catalog {style.stroke: "#B29963"; style.stroke-dash: 4}
+providers: "External APIs" {
+  label.near: top-left
+  style: {fill: "#FCFAFF"; stroke: "#CFC0E1"; font-size: 24}
+  chat: "Conversational LLM\nOpenRouter default\nProvider is configurable" {class: external}
+  search: "Hosted search / opt-in\nQwen3 embeddings\n+ shortlist reranker" {class: external; style.stroke-dash: 4}
+  supplier: "Valio Aimo API\nPrices + availability only" {class: external}
+}
+inputs: "Private source datasets\nProducts · optional recipes" {class: ops; shape: page}
+browser.ui -> cluster.entry: HTTPS
+cluster.api -> db: persist state
+cluster.worker -> db: claim / search / save
+cluster.worker -> providers.chat: model calls
+cluster.worker -> providers.search: embed / rerank {style.stroke-dash: 4}
+cluster.worker -> providers.supplier: price / stock
+cluster.api -> providers.supplier: revalidate
+inputs -> cluster.job: operator action {style.stroke-dash: 4}
+cluster.job -> db: import / migrate {style.stroke-dash: 4}
