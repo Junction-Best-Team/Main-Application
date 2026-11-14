@@ -61,6 +61,13 @@ class Service:
             )
         return workflow.prepare_order(identity, request, self.connector)
 
+    def ensure_saved_plan_resolved(self, identity, title):
+        from aimo import recipe_guard
+        from aimo.config import settings
+
+        if settings().recipe_planning_enabled:
+            recipe_guard.ensure_no_unresolved_saved_plan(identity, title)
+
     def recipe_operation(self, name, identity, request):
         from aimo import recipes
         from aimo.config import settings
