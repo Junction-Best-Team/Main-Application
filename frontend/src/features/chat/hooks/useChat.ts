@@ -78,6 +78,18 @@ export function useChat(conversationId?: string) {
   }, [conversationId, load, pendingStorage]);
   useRefresh(load, Boolean(conversationId));
   useEffect(() => {
+    const recoverVoice = (event: Event) => {
+      const draft = (event as CustomEvent<{ id: string; text: string }>).detail;
+      if (draft.id !== activeConversation.current) return;
+      setText(draft.text);
+      setError(
+        "The voice request was interrupted. Retry this request to continue.",
+      );
+    };
+    window.addEventListener("aimo-voice-draft", recoverVoice);
+    return () => window.removeEventListener("aimo-voice-draft", recoverVoice);
+  }, []);
+  useEffect(() => {
     if (!conversationId) return;
     let stream: EventSource | null = null;
     const open = () => {

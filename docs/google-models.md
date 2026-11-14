@@ -10,6 +10,7 @@ The application now defaults to native Google APIs using one server-side
 | Product and recipe embeddings | `EMBEDDING_BACKEND=google`, Gemini Embedding 2, 768 dimensions |
 | Product shortlist ranking | Gemini Decision 1, when `RERANK_ENABLED=true` |
 | Recipe illustrations | Nano Banana 2.1; Cloudinary hosts the result |
+| Voice interface | `VOICE_MODEL=gemini-3.8-live`; delegates requests to the same chat worker |
 
 These are separate models with separate jobs. The existing typed agent loop,
 buyer scope, commercial validation, purchase confirmation and mock-order labels
@@ -47,7 +48,8 @@ indexes, apply Terraform, merge, deploy or enable releases.
    This incurs Google usage for uncached documents; do not run it merely to test
    this PR. A failed stage leaves the active generation untouched.
 4. Configure API readiness, worker and catalog-sync to the same `google` embedding
-   backend. Supply the Google key only to the worker/importer, never API/frontend.
+   backend. Supply the Google key to the worker/importer and API (the API mints
+   short-lived [voice tokens](voice.md)). The frontend never receives that key.
    Terraform now defaults the shared ConfigMap to Google and allows the key in
    the dedicated catalog-sync Secret. Existing explicit `runtime_secrets` or `.env`
    backend overrides must also be changed. Keep Cloudinary credentials worker-only.
