@@ -19,15 +19,19 @@ CREATE TRIGGER immutable_purged_proposals BEFORE UPDATE OR DELETE ON purged_prop
  FOR EACH ROW EXECUTE FUNCTION immutable_record();
 
 -- Same refusal as immutable_record(), except a DELETE is allowed when the transaction set
--- aimo.purge_unfinished = 'on' (done only by the purge function) AND the proposal has no order.
--- The no-order test is the real protection: rows of an ordered proposal stay undeletable whatever
--- the flag says. UPDATE is always refused.
+-- aimo.purge_unfinished = 'on' (done by the purge function) AND the proposal has no order AND a
+-- purged_proposals record for it already exists (the purge writes it before it deletes). Any SQL
+-- running as the app role can set the flag, so the flag alone proves nothing: with these two
+-- conditions every deletion leaves a permanent record, and the no-order test keeps rows of an
+-- ordered proposal undeletable whatever the flag says. UPDATE is always refused. (The retention
+-- period and the selection live in workflow.purge_unfinished_proposals.)
 CREATE FUNCTION immutable_unless_purging() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
  IF TG_OP = 'DELETE'
   AND current_setting('aimo.purge_unfinished', true) = 'on'
   AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.proposal_id = OLD.proposal_id)
   AND NOT EXISTS (SELECT 1 FROM proposals p WHERE p.id = OLD.proposal_id AND p.order_id IS NOT NULL)
+  AND EXISTS (SELECT 1 FROM purged_proposals pp WHERE pp.proposal_id = OLD.proposal_id)
  THEN
   RETURN OLD;
  END IF;

@@ -425,6 +425,7 @@ def test_018_swaps_the_guard_of_exactly_four_tables_for_the_purge_aware_function
     code = " ".join(body.group(1).split())
     assert "TG_OP = 'DELETE'" in code and "aimo.purge_unfinished" in code
     assert "FROM orders" in code and "p.order_id IS NOT NULL" in code
+    assert "FROM purged_proposals" in code  # the permanent record must exist first
     assert "RAISE EXCEPTION 'immutable history; append a new record instead'; END" in code
     swapped = re.findall(
         r"CREATE\s+TRIGGER\s+(\w+)\s+BEFORE\s+UPDATE\s+OR\s+DELETE\s+ON\s+(\w+)\s+"

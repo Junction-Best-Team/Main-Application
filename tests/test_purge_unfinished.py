@@ -115,15 +115,27 @@ def test_the_triggers_allow_a_history_delete_only_under_the_flag_and_without_an_
             (buyer["id"], "purge-test-key-1", unfinished["proposal_id"]),
         )
     where = "WHERE proposal_id = %s"
-    for pid, flag, allowed in (
-        (unfinished["proposal_id"], False, False),
-        (ordered["proposal_id"], True, False),
-        (unfinished["proposal_id"], True, True),
+    record = (
+        "INSERT INTO purged_proposals(proposal_id,buyer_id,created_at,last_revision,last_outcome,"
+        "last_expires_at,period_days) SELECT id,buyer_id,created_at,current_revision,'x',now(),30 "
+        "FROM proposals WHERE id=%s"
+    )
+    # (proposal, purge flag, purged_proposals record written first, DELETE allowed). The flag alone
+    # is not enough: any SQL running as the app role can set it, so the trigger also demands the
+    # permanent record the purge writes before it deletes.
+    for pid, flag, written, allowed in (
+        (unfinished["proposal_id"], False, False, False),
+        (unfinished["proposal_id"], False, True, False),
+        (unfinished["proposal_id"], True, False, False),
+        (ordered["proposal_id"], True, True, False),
+        (unfinished["proposal_id"], True, True, True),
     ):
         with psycopg.connect(settings().database_url) as conn:
             try:
                 if flag:
                     conn.execute("SET LOCAL aimo.purge_unfinished = 'on'")
+                if written:
+                    conn.execute(record, (pid,))
                 if allowed:
                     if table == "proposal_revisions":  # children first, as the purge does
                         conn.execute("DELETE FROM approvals WHERE proposal_id=%s", (pid,))
