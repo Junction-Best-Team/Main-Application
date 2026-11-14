@@ -1086,9 +1086,6 @@ Add new findings below, under your track heading.
 - Composer merge compatibility (2026-11-15): rebased onto `develop` at `7e67f7e` and retained PR #186's single voice-or-send action, attachment-only sending, removed barcode and removed input focus ring in the homepage variant. Frontend `npm run check` passed; the full browser suite passed (78 passed, two optional backend checks skipped). Three focused checks additionally covered home voice/send switching with text and attachments at desktop/320px and starting voice from Home through persisted conversation creation. Desktop/mobile screenshots inspected. This PR still changes only frontend and documentation; no database migration was added or applied.
 - Resolved the subsequent minimal-homepage overlap from `develop` at `1a81373`, retaining its new page, schedules strip, composer and navigation while keeping the requested avatar dropdown and removed sidebar account block. Restored the desktop account header and adjusted homepage height for it; frontend checks passed.
 
-
-
-
 ### F-CI-SPEED-001: Remove repeated checks from the hackathon release path
 
 - Date: 2026-11-15. Measured Actions run 43648517229: pytest 411.53 seconds, API sweep about 3 seconds, frontend job about 22 seconds. Main run 43647997283 spent another 4m47s in backend checks before building images. These timings identify repeated pytest as the main delay; they are not benchmarks of the new workflow.
@@ -1097,7 +1094,16 @@ Add new findings below, under your track heading.
 - Follow-up: repeated fixture setup now caches a real Argon2 hash only around its own seed call; actual seed/login tests retain the real hasher/verifier. The same 2541-test suite passed locally in 121.87 seconds versus 213.88 seconds before this change (43% shorter), with all 11 strict HTTP sweep checks passing. Kubernetes mocked plan tests run once instead of twice. Release rollouts start all independent Deployments after migrations, then wait for every readiness result; all 49 infrastructure helper tests passed, including migration failure and rollback checks.
 - Hosted verification: PR #194 run 43650814841 passed every applicable check; 2553 pytest cases passed in 173.84 seconds, plus all 11 strict HTTP checks. This is a newer source snapshot than the measured earlier 411.53-second run (2244 cases), not a controlled benchmark. Workflow files were published through the owner-authorized logged-in GitHub browser because the CLI OAuth credential lacks workflow scope. Shared branches and deployment settings were not changed.
 
+### F-HOME-002: Remove the homepage paperclip
 
+- Date: 2026-11-15. Removed the homepage file-picker button at the owner's request and retained the existing voice/send switch aligned to the right. Chat's file picker and Home's existing paste/drop attachment handling remain available. Reused the shared composer without backend or schema changes.
+- Verification: frontend `npm run check` passed; 11 focused fixture-backed browser checks passed, covering desktop/mobile chat controls, attachments, homepage voice/send switching, multiline submission, retries and starting voice from Home. Desktop/320px screenshots inspected. No deployment or database migration.
+
+- Homepage polish follow-up (2026-11-15): disabled manual textarea resizing to remove the diagonal native resize handle identified by the owner. Frontend `npm run check` and both desktop/320px home submission checks passed; the mobile screenshot was inspected.
+
+- Attachment spacing follow-up (2026-11-15): the homepage composer now uses a vertical flex layout with a 16px gap, separating attachment previews and feedback from the text field. Frontend `npm run check` and both desktop/320px home submission checks passed; attachment-state screenshots were inspected.
+
+- Both-input follow-up (2026-11-15): matched chat's attachment-to-input gap to Home's 16px spacing. Frontend `npm run check` and four desktop/320px attachment submission checks passed across both inputs; chat attachment screenshots inspected.
 - Meal-planning follow-up: synced #187 with `develop` at `1a81373` and #179 at
   `5ffb29c`, keeping the minimal homepage, account dropdown, attachments, streamed
   cart and automatic ingredient scaling. Frontend checks and all 88 fixture-backed

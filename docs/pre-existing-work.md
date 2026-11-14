@@ -301,9 +301,11 @@ schedule navigation. The composer retains develop’s file attachment behavior.
 No scheduling service, new dependency or external data was added. New browser checks use authored API responses, without supplier or
 model calls.
 
-
 ## Hackathon pipeline speed — 2026-11-15
 
 Reused the existing fixture-backed CI, real Argon2 test password hashing, Terraform mock-provider tests and migration/rollback release helpers. Removed repeated checks, reused the repeated fixture hash and overlapped independent app rollouts. Written with Codex during the event; no new dependency, service, copied starter code or asset.
 
 Deployment follow-up reused the existing locked frontend/Vite image build and mocked Kubernetes release helper tests. Narrowed build inputs and added rollback-failure cases; no new dependencies or external assets.
+
+Homepage paperclip follow-up (2026-11-15): reused the existing shared composer and
+fixture content; only the homepage picker presentation changed. No new assets or external material.

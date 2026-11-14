@@ -44,3 +44,17 @@ Integrated local validation on 2026-11-14:
 - Fixture-mode idle measurement: local application container about 49 MiB and 0.23% CPU; local Traefik about 62 MiB and 0% CPU. These are neither production embedding-model nor load measurements. Resource allocations are unchanged.
 
 No live conversational-provider run was made; configure the server's private LLM key and run the documented demo for that acceptance check. Ordering remains mock.
+
+## When the model provider fails (owner Q-108)
+
+A turn that fails because the model provider fails (any `LLM_*` error of the provider layer) stores
+one plain assistant message and keeps the retry offer. The text is fixed and deterministic (no model
+call, no error detail) and follows the language of the customer's last message, English when unsure:
+"I could not reach the assistant just now. Please try again." / "En saanut yhteyttä avustajaan
+juuri nyt. Yritä uudelleen." / "Jag kunde inte nå assistenten just nu. Försök igen." The message
+carries `notice: "provider_unavailable"` (column `conversation_messages.notice`, migration 024), so
+the browser shows it as a notice and the model's history leaves it out. It occupies the turn's single
+assistant slot: a retry of the same message (same key) removes it, a repeated failure writes one again,
+and the real reply replaces it when the retry succeeds, so there is never more than one per turn.
+Guardrail, policy and programming errors store no notice. The unfinished message still appears as
+`retry_message`; a new message is refused until it is retried (`RETRY_PREVIOUS_MESSAGE`).

@@ -1861,6 +1861,9 @@ for (const width of [1440, 320]) {
     );
     await page.goto("/");
     const input = page.getByLabel("Your meal or purchasing request");
+    await expect(page.getByRole("button", { name: "Attach file" })).toHaveCount(
+      0,
+    );
     await expect(
       page.getByRole("button", { name: "Send Order Request" }),
     ).toHaveCount(0);
@@ -1894,12 +1897,24 @@ for (const width of [1440, 320]) {
       path: testInfo.outputPath(`home-${width}.png`),
       fullPage: true,
     });
-    await page.getByLabel("Choose attachments").setInputFiles({
-      name: "restock.txt",
-      mimeType: "text/plain",
-      buffer: Buffer.from("Milk and eggs"),
+    await input.evaluate((field) => {
+      const data = new DataTransfer();
+      data.items.add(
+        new File(["Milk and eggs"], "restock.txt", { type: "text/plain" }),
+      );
+      field.dispatchEvent(
+        new ClipboardEvent("paste", {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: data,
+        }),
+      );
     });
     await expect(page.getByText("restock.txt", { exact: true })).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath(`home-attachment-${width}.png`),
+      fullPage: true,
+    });
     await expect(
       page.getByRole("button", { name: "Send Order Request" }),
     ).toBeEnabled();
