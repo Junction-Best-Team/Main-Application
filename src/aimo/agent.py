@@ -171,6 +171,16 @@ def run_turn(
                             "error": {"code": exc.code, "message": exc.message},
                             "purchase_authorized": False,
                         }
+                    except Exception:
+                        # A tool can fail after a durable write. Do not retry it
+                        # automatically or include its exception/credentials in output.
+                        logging.getLogger(__name__).error("Agent purchasing tool failed unexpectedly")
+                        progress.emit("tool_failed", visible_name, "TOOL_EXECUTION_FAILED")
+                        raise Problem(
+                            "TOOL_EXECUTION_FAILED",
+                            "A purchasing tool failed. Retry this message; saved purchases remain available.",
+                            503,
+                        ) from None
                     else:
                         progress.emit("tool_completed", visible_name)
                     history.append(
@@ -190,9 +200,21 @@ def run_turn(
             progress.emit("complete", error_code="TOOL_ROUND_LIMIT")
             return result
     except Problem as exc:
+        progress.emit("error", error_code=exc.code)
         if session.proposal or session.receipt:
             result = session.result()
             progress.emit("complete", error_code=exc.code)
             return result
-        progress.emit("error", error_code=exc.code)
         raise
+    except Exception:
+        logging.getLogger(__name__).error("Agent turn failed unexpectedly")
+        progress.emit("error", error_code="AGENT_FAILED")
+        if session.proposal or session.receipt:
+            result = session.result()
+            progress.emit("complete", error_code="AGENT_FAILED")
+            return result
+        raise Problem(
+            "AGENT_FAILED",
+            "The assistant could not complete this turn. Retry this message; saved purchases remain available.",
+            503,
+        ) from None

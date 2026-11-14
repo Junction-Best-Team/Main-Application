@@ -597,6 +597,9 @@ def test_persistent_network_failure_stops_after_one_retry(config):
     "url",
     [
         "invalid",
+        "http://provider.test/v1",
+        "http://localhost.evil.test/v1",
+        "http://192.168.1.10/v1",
         "https://user:secret@provider.test/v1",
         "https://provider.test:invalid",
         "https://[invalid",
@@ -661,3 +664,61 @@ def test_unsupported_dietary_tool_fields_require_resolution(identity):
         invoke(session, "prepare_order", request)
     assert error.value.code == "INVALID_TOOL_ARGUMENTS"
     assert not any(c[0] == "prepare" for c in service.calls)
+
+
+@pytest.mark.parametrize("url", ["http://localhost:8000/v1", "http://127.0.0.1/v1", "http://[::1]/v1"])
+def test_loopback_provider_is_allowed_for_local_development(config, url):
+    config.llm_base_url = url
+    with httpx.Client() as client:
+        assert ChatProvider(config, client).url == url + "/chat/completions"
+
+
+@pytest.mark.parametrize("prepared", [False, True])
+@pytest.mark.parametrize("failure", [RuntimeError("private-provider-key"), httpx.ConnectError("private-provider-key")])
+def test_unexpected_tool_failure_is_safe_and_preserves_saved_basket(
+    monkeypatch, config, identity, prepared, failure, caplog
+):
+    service = FakeService(identity)
+    attempts = []
+
+    def fail(*args):
+        attempts.append(1)
+        raise failure
+
+    service.get_purchase_policy = fail
+    scripted(monkeypatch, (prepared_script() if prepared else []) + [reply(call("get_purchase_policy"))])
+    events = []
+    if prepared:
+        result = agent.run_turn(identity, HISTORY, service, on_progress=events.append)
+        assert result.proposal_id == service.saved["proposal_id"]
+        assert result.meal_plan == MealPlan(**meal())
+        assert events[-1].kind == "complete"
+    else:
+        with pytest.raises(Problem) as error:
+            agent.run_turn(identity, HISTORY, service, on_progress=events.append)
+        assert error.value.code == "TOOL_EXECUTION_FAILED"
+        assert "private-provider-key" not in error.value.message
+    assert attempts == [1]
+    assert any(e.kind == "tool_failed" and e.error_code == "TOOL_EXECUTION_FAILED" for e in events)
+    assert any(e.kind == "error" and e.error_code == "TOOL_EXECUTION_FAILED" for e in events)
+    assert "private-provider-key" not in caplog.text + str(events)
+
+
+@pytest.mark.parametrize("prepared", [False, True])
+def test_unexpected_provider_failure_is_safe_and_preserves_saved_basket(
+    monkeypatch, config, identity, prepared, caplog
+):
+    service = FakeService(identity)
+    scripted(monkeypatch, (prepared_script() if prepared else []) + [RuntimeError("private-provider-key")])
+    events = []
+    if prepared:
+        result = agent.run_turn(identity, HISTORY, service, on_progress=events.append)
+        assert result.proposal_id == service.saved["proposal_id"]
+        assert events[-1].kind == "complete"
+    else:
+        with pytest.raises(Problem) as error:
+            agent.run_turn(identity, HISTORY, service, on_progress=events.append)
+        assert error.value.code == "AGENT_FAILED"
+        assert "private-provider-key" not in error.value.message
+    assert any(e.kind == "error" and e.error_code == "AGENT_FAILED" for e in events)
+    assert "private-provider-key" not in caplog.text + str(events)

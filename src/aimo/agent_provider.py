@@ -2,6 +2,7 @@
 
 import json
 import time
+from ipaddress import ip_address
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -71,9 +72,14 @@ class ChatProvider:
             )
         try:
             base = urlsplit(config.llm_base_url)
+            host = base.hostname
+            try:
+                loopback = host == "localhost" or ip_address(host).is_loopback
+            except ValueError:
+                loopback = False
             valid = (
-                base.scheme in ("http", "https")
-                and bool(base.hostname)
+                (base.scheme == "https" or (base.scheme == "http" and loopback))
+                and bool(host)
                 and not (base.username or base.password or base.query or base.fragment)
                 and bool(config.llm_model.strip())
             )
@@ -82,7 +88,10 @@ class ChatProvider:
             valid = False
         if not valid:
             raise Problem(
-                "LLM_CONFIGURATION", "Check the server's LLM_BASE_URL and LLM_MODEL.", 503
+                "LLM_CONFIGURATION",
+                "Use an HTTPS LLM_BASE_URL (HTTP is allowed only for loopback development) "
+                "and a valid LLM_MODEL.",
+                503,
             )
         self.url = config.llm_base_url.rstrip("/") + "/chat/completions"
 
