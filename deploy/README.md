@@ -2,19 +2,7 @@
 
 Build/push the application image to the team's existing registry. Replace `registry.example.invalid/aimo:REPLACE_WITH_COMMIT`, the hostname, TLS secret and catalog PVC in the manifests. Apply in an explicitly selected existing namespace. This repository does not create a cluster, database operator, registry or paid resource.
 
-Create an existing Secret named `aimo-runtime` through your normal secret-management channel. It supplies `DATABASE_URL`, `PUBLIC_BASE_URL`, `APPROVAL_SESSION_SECRET`, `SECURE_COOKIES=true`, `UPSTREAM_MODE`, `VALIO_AIMO_API_KEY` if live, `EMBEDDING_BACKEND=sentence_transformers`, and `FORWARDED_ALLOW_IPS`. The model and revision default to the single pin in `src/aimo/model_spec.py`; overrides must match the imported catalog. The conversational provider uses server-only `LLM_API_KEY`, `LLM_BASE_URL=https://openrouter.ai/api/v1`, `LLM_MODEL=openai/gpt-4.1-mini`, `LLM_TIMEOUT_SECONDS=20` and `LLM_MAX_TOOL_ROUNDS=20`. These are distinct from the embedding settings. Only `DEMO_BUYER_PASSWORD` is needed for demo setup; no external agent token is provisioned. Do not put secrets in these manifests or Vite environment variables.
-
-For GitHub releases, set repository secret `LLM_API_KEY` and repository variables
-`LLM_BASE_URL`/`LLM_MODEL`. They are passed only to the deployment job. The
-`sync-llm-secret.py` helper merges those three fields into the existing
-`aimo-runtime` Secret via stdin, preserving database/session/supplier keys and
-discarding potentially sensitive kubectl error bodies. Secret values override
-the Terraform ConfigMap through the existing envFrom order. A new image rollout
-(or restart when redeploying the same image) loads the updated values. Builds and
-ordinary PR tests do not use the credential. Keep the same three fields in private
-Terraform `runtime_secrets` inputs before a later apply so Terraform does not
-remove the release-managed settings. Adding the repository secret alone does not
-update a running app; this task does not authorize a deployment.
+Create an existing Secret named `aimo-runtime` through your normal secret-management channel. It supplies `DATABASE_URL`, `PUBLIC_BASE_URL`, `APPROVAL_SESSION_SECRET`, `SECURE_COOKIES=true`, `UPSTREAM_MODE`, `VALIO_AIMO_API_KEY` if live, `EMBEDDING_BACKEND=sentence_transformers`, and `FORWARDED_ALLOW_IPS`. The model and revision default to the single pin in `src/aimo/model_spec.py`; overrides must match the imported catalog. The conversational provider uses server-only `LLM_API_KEY`, `LLM_BASE_URL=https://api.openai.com/v1`, `LLM_MODEL=gpt-4.1-mini`, `LLM_TIMEOUT_SECONDS=20` and `LLM_MAX_TOOL_ROUNDS=20`. These are distinct from the embedding settings. Only `DEMO_BUYER_PASSWORD` is needed for demo setup; no external agent token is provisioned. Do not put secrets in these manifests or Vite environment variables.
 
 Set `FORWARDED_ALLOW_IPS` to the actual ingress proxy addresses/CIDRs (never `*`). The ingress must replace untrusted client-supplied forwarded headers, and application ingress should be limited to that proxy. Uvicorn then exposes the verified client address to login throttling instead of grouping everyone under the ingress address. The template cannot guess the cluster's proxy network. Requests from an untrusted peer cannot choose their identity via `X-Forwarded-For`.
 
