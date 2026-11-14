@@ -5,7 +5,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 from aimo import approval_workflow as workflow
-from aimo import auth
+from aimo import auth, cancellations, scheduler
 from aimo.approval_policy import can_approve
 from aimo.chat_schemas import AgentTurn
 from aimo.db import Problem, connection, fingerprint, js, now
@@ -225,6 +225,7 @@ def claim_turn(cid=None):
         ).fetchone()
         if turn["worker_attempts"] >= 3:
             c.execute("UPDATE conversation_turns SET state='failed' WHERE id=%s", (turn["id"],))
+            scheduler.settle_failed_system_turn(c, turn["id"], turn["conversation_id"])
             event(
                 "worker.attempt_limit",
                 turn_id=str(turn["id"]),
@@ -299,7 +300,7 @@ def execute_turn(turn, service, runner=None):
         data = detail(identity, cid)
         with connection() as c:
             limits = customer_constraints(c, cid, tid)
-        history = [{"role": m["role"], "content": m["text"]} for m in data["messages"]]
+        history = [scheduler.provider_message(m["role"], m["text"]) for m in data["messages"]]
         # Structured persisted plans and status survive refresh, restarts and a provider context reset.
         for index, msg in enumerate(data["messages"]):
             if msg["meal_plan"]:
@@ -382,10 +383,12 @@ def execute_turn(turn, service, runner=None):
             c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
     except Exception:
         with connection() as c:
-            c.execute(
+            failed = c.execute(
                 "UPDATE conversation_turns SET state='failed' WHERE id=%s AND attempt=%s AND state='running'",
                 (tid, attempt),
-            )
+            ).rowcount
+            if failed:
+                scheduler.settle_failed_system_turn(c, tid, cid)
         raise
     return detail(identity, cid)
 
@@ -415,6 +418,9 @@ def purchases(identity, offset, limit):
 
 
 def confirm(identity, pid, body, service):
+    # CNF-003: only a human customer role confirms, never an agent that happens to hold authority.
+    if identity["role"] != "approver":
+        raise Problem("FORBIDDEN", "Only a buyer session can confirm a purchase.", 403)
     if str(body.proposal_id) != str(pid):
         raise Problem(
             "PROPOSAL_MISMATCH", "Confirmation must identify the purchase being reviewed.", 422
@@ -426,6 +432,7 @@ def confirm(identity, pid, body, service):
         old = workflow.prior_result(c, identity, body, any_key=True)
         if old:
             return old
+        cancellations.ensure_not_cancelled(c, p["id"])  # CNF-035
         if r["revision"] != body.revision:
             raise Problem("STALE_REVISION", "Terms changed. Review and confirm the new revision.")
         if p["order_id"] or r["expires_at"] <= now() or r["policy_version"] != policy["version"]:

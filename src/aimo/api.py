@@ -10,7 +10,19 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, StreamingResponse
 
 from aimo import approval_workflow as workflow
-from aimo import auth, conversations, errors, memory, policy_settings, schema_state, upstream, voice
+from aimo import (
+    auth,
+    cancellations,
+    conversations,
+    errors,
+    memory,
+    orders_list,
+    policy_settings,
+    schedules,
+    schema_state,
+    upstream,
+    voice,
+)
 from aimo.chat_schemas import (
     ConversationCreate,
     ConversationList,
@@ -30,6 +42,18 @@ from aimo.memory_schemas import (
     MemoryUpdate,
 )
 from aimo.observability import RequestLoggingMiddleware, configure_logging, event
+from aimo.order_schemas import CancellationResponse, OrdersResponse
+from aimo.schedule_schemas import (
+    ScheduleCreateRequest,
+    ScheduleDetail,
+    ScheduleEditPreviewRequest,
+    ScheduleList,
+    SchedulePreviewRequest,
+    ScheduleReplaceRequest,
+    ScheduleResponse,
+    ScheduleTerms,
+    SubstituteCandidates,
+)
 from aimo.schemas import (
     CommitRequest,
     CommitResponse,
@@ -182,6 +206,8 @@ def create_app(service=None):
             "username": identity["id"],
             "buyer_id": identity["buyer_id"],
             "csrf_token": csrf,
+            "role": identity["role"],
+            "scheduler_demo_mode": settings().scheduler_demo_mode,
         }
 
     @app.get("/api/session", response_model=SessionResponse)
@@ -191,6 +217,8 @@ def create_app(service=None):
             "username": identity["id"],
             "buyer_id": identity["buyer_id"],
             "csrf_token": data["csrf"],
+            "role": identity["role"],
+            "scheduler_demo_mode": settings().scheduler_demo_mode,
         }
 
     @app.post("/api/logout", status_code=204)
@@ -414,6 +442,117 @@ def create_app(service=None):
                 "X-Accel-Buffering": "no",
             },
         )
+
+    @app.post("/api/purchases/{proposal_id}/cancel", response_model=CancellationResponse)
+    def cancel_purchase(proposal_id: UUID, request: Request, identity=Depends(buyer)):
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+        # CNF-035: an append-only cancellation of a pending request; a placed order is refused.
+        return cancellations.cancel_my_request(identity, proposal_id)
+
+    @app.get("/api/orders", response_model=OrdersResponse)
+    def orders(
+        offset: int = Query(0, ge=0, le=10000),
+        limit: int = Query(20, ge=1, le=50),
+        status: str | None = Query(
+            None,
+            max_length=80,
+            description="Comma list of scheduled, pending, placed, cancelled; empty means all",
+        ),
+        q: str | None = Query(
+            None,
+            max_length=200,
+            description="Search: trimmed, at most 80 characters, case-insensitive substring over "
+            "titles, order and proposal ids, destination, delivery date, line names, product ids",
+        ),
+        identity=Depends(buyer),
+    ):
+        statuses = [s.strip() for s in (status or "").split(",") if s.strip()]
+        return orders_list.orders_page(identity, offset, limit, statuses=statuses, query=q)
+
+    def csrf(identity, request: Request):
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+
+    # Standing orders (CNF-022 to CNF-037). Reads need the session; every POST also needs CSRF and
+    # a same-origin request. The customer functions require the approver role themselves.
+    @app.get("/api/schedules", response_model=ScheduleList)
+    def schedule_list(
+        offset: int = Query(0, ge=0, le=10000),
+        limit: int = Query(20, ge=1, le=50),
+        status: str | None = Query(None, description="Comma list of schedule statuses"),
+        identity=Depends(buyer),
+    ):
+        wanted = tuple(x.strip() for x in status.split(",") if x.strip()) if status else ()
+        return schedules.list_schedules(identity, offset, limit, wanted)
+
+    # Registered before /api/schedules/{schedule_id}, or "substitute-candidates" is parsed as an id.
+    @app.get("/api/schedules/substitute-candidates", response_model=SubstituteCandidates)
+    def schedule_substitute_candidates(
+        product_id: str = Query(min_length=1, max_length=40), identity=Depends(buyer)
+    ):
+        return schedules.substitute_candidates(identity, product_id, service)
+
+    @app.post("/api/schedules/preview", response_model=ScheduleTerms)
+    def schedule_preview(body: SchedulePreviewRequest, request: Request, identity=Depends(buyer)):
+        csrf(identity, request)
+        return schedules.preview(identity, body, service)
+
+    @app.post("/api/schedules", response_model=ScheduleResponse)
+    def schedule_create(body: ScheduleCreateRequest, request: Request, identity=Depends(buyer)):
+        csrf(identity, request)
+        return schedules.create(identity, body, service)
+
+    @app.get("/api/schedules/{schedule_id}", response_model=ScheduleDetail)
+    def schedule_detail(
+        schedule_id: UUID,
+        runs_offset: int = Query(0, ge=0, le=10000),
+        identity=Depends(buyer),
+    ):
+        return schedules.get(identity, schedule_id, runs_offset)
+
+    @app.post("/api/schedules/{schedule_id}/preview", response_model=ScheduleTerms)
+    def schedule_edit_preview(
+        schedule_id: UUID,
+        body: ScheduleEditPreviewRequest,
+        request: Request,
+        identity=Depends(buyer),
+    ):
+        csrf(identity, request)
+        return schedules.preview_edit(identity, schedule_id, body, service)
+
+    @app.post("/api/schedules/{schedule_id}/replace", response_model=ScheduleResponse)
+    def schedule_replace(
+        schedule_id: UUID,
+        body: ScheduleReplaceRequest,
+        request: Request,
+        identity=Depends(buyer),
+    ):
+        csrf(identity, request)
+        return schedules.replace(identity, schedule_id, body, service)
+
+    @app.post("/api/schedules/{schedule_id}/cancel", response_model=ScheduleResponse)
+    def schedule_cancel(schedule_id: UUID, request: Request, identity=Depends(buyer)):
+        csrf(identity, request)
+        return schedules.cancel(identity, schedule_id)
+
+    @app.post("/api/schedules/{schedule_id}/run-now", response_model=ScheduleResponse)
+    def schedule_run_now(schedule_id: UUID, request: Request, identity=Depends(buyer)):
+        csrf(identity, request)
+        # DEMO ONLY (CNF-038): 403 SCHEDULE_DEMO_DISABLED unless SCHEDULER_DEMO_MODE is on.
+        return schedules.run_now(identity, schedule_id, service)
+
+    @app.post("/api/schedules/{schedule_id}/pause", response_model=ScheduleResponse)
+    def schedule_pause(schedule_id: UUID, request: Request, identity=Depends(buyer)):
+        csrf(identity, request)
+        return schedules.pause(identity, schedule_id)
+
+    @app.post("/api/schedules/{schedule_id}/resume", response_model=ScheduleResponse)
+    def schedule_resume(schedule_id: UUID, request: Request, identity=Depends(buyer)):
+        csrf(identity, request)
+        return schedules.resume(identity, schedule_id)
 
     return app
 

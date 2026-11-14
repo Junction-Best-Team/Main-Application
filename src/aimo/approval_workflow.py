@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from psycopg import sql
 
+from aimo import cancellations
 from aimo import meal_authorization as meals
 from aimo.approval_policy import can_approve, evaluate_purchase
 from aimo.config import settings
@@ -46,6 +47,12 @@ def proposal(c, pid, identity, lock=False):
     ).fetchone()
     if not p or (identity["role"] == "agent" and p["agent_id"] != identity["id"]):
         raise Problem("NOT_FOUND", "Purchase not found.", 404)
+    if identity["role"] == "scheduler":
+        from aimo import scheduler
+
+        # The scheduler sees only the proposals that belong to one of its runs (CNF-023).
+        if not scheduler.owns_proposal(c, pid, identity["buyer_id"]):
+            raise Problem("NOT_FOUND", "Purchase not found.", 404)
     r = c.execute(
         "SELECT * FROM proposal_revisions WHERE proposal_id=%s AND revision=%s",
         (pid, p["current_revision"]),
@@ -107,7 +114,9 @@ def evaluation_changed(revision, evaluated):
     return any(revision[key] != evaluated[key] for key in evaluated)
 
 
-def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, history=None):
+def render(
+    c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, history=None, cancelled=None
+):
     current = now()
     status = a["status"] if a else "not_required"
     recipe_basis = "saved_recipe" if r["request"].get("recipe_plan_id") else "free_form"
@@ -121,6 +130,10 @@ def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, hi
     committed = order is not None and order["revision"] == r["revision"]
     if historical:
         status = "superseded"
+    elif not committed and (
+        cancelled if cancelled is not None else cancellations.is_cancelled(c, p["id"])
+    ):
+        status = "cancelled"  # CNF-035: an append-only record next to the request
     elif not committed and status != "rejected":
         if (a is None or a["status"] == "superseded") and meals.is_withdrawn(c, p["id"]):
             status = "authorization_withdrawn"  # POL-010; withdrawal supersedes open approvals
@@ -163,7 +176,7 @@ def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, hi
         action = {"type": "view_current_proposal", "tool": "get_proposal"}
     elif committed:
         action = {"type": "complete", "tool": "get_order"}
-    elif status == "rejected":
+    elif status in ("rejected", "cancelled"):
         action = {"type": "stop"}
     elif status in (
         "expired",
@@ -368,6 +381,7 @@ def list_approvals(identity, offset=0, limit=20):
           JOIN buyers b ON b.id=p.buyer_id
           JOIN identities i ON i.id=p.agent_id AND i.buyer_id=p.buyer_id
           WHERE p.buyer_id=%s AND a.status='pending' AND p.order_id IS NULL AND r.expires_at>%s AND r.policy_version=b.current_policy
+          AND NOT EXISTS (SELECT 1 FROM order_request_cancellations x WHERE x.proposal_id=p.id)
           ORDER BY r.expires_at,p.id LIMIT %s OFFSET %s""",
             (identity["buyer_id"], now(), limit + 1, offset),
         ).fetchall()
@@ -398,6 +412,7 @@ def list_approvals(identity, offset=0, limit=20):
                         "active": row["agent_active"],
                     },
                     history=histories[row["id"]],
+                    cancelled=False,  # cancelled requests are filtered out of the inbox above
                 )
                 for row in page
             ],
@@ -524,6 +539,48 @@ def authorize_commit(r, a, approvers, snapshot, evaluation):
         )
 
 
+def require_commit_authority(c, identity, p, r, snapshot, evaluated, approvers):
+    """Who may commit, by role. Every role has its own branch and an unknown one is refused.
+
+    agent:     no agent can authorize a purchase; it needs a customer confirmation recorded
+               against this exact revision and fingerprint. Blocked outcomes skip the check and
+               are refused as COMMIT_BLOCKED by authorize_commit.
+    scheduler: only against a valid scheduled authorization (aimo.scheduler).
+    approver:  the human customer; the confirmation is that approver's own action.
+    """
+    role = identity["role"]
+    if role == "agent":
+        if evaluated["policy_outcome"] not in ("ready_to_commit", "approval_required"):
+            return
+        confirmations = c.execute(
+            """SELECT actor_id FROM customer_confirmations
+            WHERE proposal_id=%s AND revision=%s AND fingerprint=%s""",
+            (p["id"], r["revision"], r["fingerprint"]),
+        ).fetchall()
+        confirmed_ids = {item["actor_id"] for item in confirmations}
+        if not any(
+            candidate["id"] in confirmed_ids
+            and can_approve(
+                candidate["authority"],
+                Decimal(snapshot["gross_total"]),
+                snapshot["currency"],
+                evaluated["required_exceptions"],
+            )
+            for candidate in approvers
+        ):
+            raise Problem(
+                "CUSTOMER_CONFIRMATION_REQUIRED",
+                "Confirm these exact terms in the product.",
+                403,
+            )
+    elif role == "scheduler":
+        from aimo import scheduler
+
+        scheduler.ensure_commit_allowed(c, identity, p, r, snapshot, evaluated)
+    elif role != "approver":
+        raise Problem("FORBIDDEN", "This identity role cannot commit a purchase.", 403)
+
+
 def commit_order(identity, request: CommitRequest, connector):
     with connection() as c:
         context(c, identity)
@@ -550,6 +607,7 @@ def commit_order(identity, request: CommitRequest, connector):
         if p["order_id"]:
             raise Problem("ALREADY_COMMITTED", "One order already exists for this proposal.")
         meals.ensure_active(c, p["id"])  # POL-010: a withdrawn authorization never commits
+        cancellations.ensure_not_cancelled(c, p["id"])  # CNF-035: a cancelled request never commits
         if version != policy["version"]:
             raise Problem(
                 "POLICY_CHANGED", "Policy changed during lookup; retry with fresh evidence."
@@ -586,34 +644,7 @@ def commit_order(identity, request: CommitRequest, connector):
                 "status": "revised",
                 **render(c, *proposal(c, p["id"], identity), identity),
             }
-        # Any agent role can prepare, but no agent can authorize a purchase: it needs a
-        # customer confirmation recorded against this exact revision and fingerprint. Blocked
-        # outcomes skip this gate and are refused as COMMIT_BLOCKED by authorize_commit below.
-        if identity["role"] == "agent" and evaluated["policy_outcome"] in (
-            "ready_to_commit",
-            "approval_required",
-        ):
-            confirmations = c.execute(
-                """SELECT actor_id FROM customer_confirmations
-                WHERE proposal_id=%s AND revision=%s AND fingerprint=%s""",
-                (p["id"], r["revision"], r["fingerprint"]),
-            ).fetchall()
-            confirmed_ids = {item["actor_id"] for item in confirmations}
-            if not any(
-                candidate["id"] in confirmed_ids
-                and can_approve(
-                    candidate["authority"],
-                    Decimal(snapshot["gross_total"]),
-                    snapshot["currency"],
-                    evaluated["required_exceptions"],
-                )
-                for candidate in approvers
-            ):
-                raise Problem(
-                    "CUSTOMER_CONFIRMATION_REQUIRED",
-                    "Confirm these exact terms in the product.",
-                    403,
-                )
+        require_commit_authority(c, identity, p, r, snapshot, evaluated, approvers)
         authorize_commit(r, a, approvers, snapshot, evaluated)
         oid = uuid4()
         receipt = {
@@ -638,6 +669,10 @@ def commit_order(identity, request: CommitRequest, connector):
             "accepted_at": now().isoformat(),
             "explanation": "Current policy, commercial evidence and any required exact-revision buyer approval were checked.",
         }
+        if identity["role"] == "scheduler":
+            from aimo import scheduler
+
+            receipt["scheduled_run"] = scheduler.receipt_note(c, p["id"])  # CNF-036 order note
         c.execute(
             "INSERT INTO orders(id,proposal_id,buyer_id,revision,receipt) VALUES(%s,%s,%s,%s,%s)",
             (oid, p["id"], identity["buyer_id"], r["revision"], js(receipt)),

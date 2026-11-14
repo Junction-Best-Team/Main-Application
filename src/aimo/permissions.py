@@ -15,6 +15,10 @@ HISTORY_TABLES = (
     "recipe_plan_revisions",
     "recipe_versions",
     "purged_proposals",
+    # WS-E: append-only logs of the scheduler and the cancelled order requests.
+    "scheduled_run_events",
+    "scheduled_authorization_events",
+    "order_request_cancellations",
 )
 
 
