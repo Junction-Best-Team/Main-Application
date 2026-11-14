@@ -1,7 +1,11 @@
-"""WS-B audit tests for PER-001 (persistence) and PER-003 (read by ID and revision).
+"""WS-B audit tests for PER-001 (persistence), PER-003 (read by ID and revision), PER-004 (append-only).
 
 Local audit file. Passing tests pin behaviour that exists today. Strict xfail tests
 mark gaps where an API exists to call and does not do what the requirement needs.
+PER-003 is satisfied by the current revision plus the revision a proposal was prepared
+from (owner decision Q-46: that is enough); reading a past revision by number is not
+required, so no test demands it. PER-004 (Draft, Q-47): recipe plan revisions and recipe
+versions are append-only in the database; the one gap is a strict xfail below.
 Authored fixtures only, no supplier call. Helpers are copied from test_recipes.py.
 """
 
@@ -10,7 +14,6 @@ import json
 import os
 from copy import deepcopy
 from datetime import date, timedelta
-from types import SimpleNamespace
 from uuid import uuid4
 
 import psycopg
@@ -458,18 +461,20 @@ def test_history_tables_reject_update_and_delete(internal_planned, internal, buy
 
 @pytest.mark.xfail(
     strict=True,
-    reason="GAP: recipe_plan_revisions and recipe_versions have no immutable_record trigger "
-    "(only proposal_revisions, audit_events, policies, customer_confirmations do), although "
-    "docs/recipes.md calls plan revisions immutable.",
+    reason="PER-004 Draft: recipe_plan_revisions and recipe_versions have no immutable_record "
+    "trigger (only proposal_revisions, audit_events, policies, customer_confirmations do), "
+    "although docs/recipes.md calls plan revisions immutable.",
 )
 @pytest.mark.parametrize(
     "statement",
     [
         "UPDATE recipe_plan_revisions SET data='{}'::jsonb",
+        "DELETE FROM recipe_plan_revisions",
         "UPDATE recipe_versions SET attribution='tampered'",
+        "DELETE FROM recipe_versions",
     ],
 )
-def test_plan_revisions_and_recipe_versions_are_append_only_in_database(planned, statement):
+def test_per_004_plan_revisions_and_recipe_versions_are_append_only_in_database(planned, statement):
     with pytest.raises(psycopg.errors.RaiseException, match="immutable history"):
         with connection() as c:
             c.execute(statement)
@@ -748,69 +753,29 @@ def test_conversation_meal_plan_copy_is_labelled_but_goes_stale_after_a_later_re
     assert all("gross_total" not in json.dumps(c) for c in copies)
 
 
-# ---- Gaps: an API exists, but it cannot ask for a past revision ------------------------------
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason="GAP: PlanReference (tool and Service contract for get_recipe_plan) has only plan_id; "
-    "extra='forbid' rejects a revision field.",
-)
-def test_plan_reference_accepts_a_revision_number(planned):
-    plan, _ = planned
-    reference = PlanReference.model_validate({"plan_id": plan["recipe_plan_id"], "revision": 1})
-    assert reference.revision == 1
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason="GAP: recipes.get_plan ignores any revision on the request and always returns the "
-    "current revision (read_plan joins on recipe_plans.revision).",
-)
-def test_get_plan_returns_a_past_revision_when_asked(planned, actor):
-    plan, _ = planned
-    request = SimpleNamespace(plan_id=plan["recipe_plan_id"], revision=1)
-    assert get_plan(actor, request)["recipe_plan_revision"] == 1
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason="GAP: GET /api/purchases/{proposal_id} ignores a revision query parameter and returns "
-    "the current revision; only an approval ID reaches an older revision.",
-)
-def test_purchase_route_returns_a_past_proposal_revision_when_asked(
-    planned, actor, service, monkeypatch
+def test_per_003_proposal_names_the_plan_revision_it_was_prepared_from_and_that_row_stays_readable(
+    planned, actor, service
 ):
+    """Q-46: the revision a proposal was prepared from is enough (no read-by-number API)."""
     plan, _ = planned
-    first, second = refreshed_proposal(actor, service, plan, monkeypatch)
-    with TestClient(create_app(service)) as client:
-        signed(client)
-        response = client.get(f"/api/purchases/{first['proposal_id']}", params={"revision": 1})
-    assert response.status_code == 200
-    assert response.json()["revision"] == 1
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason="GAP: the agent tools get_recipe_plan and get_proposal accept no revision argument "
-    "(typed request models forbid extra fields).",
-)
-@pytest.mark.parametrize("tool", ["get_recipe_plan", "get_proposal"])
-def test_agent_tools_can_read_a_named_past_revision(
-    planned, actor, service, recipes_on, monkeypatch, tool
-):
-    plan, _ = planned
-    first, _second = refreshed_proposal(actor, service, plan, monkeypatch)
-    session = ToolSession(actor | {"_turn_id": str(uuid4())}, service)
-    arguments = (
-        {"plan_id": plan["recipe_plan_id"], "revision": 1}
-        if tool == "get_recipe_plan"
-        else {"proposal_id": first["proposal_id"], "revision": 1}
-    )
-    result = session.invoke(tool, json.dumps(arguments))
-    revision = (
-        result["meal_plan"]["recipe_plan_revision"]
-        if tool == "get_recipe_plan"
-        else result["revision"]
-    )
-    assert revision == 1
+    pid = plan["recipe_plan_id"]
+    prepared = service.prepare_order(actor, request_for(plan))
+    assert prepared["request"]["recipe_plan_id"] == pid
+    assert prepared["request"]["recipe_plan_revision"] == plan["recipe_plan_revision"] == 4
+    restart_pool_and_service()
+    with connection() as c:
+        stored = c.execute(
+            "SELECT data FROM recipe_plan_revisions WHERE plan_id=%s AND revision=%s",
+            (pid, prepared["request"]["recipe_plan_revision"]),
+        ).fetchone()
+        revisions = [
+            r["revision"]
+            for r in c.execute(
+                "SELECT revision FROM recipe_plan_revisions WHERE plan_id=%s ORDER BY revision",
+                (pid,),
+            ).fetchall()
+        ]
+    # The plan advanced through revisions 1 to 4 before the proposal was prepared, and the
+    # revision the proposal names is still stored, equal to what the agent saw.
+    assert revisions == [1, 2, 3, 4]
+    assert stored["data"] == plan
