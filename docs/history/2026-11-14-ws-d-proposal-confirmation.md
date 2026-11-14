@@ -21,6 +21,6 @@ Evidence: `Assistant/projects/junction/evidence/2026-11-14-audit-ws-d.md`, `evid
 ## Carry forward
 - CNF-011 route half: person 1 applies one line in `conversations.confirm` (patch text saved); then remove the strict xfail.
 - PRP-002 (return the fingerprint) and T3 (`workflow.confirm_purchase`, one expiry code) wait for person 1.
-- CNF-021 (Approved): not built. Owner decided a 30-day default period counted from the current revision's expiry (Q-56) and an append-only `purged_proposals` table (Q-57). Implementation needs migration 012 (not reserved) and the setting in `config.py`; the schema guard, the strict xfail and the design are ready.
+- CNF-021 (Approved): not built. Owner decided a 30-day default period counted from the current revision's expiry (Q-56) and an append-only `purged_proposals` table (Q-57). Implementation needs migration 014 (reservation requested in #111, not yet confirmed) and the setting in `config.py`; the schema guard, the strict xfail and the design are ready.
 - `p3/integration-fix` (fifth PR) carries the cross-branch fixes: the 009 backfill review entry, the SUP-007 xfail mark, the `unsupported` wire shape (with `tests/test_requirements_wire_shape.py`), the migrations README rows, the CNF-021 cleanup contract test, this history and the findings and TEST-GUIDE entries of all four tracks.
 - Release note: migrations 009 and 010 must be applied before the new image runs.

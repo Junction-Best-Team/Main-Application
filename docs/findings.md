@@ -642,7 +642,7 @@ Add new findings below, under your track heading.
 
 ### F-BASKET-012: Migration numbering
 - Date: 2026-11-14   Track: 3   Status: verified
-- Finding: develop has two migrations with prefix 005 (005_hosted_search, 005_recipe_planning); the runner orders by full filename (migrations/README.md). 008-010 are reserved for person 3 (008 is WS-D's orders_immutable); 011 is PR #38's proposal revision ordering; 012 and 013 are not reserved yet (owner has not posted the issue). PER-004 (append-only recipe plan revisions and recipe versions) is therefore a strict-xfail test plus a migration draft as text; the draft passes on a scratch database and no code updates or deletes those tables.
+- Finding: develop has two migrations with prefix 005 (005_hosted_search, 005_recipe_planning); the runner orders by full filename (migrations/README.md). 008-010 are reserved for person 3 (008 is WS-D's orders_immutable); 011 is PR #38's proposal revision ordering; 012 and 013 are taken (memory, catalog sync, release integration); 014 and 015 are requested in #111, not yet confirmed by person 1 (owner has not posted the issue). PER-004 (append-only recipe plan revisions and recipe versions) is therefore a strict-xfail test plus a migration draft as text; the draft passes on a scratch database and no code updates or deletes those tables.
 - Evidence: PER-004-migration-draft.md, tests/test_persistence_contract.py::test_per_004_*.
 - Impact: PER-004 stays unmet until a number is reserved. TRUNCATE is not blocked by row triggers (noted in the draft).
 
@@ -700,7 +700,7 @@ Add new findings below, under your track heading.
 - Date: 2026-11-14   Track: 3   Status: verified (test database); production role ownership unverified
 - Finding: The history tables are protected against UPDATE and DELETE by row triggers; PostgreSQL does not fire row triggers on TRUNCATE, so the schema owner, a superuser or any role later granted TRUNCATE could erase history (4 strict xfails). The restricted runtime role built by `configure_runtime_role` holds only SELECT/INSERT/UPDATE/DELETE and **does not hold TRUNCATE** on any history table (no default ACL, PUBLIC grant, ownership or role membership gives it), so application code cannot do it: this is a missing guard against an operator or a leaked schema-owner credential, not an application exposure. A statement-level BEFORE TRUNCATE guard is designed (session-setting escape hatch for the test fixture's `TRUNCATE ... CASCADE`) but not built: no migration number is reserved. `004_worker_queue.sql:8` is the one migration that rewrites historical rows (`conversation_turns` state).
 - Evidence: `tests/test_runtime_truncate.py` (10 passed, live NOLOGIN role with a positive control), `tests/test_additive_migrations.py` (4 strict xfails), `ws-c/per-002-truncate-design.md`, `ws-c/PER-002.md`.
-- Impact: Add the guard and `REVOKE TRUNCATE, REFERENCES, TRIGGER` in `permissions.py` in one PR with the fixture's `SET LOCAL aimo.allow_history_truncate='on'` once 012/013 is reserved.
+- Impact: Add the guard and `REVOKE TRUNCATE, REFERENCES, TRIGGER` in `permissions.py` in one PR with the fixture's `SET LOCAL aimo.allow_history_truncate='on'` once 015 is reserved (requested in #111).
 
 ### F-AGENT-005: The agent can reach no purchasing verb
 - Date: 2026-11-14   Track: 3   Status: verified
@@ -780,7 +780,7 @@ Add new findings below, under your track heading.
 - Date: 2026-11-14   Track: 3   Status: verified (analysis); implementation not started
 - Finding: Tables referencing `proposals` or `proposal_revisions`: `proposal_revisions`, `approvals`, `audit_events`, `customer_confirmations`, `prepare_requests`, `recipe_plans`, `conversation_messages`, `meal_authorization_withdrawals`, `orders`. Four of them have `immutable_record` triggers that reject DELETE and none has `ON DELETE CASCADE`. A cleanup needs a reviewed trigger change that still protects ordered proposals, a deletion order (children first) and unlinking `recipe_plans` and `conversation_messages`.
 - Evidence: design `Assistant/projects/junction/evidence/ws-d/cnf-021-design.md`; `tests/test_unfinished_cleanup_contract.py` on `p3/ws-d-2` (`81d9bcb`): a passing guard that fails when a new table starts referencing proposals, and a strict xfail for the proposed `purge_unfinished_proposals`.
-- Impact: Owner decided a 30-day default period counted from the current revision's expiry (Q-56) and an append-only `purged_proposals` table (Q-57). Needs migration 012 (not reserved) and a setting for the period (person 1's `config.py`). Not built.
+- Impact: Owner decided a 30-day default period counted from the current revision's expiry (Q-56) and an append-only `purged_proposals` table (Q-57). Needs migration 014 (reservation requested in #111, not yet confirmed) and a setting for the period (person 1's `config.py`). Not built.
 
 ### F-CONFIRM-012: Test environment traps seen while building WS-D
 - Date: 2026-11-14   Track: 3   Status: verified

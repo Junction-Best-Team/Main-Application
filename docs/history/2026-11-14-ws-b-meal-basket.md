@@ -27,6 +27,6 @@ See findings F-BASKET-001 to F-BASKET-012. In short: Decimal division mispriced 
 ## Carry forward
 - Patches for persons 1 and 2 (agent_tools.py, recipes.py, recipe_schemas.py, chat_schemas.py, api.py, agent.py, guardrails.py, frontend types): the strict xfails for MEA-005 (single match rejection, MealPlan.rejected), BAS-002 free-form, BAS-009 end to end, MEA-008 agent layer, MEA-012 and MEA-013 (MealPlan, Recipe, scaled_plan) stay until the patches land; remove each marker in the same change.
 - MEA-011 (maximum per portion) deferred, person 2. SUP-007 (lookup batching) WS-A. BAS-007 warn only deferred (ISS-JCT-001). MEA-010 constraint provenance: no code, needs a migration and person 1's persistence.
-- PER-004: migration draft as text only until the owner reserves a number (012 and 013 are not reserved).
+- PER-004: migration draft as text only until the owner reserves a number (014 and 015 are requested in #111, not yet confirmed; 012 and 013 are taken by memory, catalog sync and release integration).
 - Review at merge: my purchases.py hunks (imports, MAX_MATERIALS and exact_money above context(), build_snapshot contributions and shortfall and the deposit loop) overlap WS-C's AgentAuthority import; service.py has two added methods (match_ingredients, ensure_saved_plan_resolved).
 - Ask the owner: BAS-009 when the request offers 4 ST + 6 L for a plan needing 10 ST (refused, now with exact details); whether a different title for the same dish should also trigger the MEA-008 refusal.

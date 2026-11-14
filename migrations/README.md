@@ -15,6 +15,8 @@ Do not rename applied migrations or delete their ledger rows.
 | 012_buyer_user_memory | Buyer and user memory (`docs/memory.md`) |
 | 012_catalog_import_profile | Catalog sync: `catalog_generations.import_profile` (additive, nullable) |
 | 013_catalog_sync_withdrawals | Release integration: source snapshot count and product-ID-only cleanup protection view |
+| 014 | Requested by Person 3 (#111, not yet confirmed by Person 1): append-only `purged_proposals` for cleanup of unfinished proposals (CNF-021). Reservation only, no file yet |
+| 015 | Requested by Person 3 (#111, not yet confirmed by Person 1): append-only recipe history and the TRUNCATE guard (PER-004). Reservation only, no file yet |
 
 Before allocating another number, check remote branch tips and open PRs and update
 this table with the agreed allocation. Reservations do not create migration files.

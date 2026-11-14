@@ -89,7 +89,7 @@ def counts(proposal_id):
     reason="CNF-021 not implemented: no purge_unfinished_proposals exists, the immutable triggers "
     "on proposal_revisions, audit_events and customer_confirmations reject any DELETE, and there "
     "is no purged_proposals table. Owner: default period 30 days from the current revision's "
-    "expiry (Q-56), append-only purged_proposals table (Q-57), migration 012 (not yet reserved). "
+    "expiry (Q-56), append-only purged_proposals table (Q-57), migration 014 (reservation requested in #111, not yet confirmed). "
     "Design: Assistant/projects/junction/evidence/ws-d/cnf-021-design.md.",
 )
 def test_unfinished_proposals_and_approvals_are_removed_after_the_period_and_orders_are_kept(
