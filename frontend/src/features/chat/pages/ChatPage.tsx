@@ -32,7 +32,9 @@ export function ChatPage() {
     busy,
   } = useChat(conversationId);
   return (
-    <main className="mx-auto flex min-h-0 w-full max-w-[1720px] flex-1 flex-col gap-space-md p-margin-sm pb-28 lg:flex-row lg:items-start lg:pb-space-lg md:gap-space-lg md:p-space-lg md:pb-28">
+    <main
+      className={`mx-auto flex min-h-0 w-full max-w-[1720px] flex-1 flex-col gap-space-md p-margin-sm lg:flex-row lg:items-start md:gap-space-lg md:p-space-lg ${conversation?.purchases.length || conversation?.draft_cart ? "pb-28 md:pb-28 lg:pb-space-lg" : ""}`}
+    >
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-space-sm md:gap-space-md">
         <header className="flex shrink-0 items-center gap-space-md [@media(max-height:650px)]:hidden">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary-container text-on-primary shadow-sm">
@@ -58,21 +60,6 @@ export function ChatPage() {
               <span className="truncate font-label text-label-md text-primary">
                 {conversation?.title ?? session?.buyer_id}
               </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-space-md gap-y-space-xs font-label text-label-sm text-secondary">
-              <span className="flex items-center gap-space-xs">
-                <Icon name="verified" className="text-[16px]" />
-                <span className="sr-only md:not-sr-only">
-                  Exact-revision confirmation
-                </span>
-              </span>
-              <Link
-                to="/settings/preferences"
-                className="flex items-center gap-space-xs text-wholesale-teal"
-              >
-                <Icon name="tune" className="text-[16px]" />
-                Memory
-              </Link>
             </div>
           </div>
 
@@ -180,11 +167,6 @@ export function ChatPage() {
             onSubmit={send}
           />
         </div>
-
-        <p className="shrink-0 text-label-sm text-secondary">
-          Messages never authorize a purchase. You confirm the exact basket
-          separately.
-        </p>
       </div>
       {/* Overview: right-hand column on desktop, fixed bottom drawer on mobile. */}
       <StagedOverview

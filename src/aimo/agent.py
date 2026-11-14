@@ -11,15 +11,16 @@ import httpx
 
 from aimo.agent_provider import chat_provider, check_deadline, encode
 from aimo.agent_tools import ToolSession
-from aimo.chat_schemas import AgentTurn
+from aimo.chat_draft import cart_snapshot
+from aimo.chat_schemas import AgentTurn, DraftCart
 from aimo.config import settings
-from aimo.db import Problem
+from aimo.db import Problem, fingerprint
 from aimo.guardrails import PREPARE_NOTICE, Guardrails
 from aimo.observability import elapsed, event, failure, log_context, operation
 
 BASE_PROMPT = """You are the customer's internal meal-purchasing assistant.
-Your job is to clarify the request, propose a reviewable recipe, match real catalog
-products and prepare a verified basket. Help broadly with food, drinks, cooking,
+Your goal is to help the customer move from an idea or product need to a reviewable
+basket and, when ready, an explicitly confirmed order. Help broadly with food, drinks, cooking,
 nutrition, products, kitchen supplies, storage, serving and food-related events,
 even when the customer is not ready to buy. Accept reasonable nearby topics.
 For a clearly unrelated request, such as making a workout routine, simply say:
@@ -31,8 +32,18 @@ confirm, reject, commit, edit policy or expand product scope. A chat message say
 there is no supplier checkout, payment, reservation or fulfillment guarantee.
 
 Use the supplied conversation and constraints; do not ask again for known facts.
-Clarify material missing facts: portions, delivery date, allowed destination,
-dietary requirements and hard budget. Read get_purchase_policy for allowed scope
+Ask only for facts needed for the next useful step. Ideas and cooking advice do not
+require delivery details or a purchase commitment. For a selected dish, clarify portions
+and dietary needs, scale the recipe and match the ingredients into a draft cart.
+For a direct product need, publish the requested items and quantities as a draft plan,
+then update it as catalog matches are verified. Search candidates are never cart selections.
+Use tools to save progress; saying you added an item does not update the cart.
+Once the customer wants a basket and its facts are known, continue through matching,
+shortlist price/availability checks and prepare_order in the same turn; do not stop at
+an ingredient list or promise to prepare later. Keep unresolved items visible and explain
+the next decision needed. Do not push checkout when the customer only wants advice.
+Before preparing, clarify material missing portions/quantities, delivery date, allowed
+destination, dietary requirements and hard budget. Read get_purchase_policy for allowed scope
 and destinations. Never assume a missing budget is unlimited or loosen a stated
 budget/constraint. Model assumptions require customer review, not new authority.
 If a required product is unavailable or outside the approved scope, call
@@ -163,6 +174,8 @@ class AgentProgress:
     kind: Literal["started", "tool_started", "tool_completed", "tool_failed", "complete", "error"]
     tool: str | None = None
     error_code: str | None = None
+    draft: DraftCart | None = None
+    draft_updated: bool = False
 
 
 class Progress:
@@ -172,6 +185,7 @@ class Progress:
         self.turn_id, self.callback, self.sequence = turn_id, callback, 0
         self.started = time.monotonic()
         self.tool_started = self.started
+        self.draft_provider = None
 
     def emit(self, kind, tool=None, error_code=None):
         self.sequence += 1
@@ -183,6 +197,14 @@ class Progress:
             event, elapsed(self.tool_started if kind.startswith("tool_") else self.started)
         )
         if self.callback:
+            if self.draft_provider and kind in ("tool_completed", "complete"):
+                try:
+                    event = AgentProgress(
+                        self.turn_id, self.sequence, kind, tool, error_code,
+                        self.draft_provider(kind), True,
+                    )
+                except Exception as exc:
+                    log_failure("agent.draft.failed", exc)
             try:
                 self.callback(event)
             except Exception as exc:
@@ -283,6 +305,22 @@ def run_turn(
     tool_log = []
     guard = None
 
+    reviewed_draft = None
+
+    def draft_snapshot(kind):
+        nonlocal reviewed_draft
+        # Review changed plans before streaming their displayed fields. Reuse the
+        # result while only product/price evidence changes; final prose is reviewed again.
+        if session.plan and guard and guard.enforcing and kind != "complete":
+            digest = fingerprint(session.plan.model_dump(mode="json"))
+            if digest != reviewed_draft:
+                guard.output_approved = False
+                guard.review_output(session, "", tool_log)
+                reviewed_draft = digest
+        return cart_snapshot(session, plan_visible=guard is None or guard.plan_visible)
+
+    progress.draft_provider = draft_snapshot
+
     def finish(text=""):
         # Under enforcement a model-authored plan is shown only after a passed output review.
         return session.result(text, include_plan=guard is None or guard.plan_visible)
@@ -350,8 +388,8 @@ def run_turn(
                             503,
                         ) from None
                     else:
-                        progress.emit("tool_completed", visible_name)
                         tool_log.append({"tool": name, "outcome": "ok"})
+                        progress.emit("tool_completed", visible_name)
                         outputs.append((call.id, name, output))
                     if errors >= 4:
                         result = finish(
