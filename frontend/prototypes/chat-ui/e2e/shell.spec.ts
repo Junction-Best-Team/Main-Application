@@ -34,7 +34,7 @@ test("each route marks its nav item as the current page", async ({ page }, info)
 
   await signIn(page, "/");
   await expectCurrent("Home");
-  await page.getByRole("link", { name: "Request" }).click();
+  await page.getByRole("link", { name: "Request", exact: true }).click();
   await expect(page).toHaveURL(/\/request$/);
   await expectCurrent("Request");
 

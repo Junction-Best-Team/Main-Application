@@ -8,15 +8,11 @@ import { useParams } from "react-router-dom";
 import type { Proposal } from "./types";
 import { currency, dateTime } from "./shared";
 import { store } from "./store";
+import { fillAccepted, isAccepted, placedAt } from "./acceptedOrders";
 import { MOCK } from "./mock";
 import { Icon, InertButton, InertInput } from "./placeholders";
 
 const PAGE_SIZE = 5;
-
-const isAccepted = (p: Proposal) => Boolean(p.order_id) && p.order_status === "accepted_mock";
-
-const placedAt = (p: Proposal) =>
-  p.history?.find((e) => e.event === "purchase_confirmed")?.created_at ?? p.snapshot.observed_at;
 
 const NOT_PLACED = "This purchase hasn't been placed yet — confirm it in the request it came from";
 
@@ -30,19 +26,10 @@ export function PurchasesPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const scrolled = useRef(false);
 
-  // Fetch API pages until `want` accepted orders are held (and `mustHave`, if
-  // given, is among them) or the list ends.
   const fill = useCallback(async (from: number, held: Proposal[], want: number, mustHave?: string) => {
-    let offset: number | null = from;
-    let all = held;
-    while (offset !== null) {
-      const page = await store.listPurchases(offset);
-      all = [...all, ...page.items.filter(isAccepted)];
-      offset = page.next_offset;
-      if (all.length >= want && (!mustHave || all.some((p) => p.proposal_id === mustHave))) break;
-    }
-    setOrders(all);
-    setNextOffset(offset);
+    const r = await fillAccepted(from, held, want, mustHave);
+    setOrders(r.orders);
+    setNextOffset(r.nextOffset);
   }, []);
 
   useEffect(() => {
