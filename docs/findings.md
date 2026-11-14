@@ -868,6 +868,35 @@ Add new findings below, under your track heading.
 - Verification: frontend `npm run check` passed; `npm test` passed 38 browser regressions, with two optional backend integration checks skipped. Image fixtures now have the real 4:3 shape and verify aspect ratio, viewport containment, persistence after refresh and failed-host fallback at 1440, 1024, 390 and 320 pixels. Separate local fixture captures reuse the previously generated pasta photo; no new paid model call, live customer data, catalog import or deployment. The browser contract was regenerated and matches the merged schema, including policy settings and image attachments.
 - Combined-backend verification after #128: full fixture-backed `tests/ci.sh` passed with 1853 tests passed, 84 expected failures and all 11 strict HTTP sweep checks passed against isolated rebase databases. Both schema probes and policy/image regressions passed. Desktop/mobile photo captures were visually inspected.
 
+### F-FE-SEARCH-001: Remove the desktop product-search placeholder
+
+- Date: 2026-11-14. Removed the disabled wholesale SKU/product/EAN search field from the shared desktop header and its unused placeholder text. Header actions remain aligned to the right.
+- Verification: `npm run check --prefix frontend` passed; `CI=1 npm test --prefix frontend` passed 38 fixture-backed browser tests, with two optional backend integration tests skipped. Desktop (1440px) and mobile (390px) screenshots were visually inspected. No backend, API, dependency or deployment changes.
+
+### F-FE-CHAT-SCROLL-001: Keep chat scrolling inside the message panel
+
+- Date: 2026-11-14. Request and conversation routes fill the available viewport; message history scrolls independently while the composer and conversation header stay in place. Automatic scrolling targets message history instead of the document. Desktop Overview is bounded to the available height; mobile spacing and the composer are compact, and the secondary chat heading is hidden on short screens. Mock-order and exact-confirmation wording remain.
+- Verification: `npm run check --prefix frontend` passed. The fixture-backed browser suite passed 43 tests, with two optional backend integration checks skipped. Five new cases cover long-history scrolling, stable composer position, a new reply and no document overflow at 1440×900, 1024×768, 390×844, 320×740 and 390×568. Desktop, narrow-phone and short-phone screenshots were visually inspected. No backend, API, dependency or deployment changes.
+
+### F-FE-HELP-001: Remove the header help placeholder
+
+- Date: 2026-11-14. Removed the disabled question-mark help icon from the desktop header at the owner's request. `npm run check --prefix frontend` and both existing desktop/mobile Home-navigation browser checks passed.
+
+### F-FE-NOTIFICATIONS-001: Remove the notification placeholder
+
+- Date: 2026-11-14. Removed the disabled notification bell and unread dot from desktop/mobile headers, the unused notification flag and the orphaned desktop separator. `npm run check --prefix frontend` and both existing desktop/mobile Home-navigation browser checks passed.
+
+### F-FE-BANNER-001: Remove the global demo banner
+
+- Date: 2026-11-14. Removed the top demo-ordering banner from the app shell, login and not-found screens, and deleted its unused component. Existing mock-order labels and confirmation controls remain within purchasing screens.
+- Verification: `npm run check --prefix frontend` passed; the complete fixture-backed browser suite passed 43 tests, with two optional backend integration checks skipped. Desktop and short-phone chat screenshots were visually inspected. The initial check caught remaining login/not-found imports during removal; those were removed before the successful rerun.
+
+### F-FE-COMPOSER-001: Single-row chat input and controls
+
+- Date: 2026-11-14. Replaced the multiline composer with a single-line input. Attachment, microphone, barcode and arrow-only send controls stay on the same row; removed the visible send text and newline hint. Accessible send/retry/busy labels, Enter submission and retry recovery remain.
+- Verification: `npm run check --prefix frontend` passed; all 43 fixture-backed browser tests passed, with two optional backend integration checks skipped. Existing scrolling cases now check single-row control alignment at five desktop/mobile sizes; the conversation-creation flow submits with Enter. Desktop and 320px-phone screenshots were visually inspected.
+- Merge preparation: integrated `develop` at `ccd7412` and retained its Assistant preferences route, sidebar entry and chat link. Resolved the chat-header conflict while keeping the compact confirmation label. `npm run check --prefix frontend` and all 52 browser tests passed (two optional backend integration checks skipped); the 320px chat screenshot was inspected.
+
 ### F-GUARD-FOOD-001: Recipe planning is context, not a purchase claim
 
 - Date: 2026-11-14. Worker logs for the 22:19/22:20 community-lasagna requests show allowed input, successful recipe discovery and generated replies, followed by uncertain output checks for status/commercial claims (and disclosure on the retry). The complete replies were withheld; discarded text is not retained, so the triggering sentence cannot be reconstructed.

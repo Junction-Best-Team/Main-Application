@@ -8,19 +8,10 @@ import { PurchaseDetailPage } from "../features/purchases/pages/PurchaseDetailPa
 import { PreferencesPage } from "../features/preferences/pages/PreferencesPage";
 import { SettingsPage } from "../features/settings/pages/SettingsPage";
 import { AppShell } from "./layout/AppShell";
-import { NoticeBar } from "../shared/components/NoticeBar";
 export function AppRoutes() {
   return (
     <Routes>
-      <Route
-        path="/login"
-        element={
-          <>
-            <NoticeBar />
-            <LoginPage />
-          </>
-        }
-      />
+      <Route path="/login" element={<LoginPage />} />
       <Route path="/approvals" element={<Navigate to="/purchases" replace />} />
       <Route
         element={
@@ -41,13 +32,10 @@ export function AppRoutes() {
       <Route
         path="*"
         element={
-          <>
-            <NoticeBar />
-            <main className="mx-auto max-w-6xl p-8">
-              <h1>Page not found</h1>
-              <Link to="/">Go to Home</Link>
-            </main>
-          </>
+          <main className="mx-auto max-w-6xl p-8">
+            <h1>Page not found</h1>
+            <Link to="/">Go to Home</Link>
+          </main>
         }
       />
     </Routes>

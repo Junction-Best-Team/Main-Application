@@ -2,11 +2,9 @@
 export const DESIGN_PLACEHOLDERS = {
   /** App shell (sidebar / mobile top bar). */
   shell: {
-    searchPlaceholder: "Search wholesale SKU, product, EAN...",
     hub: "Hub: Helsinki Sörnäinen",
     hubShort: "Sörnäinen",
     account: { name: "Demo restaurant", number: "Acc #94821-FI" },
-    hasUnreadNotifications: true,
   },
   /** Request screen (chat): context header, quota badge, composer hints. */
   request: {
@@ -14,7 +12,6 @@ export const DESIGN_PLACEHOLDERS = {
       "Meal planning, recipe parsing & ingredient restocking for Valio Aimo Wholesale",
     context: "Demo restaurant • Service Context: Tasting Menu Weekend Prep",
     quota: "Account Quota Active (Tier A)",
-    composerHint: "Press Shift+Enter for new line",
     composerPlaceholder:
       "Ask Aimo Assistant or paste recipe ingredients, EAN codes, or meal counts...",
   },

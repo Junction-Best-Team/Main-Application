@@ -194,6 +194,97 @@ for (const width of [1440, 1024, 390, 320]) {
   });
 }
 
+for (const [width, height] of [
+  [1440, 900],
+  [1024, 768],
+  [390, 844],
+  [320, 740],
+  [390, 568],
+]) {
+  test(`chat scrolls messages while keeping the composer visible at ${width}x${height}`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height });
+    await mockSession(page);
+    let saved: Conversation = {
+      ...blankConversation,
+      messages: Array.from({ length: 30 }, (_, index) => ({
+        id: index + 1,
+        role: index % 2 ? "assistant" : "user",
+        text: `Message ${index + 1}: ${"Meal planning details. ".repeat(10)}`,
+        created_at: timestamp,
+      })),
+    };
+    await page.route(`**/api/conversations/${conversationId}`, (route) =>
+      route.fulfill({ json: saved }),
+    );
+    await page.route(
+      `**/api/conversations/${conversationId}/messages`,
+      async (route) => {
+        saved = {
+          ...saved,
+          messages: [
+            ...saved.messages,
+            {
+              id: 31,
+              role: "assistant",
+              text: "Latest reply",
+              created_at: timestamp,
+            },
+          ],
+        };
+        await route.fulfill({ json: saved });
+      },
+    );
+    await page.goto(`/conversations/${conversationId}`);
+    const history = page.getByRole("region", { name: "Conversation history" });
+    const composer = page.getByLabel("Continue the conversation");
+    await expect(history).toBeVisible();
+    await expect(composer).toBeInViewport();
+    await expect
+      .poll(() => history.evaluate((node) => node.scrollTop))
+      .toBeGreaterThan(0);
+    const composerBounds = await composer.boundingBox();
+    expect(composerBounds!.height).toBeLessThanOrEqual(48);
+    for (const name of [
+      "Attach file",
+      "Voice input",
+      "Scan barcode",
+      "Send Order Request",
+    ]) {
+      const button = page.getByRole("button", { name, exact: true });
+      const bounds = await button.boundingBox();
+      expect(bounds!.y + bounds!.height / 2).toBeCloseTo(
+        composerBounds!.y + composerBounds!.height / 2,
+        0,
+      );
+      expect(bounds!.x).toBeGreaterThanOrEqual(
+        composerBounds!.x + composerBounds!.width,
+      );
+    }
+    await expect(
+      page.getByText("Send Order Request", { exact: true }),
+    ).toHaveCount(0);
+    await history.hover();
+    await page.mouse.wheel(0, -100000);
+    await expect.poll(() => history.evaluate((node) => node.scrollTop)).toBe(0);
+    expect(await composer.boundingBox()).toEqual(composerBounds);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    await composer.fill("Please continue");
+    await page.getByRole("button", { name: "Send Order Request" }).click();
+    await expect(
+      page.getByText("Latest reply", { exact: true }),
+    ).toBeInViewport();
+    await expect(
+      page.getByRole("button", { name: "Send Order Request" }),
+    ).toBeInViewport();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollHeight),
+    ).toBeLessThanOrEqual(height);
+    await page.screenshot({ path: testInfo.outputPath("chat-scroll.png") });
+  });
+}
+
 test("an expired hosted image leaves the recipe text readable", async ({
   page,
 }) => {
@@ -289,7 +380,7 @@ test("request starts a meal conversation and keeps messages through refresh", as
       name: "I need ingredients for 200 portions of carbonara.",
     })
     .click();
-  await page.getByRole("button", { name: "Send Order Request" }).click();
+  await page.getByLabel("Your meal or purchasing request").press("Enter");
   await expect(page).toHaveURL(new RegExp(`/conversations/${conversationId}$`));
   await expect(
     page.getByRole("heading", { name: "Carbonara", exact: true }),
