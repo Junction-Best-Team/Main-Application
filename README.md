@@ -2,7 +2,7 @@
 
 Four-person team repository for [Junction 2026](https://2026.hackjunction.com/), November 13–15 in Espoo, Finland.
 
-Preparation and design files for Valio Aimo's [Trusted Trade Agents challenge](https://hackjunction.app/participate/45/challenges/327). The [implementation plan](docs/brief.md) defines one seller-side backend with HTTP/MCP access, catalog ingestion and hybrid search, buyer approval inside an existing agent application, and mock ordering. Kubernetes is the intended hosting target. Application code and deployment resources are not implemented yet.
+Preparation and design files for Valio Aimo's [Trusted Trade Agents challenge](https://hackjunction.app/participate/45/challenges/327). The [implementation plan](docs/brief.md) defines one seller-side backend with HTTP/MCP access, catalog ingestion and hybrid search, a minimal buyer approval page served by that backend, and mock ordering. It supports conversational or mission-driven external agents. Kubernetes is the intended hosting target. Application code and deployment resources are not implemented yet.
 
 ## Get started
 
@@ -44,7 +44,8 @@ Our workflow is **task PR → green CI → self-merge**. Reviews are optional, a
 | Shared storage | PostgreSQL: separate tables for the derived product index and new proposals, approvals, orders, and receipts |
 | Hybrid search | pgvector similarity plus PostgreSQL full-text search; reciprocal rank fusion and structured validation |
 | Embeddings | Sentence Transformers; evaluate `intfloat/multilingual-e5-small` on Finnish/English catalog queries before pinning a model revision |
-| Human interface / demo client | Existing MCP-capable agent with a verified human-confirmation path; no custom agent or approval frontend in the MVP |
+| Human interface | Minimal server-rendered approval page using FastAPI/Jinja2, served by the same backend; no standalone frontend service or React build |
+| Demo client | Existing MCP-capable agent receives an approval URL and checks proposal status; direct in-agent approval is optional |
 | Runtime and dependency versions | TBD and pinned with the application skeleton |
 | Install command | TBD |
 | Local development command | TBD |
@@ -59,12 +60,12 @@ The product has **one running custom service**, not separate search, MCP, approv
 
 ## Environment
 
-[.env.example](.env.example) records planned variable names only; no application reads them yet. Supply real values through local ignored files or deployment secrets when the implementation exists. Keep secrets out of commits and browser-side code. Authentication variables for the chosen agent's human-confirmation mechanism will be documented after that integration is selected. Commit lockfiles; ignore dependencies and generated output.
+[.env.example](.env.example) records planned variable names only; no application reads them yet. Supply real values through local ignored files or deployment secrets when the implementation exists. Keep secrets out of commits and browser-side code. Set the public origin used for approval URLs and a private browser-session secret; buyer/agent credential settings will be documented with the chosen authentication implementation. Commit lockfiles; ignore dependencies and generated output.
 
 ## Shared context
 
 - [AGENTS.md](AGENTS.md): short instructions shared by coding agents. [CLAUDE.md](CLAUDE.md) imports the same file for Claude Code.
-- [Implementation plan](docs/brief.md): core scope, element count, stack, ingestion and updates, tool schemas, in-agent approval, data checks, Kubernetes diagrams, demo, milestones, and acceptance checks.
+- [Implementation plan](docs/brief.md): core scope, element count, stack, ingestion and updates, tool schemas, the approval page and asynchronous agent resume, data checks, Kubernetes diagrams, demo, milestones, and acceptance checks.
 - [Pre-existing work](docs/pre-existing-work.md): preparation and reused material to disclose in the submission.
 
 Check the current event and challenge rules before preparing application code. Junction's [general terms](https://www.hackjunction.com/terms-of-service) require projects to be built primarily during the event and pre-existing material to be identified in the submission. Confirm the required project licence before submitting.
