@@ -999,12 +999,14 @@ def test_meal_plan_text_is_reviewed_and_withheld_when_rejected(
             reply(text="Here is the plan."),
         ],
     )
-    result = run(identity, service)
+    events = []
+    result = agent.run_turn(identity, HISTORY, service, on_progress=events.append)
     review = next(s["state"] for s in seen if s["boundary"] == "assistant_output")
     assert "Order paid" in review["assistant_output"]["meal_plan"]["notes"][0]
     assert result.meal_plan is None and "paid" not in result.text
     assert result.text.startswith(OUTPUT_FALLBACK)
     assert result.proposal_id == service.saved["proposal_id"]  # trusted basket survives
+    assert not any(e.draft for e in events)  # No unreviewed free-form plan in streaming drafts.
 
 
 def test_plan_without_basket_is_withheld_and_shadow_keeps_it(monkeypatch, config, guard, identity):
@@ -1211,3 +1213,26 @@ def test_a_hundred_ingredient_basket_is_reviewed_not_rejected_as_too_large(monke
     shown = g.review_output(hundred_line_session(), "Valmis.", [])
     assert shown == "Valmis."
     assert "assistant_output" in [s["boundary"] for s in seen]
+
+
+def test_streamed_draft_waits_for_review_before_showing_free_form_plan(monkeypatch, config, guard, identity):
+    seen = fake_jev(monkeypatch)
+    service = FakeService(identity)
+    scripted(monkeypatch, [
+        reply(*[call("get_product", {"product_id": n}) for n in NAMES]),
+        reply(call("publish_meal_plan", meal())),
+        reply(text="The draft is ready; which delivery date should I use?"),
+    ])
+    events = []
+
+    def observe(progress):
+        if progress.draft:
+            assert any(s["boundary"] == "assistant_output" for s in seen)
+        events.append(progress)
+
+    result = agent.run_turn(identity, HISTORY, service, on_progress=observe)
+    published = next(e for e in events if e.kind == "tool_completed" and e.tool == "publish_meal_plan")
+    assert published.draft and len(published.draft.items) == 5
+    assert all(e.draft is None for e in events if e.tool == "get_product")
+    assert result.proposal_id is None
+    assert len([s for s in seen if s["boundary"] == "assistant_output"]) == 2  # Draft, then final prose.

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
-import { useAuth } from "../../features/auth/useAuth";
 import { useConversationNavigation } from "../../features/chat/hooks/useConversationNavigation";
 import { Wordmark } from "../../shared/components/Wordmark";
 import { Icon } from "../../shared/components/DesignPrimitives";
+import { UserMenu } from "./UserMenu";
 
 import type { ConversationList } from "../../shared/api/types";
 type ConversationListItem = ConversationList["items"][number];
@@ -191,69 +191,9 @@ function NavLinks({
   );
 }
 
-function Avatar() {
-  return (
-    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-workspace-active text-primary">
-      <Icon name="person" className="text-[18px]" />
-    </span>
-  );
-}
-
-/** Authenticated account actions stay available in desktop and mobile navigation. */
-function AccountBlock({ onNavigate }: { onNavigate?: () => void }) {
-  const { pathname } = useLocation();
-  const { session, logout } = useAuth();
-  return (
-    <div className="flex shrink-0 flex-col gap-space-xs p-space-sm">
-      <div className="order-last mt-space-md flex items-center gap-space-sm px-space-md py-space-sm">
-        <Avatar />
-        <span className="flex min-w-0 flex-col">
-          <span className="truncate text-body-sm text-primary">
-            {session?.buyer_id}
-          </span>
-          <span className="truncate text-xs text-secondary">
-            {session?.username}
-          </span>
-        </span>
-      </div>
-      <Link
-        to="/settings"
-        onClick={onNavigate}
-        aria-current={pathname === "/settings" ? "page" : undefined}
-        className={`flex items-center gap-space-sm rounded-lg px-space-md py-space-sm font-body text-body-sm no-underline hover:no-underline ${pathname === "/settings" ? "bg-secondary-container text-primary" : "text-on-surface-variant hover:bg-surface-container-high"}`}
-      >
-        <Icon name="manage_accounts" className="text-[18px]" />
-        Account Settings
-      </Link>
-      <Link
-        to="/settings/preferences"
-        onClick={onNavigate}
-        aria-current={
-          pathname.startsWith("/settings/preferences") ? "page" : undefined
-        }
-        className={`flex items-center gap-space-sm rounded-lg px-space-md py-space-sm font-body text-body-sm no-underline hover:no-underline ${
-          pathname.startsWith("/settings/preferences")
-            ? "bg-secondary-container text-primary"
-            : "text-primary hover:bg-workspace-active"
-        }`}
-      >
-        <Icon name="tune" className="text-[18px]" />
-        Memory
-      </Link>
-      <button
-        type="button"
-        onClick={logout}
-        className="flex cursor-pointer items-center gap-space-sm rounded-lg border-0 bg-transparent px-space-md py-space-sm font-body text-body-sm text-secondary hover:bg-surface-container-high hover:text-on-surface"
-      >
-        <Icon name="logout" className="text-[18px]" />
-        Sign out
-      </button>
-    </div>
-  );
-}
-
 function Sidebar({ conversations }: { conversations: ConversationNav }) {
-  // Navigation scrolls independently; account actions remain reachable.
+  // Fixed to the viewport, top to bottom, so it never scrolls with the page;
+  // its nav scrolls internally if it outgrows the screen.
   return (
     <aside
       aria-label="Sidebar"
@@ -269,8 +209,15 @@ function Sidebar({ conversations }: { conversations: ConversationNav }) {
         </Link>
         <NavLinks conversations={conversations} />
       </div>
-      <AccountBlock />
     </aside>
+  );
+}
+
+function DesktopHeader() {
+  return (
+    <header className="sticky top-0 z-40 hidden h-16 shrink-0 items-center justify-end gap-space-md border-b border-border-subtle bg-surface/80 px-margin backdrop-blur-xl md:flex">
+      <UserMenu />
+    </header>
   );
 }
 
@@ -305,7 +252,7 @@ function MobileTopBar({
           </span>
         </Link>
       </div>
-      <Avatar />
+      <UserMenu />
     </header>
   );
 }
@@ -378,7 +325,6 @@ function MobileMenu({
           </div>
           <NavLinks conversations={conversations} onNavigate={onClose} />
         </div>
-        <AccountBlock onNavigate={onClose} />
       </div>
     </div>
   );
@@ -409,6 +355,7 @@ export function AppShell() {
       <div
         className={`flex min-w-0 flex-col md:pl-60 ${isChat ? "h-dvh overflow-hidden" : ""}`}
       >
+        <DesktopHeader />
         <MobileTopBar
           menuOpen={menuOpen}
           onOpenMenu={() => setMenuOpen(true)}

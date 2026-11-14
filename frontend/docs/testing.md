@@ -61,6 +61,11 @@ navigation and mobile). They
 prove UI behavior against authored responses, not live provider, database or
 supplier integration.
 
+`e2e/chat-activity.spec.ts` exercises real EventSource consumption with authored
+activity snapshots: each tool call, failed/unfinished steps, active-to-complete
+updates, refresh recovery, reduced motion and desktop/phone layouts. Backend
+activity persistence and attempt fencing are covered by `tests/test_chat_activity.py`.
+
 ## Live fixture integration
 
 ```sh
@@ -86,3 +91,8 @@ for the exact-revision/explicit-action behavior regressions.
 Generated browser screenshots and Playwright results are local artifacts.
 Report the commands that passed and distinguish mocked browser coverage from
 live integration. Do not claim a production deployment from local checks.
+
+Draft-cart cases in `e2e/chat.spec.ts` stream an empty chat through unresolved ingredients,
+selected products, checked unit prices, refresh and prepared-basket confirmation at
+1440/390/320px. Drafts expose no confirmation control; fixture prices remain labelled.
+Use a dedicated Vite port with `BASE_URL` when another checkout has a local server.

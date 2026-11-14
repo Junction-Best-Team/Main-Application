@@ -1,6 +1,6 @@
 .home-workspace {
   display: flex;
-  min-height: 100dvh;
+  min-height: calc(100dvh - 4rem);
   flex-direction: column;
   padding: clamp(7rem, 27vh, 18rem) 2.5rem 1.5rem;
   background: var(--color-surface-pure);

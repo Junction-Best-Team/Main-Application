@@ -228,6 +228,22 @@ transcript, design tokens and Playwright route fixtures. Markdown and unsafe
 content examples are authored synthetic fixtures; no supplier or model calls,
 external images or customer messages were used.
 
+## Streamed chat tool activity — 2026-11-14
+
+Reused the runner's existing `AgentProgress` observer, durable worker attempt/lease
+fencing, authenticated conversation SSE snapshots, and Nordic UI tokens/icons.
+Added server-authored display labels and fixture-backed activity scenarios; no
+external assets, provider calls or new dependencies. The owner's screenshot
+identified the static busy line to replace.
+
+## Progressive purchasing draft — 2026-11-15
+
+Reused typed saved recipe plans, product/commercial tool evidence, output guardrails, worker
+attempt fencing, authenticated SSE and the existing confirmation UI. Added a display-only
+cart projection and authored plan/matching/quote/browser fixtures. Unit prices and orders
+in these checks remain explicitly synthetic; no live provider or supplier calls, new
+external assets or dependencies were used.
+
 ## Purchasing settings simplification — 2026-11-14
 
 Reused the owner-reviewed interactive mockup from this chat, existing Nordic UI
@@ -245,6 +261,23 @@ and [Material Symbols guide](https://fontsource.org/docs/getting-started/materia
 All three distributed packages include SIL OFL 1.1 notices, copied intact to
 `frontend/public/font-licenses/` for distribution with the bundled font assets.
 The earlier ignored preview font cache and example-memory database remain local.
+
+## Meal planning without customer arithmetic — 2026-11-15
+
+Reused saved-recipe exact scaling and upward rounding, typed internal tools,
+conversation meal-plan persistence, product inspection, basket validation and the
+existing Overview design. Assistant-authored recipe bases remain labelled estimates,
+separate from imported saved recipes. Calculation and browser fixtures are authored
+synthetic examples, not verified recipes or live supplier records. No new external
+recipe source, dataset, visual asset or dependency was introduced.
+## Header user dropdown — 2026-11-14
+
+Reused the existing account settings/preferences routes, session logout action,
+Material Symbols and Nordic UI tokens. Adapted the sidebar actions into a shared
+desktop/mobile header dropdown using the owner's screenshot as layout context.
+Browser verification uses the existing authored API fixtures. No new external
+assets or dependencies were introduced.
+
 ## Chat attachments — 2026-11-14
 
 Reused the existing composer, generated Python/OpenAPI contracts, authenticated conversation API,
@@ -252,6 +285,13 @@ PostgreSQL queue, retry fencing and native Google/OpenRouter adapters. Added pyp
 defusedxml and an explicit Pillow dependency for bounded file parsing; lockfile updated. Tests use
 small authored text, Office archives, PDF pages and image bytes, with mocked model responses;
 no challenge documents, user files, credentials or remote material are committed.
+
+## Seamless meal-planning integration — 2026-11-15
+
+Reused #179's persisted activity observer, reviewed draft-cart projection and UI,
+plus the current develop attachment, settings and scheduler changes. Combined tests
+use the existing synthetic recipe/product fixtures and intercepted browser snapshots;
+no new source material, assets or dependencies beyond the integrated branches.
 
 
 ## Minimal homepage — 2026-11-15

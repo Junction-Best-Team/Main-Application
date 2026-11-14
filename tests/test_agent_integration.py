@@ -61,6 +61,7 @@ def test_carbonara_actual_catalog_policy_customer_confirmation_and_persisted_rec
     monkeypatch.setattr(internal, "settings", lambda: config)
     delivery = str(date.today() + timedelta(days=2))
     plan = {"title": "Traditional carbonara (authored recipe estimate)", "portions": 200,
+            "base_servings": 4,
             "ingredients": [{"name": name, "amount": amount, "unit": "KG",
                              "product_id": "meal-" + name} for name, amount in INGREDIENTS],
             "notes": ["Contains egg, milk and gluten; customer requested no dietary restrictions."]}
@@ -72,6 +73,15 @@ def test_carbonara_actual_catalog_policy_customer_confirmation_and_persisted_rec
         tool_reply(call("get_purchase_policy", {})),
         {"role": "assistant", "content": "What delivery date, dietary needs and budget? "
          "Can I deliver to hotel-helsinki? Traditional carbonara contains egg, milk and gluten."},
+        tool_reply(call("draft_recipe", {
+            "title": plan["title"], "base_servings": 4, "portions": 200,
+            "ingredients": [
+                {"name": name, "amount": amount, "unit": "kg"}
+                for name, amount in zip(
+                    [name for name, _ in INGREDIENTS], ["0.4", "0.24", "0.12", "0.08", "0.004"]
+                )
+            ],
+        })),
         tool_reply(*[call("search_products", {"query": name}) for name, _ in INGREDIENTS]),
         tool_reply(*[call("get_product", {"product_id": "meal-" + name})
                      for name, _ in INGREDIENTS]),
@@ -111,6 +121,8 @@ def test_carbonara_actual_catalog_policy_customer_confirmation_and_persisted_rec
         first = client.get(f"/api/conversations/{cid}")
         assert "delivery date" in first.json()["messages"][-1]["text"]
         assert first.json()["purchases"] == []
+        assert first.json()["activity"]["state"] == "complete"
+        assert first.json()["activity"]["events"][1]["label"] == "Checking purchasing rules"
         second_body = {"text": f"{delivery}, hotel-helsinki, no dietary restrictions, 1000 EUR. "
                        "Use the traditional carbonara recipe with pasta, eggs, pork, cheese and pepper.",
                        "idempotency_key": str(uuid4())}
@@ -121,6 +133,12 @@ def test_carbonara_actual_catalog_policy_customer_confirmation_and_persisted_rec
         second = client.get(f"/api/conversations/{cid}")
         data = second.json()
         assert data["messages"][-1]["meal_plan"]["portions"] == 200
+        assert "Assistant-drafted" in data["messages"][-1]["meal_plan"]["notes"][0]
+        assert [i["amount"] for i in data["messages"][-1]["meal_plan"]["ingredients"]] == [
+            amount for _, amount in INGREDIENTS
+        ]
+        assert len([e for e in data["activity"]["events"] if e["kind"] == "tool_started"]) == 13
+        assert data["activity"]["events"][-1]["kind"] == "complete"
         basket = data["purchases"][0]
         assert len(basket["snapshot"]["lines"]) == 5
         assert basket["snapshot"]["gross_total"] == "71.74"
@@ -137,7 +155,7 @@ def test_carbonara_actual_catalog_policy_customer_confirmation_and_persisted_rec
             assert c.execute("SELECT count(*) AS n FROM orders").fetchone()["n"] == 0
         # Duplicate chat submission resumes persisted state without invoking the provider again.
         assert client.post(message_url, headers=headers, json=second_body).json() == data
-        assert len(seen) == 7
+        assert len(seen) == 8
         actor = auth.internal_agent(buyer)
         commit = CommitRequest(proposal_id=basket["proposal_id"], revision=basket["revision"],
                                idempotency_key=str(uuid4()))
