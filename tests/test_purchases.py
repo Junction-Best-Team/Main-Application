@@ -11,7 +11,7 @@ import pytest
 
 from aimo import purchases
 from aimo.db import Problem, connection, js
-from aimo.purchases import MAX_MATERIALS, build_snapshot, context, material_fingerprint
+from aimo.purchases import build_snapshot, context, material_fingerprint
 from aimo.schemas import PrepareRequest
 from aimo.upstream import FixtureClient
 
@@ -81,23 +81,11 @@ def test_context_never_defaults_an_invalid_policy_to_permission(agent):
     assert error.value.code == "INVALID_POLICY_CONFIGURATION"
 
 
-@pytest.mark.parametrize(
-    "authority",
-    [{}, {"currency": "EUR", "autonomous_limit": "1500"}, {"autonomous_limit": "999999"}],
-)
-def test_context_ignores_the_content_of_an_agent_authority(agent, authority):
-    # Q-35 replacement: an agent holds no authority, so no stored shape can invalidate it.
+def test_context_rejects_an_invalid_agent_authority(agent):
     with connection() as c:
-        c.execute("UPDATE identities SET authority=%s WHERE id='demo-agent'", (js(authority),))
-        _, _, actor, _ = context(c, agent)
-    assert actor["id"] == "demo-agent"
-
-
-def test_context_still_rejects_an_invalid_approver_authority(buyer):
-    with connection() as c:
-        c.execute("UPDATE identities SET authority=%s WHERE id='buyer'", (js({}),))
+        c.execute("UPDATE identities SET authority=%s WHERE id='demo-agent'", (js({}),))
         with pytest.raises(Problem) as error:
-            context(c, buyer)
+            context(c, agent)
     assert error.value.code == "INVALID_POLICY_CONFIGURATION"
 
 
@@ -142,8 +130,7 @@ def test_withdrawn_product_is_denied(agent, request_data, monkeypatch):
 def test_too_many_materials_are_refused_before_calling_upstream(agent, request_data, monkeypatch):
     def many(p):
         p["deposits"] = [
-            {"material": f"dep-{i}", "quantity": "1", "unit": "ST"}
-            for i in range(MAX_MATERIALS)  # plus the line itself: one over the cap
+            {"material": f"dep-{i}", "quantity": "1", "unit": "ST"} for i in range(101)
         ]
 
     patch_products(monkeypatch, {"464306": many})

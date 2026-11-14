@@ -31,13 +31,11 @@ def expect_code(code, fn):
     assert error.value.code == code
 
 
-def test_autonomous_and_idempotent_after_restart(service, agent, request_data, confirm_terms):
+def test_autonomous_and_idempotent_after_restart(service, agent, request_data):
     p = service.prepare_order(agent, PrepareRequest(**request_data))
     assert p["policy_outcome"] == "ready_to_commit"
     assert p["snapshot"]["gross_total"] == "17.00"
     req = commit(p)
-    expect_code("CUSTOMER_CONFIRMATION_REQUIRED", lambda: service.commit_order(agent, req))
-    confirm_terms(p)
     receipt = service.commit_order(agent, req)
     assert receipt["label"] == "Accepted by demo order service"
     assert receipt["upstream_order_placed"] is False
@@ -54,14 +52,13 @@ def test_autonomous_and_idempotent_after_restart(service, agent, request_data, c
     assert service.get_proposal(agent, p["proposal_id"])["next_action"]["type"] == "complete"
 
 
-def test_independent_inbox_and_agent_resume(service, agent, buyer, mission, confirm_terms):
+def test_independent_inbox_and_agent_resume(service, agent, buyer, mission):
     p = service.prepare_order(agent, mission)
     assert p["policy_outcome"] == "approval_required"
     assert p["snapshot"]["gross_total"] == "1700.00"
     assert p["next_action"]["type"] == "wait"
     inbox = workflow.list_approvals(buyer)
     assert inbox["items"][0]["proposal_id"] == p["proposal_id"]
-    confirm_terms(p)
     expect_code("APPROVAL_REQUIRED", lambda: service.commit_order(agent, commit(p)))
     approved = decide(buyer, p)
     assert approved["approval_status"] == "approved"
@@ -72,26 +69,23 @@ def test_independent_inbox_and_agent_resume(service, agent, buyer, mission, conf
     assert (
         Service(FixtureClient()).commit_order(agent, commit(resumed))["status"] == "accepted_mock"
     )
-    assert "autonomous_limit" not in service.get_purchase_policy(agent)["rules"]  # Q-35
+    assert service.get_purchase_policy(agent)["rules"]["autonomous_limit"] == "1500.00"
 
 
-@pytest.mark.parametrize("change", ["approver_inactive", "approver_maximum_lowered"])
-def test_losing_the_only_eligible_approver_revises_without_policy_change(
-    service, agent, buyer, request_data, change
+@pytest.mark.parametrize("eligible_approver", [True, False])
+def test_reduced_agent_authority_revises_without_policy_change(
+    service, agent, buyer, request_data, eligible_approver
 ):
-    # Q-35 replacement for the reduced-agent-limit test: the agent has no authority any more, so
-    # the authority that can change under a stored basket is the human approver's (Q-37).
     p = service.prepare_order(agent, PrepareRequest(**request_data))
-    assert p["snapshot"]["gross_total"] == "17.00" and p["policy_outcome"] == "ready_to_commit"
+    assert p["snapshot"]["gross_total"] == "17.00"
     with connection() as c:
         c.execute("SELECT id FROM buyers WHERE id='demo-hotel' FOR UPDATE")
-        if change == "approver_inactive":
+        c.execute(
+            "UPDATE identities SET authority=%s WHERE id='demo-agent'",
+            (js({"currency": "EUR", "autonomous_limit": "10"}),),
+        )
+        if not eligible_approver:
             c.execute("UPDATE identities SET active=false WHERE id='buyer'")
-        else:
-            c.execute(
-                "UPDATE identities SET authority=%s WHERE id='buyer'",
-                (js({"currency": "EUR", "max_gross": "10", "exceptions": ["substitution"]}),),
-            )
     stale = service.get_proposal(agent, p["proposal_id"])
     assert stale["approval_status"] == "authority_changed"
     assert stale["next_action"]["type"] != "commit"
@@ -99,38 +93,24 @@ def test_losing_the_only_eligible_approver_revises_without_policy_change(
     assert fresh["status"] == "revised" and fresh["revision"] == 2
     assert fresh["policy_version"] == p["policy_version"]
     assert fresh["snapshot"]["gross_total"] == "17.00"
-    assert any(r["code"] == "NO_ELIGIBLE_APPROVER" for r in fresh["reasons"])
+    assert any(r["code"] == "AUTONOMOUS_LIMIT_EXCEEDED" for r in fresh["reasons"])
     expect_code("STALE_REVISION", lambda: service.commit_order(agent, commit(p)))
     with connection() as c:
         assert c.execute("SELECT count(*) n FROM orders").fetchone()["n"] == 0
     resumed = Service().get_proposal(agent, p["proposal_id"])
-    assert resumed["policy_outcome"] == "needs_resolution"
-    assert resumed["approval_id"] is None
-    assert resumed["next_action"]["type"] == "revise_request"
-    expect_code("COMMIT_BLOCKED", lambda: service.commit_order(agent, commit(fresh)))
-
-
-@pytest.mark.parametrize(
-    "authority",
-    [
-        {},
-        {"currency": "EUR", "autonomous_limit": "0"},
-        {"currency": "EUR", "autonomous_limit": "10"},
-        {"autonomous_limit": "999999"},
-    ],
-)
-def test_agent_authority_content_never_revises_or_blocks_a_basket(
-    service, agent, request_data, confirm_terms, authority
-):
-    p = service.prepare_order(agent, PrepareRequest(**request_data))
-    with connection() as c:
-        c.execute("SELECT id FROM buyers WHERE id='demo-hotel' FOR UPDATE")
-        c.execute("UPDATE identities SET authority=%s WHERE id='demo-agent'", (js(authority),))
-    seen = service.get_proposal(agent, p["proposal_id"])
-    assert seen["approval_status"] == "not_required" and seen["next_action"]["type"] == "commit"
-    confirm_terms(p)
-    receipt = service.commit_order(agent, commit(p))
-    assert receipt["status"] == "accepted_mock" and receipt["revision"] == 1
+    if eligible_approver:
+        assert resumed["policy_outcome"] == "approval_required"
+        assert resumed["approval_status"] == "pending"
+        assert resumed["next_action"]["type"] == "wait"
+        assert workflow.list_approvals(buyer)["items"][0]["approval_id"] == fresh["approval_id"]
+        expect_code("APPROVAL_REQUIRED", lambda: service.commit_order(agent, commit(fresh)))
+        decide(buyer, fresh)
+        assert service.commit_order(agent, commit(fresh))["status"] == "accepted_mock"
+    else:
+        assert resumed["policy_outcome"] == "needs_resolution"
+        assert resumed["approval_id"] is None
+        assert resumed["next_action"]["type"] == "revise_request"
+        expect_code("COMMIT_BLOCKED", lambda: service.commit_order(agent, commit(fresh)))
 
 
 @pytest.mark.parametrize(
@@ -185,7 +165,7 @@ def test_denied_precedes_unknown(service, agent, request_data):
 
 
 def test_changed_price_creates_revision_and_invalidates_approval(
-    service, connector, agent, buyer, mission, confirm_terms
+    service, connector, agent, buyer, mission
 ):
     p = service.prepare_order(agent, mission)
     decide(buyer, p)
@@ -197,7 +177,6 @@ def test_changed_price_creates_revision_and_invalidates_approval(
     assert workflow.approval_detail(buyer, p["approval_id"])["approval_status"] == "superseded"
     expect_code("STALE_REVISION", lambda: decide(buyer, p))
     expect_code("STALE_REVISION", lambda: service.commit_order(agent, commit(p)))
-    confirm_terms(fresh)
     expect_code("APPROVAL_REQUIRED", lambda: service.commit_order(agent, commit(fresh)))
     decide(buyer, fresh)
     receipt = service.commit_order(agent, commit(fresh))
@@ -254,15 +233,14 @@ def test_policy_version_reauthorizes_and_seed_preserves(service, agent, buyer, m
         rules = c.execute(
             "SELECT rules FROM policies WHERE buyer_id='demo-hotel' AND version=1"
         ).fetchone()["rules"]
-        rules["destinations"] = [*rules["destinations"], "extra-city"]  # Q-35: was the limit
+        rules["autonomous_limit"] = "500"
         c.execute(
             "INSERT INTO policies(buyer_id,version,rules) VALUES('demo-hotel',2,%s)", (js(rules),)
         )
         c.execute("UPDATE buyers SET current_policy=2 WHERE id='demo-hotel'")
     seed()
     assert service.get_purchase_policy(agent)["policy_version"] == 2
-    bumped = service.get_purchase_policy(agent)["rules"]
-    assert "extra-city" in bumped["destinations"] and "autonomous_limit" not in bumped
+    assert service.get_purchase_policy(agent)["rules"]["autonomous_limit"] == "500"
     assert service.get_proposal(agent, p["proposal_id"])["approval_status"] == "policy_changed"
     fresh = service.commit_order(agent, commit(p))
     assert fresh["policy_version"] == 2 and fresh["approval_status"] == "pending"
@@ -309,7 +287,7 @@ def test_approver_amount_and_exception_scope(service, agent, buyer, mission):
     with connection() as c:
         c.execute(
             "UPDATE identities SET authority=%s WHERE id='buyer'",
-            (js({"currency": "EUR", "max_gross": "1600", "exceptions": ["substitution"]}),),
+            (js({"currency": "EUR", "max_gross": "1600", "exceptions": ["spend"]}),),
         )
     expect_code("APPROVAL_SCOPE", lambda: decide(buyer, p))
     assert workflow.approval_detail(buyer, p["approval_id"])["can_decide"] is False
@@ -320,9 +298,8 @@ def test_approver_amount_and_exception_scope(service, agent, buyer, mission):
     assert "NO_ELIGIBLE_APPROVER" in [r["code"] for r in fresh["reasons"]]
 
 
-def test_concurrent_same_key_one_order(service, agent, request_data, confirm_terms):
+def test_concurrent_same_key_one_order(service, agent, request_data):
     p = service.prepare_order(agent, PrepareRequest(**request_data))
-    confirm_terms(p)
     req = commit(p)
     with ThreadPoolExecutor(max_workers=8) as executor:
         receipts = list(executor.map(lambda _: service.commit_order(agent, req), range(8)))
@@ -332,11 +309,8 @@ def test_concurrent_same_key_one_order(service, agent, request_data, confirm_ter
         assert c.execute("SELECT count(*) n FROM idempotency").fetchone()["n"] == 1
 
 
-def test_concurrent_different_keys_and_conflicting_payloads(
-    service, agent, request_data, confirm_terms
-):
+def test_concurrent_different_keys_and_conflicting_payloads(service, agent, request_data):
     p = service.prepare_order(agent, PrepareRequest(**request_data))
-    confirm_terms(p)
 
     def submit(_):
         try:
@@ -350,7 +324,6 @@ def test_concurrent_different_keys_and_conflicting_payloads(
     p2 = service.prepare_order(
         agent, PrepareRequest(**(request_data | {"idempotency_key": str(uuid4())}))
     )
-    confirm_terms(p2)
     req = commit(p2, "same-key-for-different-purchases")
     service.commit_order(agent, req)
     p3 = service.prepare_order(

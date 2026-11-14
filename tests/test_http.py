@@ -171,12 +171,11 @@ def test_documentation_nonce_and_scoped_csp(http):
 
 
 def test_shared_purchasing_operations_and_both_commit_outcomes(
-    service, agent, connector, request_data, confirm_terms
+    service, agent, connector, request_data
 ):
     from aimo.schemas import CommitRequest, LookupRequest, PrepareRequest, SearchRequest
 
-    rules = service.get_purchase_policy(agent)["rules"]
-    assert "autonomous_limit" not in rules and rules["destinations"] == ["hotel-helsinki"]
+    assert service.get_purchase_policy(agent)["rules"]["autonomous_limit"] == "1500.00"
     assert service.get_product(agent, "464306")["measures"]["L"]["value"] == "1"
     assert (
         service.search_products(agent, SearchRequest(query="464306"))["products"][0]["id"]
@@ -194,7 +193,6 @@ def test_shared_purchasing_operations_and_both_commit_outcomes(
     revised = service.commit_order(agent, CommitRequest.model_validate(payload))
     assert revised["status"] == "revised" and revised["revision"] == 2
     assert revised["snapshot"]["gross_total"] == "18.70"
-    confirm_terms(revised)
     receipt = service.commit_order(agent, CommitRequest.model_validate(payload | {"revision": 2}))
     assert receipt["status"] == "accepted_mock"
     assert (
@@ -204,12 +202,22 @@ def test_shared_purchasing_operations_and_both_commit_outcomes(
     assert service.get_order(agent, receipt["order_id"]) == receipt
 
 
-def test_historical_approval_links_current_repriced_revision(
+def test_historical_approval_links_current_autonomous_revision(
     http, service, connector, agent, mission
 ):
-    # Q-35 replacement: repricing used to drop the spend exception (autonomous limit); the
-    # substitution exception remains, so revision 2 needs a fresh approval. The old approval
-    # link must show superseded and the current-terms link must still work.
+    # Repricing can remove the need for approval; the current-terms link must still work.
+    with connection() as c:
+        c.execute("SELECT id FROM buyers WHERE id='demo-hotel' FOR UPDATE")
+        rules = c.execute(
+            "SELECT rules FROM policies WHERE buyer_id='demo-hotel' AND version=1"
+        ).fetchone()["rules"]
+        rules["approved_product_ids"] = ["464306", "464398"]
+        c.execute(
+            "INSERT INTO policies(buyer_id,version,rules) VALUES('demo-hotel',2,%s)", (js(rules),)
+        )
+        c.execute("UPDATE buyers SET current_policy=2 WHERE id='demo-hotel'")
+    for line in mission.lines:
+        line.substitutes_for = None
     p = service.prepare_order(agent, mission)
     csrf = login(http)
     old_url = "/api/approvals/" + p["approval_id"]
@@ -224,8 +232,7 @@ def test_historical_approval_links_current_repriced_revision(
     fresh = http.post(
         "/api/purchases/" + p["proposal_id"] + "/confirm", headers=csrf, json=payload
     ).json()
-    assert fresh["approval_id"] is not None and fresh["policy_outcome"] == "approval_required"
-    assert fresh["approval_status"] == "pending" and fresh["approval_id"] != p["approval_id"]
+    assert fresh["approval_id"] is None and fresh["policy_outcome"] == "ready_to_commit"
     receipt = http.post(
         "/api/purchases/" + p["proposal_id"] + "/confirm",
         headers=csrf,

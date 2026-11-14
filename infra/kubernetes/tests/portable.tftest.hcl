@@ -28,8 +28,8 @@ run "safe_initial_plan" {
     error_message = "Install one portable ingress controller and persist its ACME certificates."
   }
   assert {
-    condition     = kubernetes_config_map_v1.runtime.data.SECURE_COOKIES == "true" && kubernetes_config_map_v1.runtime.data.UPSTREAM_MODE == "live"
-    error_message = "Use secure cookies and live supplier data by default; fixture is an explicit opt-in."
+    condition     = kubernetes_config_map_v1.runtime.data.SECURE_COOKIES == "true" && kubernetes_config_map_v1.runtime.data.UPSTREAM_MODE == "fixture"
+    error_message = "Use secure cookies and explicitly mocked supplier responses by default."
   }
   assert {
     condition     = kubernetes_deployment_v1.apps["api"].spec[0].template[0].spec[0].security_context[0].run_as_non_root && kubernetes_deployment_v1.apps["api"].spec[0].template[0].spec[0].container[0].security_context[0].run_as_non_root

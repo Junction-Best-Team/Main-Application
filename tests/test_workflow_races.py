@@ -111,11 +111,8 @@ def test_commit_refuses_when_the_proposal_expires_during_lookup(
     assert code_of(lambda: service.commit_order(agent, commit(p))) == "PROPOSAL_EXPIRED"
 
 
-def test_a_second_commit_with_a_new_key_cannot_create_a_second_order(
-    service, agent, request_data, confirm_terms
-):
+def test_a_second_commit_with_a_new_key_cannot_create_a_second_order(service, agent, request_data):
     p = service.prepare_order(agent, PrepareRequest(**request_data))
-    confirm_terms(p)
     first = service.commit_order(agent, commit(p))
     assert code_of(lambda: service.commit_order(agent, commit(p))) == "ALREADY_COMMITTED"
     with connection() as c:
@@ -138,9 +135,8 @@ def test_decision_on_an_expired_proposal_is_closed(monkeypatch, service, agent, 
     assert code_of(lambda: decide(buyer, p)) == "DECISION_CLOSED"
 
 
-def test_decision_on_a_committed_proposal_is_closed(service, agent, buyer, mission, confirm_terms):
+def test_decision_on_a_committed_proposal_is_closed(service, agent, buyer, mission):
     p = service.prepare_order(agent, mission)
-    confirm_terms(p)
     decide(buyer, p)
     service.commit_order(agent, commit(p))
     assert code_of(lambda: decide(buyer, p, "reject")) == "DECISION_CLOSED"
@@ -174,30 +170,23 @@ def test_authorize_commit_guards_expiry_and_rejection_on_its_own():
     run(future, None)  # ready_to_commit passes without an approval
     blocked = {"policy_outcome": "denied", "required_exceptions": []}
     assert code_of(lambda: run(future, None, blocked)) == "COMMIT_BLOCKED"
-    needs = {"policy_outcome": "approval_required", "required_exceptions": ["substitution"]}
+    needs = {"policy_outcome": "approval_required", "required_exceptions": ["spend"]}
     assert code_of(lambda: run(future, None, needs)) == "APPROVAL_REQUIRED"
 
 
 # --- authority drift as seen by readers ----------------------------------------------------------
 
 
-def test_proposal_of_a_revoked_agent_reads_as_authority_changed(service, agent, buyer, mission):
-    # Q-35: the agent's stored authority is ignored; only its being revoked invalidates a basket.
-    p = service.prepare_order(agent, mission)
-    with connection() as c:
-        c.execute("UPDATE identities SET active=false WHERE id='demo-agent'")
-    seen = workflow.approval_detail(buyer, p["approval_id"])
-    assert seen["approval_status"] == "authority_changed"
-    assert seen["can_decide"] is False
-    assert seen["next_action"]["type"] != "commit"
-
-
-def test_empty_agent_authority_does_not_change_how_a_basket_reads(service, agent, buyer, mission):
+def test_proposal_with_an_invalid_agent_authority_reads_as_authority_changed(
+    service, agent, buyer, mission
+):
     p = service.prepare_order(agent, mission)
     with connection() as c:
         c.execute("UPDATE identities SET authority=%s WHERE id='demo-agent'", (js({}),))
     seen = workflow.approval_detail(buyer, p["approval_id"])
-    assert seen["approval_status"] == "pending" and seen["can_decide"] is True
+    assert seen["approval_status"] == "authority_changed"
+    assert seen["can_decide"] is False
+    assert seen["next_action"]["type"] != "commit"
 
 
 def test_approval_by_an_approver_who_lost_authority_no_longer_counts(
@@ -209,7 +198,7 @@ def test_approval_by_an_approver_who_lost_authority_no_longer_counts(
     with connection() as c:
         c.execute(
             "UPDATE identities SET authority=%s WHERE id='buyer'",
-            (js({"currency": "EUR", "max_gross": "100", "exceptions": ["substitution"]}),),
+            (js({"currency": "EUR", "max_gross": "100", "exceptions": ["spend"]}),),
         )
     after = service.get_proposal(agent, p["proposal_id"])
     assert after["approval_status"] == "authority_changed"
@@ -217,7 +206,7 @@ def test_approval_by_an_approver_who_lost_authority_no_longer_counts(
 
 
 def test_approval_by_an_approver_who_lost_scope_is_void_even_if_another_could_approve(
-    service, agent, buyer, mission, confirm_terms
+    service, agent, buyer, mission
 ):
     """The policy outcome is unchanged (a second approver is eligible), yet the person who
     approved no longer has the authority their decision relied on."""
@@ -229,14 +218,12 @@ def test_approval_by_an_approver_who_lost_scope_is_void_even_if_another_could_ap
                     {
                         "currency": "EUR",
                         "max_gross": "5000",
-                        "exceptions": ["substitution", "overbuy"],
+                        "exceptions": ["spend", "substitution", "overbuy"],
                     }
                 ),
             ),
         )
     p = service.prepare_order(agent, mission)
-    confirm_terms(p)
-    confirm_terms(p, actor_id="buyer2")  # the second, still eligible approver also confirms
     decide(buyer, p)
     assert service.get_proposal(agent, p["proposal_id"])["next_action"]["type"] == "commit"
     with connection() as c:

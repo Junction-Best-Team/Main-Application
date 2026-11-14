@@ -480,7 +480,7 @@ PROPOSAL = {
     "order_id": None,
     "reasons": [
         {
-            "code": "SUBSTITUTION_REQUIRES_APPROVAL",
+            "code": "AUTONOMOUS_LIMIT_EXCEEDED",
             "message": "Customer confirmation is required.",
             "severity": "exception",
         }

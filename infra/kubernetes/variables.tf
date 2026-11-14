@@ -73,12 +73,11 @@ variable "runtime_secrets" {
 }
 
 variable "upstream_mode" {
-  description = "Supplier price/availability source. live is the default and needs runtime_secrets.VALIO_AIMO_API_KEY."
-  type        = string
-  default     = "live"
+  type    = string
+  default = "fixture"
   validation {
     condition     = contains(["fixture", "live"], var.upstream_mode)
-    error_message = "Use live (the default) or fixture; fixture is an explicit opt-in that uses labeled mock supplier responses."
+    error_message = "Use fixture or live; fixture mode uses labeled mock supplier responses."
   }
 }
 

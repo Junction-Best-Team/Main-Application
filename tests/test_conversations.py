@@ -204,9 +204,6 @@ def test_confirmation_preserves_blocked_states(state, service, buyer, request_da
         request_data["budget_gross"] = "1"
     if state == "needs_resolution":
         request_data["lines"][0]["amount"] = "10000"
-    if state == "rejected":
-        # Q-35: the spend limit no longer creates an approval; a substitution does.
-        request_data["lines"] = [{"product_id": "464398", "amount": "10", "unit": "L"}]
     p = service.prepare_order(actor, PrepareRequest.model_validate(request_data))
     body = CommitRequest(proposal_id=p["proposal_id"], revision=1, idempotency_key=str(uuid4()))
     if state == "rejected":

@@ -173,16 +173,15 @@ def test_legacy_generation_without_a_recorded_profile_is_rebuilt_once(tmp_path):
 def test_import_profile_tracks_normalization_and_document_code(monkeypatch):
     ingestion.import_profile.cache_clear()
     base = ingestion.import_profile()
-    version = ingestion.IMPORT_PROFILE_VERSION
-    assert base.startswith(f"catalog-import-v{version}:")
+    assert base.startswith("catalog-import-v1:")
     try:
         monkeypatch.setattr(ingestion, "document_text", lambda facts: "different document code")
         ingestion.import_profile.cache_clear()
         assert ingestion.import_profile() != base
         monkeypatch.undo()
-        monkeypatch.setattr(ingestion, "IMPORT_PROFILE_VERSION", version + 1)
+        monkeypatch.setattr(ingestion, "IMPORT_PROFILE_VERSION", 2)
         ingestion.import_profile.cache_clear()
-        assert ingestion.import_profile().startswith(f"catalog-import-v{version + 1}:")
+        assert ingestion.import_profile().startswith("catalog-import-v2:")
     finally:
         monkeypatch.undo()
         ingestion.import_profile.cache_clear()
@@ -265,9 +264,7 @@ def test_embedding_failure_keeps_serving_and_retry_reuses_completed_batches(
     monkeypatch.setattr(ingestion, "embed", real)
     retry = sync(path, sha, 6)
     assert retry["outcome"] == "updated"
-    assert retry["new_embeddings"] == 2
-    # Carry-forward withdrawn products reuse the existing fixture embeddings too.
-    assert retry["reused_embeddings"] == 4 + len(fixture_facts())
+    assert retry["new_embeddings"] == 2 and retry["reused_embeddings"] == 4
 
 
 # --- download --------------------------------------------------------------------------------
@@ -683,12 +680,7 @@ def test_inflight_purchase_is_revalidated_against_the_newly_synced_catalog(
 # --- least privilege -------------------------------------------------------------------------
 
 
-def test_dedicated_catalog_role_can_sync_but_cannot_read_purchasing_data(
-    tmp_path, monkeypatch, service, agent, request_data
-):
-    # A pending purchase protects its withdrawn catalog IDs even for the restricted sync role.
-    service.prepare_order(agent, PrepareRequest(**request_data))
-    protected_ids = {line["product_id"] for line in request_data["lines"]}
+def test_dedicated_catalog_role_can_sync_but_cannot_read_purchasing_data(tmp_path, monkeypatch):
     role = "catalog_sync_test_" + uuid4().hex[:12]
     password = uuid4().hex
     admin_url = settings().database_url
@@ -719,11 +711,6 @@ def test_dedicated_catalog_role_can_sync_but_cannot_read_purchasing_data(
         assert code == 0 and result["outcome"] == "updated"
         assert run_sync(file=path, expected_sha=sha, expected_count=2)[0]["outcome"] == "unchanged"
         with psycopg.connect(url, autocommit=True) as restricted:
-            retained = restricted.execute(
-                "SELECT id FROM products WHERE generation=%s AND facts->'deleted'='true'::jsonb",
-                (result["generation"],),
-            ).fetchall()
-            assert protected_ids <= {row[0] for row in retained}
             for statement in (
                 "SELECT * FROM sessions",
                 "SELECT * FROM identities",
@@ -732,7 +719,6 @@ def test_dedicated_catalog_role_can_sync_but_cannot_read_purchasing_data(
                 "SELECT * FROM schema_migrations",
                 "DELETE FROM catalog_generations",
                 "UPDATE products SET facts=facts",
-                "UPDATE catalog_generations SET source_hash=source_hash",
                 "CREATE TABLE forbidden_catalog_table(id int)",
             ):
                 with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -744,38 +730,3 @@ def test_dedicated_catalog_role_can_sync_but_cannot_read_purchasing_data(
         with psycopg.connect(admin_url, autocommit=True) as admin:
             admin.execute(sql.SQL("DROP OWNED BY {}").format(sql.Identifier(role)))
             admin.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role)))
-
-
-def test_sync_retains_withdrawn_products_and_skips_identical_snapshot(tmp_path):
-    with connection() as c:
-        c.execute("DELETE FROM active_catalog")
-    records = products(60, tag="withdrawal-integration")
-    first_path, first_sha = snapshot(tmp_path, records, "before.json")
-    sync(first_path, first_sha, len(records))
-    second_path, second_sha = snapshot(tmp_path, records[1:], "after.json")
-    result = sync(second_path, second_sha, len(records) - 1)
-    with connection() as c:
-        withdrawn = c.execute(
-            "SELECT facts, withdrawn_since FROM products WHERE generation=%s AND id=%s",
-            (result["generation"], records[0]["id"]),
-        ).fetchone()
-        assert withdrawn["facts"]["deleted"] and withdrawn["withdrawn_since"] is not None
-        state = c.execute(
-            "SELECT source_product_count, product_count FROM catalog_generations WHERE id=%s",
-            (result["generation"],),
-        ).fetchone()
-        assert state["source_product_count"] == len(records) - 1
-        assert state["product_count"] == result["products"] == len(records)
-    assert sync(second_path, second_sha, len(records) - 1)["outcome"] == "unchanged"
-
-
-def test_legacy_generation_without_source_count_rebuilds_once(tmp_path):
-    path, sha = snapshot(tmp_path, products(3))
-    first = sync(path, sha, 3)
-    with connection() as c:
-        c.execute(
-            "UPDATE catalog_generations SET source_product_count=NULL WHERE id=%s",
-            (first["generation"],),
-        )
-    assert sync(path, sha, 3)["reason"] == "active_catalog_incomplete"
-    assert sync(path, sha, 3)["outcome"] == "unchanged"

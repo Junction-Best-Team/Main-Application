@@ -1,5 +1,5 @@
 from aimo import approval_workflow as workflow
-from aimo import meal_authorization, search, upstream
+from aimo import search, upstream
 from aimo.db import connection
 from aimo.purchases import context, load_products
 from aimo.schemas import CommitRequest, LookupRequest, PrepareRequest, SearchRequest
@@ -15,16 +15,19 @@ class Service:
     def get_product(self, identity, product_id):
         return search.get_product(identity, product_id)
 
-    def list_substitution_candidates(self, identity, product_id, delivery_date=None):
-        from aimo import substitutions
-
-        return substitutions.list_substitution_candidates(identity, product_id, delivery_date)
-
     def get_purchase_policy(self, identity):
         with connection() as c:
             buyer, policy, actor, _ = context(c, identity)
-        # No spending limit is shown for the agent: it has none (Q-35). Legacy key is dropped.
-        rules = {k: v for k, v in policy["rules"].items() if k != "autonomous_limit"}
+        from decimal import Decimal
+
+        rules = policy["rules"] | {
+            "autonomous_limit": str(
+                min(
+                    Decimal(policy["rules"]["autonomous_limit"]),
+                    Decimal(actor["authority"].get("autonomous_limit", "0")),
+                )
+            )
+        }
         return {
             "buyer_id": buyer["id"],
             "agent_id": actor["id"],
@@ -58,11 +61,6 @@ class Service:
             )
         return workflow.prepare_order(identity, request, self.connector)
 
-    def ensure_saved_plan_resolved(self, identity, title):
-        from aimo import recipe_guard
-
-        recipe_guard.ensure_no_unresolved_saved_plan(identity, title)
-
     def recipe_operation(self, name, identity, request):
         from aimo import recipes
 
@@ -82,11 +80,6 @@ class Service:
 
     def match_ingredient(self, identity, request):
         return self.recipe_operation("match_ingredient", identity, request)
-
-    def match_ingredients(self, identity, request):
-        from aimo import recipe_batch
-
-        return recipe_batch.match_ingredients(identity, request)
 
     def get_proposal(self, identity, proposal_id):
         return workflow.get_proposal(identity, proposal_id)
@@ -123,10 +116,3 @@ class Service:
         from aimo import memory
 
         return memory.mutate(actor, change)
-
-    def get_meal_authorization(self, identity, proposal_id):
-        return meal_authorization.get(identity, proposal_id)
-
-    def withdraw_meal_authorization(self, identity, request):
-        """Customer-only (not an agent tool): withdraw the per-meal authorization (POL-010)."""
-        return meal_authorization.withdraw(identity, request)

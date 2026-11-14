@@ -281,15 +281,3 @@ and availability are live, per-customer and per-delivery-date, and the supplier
 API is rate limited. The app queries them only for a narrowed shortlist at proposal
 and commit time, and never polls them for the whole catalog. This Job does not
 touch prices or stock, does not place orders, and does not ingest recipes.
-
-### Release integration: withdrawn products
-
-Scheduled and explicit imports retain products missing from the next snapshot as
-withdrawn, preserve their first withdrawal date, and trim unprotected withdrawn
-products to the existing 10% limit. Migration 013 records the approved source
-count separately from the stored count, so retained or trimmed products do not
-force an identical snapshot to rebuild. Existing generations without this count
-rebuild once. The ingestion role can read only product IDs from the
-`catalog_protected_products` view; it cannot read proposals, orders, sessions or
-identities. It may update only `catalog_generations.product_count` for cleanup.
-The migration/grant Job must run before the new worker image.

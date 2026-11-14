@@ -115,12 +115,6 @@ def search_products(identity, request: SearchRequest, strategy="hybrid"):
             where += " AND facts->'claims' ? 'FREE_FROM_LACTOSE'"
         if request.requirements.milk_free:
             where += " AND facts->'free_from' ? 'AM' AND NOT facts->'allergens' ? 'AM'"
-        for code in request.requirements.free_from:
-            where += " AND facts->'free_from' ? %s AND NOT facts->'allergens' ? %s"
-            params += [code, code]
-        if request.requirements.country_of_origin:
-            where += " AND lower(facts->>'country_of_origin') = ANY(%s)"
-            params.append(list(request.requirements.country_of_origin))
         exact = c.execute(
             f"SELECT id,facts FROM products WHERE {where} AND (id=%s OR gtin=%s)",
             (*params, request.query, request.query),
