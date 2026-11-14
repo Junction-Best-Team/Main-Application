@@ -72,6 +72,13 @@ MANIFEST: dict[str, list[tuple[str, ...]]] = {
         ("table", "scheduled_runs"),
         ("table", "order_request_cancellations"),
         ("trigger", "scheduled_authorizations", "sched_auth_guard"),
+        ("table", "scheduled_run_events"),
+        ("table", "scheduled_authorization_events"),
+        ("trigger", "scheduled_runs", "scheduled_run_guard"),
+        ("trigger", "scheduled_run_events", "immutable_scheduled_run_events"),
+        ("trigger", "scheduled_authorization_events", "immutable_scheduled_authorization_events"),
+        ("trigger", "order_request_cancellations", "cancellation_no_order"),
+        ("trigger", "order_request_cancellations", "immutable_order_request_cancellations"),
     ],
 }
 

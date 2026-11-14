@@ -43,6 +43,8 @@ APP_WRITES = (
     "scheduled_authorizations",  # status, next run date, pause (the triggers guard the terms)
     "scheduled_runs",  # the run's state machine
 )
+# Updated by the app but never deleted (a run is the record that a date was handled).
+NEVER_DELETED = ("scheduled_authorizations", "scheduled_runs")
 
 
 @pytest.fixture
@@ -97,4 +99,7 @@ def test_only_the_owner_writes_purged_proposals(role_conn):
 def test_tables_the_app_updates_keep_their_privileges(role_conn, table):
     conn, role = role_conn
     for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE"):
-        assert has(conn, role, table, privilege), (table, privilege)
+        if privilege == "DELETE" and table in NEVER_DELETED:
+            assert not has(conn, role, table, privilege), (table, privilege)
+        else:
+            assert has(conn, role, table, privilege), (table, privilege)
