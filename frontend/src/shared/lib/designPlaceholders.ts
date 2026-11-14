@@ -5,7 +5,6 @@ export const DESIGN_PLACEHOLDERS = {
     hub: "Hub: Helsinki Sörnäinen",
     hubShort: "Sörnäinen",
     account: { name: "Demo restaurant", number: "Acc #94821-FI" },
-    hasUnreadNotifications: true,
   },
   /** Request screen (chat): context header, quota badge, composer hints. */
   request: {

@@ -871,3 +871,7 @@ Add new findings below, under your track heading.
 ### F-FE-HELP-001: Remove the header help placeholder
 
 - Date: 2026-11-14. Removed the disabled question-mark help icon from the desktop header at the owner's request. `npm run check --prefix frontend` and both existing desktop/mobile Home-navigation browser checks passed.
+
+### F-FE-NOTIFICATIONS-001: Remove the notification placeholder
+
+- Date: 2026-11-14. Removed the disabled notification bell and unread dot from desktop/mobile headers, the unused notification flag and the orphaned desktop separator. `npm run check --prefix frontend` and both existing desktop/mobile Home-navigation browser checks passed.

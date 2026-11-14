@@ -262,23 +262,6 @@ function AccountBlock({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function NotificationsButton() {
-  return (
-    <InertButton
-      label="Notifications"
-      className="relative flex h-11 w-11 items-center justify-center text-on-surface-variant"
-    >
-      <Icon name="notifications" className="text-[22px]" />
-      {MOCK.shell.hasUnreadNotifications && (
-        <span
-          aria-hidden="true"
-          className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-status-fresh-green"
-        />
-      )}
-    </InertButton>
-  );
-}
-
 function Sidebar({ conversations }: { conversations: ConversationNav }) {
   // Fixed to the viewport, top to bottom, so it never scrolls with the page;
   // its nav scrolls internally if it outgrows the screen. pb-20 keeps the
@@ -307,14 +290,7 @@ function Sidebar({ conversations }: { conversations: ConversationNav }) {
 function DesktopHeader() {
   return (
     <header className="sticky top-0 z-40 hidden h-16 shrink-0 items-center justify-end gap-space-md border-b border-border-subtle bg-surface/80 px-margin backdrop-blur-xl md:flex">
-      <div className="flex items-center gap-space-md">
-        <NotificationsButton />
-        <span
-          aria-hidden="true"
-          className="h-5 w-px bg-surface-container-high"
-        />
-        <Avatar />
-      </div>
+      <Avatar />
     </header>
   );
 }
@@ -350,10 +326,7 @@ function MobileTopBar({
           </span>
         </Link>
       </div>
-      <div className="flex items-center gap-space-xs">
-        <NotificationsButton />
-        <Avatar />
-      </div>
+      <Avatar />
     </header>
   );
 }
