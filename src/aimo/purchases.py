@@ -165,6 +165,7 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
             else:
                 net, gross = money(count * D(e["net"])), money(count * D(e["gross"]))
                 dep_net, dep_gross = D(0), D(0)
+                deposits_known = True
                 for deposit in p["deposits"]:
                     de = evidence.get(deposit.get("material"))
                     try:
@@ -212,20 +213,24 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
                         )
                     except (KeyError, ValueError, ArithmeticError):
                         complete = False
+                        deposits_known = False
                         add(
                             "DEPOSIT_UNRESOLVED",
                             "Deposit quantity or current price is unknown; it is not zero.",
                             pid,
                         )
-                row.update(
-                    net=str(net + dep_net),
-                    gross=str(gross + dep_gross),
-                    tax=str(gross + dep_gross - net - dep_net),
-                    deposits_gross=str(dep_gross),
-                )
-                net_total += net + dep_net
-                gross_total += gross + dep_gross
-                deposit_total += dep_gross
+                # An unknown deposit leaves the line amounts unknown (None): neither the price
+                # without the deposit nor a deposit of zero is shown. Totals are withheld too.
+                if deposits_known:
+                    row.update(
+                        net=str(net + dep_net),
+                        gross=str(gross + dep_gross),
+                        tax=str(gross + dep_gross - net - dep_net),
+                        deposits_gross=str(dep_gross),
+                    )
+                    net_total += net + dep_net
+                    gross_total += gross + dep_gross
+                    deposit_total += dep_gross
         lines.append(row)
     snapshot = {
         "lines": lines,

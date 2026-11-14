@@ -283,10 +283,6 @@ class DepositWithoutPrice(FixtureClient):
         return raw
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PRP-006 Draft: with an unpriced deposit the total is withheld but the line shows gross and deposits 0",
-)
 def test_line_gross_and_deposits_are_unknown_when_the_deposit_has_no_price(agent, request_data):
     request_data.update(
         requirements={},
@@ -297,4 +293,8 @@ def test_line_gross_and_deposits_are_unknown_when_the_deposit_has_no_price(agent
     snapshot = proposal["snapshot"]
     assert snapshot["gross_total"] is None and snapshot["deposits_gross"] is None  # works today
     shown = snapshot["lines"][0]
-    assert shown["gross"] is None and shown["deposits_gross"] is None  # unknown, not zero
+    # Unknown, not zero and not the price without the deposit.
+    assert shown["gross"] is None and shown["deposits_gross"] is None
+    assert shown["net"] is None and shown["tax"] is None
+    assert "DEPOSIT_UNRESOLVED" in {r["code"] for r in snapshot["reasons"]}
+    assert proposal["policy_outcome"] == "needs_resolution"
