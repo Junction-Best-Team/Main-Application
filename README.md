@@ -10,7 +10,7 @@ See the [architecture diagrams](docs/architecture.md) for the system overview, p
 | --- | --- |
 | [![System architecture](docs/diagrams/architecture.svg)](docs/diagrams/architecture.svg) | [![Agent harness](docs/diagrams/harness.svg)](docs/diagrams/harness.svg) |
 
-[Download and edit both diagrams in free Excalidraw](docs/diagrams/README.md).
+[Diagram sources and editing instructions (free D2)](docs/diagrams/README.md).
 
 ## Working in parallel
 

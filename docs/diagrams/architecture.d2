@@ -1,0 +1,46 @@
+# Render with free D2 + ELK. See README.md in this directory.
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 0
+    pad: 40
+  }
+}
+direction: right
+classes: {
+  app: {
+    style: {fill: "#EAF1FF"; stroke: "#6984AE"; border-radius: 12; font-size: 22}
+  }
+  external: {
+    style: {fill: "#F1EAFF"; stroke: "#9B85BE"; border-radius: 12; font-size: 22}
+  }
+  data: {
+    style: {fill: "#E2F5EF"; stroke: "#65A08D"; font-size: 22}
+  }
+}
+buyer: Buyer {class: data; shape: person}
+cluster: Kubernetes {
+  style: {fill: "#FAFBFE"; stroke: "#C6D2E2"; stroke-dash: 4; font-size: 24}
+  ingress: HTTPS / Traefik {class: app}
+  frontend: React / Nginx {class: app}
+  api: FastAPI {class: app}
+  worker: AI worker {class: app}
+  import: Import job {class: app}
+  ingress -> frontend: pages
+  ingress -> api: API + SSE
+}
+db: PostgreSQL + pgvector {class: data; shape: cylinder}
+ai: OpenRouter {
+  class: external
+  label: "OpenRouter\nChat + optional search"
+}
+valio: Valio API {class: external}
+catalog: Private datasets {class: data; shape: page}
+buyer -> cluster.ingress
+cluster.api -> db: state + queue
+cluster.worker -> db: claim + save
+cluster.worker -> ai
+cluster.worker -> valio: price / stock
+cluster.api -> valio: recheck
+catalog -> cluster.import
+cluster.import -> db: catalog {style.stroke: "#B29963"; style.stroke-dash: 4}

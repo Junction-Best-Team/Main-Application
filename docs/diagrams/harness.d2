@@ -1,0 +1,38 @@
+# The model can prepare; only the authenticated buyer can confirm.
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 0
+    pad: 40
+  }
+}
+direction: right
+classes: {
+  app: {
+    style: {fill: "#EAF1FF"; stroke: "#6984AE"; border-radius: 12; font-size: 22}
+  }
+  human: {
+    style: {fill: "#E2F5EF"; stroke: "#65A08D"; border-radius: 12; font-size: 22}
+  }
+  check: {
+    style: {fill: "#FFF2D9"; stroke: "#B29963"; border-radius: 12; font-size: 22}
+  }
+}
+# Read left to right, then follow the turn into the second row.
+grid-rows: 3
+grid-columns: 3
+horizontal-gap: 100
+vertical-gap: 85
+message: Buyer message {class: human; width: 250; height: 110}
+queue: Saved turn {class: app; width: 250; height: 110; shape: cylinder}
+model: Model loop {class: app; width: 250; height: 110}
+basket: Saved proposal {class: app; width: 250; height: 110}
+checks: Policy + evidence {class: check; width: 250; height: 110}
+tools: Typed tools {class: app; width: 250; height: 110}
+confirm: Buyer confirms {class: human; width: 250; height: 110}
+recheck: Revalidate {class: check; width: 250; height: 110}
+receipt: Mock receipt {class: human; width: 250; height: 110}
+message -> queue -> model
+model <-> tools
+tools -> checks -> basket
+basket -> confirm -> recheck -> receipt
