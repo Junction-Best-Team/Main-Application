@@ -188,7 +188,7 @@ def test_incomplete_or_fabricated_plan_cannot_prepare(identity):
     assert not any(c[0] == "prepare" for c in service.calls)
 
 
-@pytest.mark.parametrize("amount", ["NaN", "Infinity", "-1", "0", "a lot"])
+@pytest.mark.parametrize("amount", ["NaN", "Infinity", "-1", "0", "a lot", "1e999999999999", "0.000001"])
 def test_meal_amounts_are_finite_positive(identity, amount):
     registry = internal.Tools(identity, [], FakeService())
     draft = plan(False)
@@ -328,7 +328,7 @@ def test_provider_tool_wire_format_and_success(monkeypatch, cfg, identity):
     assert calls[1]["messages"][-2]["tool_calls"][0]["id"] == call["id"]
     assert calls[1]["messages"][-1]["tool_call_id"] == call["id"]
     assert calls[1]["messages"][-1]["role"] == "tool"
-    assert calls[0]["parallel_tool_calls"] is False
+    assert calls[0]["parallel_tool_calls"] is True
 
 
 def test_provider_failure_after_preparation_retains_verified_basket(monkeypatch, cfg, identity):
