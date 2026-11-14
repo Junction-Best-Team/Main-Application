@@ -2430,6 +2430,18 @@
             },
             "type": "array",
             "title": "Reasons"
+          },
+          "totals_are_estimates": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totals Are Estimates",
+            "description": "True when any line is priced by variable weight, so the totals are estimates. Absent otherwise."
           }
         },
         "additionalProperties": false,
@@ -2932,6 +2944,18 @@
               }
             ],
             "title": "Contributions"
+          },
+          "price_is_estimate": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Is Estimate",
+            "description": "True for a variable-weight product: the final weight and price settle at delivery (BAS-007). Absent otherwise."
           }
         },
         "additionalProperties": false,

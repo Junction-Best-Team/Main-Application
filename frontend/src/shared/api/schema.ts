@@ -872,6 +872,11 @@ export interface components {
             observed_at: string;
             /** Reasons */
             reasons: components["schemas"]["Reason"][];
+            /**
+             * Totals Are Estimates
+             * @description True when any line is priced by variable weight, so the totals are estimates. Absent otherwise.
+             */
+            totals_are_estimates?: boolean | null;
         };
         /** QuantityCalculation */
         QuantityCalculation: {
@@ -1051,6 +1056,11 @@ export interface components {
             contributions?: {
                 [key: string]: unknown;
             }[] | null;
+            /**
+             * Price Is Estimate
+             * @description True for a variable-weight product: the final weight and price settle at delivery (BAS-007). Absent otherwise.
+             */
+            price_is_estimate?: boolean | null;
         };
         /** ValidationError */
         ValidationError: {

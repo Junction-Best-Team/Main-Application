@@ -358,8 +358,7 @@ Checks that the quantity maths is exact: purchased amounts are whole multiples o
 | No-float guard (1 helper test + 7 modules) | Parses the source of the arithmetic modules (catalog, numeric, purchases, approval policy, workflow, service, recipes) for `float(...)` or float literals | No hits; the detector itself is shown to catch both forms | Binary floating point creeping into money or quantities. Checks source text only, so a float built another way would not be seen |
 | Variable weight still flagged | A raw product with no `variableUnit` flag, then with it set false | Missing means flagged (`True`); explicit false means `False` | Treating unknown as "fixed weight" |
 
-Strict xfail:
-- `test_variable_weight_line_is_flagged_but_does_not_block` stands for BAS-007 (owner decision: warn only). Today a variable-weight line (12 kg of product `460675`) still makes the outcome `needs_resolution`, because `purchases.py` and `recipes.py` still block it (implementation deferred, ISS-JCT-001). The flag half of the test already holds; the "must not block" half fails.
+BAS-007 (owner Q-68: variable weight warns and the basket continues): `test_variable_weight_line_is_flagged_but_does_not_block` (a variable-weight line is flagged and not `needs_resolution`), `test_variable_weight_line_shows_the_warning_and_an_estimated_price` (severity `warning`, the message says the price is an estimate, `price_is_estimate` on the line and `totals_are_estimates` on the snapshot, the customer's confirmation still places the mock order) and `test_a_basket_without_variable_weight_is_not_marked_as_an_estimate`; `test_agent.py::test_variable_weight_estimate_reaches_the_trusted_notice` checks the chat notice.
 
 #### `tests/test_basket_contract.py` (JNP3-BAS-001 to BAS-005, plus BAS-008 shortfall) - 32 passed, 2 xfailed
 

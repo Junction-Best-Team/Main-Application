@@ -120,6 +120,7 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
     )
     net_total, gross_total, deposit_total = D(0), D(0), D(0)
     complete = True
+    estimated = False
     for line in request.lines:
         pid = line.product_id
         p = products.get(pid)
@@ -131,13 +132,16 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
         if p["deleted"]:
             add("PRODUCT_DELETED", "Product has been withdrawn.", pid, "denied")
         if p["variable_weight"]:
-            # BAS-007: flagged for the buyer, never a blocker.
+            # BAS-007 (owner Q-68): a warning on the line, never a blocker. The code keeps its
+            # earlier name; the severity says what it does. The price is an estimate.
             add(
                 "VARIABLE_WEIGHT_UNRESOLVED",
-                "Actual-weight settlement is outside this fixed-quantity MVP.",
+                "Sold by variable weight: the final weight and price settle at delivery, so "
+                "this price is an estimate.",
                 pid,
                 "warning",
             )
+            estimated = True
         q = quantity(
             p,
             line.amount,
@@ -161,6 +165,8 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
             "product_evidence": p,
             "commercial_evidence": e,
         }
+        if p["variable_weight"]:  # absent otherwise, so earlier proposals are unchanged
+            row["price_is_estimate"] = True
         if pid in contributions:  # absent otherwise, so earlier proposals are unchanged
             row["contributions"] = allocate_line(q, contributions[pid])
         if q["sales_quantity"] is None:
@@ -279,6 +285,8 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
         "observed_at": raw["observed_at"],
         "reasons": reasons,
     }
+    if estimated:  # absent otherwise, so earlier proposals are unchanged
+        snapshot["totals_are_estimates"] = True
     if not complete:
         add("TOTAL_UNRESOLVED", "Complete gross payable cannot be established.")
     return snapshot, expires, policy["version"]

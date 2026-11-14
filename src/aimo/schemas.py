@@ -244,6 +244,11 @@ class SnapshotLine(Model):
     product_evidence: dict
     commercial_evidence: dict
     contributions: list[dict] | None = None
+    price_is_estimate: bool | None = Field(
+        default=None,
+        description="True for a variable-weight product: the final weight and price settle at "
+        "delivery (BAS-007). Absent otherwise.",
+    )
 
 
 class PurchaseSnapshot(Model):
@@ -258,6 +263,11 @@ class PurchaseSnapshot(Model):
     mode: str
     observed_at: str
     reasons: list[Reason]
+    totals_are_estimates: bool | None = Field(
+        default=None,
+        description="True when any line is priced by variable weight, so the totals are "
+        "estimates. Absent otherwise.",
+    )
 
 
 class ProposalResponse(Model):

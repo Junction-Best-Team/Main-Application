@@ -719,8 +719,14 @@ class ToolSession:
                     reason["message"] for reason in self.proposal["reasons"]
                 )
             else:
+                warnings = [
+                    reason["message"]
+                    for reason in self.proposal["reasons"]
+                    if reason.get("severity") == "warning"
+                ]
                 notice = (
-                    "Review the verified basket and exact revision, then use the Confirm "
+                    " ".join(dict.fromkeys(warnings)) + (" " if warnings else "")
+                    + "Review the verified basket and exact revision, then use the Confirm "
                     "purchase button. No supplier order has been placed."
                 )
         elif self.receipt:
