@@ -3,16 +3,34 @@ import { proposalStatus } from "./store";
 
 export { formatMoney as currency, formatDateTime as dateTime } from "./format";
 
-export const title = (status: string) =>
-  status.replaceAll("_", " ").replace(/^./, (s) => s.toUpperCase());
+export const title = (status: string) => status.replaceAll("_", " ").replace(/^./, (s) => s.toUpperCase());
+
+// Status tag colours by status; anything else uses the neutral tag.
+const BADGE_TONE: Record<string, string> = {
+  pending: "bg-[#fff0c7] text-[#755000]",
+  approval_required: "bg-[#fff0c7] text-[#755000]",
+  approved: "bg-[#dff2e9] text-[#1c6048]",
+  accepted_mock: "bg-[#dff2e9] text-[#1c6048]",
+  ready_to_commit: "bg-[#dff2e9] text-[#1c6048]",
+  rejected: "bg-error-container text-on-error-container",
+  denied: "bg-error-container text-on-error-container",
+  expired: "bg-error-container text-on-error-container",
+};
 
 export function Badge({ value }: { value: string }) {
-  return <span className={`badge ${value}`}>{title(value)}</span>;
+  const tone = BADGE_TONE[value] ?? "bg-surface-container-high text-on-surface-variant";
+  return (
+    <span
+      className={`inline-block whitespace-nowrap rounded-full px-[11px] py-[7px] text-[0.8rem] leading-[1.3] font-bold ${tone}`}
+    >
+      {title(value)}
+    </span>
+  );
 }
 
 export function ErrorMessage({ message }: { message: string }) {
   return message ? (
-    <div className="error" role="alert">
+    <div role="alert" className="rounded-lg bg-error-container p-space-md text-on-error-container">
       {message}
     </div>
   ) : null;

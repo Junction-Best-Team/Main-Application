@@ -31,6 +31,14 @@ async function shot(page: Page, info: TestInfo, name: string) {
 
 test("Overview lists the staged items and the total, and Approve confirms the proposal", async ({ page }, info) => {
   await signIn(page, "/conversations/conv-carbonara");
+  if (isMobile(info)) {
+    // Viewport screenshot of the drawer before it is expanded, for design
+    // review (a full-page capture would leave the fixed drawer mid-page).
+    const drawer = page.getByRole("complementary", { name: "Overview" });
+    await expect(drawer.getByRole("button", { name: "Expand overview" })).toBeVisible();
+    await expect(drawer.getByText("5 items staged")).toBeVisible();
+    await page.screenshot({ path: `test-results/screens/${info.project.name}-request-drawer-collapsed.png` });
+  }
   const panel = await overview(page, info);
   await expect(panel.getByRole("heading", { name: "Overview" })).toBeVisible();
   await expect(panel.getByText("5 items staged")).toBeVisible();

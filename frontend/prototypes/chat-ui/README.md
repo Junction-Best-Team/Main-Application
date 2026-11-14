@@ -37,10 +37,10 @@ verification", the total moves, and you must approve again — in the Overview p
 
 ## Parity baseline and known simplifications
 
-Structure, routes, copy and CSS classes are adapted from the real `frontend/src/main.tsx` /
-`frontend/src/style.css` (PR [#13](https://github.com/Junction-Best-Team/Main-Application/pull/13) /
+Structure, routes and copy are adapted from the real `frontend/src/main.tsx` (PR [#13](https://github.com/Junction-Best-Team/Main-Application/pull/13) /
 [#15](https://github.com/Junction-Best-Team/Main-Application/pull/15) chat surface) and the closed
-research comment on [#25](https://github.com/Junction-Best-Team/Main-Application/issues/25). Known,
+research comment on [#25](https://github.com/Junction-Best-Team/Main-Application/issues/25). Styling is
+Tailwind v4 utilities with preflight; design tokens and the few global base rules live in `src/theme.css`. Known,
 deliberate simplifications for a throwaway prototype (see `src/store.ts`):
 
 - No real backend, SSE, CSRF or session cookies — `src/store.ts` is an in-memory fake with
