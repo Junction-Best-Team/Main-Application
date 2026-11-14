@@ -29,7 +29,7 @@ export function useSchedule(id: string | undefined) {
 
   // A silent reload (periodic refresh, or after an action raced) keeps older runs already shown.
   const reload = useCallback(
-    async (silent = false) => {
+    async (silent = false): Promise<ScheduleDetail | undefined> => {
       if (!id) return;
       const request = ++active.current;
       if (!silent) setLoading(true);
@@ -49,6 +49,7 @@ export function useSchedule(id: string | undefined) {
           };
         });
         setError("");
+        return fresh;
       } catch (e) {
         if (request === active.current) fail(e);
       } finally {
@@ -105,7 +106,10 @@ export function useSchedule(id: string | undefined) {
     return invalidate;
   }, [reload, invalidate]);
   const silentReload = useCallback(() => reload(true), [reload]);
-  useRefresh(silentReload);
+  const refreshQuietly = useCallback(async () => {
+    await reload(true);
+  }, [reload]);
+  useRefresh(refreshQuietly);
 
   return {
     schedule,
