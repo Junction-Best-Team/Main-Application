@@ -276,6 +276,7 @@ def test_forwarded_client_addresses_only_from_trusted_ingress(peer, expected):
     assert client.get("/", headers={"X-Forwarded-For": "198.51.100.7"}).json()["client"] == expected
 
 
+
 def test_pool_reuses_connection_and_rolls_back_failed_work(monkeypatch):
     monkeypatch.setattr(settings(), "db_pool_max_size", 1)
     monkeypatch.setattr(settings(), "db_pool_timeout_seconds", 0.05)
