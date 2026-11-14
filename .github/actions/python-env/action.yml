@@ -1,0 +1,20 @@
+name: Python environment
+description: >-
+  Locked Python test environment without the ML stack (torch, sentence-transformers). Used by
+  every CI job that runs the backend. The caller must have checked out the repository.
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      with:
+        version: '0.12.5'
+        python-version: '3.12.12'
+        enable-cache: true
+        cache-dependency-glob: uv.lock
+    - name: Install locked test dependencies without the ML stack
+      shell: bash
+      run: |
+        uv export --locked --prune torch --prune sentence-transformers --no-emit-project --output-file "$RUNNER_TEMP/aimo-ci-requirements.txt"
+        uv venv
+        uv pip sync --require-hashes "$RUNNER_TEMP/aimo-ci-requirements.txt"
+        uv pip install --no-deps -e .

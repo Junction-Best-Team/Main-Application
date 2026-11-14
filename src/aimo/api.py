@@ -7,7 +7,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 from aimo import approval_workflow as workflow
-from aimo import auth, conversations
+from aimo import auth, conversations, upstream
 from aimo.chat_schemas import (
     ConversationCreate,
     ConversationList,
@@ -119,7 +119,7 @@ def create_app(service=None):
         return {
             "status": "ready",
             "model": active["model_key"],
-            "upstream_mode": settings().upstream_mode,
+            "upstream_mode": upstream.effective_mode(),
         }
 
     @app.post("/api/login", response_model=SessionResponse)

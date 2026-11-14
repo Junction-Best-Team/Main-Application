@@ -15,22 +15,23 @@ See the [architecture diagrams](docs/architecture.md) for the system overview, p
 - Keep `main` ready to demonstrate. Promote a tested snapshot with a release PR from `develop` to `main` only when a release is explicitly requested. Avoid force pushes to shared branches and preserve teammates' uncommitted work.
 - Use a separate checkout/worktree and branch for each concurrent agent on the same machine.
 
-See [separate apps and the one-time cluster cutover](docs/separate-apps.md) for images, routing, queue recovery and deployment steps.
+## CI
 
-## Lightweight CI
+One workflow, `.github/workflows/ci.yml`, runs on PRs into `develop` and `main` and on pushes to either. Its jobs run in parallel:
 
-GitHub Actions runs on PRs into `develop` and `main`, and pushes to either branch:
+| Job (GitHub name) | What it does |
+| --- | --- |
+| Detect application components | Decides which jobs apply (backend, frontend, Terraform) |
+| Python lint and tests | `ruff check`, then `pytest` against temporary PostgreSQL/pgvector with fixture embeddings and supplier responses; saves coverage data |
+| Frontend types and build | `npm ci`, TypeScript check, production build. There are no UI tests in CI: the current UI is an old mockup, so UI testing waits for the real design |
+| API sweep | Starts the real server and drives the buyer-facing API: sign-in, CSRF and Origin checks, conversations, purchases and approvals, and that a chat turn without an LLM provider fails honestly (`tests/sweep/run_sweep.py`) |
+| Terraform | Format, validate, mocked-provider plan tests and Helm render for `infra/` (only when it or the workflows changed) |
+| Coverage (95% minimum) | Combines the pytest and sweep coverage data and fails below `fail_under` in `pyproject.toml` |
+| **CI gate** | Waits for every job above; the required status check |
 
-- Python lint: `ruff check src tests scripts`.
-- Backend regression tests: `pytest -q` against temporary PostgreSQL/pgvector, using fixture embeddings and supplier responses. Test dependencies come from `uv.lock`; the unused ML stack is pruned to keep installation small.
-- Frontend TypeScript checks and production build: `npm ci` then `npm run build` in `frontend`.
-- Terraform formatting, validation, mocked plan tests, helper tests and ingress chart rendering when `infra/` or either CI workflow changes.
+Dependencies come from the lockfiles with the unused ML stack pruned, downloads are cached and a new commit cancels outdated PR runs (main releases are serialized). Everything runs on fixtures: CI never has the Valio API key, and no model weights, full catalog imports, Docker builds or deployments are needed. The live check is the local `tests/ci.sh --live`. What every check verifies is in [tests/README.md](tests/README.md) and [tests/TEST-GUIDE.md](tests/TEST-GUIDE.md).
 
-Backend and frontend jobs run in parallel, dependency downloads are cached, and a new commit cancels outdated PR/develop runs. Main releases are serialized. Components are explicitly skipped only while their application code has not been added; incomplete manifests fail the workflow. No model weights, full catalog imports, Docker builds, browser tests, production credentials, or deployments are needed for PR validation. Run broader demo/browser checks locally when the change warrants them.
-
-The always-present `CI gate` requires successful detection and every applicable application/Terraform check; it accepts a skipped job only when detection says that job is unnecessary. Branch protection requires this gate alongside the three existing application checks on both `develop` and `main`.
-
-Our workflow is **task PR → green CI → self-merge**. Reviews are optional, and the optional `skip-review` label does not bypass CI. The repository is public, and GitHub protects both `develop` and `main`: pull requests and required checks apply even to administrators; force-pushes and branch deletion are blocked. Human approvals are not required. GitHub does not require updating a PR branch after every base-branch change. No special GitHub board is required. Use the team chat to coordinate.
+Our workflow is **task PR → green CI → self-merge**. Branch protection on `develop` requires the CI gate plus the three application checks; reviews are optional and the `skip-review` label does not bypass CI. Adding a job: give it a `name`, add it to the gate's `needs` and `applies` table in `ci.yml`.
 
 ## Build and deploy releases
 
@@ -74,7 +75,21 @@ Run `docker compose --profile app up --build` after setup, then open [chat purch
 
 For frontend development, run `npm run dev --prefix frontend` and temporarily set `PUBLIC_BASE_URL=http://localhost:5173` for the backend. Vite proxies `/api`; production serves built assets from the separate frontend container, with Traefik routing API/SSE directly to FastAPI. The source of the browser's generated types is Python: `uv run python scripts/export_schema.py && npm run types --prefix frontend`.
 
-## Demo and browser interfaces
+## Valio API key and upstream modes
+
+`UPSTREAM_MODE` selects where price and availability come from:
+
+| Value | Behaviour |
+| --- | --- |
+| `auto` (default) | Live Valio API when `VALIO_AIMO_API_KEY` is set, otherwise **authored fixtures** with a logged warning. |
+| `live` | Live only; fails closed (`UPSTREAM_CREDENTIALS_MISSING`) without a key. |
+| `fixture` | Invented fixtures only (used by the pytest suite). |
+
+**The key exists and team members have it.** Ask a teammate and put it in your own gitignored `.env` as `VALIO_AIMO_API_KEY` (never commit or print it). Without it everything still runs on fixtures, but nothing from that run is live data: `GET /health/ready` reports `upstream_mode`, and every lookup response carries `mode: live|fixture`.
+
+**Open decision for the full product:** how a distributor supplies this key. Options: an admin UI where the distributor enters it (stored server-side, never sent to browsers), or deployment configuration as today (an environment variable or Kubernetes Secret). The MVP uses the environment variable. This must be resolved before production; see `docs/brief.md` section 12.
+
+## Demo
 
 ```sh
 uv run python scripts/demo.py
@@ -107,6 +122,16 @@ Commit re-fetches commercial evidence outside the transaction, then locks the bu
 Receipts say **“Accepted by demo order service”** and explicitly report no supplier order and no reservation. Demo delivery charges are zero by adapter definition; real checkout charges need an upstream contract. The supplied API has no order endpoint.
 
 ## Verification
+
+One command runs lint, the pytest suite and a black-box sweep of the buyer-facing API (details in [tests/README.md](tests/README.md)):
+
+```sh
+tests/ci.sh          # hermetic: own database, fixture catalog and fixture price/stock, no key needed
+tests/ci.sh --live   # your .env database and full catalog, real Valio price/stock
+```
+
+The individual checks:
+
 
 ```sh
 uv run ruff check src tests scripts
