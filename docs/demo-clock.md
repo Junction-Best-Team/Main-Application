@@ -17,12 +17,20 @@ The thresholds are named constants in `src/aimo/clock.py`. The `fulfilment` fiel
 (null until an order exists), the receipt (which also gains `delivery_date` and `destination`) and
 `placed` rows of `GET /api/orders`.
 
+**The field is there with the clock off too.** It is derived from the delivery date and a clock (owner
+Q-111), so with `DEMO_CLOCK_ENABLED=false` it still appears (`clock: "real"`, `simulated: true`) on
+the receipt route, `/api/orders` rows, proposal and confirm responses and the agent's `read_order`,
+and the receipt gains `delivery_date` and `destination`. This is an intended product change, not
+something the flag gates; with the flag off the response bodies are therefore not byte-identical to
+before.
+
 ## The demo clock
 
 Off by default. With `DEMO_CLOCK_ENABLED=true` each buyer has an offset on top of real time, read by
 the fulfilment status and the scheduler only. Sessions, proposal and approval expiry, price validity,
 confirmation windows, supplier calls and audit timestamps stay on real time. The app refuses to
-start with it on while supplier lookups are live; the hosted fixture deployment may enable it.
+start with it on while supplier lookups are live; the hosted fixture deployment may enable it. The
+worker does not exit in that case: it logs the refusal and does no work.
 
 - `GET /api/demo/clock`: offset and simulated time.
 - `POST /api/demo/clock/advance` `{days: 1..30}` or `{to: "delivery_day"}` (06:00 Helsinki on the
@@ -30,7 +38,9 @@ start with it on while supplier lookups are live; the hosted fixture deployment 
   most 30 days per jump and 400 days in total per buyer (409 `DEMO_CLOCK_LIMIT`).
 - `POST /api/demo/clock/reset` returns to real time.
 
-All three answer 404 while the clock is disabled. Jumps and resets are recorded in the append-only
+For a signed-in customer with a valid request, all three answer 404 while the clock is disabled. The
+session, CSRF and body checks run first (an unauthenticated call is 401, a bad token 403, a bad body
+422), and the routes are registered and listed in the OpenAPI document either way. Jumps and resets are recorded in the append-only
 `demo_clock_events` (migration `025_demo_clock.sql`).
 
 ## The scheduler follows the buyer's clock
@@ -39,3 +49,14 @@ All three answer 404 while the clock is disabled. Jumps and resets are recorded 
 simulated Helsinki date. After a jump every date the jump skipped runs in date order, each at its own
 run time, with no `RUN_MISSED` and no `RAN_LATE`. A passed-in `now`, or the clock off, takes the
 unchanged path. Leases, retries, prepare and commit stay on real time.
+
+## Demo behaviour to know about
+
+- **Mixed time bases.** A jump moves the status and the scheduler only. `reset` returns the offset to
+  0, but a standing order keeps the progress it made during the jump (its runs, orders, expiry or stop
+  stay). The schedule routes and the commit-time authorization check use the real Helsinki date.
+- **Known limits (not fixed here).** Whether the clock is enabled is cached per process, so the API
+  and the worker must be configured the same. Any approver of a buyer can move that buyer's clock,
+  and there is no rate limit. `demo_clock_events` grows without bound. A `to: "delivery_day"` jump
+  answers 409 inside the delivery window. Rendering a proposal with an order costs one extra query
+  per proposal (the N+1 in `approval_workflow.render`).
