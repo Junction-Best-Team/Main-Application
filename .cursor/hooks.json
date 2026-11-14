@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "postToolUse": [
+      {
+        "command": ".cursor/hooks/remind-code-review.sh",
+        "matcher": "Shell",
+        "failClosed": false
+      }
+    ]
+  }
+}

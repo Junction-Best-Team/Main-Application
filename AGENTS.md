@@ -9,6 +9,7 @@ Four-person Junction hackathon repository. The implemented Valio Aimo MVP is des
 - Keep credentials out of source control and browser-side code. Document variable names in `.env.example` and commit dependency lockfiles.
 - Clearly identify mocks and record preparation/reused material in `docs/pre-existing-work.md`.
 - Pull requests and the lightweight CI checks below are required for changes. Human reviews, issues, and skills are optional. Keep documentation short and follow the user's requested delivery scope.
+- Reviewing a branch, PR, or diff: use the `code-review` skill (two-axis Standards + Spec, run as parallel sub-agents). `CODING_STANDARDS.md` lists what CI already enforces so the Standards axis does not re-flag it.
 
 ## Branch and pull request workflow
 

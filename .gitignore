@@ -58,3 +58,4 @@ crash.*.log
 infra/**/kubeconfig*.yaml
 infra/**/kubeconfig*.yml
 infra/**/database-ca*.crt
+.cursor/hooks/.state/
