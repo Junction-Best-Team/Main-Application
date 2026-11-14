@@ -1,10 +1,10 @@
 # Tests and CI procedure
 
-One command runs the checks locally. GitHub Actions (`.github/workflows/ci.yml`) runs them as parallel jobs on every PR into `develop` or `main`; the `CI gate` job waits for all of them. For a plain-language explanation of each test, see [TEST-GUIDE.md](TEST-GUIDE.md).
+One command runs the checks locally. GitHub Actions (`.github/workflows/ci.yml`) runs backend lint, pytest and the strict API sweep in one job alongside the frontend build on every PR into `develop` or `main`; the `CI gate` job waits for every applicable check. For a plain-language explanation of each test, see [TEST-GUIDE.md](TEST-GUIDE.md).
 
 ```sh
 tests/ci.sh                          # lint + pytest + tool sweep, hermetic (no API key needed)
-tests/ci.sh --skip-unit              # only the sweep (the CI "API sweep" job)
+tests/ci.sh --skip-unit              # only the sweep (last step of the CI backend job)
 tests/ci.sh --live                   # read-only Valio lookup, then HTTP sweep (needs API key)
 SWEEP_ARGS=--strict tests/ci.sh      # a skipped check counts as a failure
 ```
@@ -18,12 +18,12 @@ Needs Docker (PostgreSQL + pgvector, started by the script) and `uv`. The script
 | `ruff check src tests scripts` | Lint | nothing | Python lint and tests | |
 | `pytest` (`tests/test_*.py`) | Unit and integration tests against real PostgreSQL, fixture upstream and embeddings | pgvector DB | Python lint and tests | |
 | Frontend `npm run build` | TypeScript check and production build | Node | Frontend types and build | |
-| `tests/sweep/run_sweep.py` | Black-box sweep of the buyer-facing API (sign-in, CSRF/Origin, conversations, purchases, approvals) against a running server; no LLM | server + DB | API sweep | `--live` too |
+| `tests/sweep/run_sweep.py` | Black-box sweep of the buyer-facing API (sign-in, CSRF/Origin, conversations, purchases, approvals) against a running server; no LLM | server + DB | Python lint and tests | `--live` too |
 | `scripts/demo.py` | Demo helper rewritten for the chat product in PR #15 (not re-run here) | running server | | yes |
 | `scripts/restart_smoke.py` | Real container restart between approval and commit | Docker image | | yes |
 | `scripts/verify_catalog.py`, `scripts/evaluate_search.py` | Seven golden catalog cases; 30-case retrieval evaluation | full catalog | | yes |
 | `tests/ci.sh --live` | Sweep with real Valio price and stock | API key | | yes |
-| `tests/coverage_report.py` | Combines pytest and sweep coverage; fails below `fail_under` | coverage data | Coverage (95% minimum) | |
+| `tests/coverage_report.py` | Optional combined pytest and sweep coverage report | coverage data | | yes |
 | `infra/` Terraform checks (`terraform.yml`) | Format, `validate`, mocked-provider `terraform test` plans, ingress Helm render and Python unit tests for the cloud and Kubernetes modules; no cloud token | Terraform | Terraform | |
 
 Not covered by any CI: the Docker image build, Kubernetes manifests, the live Valio API (key not stored in GitHub), and search quality (the evaluation needs the 84 MB catalog and real embeddings).
@@ -109,11 +109,9 @@ CI_COVERAGE=1 tests/ci.sh                  # data goes to .coverage/ (gitignored
 uv run python tests/coverage_report.py     # pytest only / sweep only / combined, per file, lines only the sweep reaches, HTML + XML in .coverage/
 ```
 
-- **Gate: 95%.** `fail_under` in `pyproject.toml` (`[tool.coverage.report]`) is applied to the combined total by `coverage_report.py` (exit 1 below it). It is the only place to change it, and it is required: the CI job "Coverage (95% minimum)" is part of the `CI gate`. Do not run bare `pytest --cov` expecting a pass: pytest alone is lower than the combined total, so add `--cov-fail-under=0` when you only want the table.
-- **CI.** The `Python lint and tests`, and `API sweep` jobs each upload their coverage data; the `Coverage` job downloads and combines them, prints the table in the log and the job summary, uploads the HTML/XML report and fails below the gate.
-- **Excluded.** Only `if __name__ == "__main__":` blocks. `tests/`, `scripts/`, `frontend/` and the live Valio path (not reachable without a key) are not measured.
-- **Frontend: not measured.** No UI tests run in CI; the Python gate above is the only coverage gate.
-- **Measured 2026-11-14** (fixture mode, on the merge with `develop`): combined 96.5% with 317 pytest tests, re-measured after merging `develop` (hardening and the chat cutover). `agent.py` and `api.py` (the streaming endpoint) are the lowest at 84%. The gate is 95%, so the margin is only about 1.5 points: adding untested code will trip it. The few unreached lines are listed by `tests/coverage_report.py`.
+- **Optional, local only.** CI does not collect coverage, upload coverage artifacts or require a minimum percentage. `pyproject.toml` has no `fail_under` override; reports use the default zero threshold.
+- **Excluded.** Only `if __name__ == "__main__":` blocks. `tests/`, `scripts/` and `frontend/` are not measured; fixture runs do not exercise the live supplier API.
+- **Frontend: not measured.** Browser tests remain available locally.
 
 ## Running pieces on their own
 

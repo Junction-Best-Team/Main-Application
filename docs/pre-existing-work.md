@@ -105,3 +105,9 @@ original records and reviewed overrides. Agent, product search and purchasing re
 existing application code; hosted recipe search targets PR #34's Qwen provider.
 Tests use authored recipe/product/commerce evidence, not verified sponsor stock.
 See `docs/recipes.md` for the snapshot checksum and remaining recipe/data limitations.
+
+
+On 2026-11-14, at the owner's request, Codex simplified the existing CI for the
+hackathon: reused the existing backend tests, API sweep, frontend build and
+infrastructure checks, removed coverage gating/artifact jobs and shared the
+backend setup. No new dependency, dataset, model or asset was introduced.

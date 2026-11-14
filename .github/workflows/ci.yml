@@ -1,13 +1,8 @@
 name: CI
 
-# One workflow, organised as parallel jobs. Required status checks (branch protection) are
-# "Detect application components", "Python lint and tests", "Frontend types and build" and
-# "CI gate". The gate waits for EVERY job below (tests, sweep, coverage, terraform), so a
-# new job only needs adding to the gate's `needs` and `applies` table to become required.
-#
-# TODO (local note, see TODO.local.md): any build/deploy workflow must start only after this
-# workflow succeeded on the same commit (workflow_run with conclusion == success, or a
-# `needs: ci / CI gate` style dependency) and never on a failing or skipped CI.
+# Backend tests and the API sweep share one environment; frontend builds run in parallel.
+# Keep the existing check names for repository rules. The component check now only
+# detects infrastructure changes. CI gate blocks releases unless every applicable job passes.
 
 on:
   pull_request:
@@ -30,35 +25,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
-      backend: ${{ steps.detect.outputs.backend }}
-      frontend: ${{ steps.detect.outputs.frontend }}
       terraform: ${{ steps.terraform.outputs.changed }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
           fetch-depth: 0
-      - id: detect
-        shell: bash
-        run: |
-          # develop is documentation-only until the MVP PR merges.
-          # Incomplete application manifests must fail rather than skip checks.
-          if [[ -f pyproject.toml || -f uv.lock || -d src || -d tests ]]; then
-            test -f pyproject.toml
-            test -f uv.lock
-            echo 'backend=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'backend=false' >> "$GITHUB_OUTPUT"
-            echo '::notice::No backend application yet; backend checks skipped.'
-          fi
-          if [[ -d frontend ]]; then
-            test -f frontend/package.json
-            test -f frontend/package-lock.json
-            echo 'frontend=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'frontend=false' >> "$GITHUB_OUTPUT"
-            echo '::notice::No frontend application yet; frontend checks skipped.'
-          fi
       - id: terraform
         name: Detect infrastructure changes
         shell: bash
@@ -94,8 +66,6 @@ jobs:
 
   backend:
     name: Python lint and tests
-    needs: components
-    if: needs.components.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
@@ -116,6 +86,9 @@ jobs:
       TEST_DATABASE_URL: postgresql://aimo:aimo@localhost:5432/aimo_test
       EMBEDDING_BACKEND: fixture
       UPSTREAM_MODE: fixture
+      CI_DATABASE_URL: postgresql://aimo:aimo@localhost:5432/aimo_ci
+      UV_NO_SYNC: '1'
+      SWEEP_ARGS: --strict
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -124,20 +97,12 @@ jobs:
       - name: Lint Python
         run: .venv/bin/ruff check src tests scripts
       - name: Test backend against PostgreSQL and fixture data
-        run: COVERAGE_FILE=.coverage/pytest .venv/bin/pytest -q --cov --cov-fail-under=0
-        # The 95% gate applies to the combined total in the Coverage job, not to pytest alone.
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: coverage-pytest
-          path: .coverage/pytest
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 7
+        run: .venv/bin/pytest -q
+      - name: Black-box sweep of the buyer-facing API (sign-in, CSRF, conversations, purchases)
+        run: tests/ci.sh --skip-unit
 
   frontend:
     name: Frontend types and build
-    needs: components
-    if: needs.components.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     defaults:
@@ -157,119 +122,28 @@ jobs:
       - name: Check TypeScript and build production assets
         run: npm run build
 
-  sweep:
-    name: API sweep
-    needs: components
-    if: needs.components.outputs.backend == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_USER: aimo
-          POSTGRES_PASSWORD: aimo
-          POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U aimo -d postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      CI_DATABASE_URL: postgresql://aimo:aimo@localhost:5432/aimo_ci
-      UV_NO_SYNC: '1'
-      CI_COVERAGE: '1'
-      SWEEP_ARGS: --strict
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/python-env
-      - name: Black-box sweep of the buyer-facing API (sign-in, CSRF, conversations, purchases)
-        run: tests/ci.sh --skip-unit
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: coverage-sweep
-          path: .coverage/sweep.*
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 7
-
-  coverage:
-    name: Coverage (95% minimum)
-    needs: [components, backend, sweep]
-    if: >-
-      ${{ always()
-      && needs.components.outputs.backend == 'true'
-      && needs.backend.result == 'success'
-      && needs.sweep.result == 'success' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/python-env
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: coverage-*
-          path: .coverage
-          merge-multiple: true
-      - name: Combine pytest and sweep coverage and enforce fail_under (pyproject.toml)
-        run: .venv/bin/python tests/coverage_report.py
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        if: always()
-        with:
-          name: coverage-report
-          path: |
-            .coverage/html
-            .coverage/coverage.xml
-          include-hidden-files: true
-          if-no-files-found: ignore
-          retention-days: 14
-
   gate:
     name: CI gate
-    needs: [components, backend, frontend, terraform, sweep, coverage]
+    needs: [components, backend, frontend, terraform]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
       - name: Require every applicable check to pass
         env:
-          NEEDS_JSON: ${{ toJSON(needs) }}
+          REQUIRED_RESULTS: ${{ needs.components.result }} ${{ needs.backend.result }} ${{ needs.frontend.result }}
+          TERRAFORM_CHANGED: ${{ needs.components.outputs.terraform }}
+          TERRAFORM_RESULT: ${{ needs.terraform.result }}
         run: |
-          python3 - <<'PY'
-          import json
-          import os
-          import sys
-
-          needs = json.loads(os.environ["NEEDS_JSON"])
-          if needs["components"]["result"] != "success":
-              sys.exit("Component/change detection did not succeed.")
-          # Which detection output switches each job on. A job that is not applicable must be
-          # skipped; an applicable job must succeed (a skipped or failed dependency fails the gate).
-          applies = {
-              "backend": ["backend"],
-              "frontend": ["frontend"],
-              "terraform": ["terraform"],
-              "sweep": ["backend"],
-              "coverage": ["backend"],
-          }
-          outputs = needs["components"]["outputs"]
-          for job, flags in applies.items():
-              for flag in flags:
-                  if outputs.get(flag) not in ("true", "false"):
-                      sys.exit(f"Missing or invalid detection output for {flag}.")
-              enabled = all(outputs[flag] == "true" for flag in flags)
-              expected = "success" if enabled else "skipped"
-              actual = needs[job]["result"]
-              if actual != expected:
-                  sys.exit(f"{job}: expected {expected}, got {actual}.")
-              print(f"{job}: {actual}")
-          PY
+          if [[ "$REQUIRED_RESULTS" != 'success success success' ]]; then
+            echo "Required checks did not all pass: $REQUIRED_RESULTS"
+            exit 1
+          fi
+          case "$TERRAFORM_CHANGED" in
+            true) [[ "$TERRAFORM_RESULT" == success ]] ;;
+            false) [[ "$TERRAFORM_RESULT" == skipped ]] ;;
+            *) echo 'Missing or invalid infrastructure change detection'; exit 1 ;;
+          esac
 
   release:
     name: Build and deploy release

@@ -48,7 +48,7 @@ explicit = true
 torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 
 # Coverage: `tests/README.md` ("Coverage") explains how this is used.
-# The threshold is `fail_under` below; it is applied by `coverage report`, not by pytest.
+# Coverage reports are optional diagnostics; there is no minimum percentage for CI.
 [tool.coverage.run]
 source = ["aimo"]
 branch = true
@@ -62,7 +62,6 @@ data_file = ".coverage/data"
 source = ["src/aimo", "*/src/aimo", "*/site-packages/aimo"]
 
 [tool.coverage.report]
-fail_under = 95
 show_missing = true
 skip_covered = false
 exclude_also = [
