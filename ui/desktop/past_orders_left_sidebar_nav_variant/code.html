@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_dashboard" name="shell-type"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,300..900;1,300..900&amp;family=Space+Grotesk:wght@300..700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"surface-container-high":"#e8e8e8","on-secondary":"#ffffff","tertiary-fixed":"#dded2a","deep-ocean-navy":"#1E3D48","outline-variant":"#c0c8cd","background":"#f9f9f9","secondary":"#44636f","primary-fixed-dim":"#90cfed","error-container":"#ffdad6","primary-container":"#005670","inverse-surface":"#2f3131","on-primary":"#ffffff","surface":"#f9f9f9","surface-bright":"#f9f9f9","surface-pure":"#FFFFFF","secondary-fixed-dim":"#accbd9","primary-fixed":"#bee9ff","on-secondary-fixed":"#001f28","border-subtle":"#E2E7E9","status-fresh-green":"#C8D800","on-error":"#ffffff","on-secondary-fixed-variant":"#2d4b56","on-tertiary-container":"#bbcb00","secondary-fixed":"#c7e8f6","on-primary-fixed-variant":"#004d65","inverse-on-surface":"#f1f1f1","tertiary-container":"#4c5300","on-tertiary-fixed":"#1a1d00","on-error-container":"#93000a","tertiary-fixed-dim":"#c1d000","wholesale-teal":"#005670","surface-container-lowest":"#ffffff","surface-variant":"#e2e2e2","on-surface-variant":"#40484c","on-tertiary-fixed-variant":"#454b00","error":"#ba1a1a","on-background":"#1a1c1c","primary":"#003d51","on-tertiary":"#ffffff","surface-dim":"#dadada","secondary-container":"#c7e8f6","surface-container-low":"#f3f3f3","tertiary":"#363b00","surface-tint":"#1f6580","outline":"#70787d","on-primary-fixed":"#001f2a","inverse-primary":"#90cfed","surface-container-highest":"#e2e2e2","surface-container":"#eeeeee","on-surface":"#1a1c1c","text-on-dark":"#FFFFFF","on-primary-container":"#8bcae8","on-secondary-container":"#4a6975"},"borderRadius":{"DEFAULT":"0.125rem","lg":"0.25rem","xl":"0.5rem","full":"0.75rem"},"spacing":{"margin-sm":"1rem","gutter":"1.5rem","space-lg":"1.5rem","space-md":"1rem","gutter-sm":"1rem","space-sm":"0.5rem","space-xl":"2.5rem","space-xs":"0.25rem","margin":"2rem"},"fontFamily":{"label-lg":["Space Grotesk"],"body-md":["Hanken Grotesk"],"headline-xl-mobile":["Hanken Grotesk"],"body-lg":["Hanken Grotesk"],"body-sm":["Hanken Grotesk"],"label-md":["Space Grotesk"],"headline-lg":["Hanken Grotesk"],"headline-sm":["Hanken Grotesk"],"headline-xl":["Hanken Grotesk"],"label-sm":["Space Grotesk"],"headline-lg-mobile":["Hanken Grotesk"],"headline-md":["Hanken Grotesk"]},"fontSize":{"label-lg":["14px",{"lineHeight":"18px","fontWeight":"700"}],"body-md":["16px",{"lineHeight":"24px","fontWeight":"400"}],"headline-xl-mobile":["32px",{"lineHeight":"40px","fontWeight":"800"}],"body-lg":["18px",{"lineHeight":"28px","fontWeight":"400"}],"body-sm":["14px",{"lineHeight":"20px","fontWeight":"400"}],"label-md":["12px",{"lineHeight":"16px","fontWeight":"600"}],"headline-lg":["36px",{"lineHeight":"44px","fontWeight":"700"}],"headline-sm":["20px",{"lineHeight":"28px","fontWeight":"600"}],"headline-xl":["48px",{"lineHeight":"56px","fontWeight":"800"}],"label-sm":["11px",{"lineHeight":"14px","fontWeight":"500"}],"headline-lg-mobile":["26px",{"lineHeight":"32px","fontWeight":"700"}],"headline-md":["24px",{"lineHeight":"32px","fontWeight":"700"}]}}}}</script></head><body class="bg-surface font-body-md text-on-surface antialiased"><aside class="fixed left-0 top-0 h-full w-72 bg-surface-pure z-50 flex flex-col justify-between shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="flex flex-col"><div class="h-16 px-space-md flex items-center justify-between"><div class="flex items-center gap-space-sm"><div class="w-9 h-9 rounded-lg bg-primary-container flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[20px]">local_shipping</span></div><div class="flex flex-col"><span class="font-headline-sm text-headline-sm font-bold tracking-tight text-primary leading-none">Valio Aimo</span><span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider mt-0.5">Pikatukku B2B</span></div></div></div><div class="px-space-md py-space-sm"><div class="bg-surface-container-low rounded-lg px-space-sm py-space-xs flex items-center justify-between"><div class="flex items-center gap-space-xs"><span class="material-symbols-outlined text-wholesale-teal text-[16px]">storefront</span><span class="font-label-sm text-label-sm text-on-surface-variant uppercase">Hub: Helsinki Sörnäinen</span></div><span class="w-2 h-2 rounded-full bg-status-fresh-green"></span></div></div><nav class="flex flex-col gap-space-xs px-space-sm pt-space-sm" data-active-classes="bg-primary-container text-on-primary font-bold"><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg font-label-lg text-label-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="home" href="#"><span class="material-symbols-outlined text-[20px]">dashboard</span>Home</a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg font-label-lg text-label-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="request" href="#"><span class="material-symbols-outlined text-[20px]">order_approve</span>Request</a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg font-label-lg text-label-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="schedule" href="#"><span class="material-symbols-outlined text-[20px]">calendar_month</span>Schedule</a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg font-label-lg text-label-lg transition-colors bg-primary-container text-on-primary font-bold" data-path="past-orders" href="#"><span class="material-symbols-outlined text-[20px]">receipt_long</span>Past Orders</a></nav></div><div class="p-space-sm flex flex-col gap-space-xs bg-surface-container-low"><div class="p-space-sm rounded-lg bg-surface-pure flex items-center justify-between"><div class="flex items-center gap-space-sm"><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div><div class="flex flex-col"><span class="font-label-md text-label-md text-on-surface leading-tight">Ravintola Aarni</span><span class="font-label-sm text-label-sm text-on-surface-variant">Acc #94821-FI</span></div></div><span class="material-symbols-outlined text-on-surface-variant text-[18px]">unfold_more</span></div><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg font-label-md text-label-md text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="account-settings" href="#"><span class="material-symbols-outlined text-[18px]">manage_accounts</span>Account Settings</a></div></aside><header class="fixed top-0 left-72 right-0 h-16 bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-40 flex items-center justify-between px-margin"><div class="flex items-center gap-space-md flex-1 max-w-xl"><div class="relative w-full"><span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">search</span><input class="w-full bg-surface-pure text-on-surface placeholder:text-outline pl-9 pr-space-md py-2 rounded-lg font-body-sm text-body-sm focus:outline-none" placeholder="Search wholesale SKU, product, EAN..." type="text"/></div></div><div class="flex items-center gap-space-md"><div class="flex items-center gap-space-xs"><span class="material-symbols-outlined text-on-surface-variant text-[20px]">notifications</span><span class="material-symbols-outlined text-on-surface-variant text-[20px]">help_outline</span></div><div class="h-5 w-px bg-surface-container-high"></div><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></header><main class="w-full pt-16 bg-surface pl-72"><div class="flex flex-col w-full">
+<!-- Top Utility & Header Strip -->
+<section class="w-full bg-surface-pure px-margin py-space-xl border-b border-border-subtle">
+<div class="max-w-6xl mx-auto flex flex-col md:flex-row md:items-end justify-between gap-space-md">
+<div class="space-y-space-xs">
+<div class="flex items-center gap-space-xs text-secondary font-label-md text-label-md uppercase tracking-wider">
+</div>
+<h1 class="font-headline-lg text-headline-lg text-primary tracking-tight">Past Orders</h1>
+</div>
+<!-- Quick Stats / Depot Badge -->
+<div class="flex items-center gap-space-md pt-space-xs md:pt-0">
+<div class="bg-surface-container-low px-space-md py-space-sm rounded-lg flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-wholesale-teal">verified</span>
+<div>
+<div class="font-label-sm text-label-sm uppercase text-secondary">Customer Account</div>
+<div class="font-label-md text-label-md text-primary">Ravintola Aarni (#FI-94812)</div>
+</div>
+</div>
+<div class="bg-surface-container-low px-space-md py-space-sm rounded-lg flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-status-fresh-green">event_available</span>
+<div>
+<div class="font-label-sm text-label-sm uppercase text-secondary">Total Orders (90d)</div>
+<div class="font-label-md text-label-md text-primary">18 Deliveries</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Filter & Search Toolbar -->
+<section class="w-full bg-surface py-space-lg px-margin">
+<div class="max-w-6xl mx-auto flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-space-md">
+<!-- Search Input -->
+<div class="relative flex-1">
+<span class="material-symbols-outlined absolute left-space-md top-1/2 -translate-y-1/2 text-secondary text-[20px]">search</span>
+<input class="w-full bg-surface-pure text-on-surface placeholder:text-outline text-body-md font-body-md pl-11 pr-space-md py-3 rounded-lg shadow-sm focus:outline-none transition-all" id="order-search" placeholder="Search past orders or invoice number (e.g. VA-8921)..." type="text"/>
+</div>
+<!-- Dropdown Filters -->
+<div class="flex items-center gap-space-sm flex-wrap sm:flex-nowrap">
+<div class="relative">
+<select class="appearance-none bg-surface-pure text-on-surface font-label-md text-label-md px-space-md py-3 pr-10 rounded-lg shadow-sm focus:outline-none cursor-pointer">
+<option>Last 90 days</option>
+<option>Last 30 days</option>
+<option>Year to date (2025)</option>
+<option>All-time history</option>
+</select>
+<span class="material-symbols-outlined pointer-events-none absolute right- space-sm top-1/2 -translate-y-1/2 text-secondary text-[18px]">expand_more</span>
+</div>
+<div class="relative">
+<select class="appearance-none bg-surface-pure text-on-surface font-label-md text-label-md px-space-md py-3 pr-10 rounded-lg shadow-sm focus:outline-none cursor-pointer">
+<option>Sort: Most recent</option>
+<option>Sort: Highest total</option>
+<option>Sort: Lowest total</option>
+</select>
+<span class="material-symbols-outlined pointer-events-none absolute right- space-sm top-1/2 -translate-y-1/2 text-secondary text-[18px]">sort</span>
+</div>
+<button class="bg-surface-pure hover:bg-surface-container-high px-space-md py-3 rounded-lg shadow-sm text-secondary font-label-md text-label-md flex items-center gap-space-xs transition-colors">
+<span class="material-symbols-outlined text-[18px]">filter_list</span>
+<span>Status: All</span>
+</button>
+</div>
+</div>
+</section>
+<!-- Clean Order List -->
+<section class="w-full px-margin pb-space-xl">
+<div class="max-w-6xl mx-auto flex flex-col gap-space-md" id="orders-container">
+<!-- Order Row 1 -->
+<article class="order-card bg-surface-pure rounded-xl p-space-lg shadow-sm transition-all duration-200 hover:shadow-md">
+<div class="flex flex-col lg:flex-row lg:items-center justify-between gap-space-lg">
+<!-- Order Primary Info -->
+<div class="flex-1 space-y-space-xs">
+<div class="flex items-center gap-space-sm flex-wrap">
+<span class="font-label-sm text-label-sm uppercase px-2 py-0.5 rounded bg-surface-container-high text-primary font-bold">INV #VA-94281</span>
+<span class="font-label-sm text-label-sm text-secondary flex items-center gap-1">
+<span class="w-2 h-2 rounded-full bg-status-fresh-green inline-block"></span>
+                Delivered • Oct 22, 2025 at 06:15
+              </span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">• Ordered Oct 21, 2025</span>
+</div>
+<h2 class="font-headline-sm text-headline-sm text-primary">Weekly Dairy &amp; Morning Kitchen Restock</h2>
+<div class="flex items-center gap-space-md text-body-sm font-body-sm text-on-surface-variant pt-1">
+<span>9 items (14 crates)</span>
+<span>•</span>
+<span>Cold Storage Depot #2</span>
+<span>•</span>
+<a class="text-wholesale-teal font-label-md text-label-md hover:underline flex items-center gap-0.5" href="#">
+<span>View receipt</span>
+<span class="material-symbols-outlined text-[14px]">open_in_new</span>
+</a>
+</div>
+</div>
+<!-- Financials and Action -->
+<div class="flex flex-col sm:flex-row sm:items-center justify-between lg:justify-end gap-space-lg">
+<div class="text-left sm:text-right">
+<div class="font-headline-md text-headline-md text-primary font-bold">€342.80</div>
+<div class="font-label-sm text-label-sm text-secondary">sis. alv 14% (€300.70 alv 0%)</div>
+</div>
+<div class="flex items-center gap-space-sm">
+<button class="bg-wholesale-teal hover:bg-deep-ocean-navy text-on-primary font-label-md text-label-md px-space-lg py-3 rounded-lg flex items-center gap-space-sm shadow-sm transition-colors cursor-pointer" onclick="triggerSchedule('Weekly Dairy &amp; Morning Kitchen Restock', 'VA-94281')" title="Convert this order to recurring scheduled delivery">
+<span class="material-symbols-outlined text-[18px]">save_as</span>
+<span>Schedule</span>
+</button>
+<button aria-label="Expand order details" class="bg-surface-container-low hover:bg-surface-container-high text-primary font-label-md text-label-md p-3 rounded-lg transition-colors cursor-pointer" onclick="toggleDetails('details-1')">
+<span class="material-symbols-outlined text-[20px] transition-transform duration-200" id="icon-details-1">expand_more</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Collapsible Details -->
+<div class="hidden mt-space-md pt-space-md bg-surface-container-low rounded-lg p-space-md space-y-space-sm" id="details-1">
+<div class="font-label-md text-label-md text-secondary uppercase tracking-wider">Ordered items breakdown</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-space-sm font-body-sm text-body-sm text-on-surface">
+<div class="bg-surface-pure p-space-sm rounded">Valio Luomu™ Täysmaito 10L bib (x4)</div>
+<div class="bg-surface-pure p-space-sm rounded">Valio Voi 500g suolaamaton (x12)</div>
+<div class="bg-surface-pure p-space-sm rounded">Valio Kuohukerma laktoositon 1L (x8)</div>
+</div>
+<div class="flex justify-between items-center text-label-sm font-label-sm text-secondary pt-space-xs">
+<span>Delivered to: Ravintola Aarni Backdoor Receiving Dock, Hämeentie 12</span>
+<a class="text-wholesale-teal hover:underline flex items-center gap-1 font-label-sm text-label-sm" href="#">
+<span class="material-symbols-outlined text-[16px]">download</span> Download PDF Invoice
+            </a>
+</div>
+</div>
+</article>
+<!-- Order Row 2 -->
+<article class="order-card bg-surface-pure rounded-xl p-space-lg shadow-sm transition-all duration-200 hover:shadow-md">
+<div class="flex flex-col lg:flex-row lg:items-center justify-between gap-space-lg">
+<!-- Order Primary Info -->
+<div class="flex-1 space-y-space-xs">
+<div class="flex items-center gap-space-sm flex-wrap">
+<span class="font-label-sm text-label-sm uppercase px-2 py-0.5 rounded bg-surface-container-high text-primary font-bold">INV #VA-93902</span>
+<span class="font-label-sm text-label-sm text-secondary flex items-center gap-1">
+<span class="w-2 h-2 rounded-full bg-status-fresh-green inline-block"></span>
+                Delivered • Oct 18, 2025 at 05:40
+              </span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">• Ordered Oct 17, 2025</span>
+</div>
+<h2 class="font-headline-sm text-headline-sm text-primary">Seasonal Root Vegetables &amp; Fresh Herbs</h2>
+<div class="flex items-center gap-space-md text-body-sm font-body-sm text-on-surface-variant pt-1">
+<span>12 items (18 boxes)</span>
+<span>•</span>
+<span>Fresh Produce Line Sörnäinen</span>
+<span>•</span>
+<a class="text-wholesale-teal font-label-md text-label-md hover:underline flex items-center gap-0.5" href="#">
+<span>View receipt</span>
+<span class="material-symbols-outlined text-[14px]">open_in_new</span>
+</a>
+</div>
+</div>
+<!-- Financials and Action -->
+<div class="flex flex-col sm:flex-row sm:items-center justify-between lg:justify-end gap-space-lg">
+<div class="text-left sm:text-right">
+<div class="font-headline-md text-headline-md text-primary font-bold">€512.40</div>
+<div class="font-label-sm text-label-sm text-secondary">sis. alv 14% (€449.47 alv 0%)</div>
+</div>
+<div class="flex items-center gap-space-sm">
+<button class="bg-wholesale-teal hover:bg-deep-ocean-navy text-on-primary font-label-md text-label-md px-space-lg py-3 rounded-lg flex items-center gap-space-sm shadow-sm transition-colors cursor-pointer" onclick="triggerSchedule('Seasonal Root Vegetables &amp; Fresh Herbs', 'VA-93902')" title="Convert this order to recurring scheduled delivery">
+<span class="material-symbols-outlined text-[18px]">save_as</span>
+<span>Schedule</span>
+</button>
+<button aria-label="Expand order details" class="bg-surface-container-low hover:bg-surface-container-high text-primary font-label-md text-label-md p-3 rounded-lg transition-colors cursor-pointer" onclick="toggleDetails('details-2')">
+<span class="material-symbols-outlined text-[20px] transition-transform duration-200" id="icon-details-2">expand_more</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Collapsible Details -->
+<div class="hidden mt-space-md pt-space-md bg-surface-container-low rounded-lg p-space-md space-y-space-sm" id="details-2">
+<div class="font-label-md text-label-md text-secondary uppercase tracking-wider">Ordered items breakdown</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-space-sm font-body-sm text-body-sm text-on-surface">
+<div class="bg-surface-pure p-space-sm rounded">Kotimainen Palsternakka 5kg laatikko (x3)</div>
+<div class="bg-surface-pure p-space-sm rounded">Puna- ja Keltajuuri lajitelma 10kg (x2)</div>
+<div class="bg-surface-pure p-space-sm rounded">Järvikylän Tuore Rosmariini &amp; Timjami 100g (x10)</div>
+</div>
+<div class="flex justify-between items-center text-label-sm font-label-sm text-secondary pt-space-xs">
+<span>Delivered to: Ravintola Aarni Main Kitchen Entrance</span>
+<a class="text-wholesale-teal hover:underline flex items-center gap-1 font-label-sm text-label-sm" href="#">
+<span class="material-symbols-outlined text-[16px]">download</span> Download PDF Invoice
+            </a>
+</div>
+</div>
+</article>
+<!-- Order Row 3 -->
+<article class="order-card bg-surface-pure rounded-xl p-space-lg shadow-sm transition-all duration-200 hover:shadow-md">
+<div class="flex flex-col lg:flex-row lg:items-center justify-between gap-space-lg">
+<!-- Order Primary Info -->
+<div class="flex-1 space-y-space-xs">
+<div class="flex items-center gap-space-sm flex-wrap">
+<span class="font-label-sm text-label-sm uppercase px-2 py-0.5 rounded bg-surface-container-high text-primary font-bold">INV #VA-93110</span>
+<span class="font-label-sm text-label-sm text-secondary flex items-center gap-1">
+<span class="w-2 h-2 rounded-full bg-status-fresh-green inline-block"></span>
+                Delivered • Oct 14, 2025 at 06:45
+              </span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">• Ordered Oct 13, 2025</span>
+</div>
+<h2 class="font-headline-sm text-headline-sm text-primary">Specialty Cheese &amp; Butter Batch</h2>
+<div class="flex items-center gap-space-md text-body-sm font-body-sm text-on-surface-variant pt-1">
+<span>5 items (8 cases)</span>
+<span>•</span>
+<span>Valio Juustola Master Selection</span>
+<span>•</span>
+<a class="text-wholesale-teal font-label-md text-label-md hover:underline flex items-center gap-0.5" href="#">
+<span>View receipt</span>
+<span class="material-symbols-outlined text-[14px]">open_in_new</span>
+</a>
+</div>
+</div>
+<!-- Financials and Action -->
+<div class="flex flex-col sm:flex-row sm:items-center justify-between lg:justify-end gap-space-lg">
+<div class="text-left sm:text-right">
+<div class="font-headline-md text-headline-md text-primary font-bold">€278.90</div>
+<div class="font-label-sm text-label-sm text-secondary">sis. alv 14% (€244.65 alv 0%)</div>
+</div>
+<div class="flex items-center gap-space-sm">
+<button class="bg-wholesale-teal hover:bg-deep-ocean-navy text-on-primary font-label-md text-label-md px-space-lg py-3 rounded-lg flex items-center gap-space-sm shadow-sm transition-colors cursor-pointer" onclick="triggerSchedule('Specialty Cheese &amp; Butter Batch', 'VA-93110')" title="Convert this order to recurring scheduled delivery">
+<span class="material-symbols-outlined text-[18px]">save_as</span>
+<span>Schedule</span>
+</button>
+<button aria-label="Expand order details" class="bg-surface-container-low hover:bg-surface-container-high text-primary font-label-md text-label-md p-3 rounded-lg transition-colors cursor-pointer" onclick="toggleDetails('details-3')">
+<span class="material-symbols-outlined text-[20px] transition-transform duration-200" id="icon-details-3">expand_more</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Collapsible Details -->
+<div class="hidden mt-space-md pt-space-md bg-surface-container-low rounded-lg p-space-md space-y-space-sm" id="details-3">
+<div class="font-label-md text-label-md text-secondary uppercase tracking-wider">Ordered items breakdown</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-space-sm font-body-sm text-body-sm text-on-surface">
+<div class="bg-surface-pure p-space-sm rounded">Valio Salaneuvos® Vanha Gouda 4kg (x2)</div>
+<div class="bg-surface-pure p-space-sm rounded">Valio Aura® Gold erikoiserä 2.5kg (x1)</div>
+<div class="bg-surface-pure p-space-sm rounded">Valio Paahtovoi (Beurre Noisette) 1kg (x4)</div>
+</div>
+<div class="flex justify-between items-center text-label-sm font-label-sm text-secondary pt-space-xs">
+<span>Delivered to: Ravintola Aarni Cold Storage Cellar</span>
+<a class="text-wholesale-teal hover:underline flex items-center gap-1 font-label-sm text-label-sm" href="#">
+<span class="material-symbols-outlined text-[16px]">download</span> Download PDF Invoice
+            </a>
+</div>
+</div>
+</article>
+<!-- Order Row 4 -->
+<article class="order-card bg-surface-pure rounded-xl p-space-lg shadow-sm transition-all duration-200 hover:shadow-md">
+<div class="flex flex-col lg:flex-row lg:items-center justify-between gap-space-lg">
+<!-- Order Primary Info -->
+<div class="flex-1 space-y-space-xs">
+<div class="flex items-center gap-space-sm flex-wrap">
+<span class="font-label-sm text-label-sm uppercase px-2 py-0.5 rounded bg-surface-container-high text-primary font-bold">INV #VA-92044</span>
+<span class="font-label-sm text-label-sm text-secondary flex items-center gap-1">
+<span class="w-2 h-2 rounded-full bg-status-fresh-green inline-block"></span>
+                Delivered • Oct 07, 2025 at 07:10
+              </span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">• Ordered Oct 06, 2025</span>
+</div>
+<h2 class="font-headline-sm text-headline-sm text-primary">Event Prep - Catering Dairy Staples</h2>
+<div class="flex items-center gap-space-md text-body-sm font-body-sm text-on-surface-variant pt-1">
+<span>15 items (24 crates)</span>
+<span>•</span>
+<span>Bulk Ambient &amp; Chilled</span>
+<span>•</span>
+<a class="text-wholesale-teal font-label-md text-label-md hover:underline flex items-center gap-0.5" href="#">
+<span>View receipt</span>
+<span class="material-symbols-outlined text-[14px]">open_in_new</span>
+</a>
+</div>
+</div>
+<!-- Financials and Action -->
+<div class="flex flex-col sm:flex-row sm:items-center justify-between lg:justify-end gap-space-lg">
+<div class="text-left sm:text-right">
+<div class="font-headline-md text-headline-md text-primary font-bold">€794.15</div>
+<div class="font-label-sm text-label-sm text-secondary">sis. alv 14% (€696.62 alv 0%)</div>
+</div>
+<div class="flex items-center gap-space-sm">
+<button class="bg-wholesale-teal hover:bg-deep-ocean-navy text-on-primary font-label-md text-label-md px-space-lg py-3 rounded-lg flex items-center gap-space-sm shadow-sm transition-colors cursor-pointer" onclick="triggerSchedule('Event Prep - Catering Dairy Staples', 'VA-92044')" title="Convert this order to recurring scheduled delivery">
+<span class="material-symbols-outlined text-[18px]">save_as</span>
+<span>Schedule</span>
+</button>
+<button aria-label="Expand order details" class="bg-surface-container-low hover:bg-surface-container-high text-primary font-label-md text-label-md p-3 rounded-lg transition-colors cursor-pointer" onclick="toggleDetails('details-4')">
+<span class="material-symbols-outlined text-[20px] transition-transform duration-200" id="icon-details-4">expand_more</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Collapsible Details -->
+<div class="hidden mt-space-md pt-space-md bg-surface-container-low rounded-lg p-space-md space-y-space-sm" id="details-4">
+<div class="font-label-md text-label-md text-secondary uppercase tracking-wider">Ordered items breakdown</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-space-sm font-body-sm text-body-sm text-on-surface">
+<div class="bg-surface-pure p-space-sm rounded">Valio Crème Fraîche 1.8kg (x6)</div>
+<div class="bg-surface-pure p-space-sm rounded">Valio Eila® Laktoositon Maito 1L (x60)</div>
+<div class="bg-surface-pure p-space-sm rounded">Valio Luomukananmunat M-koko (x180)</div>
+</div>
+<div class="flex justify-between items-center text-label-sm font-label-sm text-secondary pt-space-xs">
+<span>Delivered to: Ravintola Aarni Main Kitchen Entrance</span>
+<a class="text-wholesale-teal hover:underline flex items-center gap-1 font-label-sm text-label-sm" href="#">
+<span class="material-symbols-outlined text-[16px]">download</span> Download PDF Invoice
+            </a>
+</div>
+</div>
+</article>
+<!-- Order Row 5 -->
+<article class="order-card bg-surface-pure rounded-xl p-space-lg shadow-sm transition-all duration-200 hover:shadow-md">
+<div class="flex flex-col lg:flex-row lg:items-center justify-between gap-space-lg">
+<!-- Order Primary Info -->
+<div class="flex-1 space-y-space-xs">
+<div class="flex items-center gap-space-sm flex-wrap">
+<span class="font-label-sm text-label-sm uppercase px-2 py-0.5 rounded bg-surface-container-high text-primary font-bold">INV #VA-91503</span>
+<span class="font-label-sm text-label-sm text-secondary flex items-center gap-1">
+<span class="w-2 h-2 rounded-full bg-status-fresh-green inline-block"></span>
+                Delivered • Sep 29, 2025 at 06:05
+              </span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">• Ordered Sep 28, 2025</span>
+</div>
+<h2 class="font-headline-sm text-headline-sm text-primary">Bakery &amp; Viennoiserie Batch</h2>
+<div class="flex items-center gap-space-md text-body-sm font-body-sm text-on-surface-variant pt-1">
+<span>6 items (10 boxes)</span>
+<span>•</span>
+<span>Pastry Specialist Line</span>
+<span>•</span>
+<a class="text-wholesale-teal font-label-md text-label-md hover:underline flex items-center gap-0.5" href="#">
+<span>View receipt</span>
+<span class="material-symbols-outlined text-[14px]">open_in_new</span>
+</a>
+</div>
+</div>
+<!-- Financials and Action -->
+<div class="flex flex-col sm:flex-row sm:items-center justify-between lg:justify-end gap-space-lg">
+<div class="text-left sm:text-right">
+<div class="font-headline-md text-headline-md text-primary font-bold">€215.30</div>
+<div class="font-label-sm text-label-sm text-secondary">sis. alv 14% (€188.86 alv 0%)</div>
+</div>
+<div class="flex items-center gap-space-sm">
+<button class="bg-wholesale-teal hover:bg-deep-ocean-navy text-on-primary font-label-md text-label-md px-space-lg py-3 rounded-lg flex items-center gap-space-sm shadow-sm transition-colors cursor-pointer" onclick="triggerSchedule('Bakery &amp; Viennoiserie Batch', 'VA-91503')" title="Convert this order to recurring scheduled delivery">
+<span class="material-symbols-outlined text-[18px]">save_as</span>
+<span>Schedule</span>
+</button>
+<button aria-label="Expand order details" class="bg-surface-container-low hover:bg-surface-container-high text-primary font-label-md text-label-md p-3 rounded-lg transition-colors cursor-pointer" onclick="toggleDetails('details-5')">
+<span class="material-symbols-outlined text-[20px] transition-transform duration-200" id="icon-details-5">expand_more</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Collapsible Details -->
+<div class="hidden mt-space-md pt-space-md bg-surface-container-low rounded-lg p-space-md space-y-space-sm" id="details-5">
+<div class="font-label-md text-label-md text-secondary uppercase tracking-wider">Ordered items breakdown</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-space-sm font-body-sm text-body-sm text-on-surface">
+<div class="bg-surface-pure p-space-sm rounded">Valio Leipomovoi 82% 10kg levy (x2)</div>
+<div class="bg-surface-pure p-space-sm rounded">Valio Vanilla Vaniljakreemi 5kg (x1)</div>
+<div class="bg-surface-pure p-space-sm rounded">Myllyn Paras Erikoisvehnäjauho 25kg säkki (x2)</div>
+</div>
+<div class="flex justify-between items-center text-label-sm font-label-sm text-secondary pt-space-xs">
+<span>Delivered to: Ravintola Aarni Pastry Section</span>
+<a class="text-wholesale-teal hover:underline flex items-center gap-1 font-label-sm text-label-sm" href="#">
+<span class="material-symbols-outlined text-[16px]">download</span> Download PDF Invoice
+            </a>
+</div>
+</div>
+</article>
+</div>
+</section>
+<!-- Interactive Scheduling Confirmation Modal -->
+<div class="fixed inset-0 z-50 bg-inverse-surface/40 backdrop-blur-sm hidden flex items-center justify-center p-space-md" id="schedule-modal">
+<div class="bg-surface-pure rounded-xl shadow-xl max-w-lg w-full p-space-xl space-y-space-lg border border-border-subtle transform transition-all">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-sm">
+<div class="w-10 h-10 rounded-lg bg-wholesale-teal/10 flex items-center justify-center text-wholesale-teal">
+<span class="material-symbols-outlined text-[24px]">save_as</span>
+</div>
+<div>
+<h3 class="font-headline-sm text-headline-sm text-primary">Add to Schedule</h3>
+<p class="font-body-sm text-body-sm text-secondary">Automate repeat deliveries from Helsinki Depot</p>
+</div>
+</div>
+<button class="text-outline hover:text-on-surface p-1" onclick="closeScheduleModal()">
+<span class="material-symbols-outlined">close</span>
+</button>
+</div>
+<div class="space-y-space-md">
+<div class="p-space-md bg-surface-container-low rounded-lg space-y-1">
+<span class="font-label-sm text-label-sm uppercase text-secondary">Selected Order Blueprint</span>
+<div class="font-label-lg text-label-lg text-primary" id="modal-order-name">-</div>
+<div class="font-body-sm text-body-sm text-on-surface-variant" id="modal-order-id">-</div>
+</div>
+<div class="space-y-space-xs">
+<label class="font-label-md text-label-md text-primary">Repeat Frequency</label>
+<div class="grid grid-cols-3 gap-space-xs">
+<button class="freq-btn py-2 text-center rounded-lg bg-wholesale-teal text-on-primary font-label-md text-label-md" type="button">Weekly</button>
+<button class="freq-btn py-2 text-center rounded-lg bg-surface-container-low text-on-surface font-label-md text-label-md hover:bg-surface-container-high" type="button">Bi-Weekly</button>
+<button class="freq-btn py-2 text-center rounded-lg bg-surface-container-low text-on-surface font-label-md text-label-md hover:bg-surface-container-high" type="button">Monthly</button>
+</div>
+</div>
+<div class="space-y-space-xs">
+<label class="font-label-md text-label-md text-primary">Preferred Delivery Window</label>
+<div class="grid grid-cols-2 gap-space-sm">
+<div class="p-space-sm rounded-lg bg-surface-container-low flex items-center gap-space-xs text-body-sm text-on-surface">
+<span class="material-symbols-outlined text-secondary text-[18px]">wb_twilight</span>
+<span>Morning: 05:00 - 08:00</span>
+</div>
+<div class="p-space-sm rounded-lg bg-surface-container-low flex items-center gap-space-xs text-body-sm text-on-surface">
+<span class="material-symbols-outlined text-secondary text-[18px]">calendar_today</span>
+<span>Every Tuesday</span>
+</div>
+</div>
+</div>
+</div>
+<div class="flex items-center justify-end gap-space-sm pt-space-xs">
+<button class="px-space-lg py-3 rounded-lg font-label-md text-label-md text-secondary hover:bg-surface-container-low transition-colors" onclick="closeScheduleModal()">
+          Cancel
+        </button>
+<button class="px-space-lg py-3 rounded-lg font-label-md text-label-md bg-status-fresh-green text-deep-ocean-navy font-bold hover:brightness-95 flex items-center gap-space-xs transition-all shadow-sm" onclick="confirmSchedule()">
+<span class="material-symbols-outlined text-[18px]">done</span>
+<span>Confirm Recurring Order</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Toast Notification -->
+<div class="fixed bottom-6 right-6 z-50 bg-deep-ocean-navy text-on-primary px-space-lg py-space-md rounded-lg shadow-xl flex items-center gap-space-md transform translate-y-24 opacity-0 transition-all duration-300" id="toast">
+<span class="material-symbols-outlined text-status-fresh-green text-[22px]">check_circle</span>
+<div>
+<div class="font-label-md text-label-md text-on-primary" id="toast-title">Schedule Updated</div>
+<div class="font-body-sm text-body-sm text-on-primary/80" id="toast-body">Recurring delivery order has been created.</div>
+</div>
+</div>
+<script>
+    function toggleDetails(id) {
+      const panel = document.getElementById(id);
+      const icon = document.getElementById('icon-' + id);
+      if (panel.classList.contains('hidden')) {
+        panel.classList.remove('hidden');
+        if (icon) icon.classList.add('rotate-180');
+      } else {
+        panel.classList.add('hidden');
+        if (icon) icon.classList.remove('rotate-180');
+      }
+    }
+
+    function triggerSchedule(name, id) {
+      document.getElementById('modal-order-name').innerText = name;
+      document.getElementById('modal-order-id').innerText = 'Invoice Ref: ' + id + ' • Helsinki Sörnäinen Depot';
+      document.getElementById('schedule-modal').classList.remove('hidden');
+    }
+
+    function closeScheduleModal() {
+      document.getElementById('schedule-modal').classList.add('hidden');
+    }
+
+    function confirmSchedule() {
+      const name = document.getElementById('modal-order-name').innerText;
+      closeScheduleModal();
+      showToast('Scheduled Successfully', name + ' is now configured for recurring delivery.');
+    }
+
+    function showToast(title, msg) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-title').innerText = title;
+      document.getElementById('toast-body').innerText = msg;
+      toast.classList.remove('translate-y-24', 'opacity-0');
+      setTimeout(() => {
+        toast.classList.add('translate-y-24', 'opacity-0');
+      }, 4000);
+    }
+
+    // Live search filter implementation
+    const searchInput = document.getElementById('order-search');
+    if (searchInput) {
+      searchInput.addEventListener('input', function(e) {
+        const term = e.target.value.toLowerCase().trim();
+        const cards = document.querySelectorAll('.order-card');
+        cards.forEach(card => {
+          const text = card.textContent.toLowerCase();
+          if (text.includes(term)) {
+            card.style.display = 'block';
+          } else {
+            card.style.display = 'none';
+          }
+        });
+      });
+    }
+
+    // Modal Frequency Switcher
+    document.querySelectorAll('.freq-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('.freq-btn').forEach(b => {
+          b.className = 'freq-btn py-2 text-center rounded-lg bg-surface-container-low text-on-surface font-label-md text-label-md hover:bg-surface-container-high';
+        });
+        this.className = 'freq-btn py-2 text-center rounded-lg bg-wholesale-teal text-on-primary font-label-md text-label-md';
+      });
+    });
+  </script>
+</div></main><footer class="w-full bg-surface-pure mt-space-xl shadow-[0_-1px_4px_rgba(0,0,0,0.02)] pl-72"><div class="w-full px-margin py-space-lg flex flex-col md:flex-row items-center justify-between gap-space-md font-body-sm text-body-sm text-on-surface-variant"><div class="flex items-center gap-space-sm"><span class="font-label-md text-label-md uppercase text-primary">Valio Aimo B2B Logistics</span><span>© 2025 Valio Oy. All rights reserved.</span></div><div class="flex items-center gap-space-lg"><span>Customer Support: 010 381 1200</span></div></div></footer>
+</body></html>
