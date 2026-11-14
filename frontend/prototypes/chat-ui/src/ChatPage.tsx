@@ -223,14 +223,6 @@ export function ChatPage() {
                           </section>
                         )}
                         {message.proposal_id && <SkuCards proposalId={message.proposal_id} />}
-                        {message.proposal_id && (
-                          <Link
-                            className="mt-space-md inline-flex items-center gap-space-xs rounded-lg bg-primary-container px-space-md py-space-sm text-body-sm font-bold text-on-primary"
-                            to={`/purchases/${message.proposal_id}`}
-                          >
-                            Review basket and purchasing checks
-                          </Link>
-                        )}
                       </div>
                       <MessageByline who="Aimo" at={message.created_at} />
                     </div>
@@ -250,17 +242,27 @@ export function ChatPage() {
                 <h2 className="font-label text-label-md uppercase tracking-wider text-secondary">
                   Baskets in this conversation
                 </h2>
-                {conversation?.purchases.map((purchase) => (
-                  <Link
-                    key={purchase.proposal_id}
-                    to={`/purchases/${purchase.proposal_id}`}
-                    className="flex flex-wrap items-center gap-space-md rounded-lg bg-surface-container-low px-space-md py-space-sm text-body-sm"
-                  >
-                    <span className="min-w-36 flex-1">{purchase.request.request_id}</span>
-                    <Badge value={purchaseStatus(purchase)} />
-                    <strong className="text-primary">{currency(purchase.snapshot.gross_total)}</strong>
-                  </Link>
-                ))}
+                {conversation?.purchases.map((purchase) => {
+                  const row = (
+                    <>
+                      <span className="min-w-36 flex-1">{purchase.request.request_id}</span>
+                      <Badge value={purchaseStatus(purchase)} />
+                      <strong className="text-primary">{currency(purchase.snapshot.gross_total)}</strong>
+                    </>
+                  );
+                  const rowClass =
+                    "flex flex-wrap items-center gap-space-md rounded-lg bg-surface-container-low px-space-md py-space-sm text-body-sm";
+                  // Only placed orders link to Past Orders; open baskets are decided in the Overview panel.
+                  return purchase.order_status === "accepted_mock" ? (
+                    <Link key={purchase.proposal_id} to={`/purchases/${purchase.proposal_id}`} className={rowClass}>
+                      {row}
+                    </Link>
+                  ) : (
+                    <div key={purchase.proposal_id} className={rowClass}>
+                      {row}
+                    </div>
+                  );
+                })}
               </section>
             )}
           </div>

@@ -82,11 +82,20 @@ test("/purchases/:id for a proposal that is not accepted shows the not-placed no
   await shot(page, info, "past-orders-not-placed");
 });
 
-test("the chat's basket link lands on Past Orders", async ({ page }) => {
+test("the chat link to an accepted order lands on Past Orders with that order expanded", async ({ page }, info) => {
   await signIn(page, "/conversations/conv-carbonara");
-  await page.getByRole("link", { name: "Review basket and purchasing checks" }).click();
+  const panel = page.getByRole("complementary", { name: "Overview" });
+  if (info.project.name === "mobile") await panel.getByRole("button", { name: "Expand overview" }).click();
+  await panel.getByRole("button", { name: "Approve & Push to Dispatch" }).click();
+  await expect(panel.getByText("Accepted by demo order service")).toBeVisible();
+  // Re-open the conversation so its basket list reflects the placed order.
+  if (info.project.name === "mobile") await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Request" }).click();
+  await page.getByRole("navigation", { name: "Conversations" }).getByRole("link", { name: "200 portions of carbonara" }).click();
+  await page.getByRole("link", { name: /REQ-CARB-200/ }).click();
   await expect(page).toHaveURL(/\/purchases\/prop-ready$/);
-  await expect(page.getByText(/hasn't been placed yet/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Order details: REQ-CARB-200" })).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByText(/hasn't been placed yet/)).toHaveCount(0);
 });
 
 test("/approvals/:id redirects to the matching purchase", async ({ page }) => {

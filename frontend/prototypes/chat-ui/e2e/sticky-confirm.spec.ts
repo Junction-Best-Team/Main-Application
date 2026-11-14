@@ -19,8 +19,12 @@ test("there is no variant switcher and links never carry ?variant=", async ({ pa
   }
 });
 
-test("the chat thread card only links to the basket, with no decision buttons", async ({ page }) => {
+test("the chat thread has no decision buttons and no link away to a basket page", async ({ page }) => {
   await signIn(page, "/conversations/conv-carbonara");
-  await expect(page.getByRole("link", { name: "Review basket and purchasing checks" })).toBeVisible();
+  const thread = page.getByRole("log", { name: "Conversation messages" });
+  await expect(thread.getByText(/proposed plan for 200 portions/)).toBeVisible();
+  await expect(thread.getByRole("link")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /confirm this purchase/i })).toHaveCount(0);
+  // An open basket in the conversation is not a link: it is decided in the Overview panel.
+  await expect(page.getByRole("link", { name: /REQ-CARB-200/ })).toHaveCount(0);
 });

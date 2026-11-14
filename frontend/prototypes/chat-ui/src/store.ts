@@ -67,6 +67,18 @@ function notify() {
   for (const l of listeners) l();
 }
 
+// Keep each conversation's purchase summary in step with a decided proposal,
+// as the backend's next conversation GET would.
+function syncSummaries(p: Proposal) {
+  for (const c of state.conversations.values()) {
+    for (const s of c.purchases) {
+      if (s.proposal_id !== p.proposal_id) continue;
+      s.approval_status = p.approval_status;
+      s.order_status = p.order_status;
+    }
+  }
+}
+
 const PURCHASE_PAGE_SIZE = 4;
 
 const delay = () => new Promise((r) => setTimeout(r, state.scenario === "slow-network" ? 2600 : 650));
@@ -247,6 +259,7 @@ export const store = {
       actor_id: state.session?.username ?? "buyer",
       created_at: new Date().toISOString(),
     });
+    syncSummaries(p);
     notify();
     return { status: "accepted", proposal: clone(p) };
   },
@@ -261,6 +274,7 @@ export const store = {
       actor_id: state.session?.username ?? "buyer",
       created_at: new Date().toISOString(),
     });
+    syncSummaries(p);
     notify();
     return clone(p);
   },

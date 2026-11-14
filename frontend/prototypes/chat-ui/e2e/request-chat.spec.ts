@@ -76,8 +76,8 @@ test("a proposal in the thread renders SKU cards with quantity and prices excl. 
   await expect(spaghetti.getByText(/excl\. VAT/)).toBeVisible();
   await expect(spaghetti.getByText(/incl\. VAT/)).toBeVisible();
 
-  // The link to the full purchasing checks stays; the thread has no decision buttons.
-  await expect(page.getByRole("link", { name: "Review basket and purchasing checks" })).toBeVisible();
+  // The thread has no decision buttons or basket-review link: the Overview panel is the decision point.
+  await expect(page.getByRole("link", { name: "Review basket and purchasing checks" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /confirm this purchase/i })).toHaveCount(0);
   await page.waitForLoadState("networkidle");
   await shot(page, info, "request-sku-cards");
