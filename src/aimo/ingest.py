@@ -3,16 +3,17 @@
 import hashlib
 import json
 from collections import Counter
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
 
 import httpx
 
-from aimo.catalog import normalize, search_text
+from aimo.catalog import normalize
 from aimo.config import settings
 from aimo.db import connection, fingerprint, js
-from aimo.search import embed, model_key, vector
+from aimo.search import dimensions, document_text, embed, model_key, vector
 
 CATALOG_SHA256 = "50651aae31ca842112afdc16fcce92f9858d7f5d05e9928a3748aef16b22ea02"
 
@@ -36,7 +37,7 @@ def download(path: Path):
         path.write_bytes(response.content)
 
 
-def ingest_file(path: Path, expected_count=17546, expected_sha=CATALOG_SHA256):
+def ingest_file(path: Path, expected_count=17546, expected_sha=CATALOG_SHA256, *, activate=True):
     content = path.read_bytes()
     actual = hashlib.sha256(content).hexdigest()
     if actual != expected_sha:
@@ -49,78 +50,137 @@ def ingest_file(path: Path, expected_count=17546, expected_sha=CATALOG_SHA256):
     source = f"{path.name}; sha256:{actual}"
     # Retain withdrawal facts for exact lookup/denial; discovery filters them out.
     facts = [normalize(p, source) for p in records]
-    return publish(facts, source, actual)
+    return publish(facts, source, actual, activate=activate)
 
 
-def publish(facts, source, source_hash):
+def publish(facts, source, source_hash, *, activate=True):
     if not facts or len({p["id"] for p in facts}) != len(facts):
         raise ValueError("Empty or duplicate import")
     key = model_key()
-    text_by_hash = {fingerprint(search_text(p)): search_text(p) for p in facts}
+    text_by_hash = {fingerprint(document_text(p)): document_text(p) for p in facts}
     with connection() as c:
         existing = {
-            r["text_hash"]: r["embedding"]
+            r["text_hash"]
             for r in c.execute(
-                "SELECT text_hash,embedding::text FROM embedding_cache WHERE model_key=%s", (key,)
+                "SELECT text_hash FROM embedding_cache WHERE model_key=%s AND vector_dims(embedding)=%s",
+                (key, dimensions()),
             ).fetchall()
         }
     missing = [(h, t) for h, t in text_by_hash.items() if h not in existing]
-    generated = {}
-    for start in range(0, len(missing), 128):
-        batch = missing[start : start + 128]
+    batch_size = settings().embedding_batch_size
+
+    def cache_batch(batch):
         values = embed([t for _, t in batch])
-        if len(values) != len(batch) or any(len(v) != 384 for v in values):
+        if len(values) != len(batch) or any(len(v) != dimensions() for v in values):
             raise ValueError("Embedding shape is incompatible with the catalog schema")
-        generated.update({h: vector(v) for (h, _), v in zip(batch, values, strict=True)})
-        print(f"Embedded {min(start + 128, len(missing))}/{len(missing)} changed texts", flush=True)
-    all_vectors = existing | generated
+        # Commit reusable batches independently. An interrupted paid import resumes
+        # without re-buying completed embeddings; no partial catalog is exposed.
+        with connection() as c:
+            with c.cursor() as cur:
+                cur.executemany(
+                    "INSERT INTO embedding_cache(model_key,text_hash,embedding) VALUES(%s,%s,%s::vector) "
+                    "ON CONFLICT(model_key,text_hash) DO UPDATE SET embedding=excluded.embedding",
+                    [(key, h, vector(v)) for (h, _), v in zip(batch, values, strict=True)],
+                )
+        return len(batch)
+
+    batches = iter(
+        missing[start : start + batch_size] for start in range(0, len(missing), batch_size)
+    )
+    workers = settings().embedding_workers if settings().embedding_backend == "openrouter" else 1
+    generated = 0
+    # Keep at most four batches in flight; don't queue the whole paid import.
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        pending = {executor.submit(cache_batch, batch) for _, batch in zip(range(workers), batches)}
+        while pending:
+            done, pending = wait(pending, return_when=FIRST_COMPLETED)
+            try:
+                generated += sum(future.result() for future in done)
+            except Exception:
+                for future in pending:
+                    future.cancel()
+                raise
+            print(f"Embedded {generated}/{len(missing)} changed texts", flush=True)
+            for _ in done:
+                batch = next(batches, None)
+                if batch:
+                    pending.add(executor.submit(cache_batch, batch))
     generation = uuid4()
     with connection() as c:
         # One publisher at a time. Errors roll back the generation and pointer together.
         c.execute("SELECT pg_advisory_xact_lock(893017)")
         c.execute(
-            "INSERT INTO catalog_generations(id,source,source_hash,model_key,product_count) VALUES(%s,%s,%s,%s,%s)",
-            (generation, source, source_hash, key, len(facts)),
+            "INSERT INTO catalog_generations(id,source,source_hash,model_key,product_count,embedding_dimensions) VALUES(%s,%s,%s,%s,%s,%s)",
+            (generation, source, source_hash, key, len(facts), dimensions()),
         )
         with c.cursor() as cur:
             cur.executemany(
-                "INSERT INTO embedding_cache VALUES(%s,%s,%s::vector) ON CONFLICT DO NOTHING",
-                [(key, h, v) for h, v in generated.items()],
-            )
-            cur.executemany(
-                "INSERT INTO products(generation,id,gtin,search_text,facts,embedding) VALUES(%s,%s,%s,%s,%s,%s::vector)",
+                "INSERT INTO products(generation,id,gtin,search_text,facts,embedding) "
+                "SELECT %s,%s,%s,%s,%s,embedding FROM embedding_cache WHERE model_key=%s AND text_hash=%s",
                 [
                     (
                         generation,
                         p["id"],
                         p.get("gtin"),
-                        search_text(p),
+                        document_text(p),
                         js(p),
-                        all_vectors[fingerprint(search_text(p))],
+                        key,
+                        fingerprint(document_text(p)),
                     )
                     for p in facts
                 ],
             )
-        c.execute(
-            "INSERT INTO active_catalog(singleton,generation) VALUES(true,%s) ON CONFLICT(singleton) DO UPDATE SET generation=excluded.generation",
-            (generation,),
-        )
-        # Bound the live product/vector table. Historical proposals carry their own
-        # complete evidence snapshots; generation metadata and reusable embeddings remain.
-        c.execute(
-            """DELETE FROM products WHERE generation <> %s AND generation NOT IN (
-            SELECT id FROM catalog_generations WHERE id <> %s
-            ORDER BY created_at DESC,id DESC LIMIT %s)""",
-            (generation, generation, settings().catalog_generations_to_keep - 1),
-        )
+            if cur.rowcount != len(facts):
+                raise ValueError("Incomplete product import")
+        if activate:
+            _activate(c, generation)
     return {
         "generation": str(generation),
         "products": len(facts),
         "withdrawn_products": sum(bool(p["deleted"]) for p in facts),
-        "new_embeddings": len(generated),
-        "reused_embeddings": len(text_by_hash) - len(generated),
+        "new_embeddings": generated,
+        "reused_embeddings": len(text_by_hash) - generated,
+        "active": activate,
         "volume_evidence": dict(Counter(p["measures"]["L"]["status"] for p in facts)),
         "allergen_conflicts": sum(bool(p["allergen_conflicts"]) for p in facts),
         "model": key,
         "source_hash": source_hash,
     }
+
+
+def _activate(c, generation):
+    previous = c.execute("SELECT generation FROM active_catalog").fetchone()
+    previous_id = previous["generation"] if previous else None
+    if str(previous_id) == str(generation):
+        return  # An activation retry must not prune the retained rollback catalog.
+    c.execute(
+        "INSERT INTO active_catalog(singleton,generation) VALUES(true,%s) ON CONFLICT(singleton) DO UPDATE SET generation=excluded.generation",
+        (generation,),
+    )
+    c.execute(
+        """DELETE FROM products WHERE generation <> %s AND generation NOT IN (
+        SELECT id FROM catalog_generations WHERE id <> %s
+        ORDER BY (id=%s) DESC NULLS LAST,created_at DESC,id DESC LIMIT %s)""",
+        (generation, generation, previous_id, settings().catalog_generations_to_keep - 1),
+    )
+
+
+def activate_catalog(generation):
+    """Explicit cutover or rollback using the target serving configuration."""
+    with connection() as c:
+        c.execute("SELECT pg_advisory_xact_lock(893017)")
+        row = c.execute("SELECT * FROM catalog_generations WHERE id=%s", (generation,)).fetchone()
+        if (
+            not row
+            or row["model_key"] != model_key()
+            or row["embedding_dimensions"] != dimensions()
+        ):
+            raise ValueError("Target catalog does not match the configured embedding profile")
+        actual = c.execute(
+            "SELECT count(*) AS n FROM products WHERE generation=%s AND vector_dims(embedding)=%s",
+            (generation, dimensions()),
+        ).fetchone()["n"]
+        if actual == 0 or actual != row["product_count"]:
+            raise ValueError("Target catalog is incomplete or has been pruned; reimport it")
+        _activate(c, generation)
+    return {"generation": str(generation), "products": actual, "model": model_key()}

@@ -14,6 +14,28 @@ from aimo.service import Service
 log = logging.getLogger(__name__)
 
 
+def check_readiness():
+    from aimo.search import dimensions, model_key
+    from aimo.search_provider import require_credentials
+
+    if not settings().llm_api_key:
+        raise RuntimeError("Worker provider credential is not configured")
+    if settings().embedding_backend == "openrouter":
+        require_credentials()
+    with connection() as c:
+        active = c.execute(
+            "SELECT g.model_key,g.embedding_dimensions FROM active_catalog a "
+            "JOIN catalog_generations g ON g.id=a.generation"
+        ).fetchone()
+        c.execute("SELECT requested_by FROM conversation_turns LIMIT 0")
+    if (
+        not active
+        or active["model_key"] != model_key()
+        or active["embedding_dimensions"] != dimensions()
+    ):
+        raise RuntimeError("Catalog/model mismatch")
+
+
 def run_once(service, runner=None):
     turn = conversations.claim_turn()
     if turn is None:
@@ -46,22 +68,14 @@ def main():
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stop.set())
     try:
-        from aimo.search import model, model_key
+        from aimo.search import model
 
         if settings().embedding_backend == "sentence_transformers":
             model()
         service = Service()
         while not stop.is_set():
             try:
-                if not settings().llm_api_key:
-                    raise RuntimeError("Worker provider credential is not configured")
-                with connection() as c:
-                    active = c.execute(
-                        "SELECT g.model_key FROM active_catalog a JOIN catalog_generations g ON g.id=a.generation"
-                    ).fetchone()
-                    c.execute("SELECT requested_by FROM conversation_turns LIMIT 0")
-                if not active or active["model_key"] != model_key():
-                    raise RuntimeError("Catalog/model mismatch")
+                check_readiness()
                 state.update(ready=True, progress=time.monotonic())
                 worked = run_once(service)
                 state["progress"] = time.monotonic()

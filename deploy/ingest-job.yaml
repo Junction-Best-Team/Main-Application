@@ -15,7 +15,7 @@ spec:
         - name: ingest
           image: registry.example.invalid/aimo:worker-REPLACE_WITH_COMMIT
           args: [ingest, --file, /data/valio_aimo_junction26_product_data.json]
-          envFrom: [{secretRef: {name: aimo-runtime}}]
+          envFrom: [{configMapRef: {name: aimo-config}}, {secretRef: {name: aimo-worker-runtime}}]
           resources:
             requests: {cpu: "1", memory: "2Gi"}
             limits: {cpu: "4", memory: "4Gi"}

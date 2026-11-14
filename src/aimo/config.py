@@ -21,7 +21,17 @@ class Settings(BaseSettings):
     valio_aimo_api_key: str = ""
     embedding_model: str = EMBEDDING_MODEL
     embedding_model_revision: str = ""
-    embedding_backend: Literal["sentence_transformers", "fixture"] = "sentence_transformers"
+    embedding_backend: Literal["sentence_transformers", "fixture", "openrouter"] = (
+        "sentence_transformers"
+    )
+    # Search credentials are independent of the conversational provider.
+    search_api_key: str = ""
+    search_timeout_seconds: float = Field(default=15, gt=0, le=30)
+    search_max_attempts: int = Field(default=2, ge=1, le=3)
+    embedding_batch_size: int = Field(default=32, ge=1, le=128)
+    embedding_workers: int = Field(default=4, ge=1, le=4)
+    rerank_enabled: bool = True
+    rerank_candidates: int = Field(default=30, ge=20, le=80)
     catalog_generations_to_keep: int = Field(default=2, ge=1, le=10)
     proposal_ttl_seconds: int = 900
     # Conversational provider configuration is independent of local embeddings.

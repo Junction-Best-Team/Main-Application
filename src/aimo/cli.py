@@ -134,6 +134,11 @@ def main():
     ing = sub.add_parser("ingest")
     ing.add_argument("--file", type=Path, required=True)
     ing.add_argument("--download", action="store_true")
+    ing.add_argument(
+        "--stage", action="store_true", help="Import without replacing the active catalog"
+    )
+    activation = sub.add_parser("activate-catalog", help="Explicit catalog cutover or rollback")
+    activation.add_argument("--generation", required=True)
     ing.add_argument("--expected-count", type=int, default=17546)
     from aimo.ingest import CATALOG_SHA256
 
@@ -154,6 +159,10 @@ def main():
                 }
             )
         )
+    elif args.command == "activate-catalog":
+        from aimo.ingest import activate_catalog
+
+        print(json.dumps(activate_catalog(args.generation)))
     elif args.command == "serve":
         import uvicorn
 
@@ -185,7 +194,13 @@ def main():
 
         if args.download:
             download(args.file)
-        print(json.dumps(ingest_file(args.file, args.expected_count, args.expected_sha256)))
+        print(
+            json.dumps(
+                ingest_file(
+                    args.file, args.expected_count, args.expected_sha256, activate=not args.stage
+                )
+            )
+        )
 
 
 if __name__ == "__main__":
