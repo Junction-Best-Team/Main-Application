@@ -222,6 +222,12 @@ REVIEWED = {
         "already have a proposal. Rewrites an existing column (locked) of recipe data, not of a "
         "history table; aborts first when the match is ambiguous."
     ),
+    ("009_product_withdrawn_since.sql", "UPDATE", "products", "withdrawn_since"): (
+        "Backfills the NEW nullable column withdrawn_since for catalog rows already flagged "
+        "deleted, from the creation time of the generation that carries them (the true date is "
+        "unknown). Catalog data only: no buyer, policy, approval, order or audit history, and no "
+        "existing column is rewritten."
+    ),
     (
         "007_recipe_refresh_keys.sql",
         "DROP_CONSTRAINT",
