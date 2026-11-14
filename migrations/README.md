@@ -25,6 +25,7 @@ Do not rename applied migrations or delete their ledger rows.
 | 022_chat_activity | Bounded, sanitized worker activity on conversation turns; attempt-fenced updates, no purchasing authority |
 
 | 022_buyer_settings | Narrow signed-in buyer settings save; preserve hidden scope and personal authority |
+| 025_demo_clock | The per-buyer demo clock (JNP3-CLK): `demo_clock` (one offset per buyer) and append-only `demo_clock_events` (idempotent jumps and resets). Additive; inert unless `DEMO_CLOCK_ENABLED` is on |
 
 Before allocating another number, check remote branch tips and open PRs and update
 this table with the agreed allocation. Reservations do not create migration files.
