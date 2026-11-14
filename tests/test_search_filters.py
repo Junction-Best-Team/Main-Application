@@ -216,7 +216,8 @@ def test_codes_are_normalised_and_the_wire_shape_is_additive():
     }
     assert Requirements.model_validate(r.model_dump(mode="json")) == r
     schema = Requirements.model_json_schema()
-    assert {"lactose_free", "milk_free", "free_from", "country_of_origin"} == set(
+    # `unsupported` is WS-C's additive field (POL-009); it is also omitted from the wire when empty.
+    assert {"lactose_free", "milk_free", "free_from", "country_of_origin", "unsupported"} == set(
         schema["properties"]
     )
     assert schema["additionalProperties"] is False

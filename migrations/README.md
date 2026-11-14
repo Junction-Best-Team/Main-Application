@@ -10,7 +10,7 @@ Do not rename applied migrations or delete their ledger rows.
 | 005_hosted_search | Merged catalog embedding upgrade |
 | 005_recipe_planning | PR #38 recipe storage; retained because prior application is unknown |
 | 006–007 | PR #38 recipe/proposal link and refresh retry keys |
-| **008–010** | **Person 3**: `008_orders_immutable` (orders become history), `009` spare, `010_meal_authorization_withdrawals` (append-only record of a withdrawn per-meal authorization). Policy edit history is deferred |
+| **008–010** | **Person 3**: `008_orders_immutable` (orders become history: no update or delete), `009_product_withdrawn_since` (when a catalog product became withdrawn; nullable column, partial index, backfill from retained generations), `010_meal_authorization_withdrawals` (append-only record of a withdrawn per-meal authorization). Policy edit history is deferred |
 | **011** | **PR #38** proposal revision ordering |
 
 Before allocating another number, check remote branch tips and open PRs and update
@@ -26,3 +26,13 @@ Both 005 files are intentional compatibility names. Tests cover full-filename
 ordering, repeated/concurrent migration runs, populated pre-recipe and pre-link
 upgrades, and the old-008-to-011 transition. All pending DDL and ledger inserts
 commit together; a failure rolls the transaction back.
+
+## Applying 008 to 011 (checked on scratch schemas, 2026-11-14)
+
+A database at any of these states upgrades cleanly with `migrate`, and a second run skips
+everything: only 001 to 003 (the last production deploy); 001 to 007 plus 011 (main), where 008 to
+010 then apply later and appear after 011 in the ledger; or one that already ran the old
+`008_proposal_revision_ordering.sql` (011 does not replay its backfill). The application code from
+this release reads `products.withdrawn_since` (009) and `meal_authorization_withdrawals` (010), so
+the migration Job must run before the new images start; there is no app-before-migrate
+compatibility.

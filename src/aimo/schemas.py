@@ -66,7 +66,7 @@ class Requirements(Model):
     def _omit_unset_filters(self, handler):
         # Keeps stored request fingerprints from before these fields existed unchanged.
         data = handler(self)
-        for name in ("free_from", "country_of_origin"):
+        for name in ("free_from", "country_of_origin", "unsupported"):
             if not data.get(name):
                 data.pop(name, None)
         return data
