@@ -412,18 +412,16 @@ Requirements that are still "Draft" or newly approved. Each test asserts the wan
 | Test | Scenario | Asserts | Catches |
 | --- | --- | --- | --- |
 | Terminating quantity unchanged | 150 g x 200 / 6 | Exactly "5" | Rounding touching an exact value (guard for MEA-012) |
-| 1000 purchase lines; 1000 lookup ids | Build requests with 1000 items | Accepted | Early caps on large requests |
+| 100 purchase lines, 100 meal-plan ingredients, 100 recipe ingredients; 1000 lookup ids | Build requests at the limit and one over | 100 accepted, 101 refused; the supplier's 1000 lookup ids stay accepted (MEA-013, Q-67) | Caps drifting from the owner's number |
 | Lookup batching (SUP-007) | 2500 ids with a stub supplier transport | Every request has at most 1000 products; no id lost or repeated in price or availability | One oversized supplier call |
 | Numeric shortfall (BAS-008) | Stock 3, need 10 L | `shortfall` equals packs needed minus available | Only a text reason existing |
 | Unpriced deposit on the line | Deposit price missing | Line gross, deposits, net, tax are `None`, not zero | A line looking cheaper than it is |
 | No shortfall when covered | Stock is enough | No `shortfall` key | Changing old fingerprints |
-| Material cap | Constants | `MAX_BASKET_LINES == MAX_LOOKUP_IDS == MAX_MATERIALS == 1000` | Limits drifting apart |
+| Basket and material caps | Constants | `MAX_BASKET_LINES == 100`; `MAX_LOOKUP_IDS == MAX_MATERIALS == 1000` (the supplier's own limit) | Limits drifting apart |
 
 Strict xfails (7):
 - `test_absurd_quantity_per_portion_is_rejected` (MEA-011): `scaled_plan` has no maximum per portion (the value is pending), so 9,999,999 kg per serving x 10,000 portions is accepted.
 - `test_scaled_quantity_is_rounded_up_to_four_decimals` (MEA-012, 3 cases): a quantity needing more than 4 decimals is left unresolved (`None`), not rounded up (3.3334, 6.6667, 0.0334 expected).
-- `test_meal_plan_accepts_one_thousand_ingredients` (MEA-013): `MealPlan.ingredients` in `chat_schemas.py` (person 1) is still capped at 30.
-- `test_recipe_with_one_thousand_ingredients_can_be_scaled` (MEA-013): `Recipe` (100) and `scaled_plan` (30) in the recipe files (person 2) are not raised.
 - `test_product_requested_in_two_units_becomes_one_line_in_the_priority_unit` (BAS-009): the same product in KG and pieces is rejected before it reaches the service instead of being combined into one KG line (the combine helper exists, see `test_unit_priority.py`, but the tool path does not use it).
 
 #### `tests/test_matching_contract.py` (MEA-014) - 14 passed, 0 xfailed

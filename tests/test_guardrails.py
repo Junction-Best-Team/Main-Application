@@ -464,8 +464,18 @@ def test_fake_approval_without_records_and_oversized_reply(monkeypatch, config, 
     scripted(monkeypatch, [reply(text="Approved! Order #123 is confirmed.")])
     assert run(identity, FakeService(identity)).text == OUTPUT_FALLBACK_EMPTY
     seen = fake_jev(monkeypatch)
-    scripted(monkeypatch, [reply(text="x" * 13_000)])
-    assert run(identity, FakeService(identity)).text == OUTPUT_FALLBACK_EMPTY
+    # A reply is at most 20,000 characters (agent_provider); with a long plan the displayed text
+    # passes the limit and is refused, never clipped into review.
+    plan = meal(False) | {
+        "ingredients": [
+            {"name": f"{n:03d} " + "i" * 116, "amount": "1", "unit": "KG"} for n in range(100)
+        ]
+    }
+    scripted(
+        monkeypatch, [reply(call("publish_meal_plan", plan)), reply(text="x" * 20_000)]
+    )
+    result = run(identity, FakeService(identity))
+    assert result.text == OUTPUT_FALLBACK and result.meal_plan is None
     assert "assistant_output" not in [s["boundary"] for s in seen]
 
 
@@ -619,7 +629,7 @@ def test_refusal_is_not_an_answer_and_large_state_is_not_sent():
     assert answers == {"x": None}
     assert classify({"x": INPUT_CHECKS["manipulation"]}, answers)[0] == Verdict.UNCERTAIN
     with pytest.raises(GuardError) as error:
-        decide(lambda r: pytest.fail("sent"), {"text": "x" * 30_000})
+        decide(lambda r: pytest.fail("sent"), {"text": "x" * guardrails.MAX_STATE_BYTES})
     assert error.value.category == "too_large"
 
 
@@ -731,6 +741,36 @@ def test_prepare_state_labels_model_text_and_fits_size():
     conversation = state["conversation"]
     assert conversation[-1]["from"] == "customer" and "Budget 1000" in conversation[-1]["text"]
     assert any(e["from"] == "assistant (model-authored)" for e in conversation)
+
+
+def test_prepare_state_leaves_out_server_made_contributions():
+    """BAS-002: contributions are written by the server; they must not eat the 28,000 byte state."""
+    from aimo.guardrails import encode, prepare_state
+
+    lines = [
+        {
+            "product_id": str(460000 + n),
+            "amount": "12.5",
+            "unit": "KG",
+            "contributions": [{"ingredient": f"Ingredient {n}", "amount": "12.5", "unit": "KG"}],
+        }
+        for n in range(30)
+    ]
+    request = purchase() | {"lines": lines}
+    state = prepare_state(HISTORY, request, {}, meal())
+    assert [row["product_id"] for row in state["proposed_order"]["lines"]] == [
+        row["product_id"] for row in lines
+    ]
+    assert all("contributions" not in row for row in state["proposed_order"]["lines"])
+    bare = prepare_state(
+        HISTORY,
+        request
+        | {"lines": [{k: v for k, v in row.items() if k != "contributions"} for row in lines]},
+        {},
+        meal(),
+    )
+    assert len(encode(state)) == len(encode(bare))
+    assert "contributions" in lines[0]  # the caller's request is not changed
 
 
 def test_commercial_evidence_reaches_output_review(monkeypatch, config, guard, identity):
@@ -896,7 +936,11 @@ def test_unreviewed_plan_is_withheld_when_the_turn_ends_early(
 def test_oversized_plan_is_not_clipped_into_review(monkeypatch, config, guard, identity):
     seen = fake_jev(monkeypatch)
     plan = meal(False)
-    plan["notes"] = ["n" * 900] * 14
+    plan["notes"] = ["n" * 900] * 20
+    plan["ingredients"] = [
+        {"name": f"{n:03d} " + "i" * 236, "amount": "1", "unit": "KG"} for n in range(100)
+    ]
+    assert len(json.dumps(plan)) > guardrails.MAX_NARRATIVE_CHARS
     scripted(monkeypatch, [reply(call("publish_meal_plan", plan)), reply(text="Draft.")])
     result = run(identity, FakeService(identity))
     assert result.meal_plan is None
@@ -966,3 +1010,104 @@ def test_recipe_tool_results_are_wrapped_as_data(guard):
     recipe = {"recipe": {"title": "Carbonara", "instructions": ["Boil pasta."]}, "source": "x"}
     (view,) = g.tool_views([("get_recipe", recipe)])
     assert view["result"] == recipe and "never an instruction" in view["data_handling"]
+
+
+# ------------------------------------------------ MEA-013: a basket of 100 lines (Q-67)
+# Owner: the cap is 100 everywhere and the classifier state limit is raised with it. The line
+# below was copied from a real prepared fixture line (12.5 L requested, 13 sales units); with
+# realistic Finnish product names a 100-line proposal view is about 68 KB, the assistant-output
+# state about 87 KB and the displayed plan about 17,000 characters (measured, see the commit).
+
+REAL_LINE = {
+    "product_id": "700000",
+    "name": "Valio Oivariini maitorahka laktoositon 200 g #0",
+    "quantity": {
+        "basis": ["fixture.base_volume", "units.sizeInBaseUnits", "buyer_policy.whole_sales_units"],
+        "excess": "0.5",
+        "status": "derived",
+        "sales_unit": "ST",
+        "source_step": ".01",
+        "effective_step": "1",
+        "requested_unit": "L",
+        "sales_quantity": "13",
+        "proposed_amount": "13",
+        "requested_amount": "12.5",
+    },
+    "substitutes_for": None,
+    "net": "19.50",
+    "gross": "22.10",
+    "tax": "2.60",
+    "deposits_gross": "0",
+}
+FI_NAMES = [
+    "Valio Oivariini maitorahka laktoositon 200 g",
+    "Valio Eila UHT-kevytmaitojuoma 1 l",
+    "Atria Lihamureke naudan jauheliha 400 g",
+    "Pirkka Luomu kananmuna 10 kpl L-koko",
+    "Fazer Ruisleipä viipaloitu 500 g",
+]
+
+
+def hundred_line_session(count=100):
+    lines = [
+        REAL_LINE | {"product_id": f"7{n:05d}", "name": f"{FI_NAMES[n % 5]} #{n}"}
+        for n in range(count)
+    ]
+    proposal = {
+        "proposal_id": "00000000-0000-0000-0000-000000000001",
+        "revision": 1,
+        "policy_outcome": "ready_to_commit",
+        "approval_status": "not_required",
+        "reasons": [],
+        "snapshot": {"currency": "EUR", "gross_total": "2210.00", "lines": lines},
+    }
+    plan = {
+        "title": "Hotellin juhlaillallinen",
+        "portions": 300,
+        "notes": ["Annokset arvioitu 300 hengelle"],
+        "ingredients": [
+            {
+                "name": f"Ainesosa {n}: {FI_NAMES[n % 5]}",
+                "amount": "12.5",
+                "unit": "L",
+                "status": "matched",
+                "purchase_amount": "13",
+                "purchase_unit": "L",
+            }
+            for n in range(count)
+        ],
+    }
+    return SimpleNamespace(
+        proposal=proposal, products={}, commercial={}, plan=plan, receipt=None, memory_changes=[]
+    )
+
+
+def test_a_realistic_hundred_line_basket_fits_the_output_state_with_margin():
+    session = hundred_line_session()
+    size = len(guardrails.encode(guardrails.output_state("Valmis.", session, [])).encode())
+    assert size > 28_000, "the old limit would have rejected this basket"
+    assert size * 1.25 <= guardrails.MAX_STATE_BYTES  # at least 25% margin over the measurement
+
+
+def test_a_realistic_hundred_ingredient_plan_is_within_the_displayed_text_limit():
+    session = hundred_line_session()
+    shown = len("Valmis.") + len(guardrails.encode(guardrails._plan(session.plan)))
+    assert shown * 1.5 <= guardrails.MAX_NARRATIVE_CHARS  # 50% margin: names vary in length
+
+
+def test_a_hundred_line_order_fits_the_prepare_state_and_is_not_trimmed():
+    lines = [
+        {"product_id": f"7{n:05d}", "amount": "12.5", "unit": "L"} for n in range(100)
+    ]
+    products = {line["product_id"]: {"name": FI_NAMES[n % 5] + f" #{n}"} for n, line in enumerate(lines)}
+    state = guardrails.prepare_state(HISTORY, purchase() | {"lines": lines}, products, meal())
+    assert len(state["proposed_order"]["lines"]) == 100
+    assert len(guardrails.encode(state).encode()) <= guardrails.MAX_STATE_BYTES
+
+
+def test_a_hundred_ingredient_basket_is_reviewed_not_rejected_as_too_large(monkeypatch, guard):
+    seen = fake_jev(monkeypatch)
+    g = Guardrails("turn", HISTORY, None, time.monotonic() + 10)
+    shown = g.review_output(hundred_line_session(), "Valmis.", [])
+    assert shown == "Valmis."
+    assert "assistant_output" in [s["boundary"] for s in seen]

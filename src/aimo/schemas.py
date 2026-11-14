@@ -14,9 +14,10 @@ from pydantic import (
     model_validator,
 )
 
-# MEA-013: up to 1000 ingredients/lines. 1000 is also the supplier's per-request product limit,
-# so a lookup needs no batching until SUP-007 (WS-A) lands.
-MAX_BASKET_LINES = 1000
+# MEA-013 (owner Q-67): a meal plan, a saved recipe and a purchase request hold at most 100
+# ingredients/lines. The supplier's own per-request limit is 1000 product ids; the lookup keeps it
+# (SUP-007 splits larger lookups into batches), so it is deliberately not tied to the 100.
+MAX_BASKET_LINES = 100
 MAX_LOOKUP_IDS = 1000
 Amount = Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)]
 Money = Annotated[Decimal, Field(ge=0, max_digits=16, decimal_places=4)]
@@ -105,7 +106,7 @@ class LineRequest(Model):
     contributions: list[Contribution] | None = Field(
         default=None,
         min_length=1,
-        max_length=30,
+        max_length=MAX_BASKET_LINES,
         description="Free-form baskets: the ingredients this line serves; amounts add up to it.",
     )
 

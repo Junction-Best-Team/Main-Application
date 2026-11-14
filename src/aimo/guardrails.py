@@ -36,10 +36,18 @@ DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions"
 MODEL = "typesafe/jev-1.14"
 TIMEOUT_SECONDS = 5
 MAX_CALLS_PER_TURN = 16
-# TypeSafe runs requests above about 32,000 bytes of text in a slower long-context mode.
-MAX_STATE_BYTES = 28_000
+# TypeSafe runs requests above about 32,000 bytes of text in a slower long-context mode. That
+# was the old 28,000 limit; it cannot hold a 100-line basket (MEA-013, owner Q-67). Measured with
+# realistic Finnish product names: the assistant-output state of 30 lines is 27,944 bytes and of
+# 100 lines 86,772 bytes (the proposal view is 683 bytes per line; the prepare state is only
+# 16,535 bytes and stays well under 32,000). 120,000 leaves 38% margin over the 100-line state.
+# A state above the limit is still refused (too_large), never clipped. The latency of the long
+# context mode has not been measured: scripts/evaluate_guardrails.py needs a key.
+MAX_STATE_BYTES = 120_000
 MAX_RESPONSE_BYTES = 200_000
-MAX_NARRATIVE_CHARS = 12_000
+# Displayed text (reply plus meal plan) reviewed in one call: 16,917 characters measured for 100
+# realistic ingredients, 30,000 leaves 77% margin. Longer text is uncertain, never clipped.
+MAX_NARRATIVE_CHARS = 30_000
 SCREEN_BATCH_BYTES = 20_000
 SCREEN_BATCH_ITEMS = 20
 TEXT_CLIP = 800
@@ -722,6 +730,7 @@ def prepare_state(messages, request, products, plan, status=None):
         encode(request.model_dump(mode="json") if hasattr(request, "model_dump") else request)
     )
     for line in order["lines"]:
+        line.pop("contributions", None)  # server-written (BAS-002); not model intent, costs state
         product = products.get(line["product_id"]) or {}
         clean = status is None or status.get(line["product_id"]) == "clean"
         line["product_name"] = clip(product.get("name") or "", 300) if clean else WITHHELD

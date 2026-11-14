@@ -12,6 +12,7 @@ from aimo.db import Problem, connection, fingerprint, js
 from aimo.numeric import fraction_text
 from aimo.purchases import context, load_products
 from aimo.recipe_schemas import Recipe
+from aimo.schemas import MAX_BASKET_LINES
 from aimo.search import vector
 
 
@@ -123,9 +124,11 @@ MAX_QUANTITY_PER_PORTION = {"KG": Fraction(5), "L": Fraction(5), "piece": Fracti
 
 
 def scaled_plan(recipe, portions):
-    if len(recipe.ingredients) > 1000:
+    if len(recipe.ingredients) > MAX_BASKET_LINES:
         raise Problem(
-            "RECIPE_TOO_LARGE", "This recipe exceeds the 1000-ingredient purchasing limit.", 422
+            "RECIPE_TOO_LARGE",
+            f"This recipe exceeds the {MAX_BASKET_LINES}-ingredient purchasing limit.",
+            422,
         )
     ingredients = []
     for item in recipe.ingredients:

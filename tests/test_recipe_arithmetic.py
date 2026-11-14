@@ -218,10 +218,10 @@ def test_missing_quantity_is_unresolved_with_a_reason():
     assert item.amount is None and "unspecified" in item.reason
 
 
-def test_one_thousand_ingredients_scale_and_more_are_refused():
-    ok = make_recipe([(1, "g", "linear")] * 1000)
-    assert len(scaled_plan(ok, 10).ingredients) == 1000
-    # The Recipe model already refuses more than 1000; scaled_plan stays a second line of defence.
+def test_one_hundred_ingredients_scale_and_more_are_refused():
+    ok = make_recipe([(1, "g", "linear")] * 100)
+    assert len(scaled_plan(ok, 10).ingredients) == 100
+    # The Recipe model already refuses more than 100; scaled_plan stays a second line of defence.
     too_big = ok.model_copy(update={"ingredients": ok.ingredients + ok.ingredients[:1]})
     with pytest.raises(Problem) as error:
         scaled_plan(too_big, 10)

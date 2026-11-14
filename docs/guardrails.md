@@ -36,8 +36,9 @@ redefine the guard policy. A response from a different model is rejected.
 Read-only tools other than catalog text are not sent to Jev. A typical turn makes
 2 calls (input and output); a basket turn adds about one per batch of tool calls
 plus one for preparation. Bounds: 5 seconds per call, one transient retry (none
-after 429 or `Retry-After`), 16 calls per turn, 28 KB of state per request (below
-TypeSafe's long-context mode), and the turn's own deadline. The endpoint, model
+after 429 or `Retry-After`), 16 calls per turn, 120 KB of state per request (a 100-line
+basket needs about 87 KB for the output review; the preparation check stays near 17 KB, below
+TypeSafe's long-context mode of about 32 KB) and 30,000 displayed characters per review, and the turn's own deadline. The endpoint, model
 (`typesafe/jev-1.14`) and bounds are constants in `guardrails.py`.
 
 Jev cannot check arithmetic or prove an allergen claim. It only flags narrative

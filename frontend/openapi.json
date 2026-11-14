@@ -1436,7 +1436,7 @@
                   "$ref": "#/components/schemas/Contribution"
                 },
                 "type": "array",
-                "maxItems": 30,
+                "maxItems": 100,
                 "minItems": 1
               },
               {
@@ -1498,7 +1498,7 @@
               "$ref": "#/components/schemas/Ingredient"
             },
             "type": "array",
-            "maxItems": 1000,
+            "maxItems": 100,
             "minItems": 1,
             "title": "Ingredients"
           },
@@ -2294,7 +2294,7 @@
               "$ref": "#/components/schemas/LineRequest"
             },
             "type": "array",
-            "maxItems": 1000,
+            "maxItems": 100,
             "minItems": 1,
             "title": "Lines"
           },

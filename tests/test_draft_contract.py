@@ -15,6 +15,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 
 from aimo.chat_schemas import Ingredient, MealPlan
 from aimo.db import Problem
@@ -121,31 +122,54 @@ def test_exactly_terminating_scaled_quantity_stays_unchanged():
     assert plan.ingredients[0].amount == "5"
 
 
-# --- MEA-013: meal plans and purchase requests of up to 1000 ingredients ---------------------
+# --- MEA-013: meal plans and purchase requests of up to 100 ingredients ----------------------
+# Owner (Q-67): "raise the limit to 100, not 1000, and apply this everywhere". The supplier lookup
+# keeps the supplier's own per-request limit of 1000 product ids (LookupRequest, MAX_MATERIALS).
 
-BIG = 1000
-
-
-def test_meal_plan_accepts_one_thousand_ingredients():
-    ingredients = [Ingredient(name=f"ingredient {n}", amount="1", unit="KG") for n in range(BIG)]
-    assert len(MealPlan(title="Big", portions=1, ingredients=ingredients).ingredients) == BIG
+LIMIT = 100
+SUPPLIER_IDS = 1000
 
 
-def test_purchase_request_accepts_one_thousand_lines():
-    lines = [line(f"authored-{n}") for n in range(BIG)]
-    assert len(PurchaseRequest.model_validate(purchase(lines)).lines) == BIG
+def test_meal_plan_accepts_one_hundred_ingredients_and_refuses_one_more():
+    ingredients = [Ingredient(name=f"ingredient {n}", amount="1", unit="KG") for n in range(LIMIT)]
+    assert len(MealPlan(title="Big", portions=1, ingredients=ingredients).ingredients) == LIMIT
+    with pytest.raises(ValidationError):
+        MealPlan(
+            title="Big",
+            portions=1,
+            ingredients=ingredients + [Ingredient(name="one more", amount="1", unit="KG")],
+        )
 
 
-def test_recipe_with_one_thousand_ingredients_can_be_scaled():
-    plan = scaled_plan(recipe(count=BIG), 2)
-    assert len(plan.ingredients) == BIG
+def test_purchase_request_accepts_one_hundred_lines_and_refuses_one_more():
+    lines = [line(f"authored-{n}") for n in range(LIMIT)]
+    assert len(PurchaseRequest.model_validate(purchase(lines)).lines) == LIMIT
+    with pytest.raises(ValidationError):
+        PurchaseRequest.model_validate(purchase(lines + [line("authored-100")]))
 
 
-def test_lookup_request_accepts_one_thousand_product_ids():
+def test_recipe_with_one_hundred_ingredients_can_be_scaled_and_one_more_is_refused():
+    full = recipe(count=LIMIT)
+    assert len(scaled_plan(full, 2).ingredients) == LIMIT
+    with pytest.raises(ValidationError):
+        recipe(count=LIMIT + 1)  # the Recipe model itself stops at 100
+    # scaled_plan keeps its own guard for a recipe that bypassed validation
+    over = full.model_copy(update={"ingredients": full.ingredients + full.ingredients[:1]})
+    with pytest.raises(Problem) as error:
+        scaled_plan(over, 2)
+    assert error.value.code == "RECIPE_TOO_LARGE" and "100" in error.value.message
+
+
+def test_lookup_request_keeps_the_suppliers_limit_of_one_thousand_product_ids():
     request = LookupRequest(
-        product_ids=[f"authored-{n}" for n in range(BIG)], delivery_date=date(2030, 1, 1)
+        product_ids=[f"authored-{n}" for n in range(SUPPLIER_IDS)], delivery_date=date(2030, 1, 1)
     )
-    assert len(request.product_ids) == BIG
+    assert len(request.product_ids) == SUPPLIER_IDS
+    with pytest.raises(ValidationError):
+        LookupRequest(
+            product_ids=[f"authored-{n}" for n in range(SUPPLIER_IDS + 1)],
+            delivery_date=date(2030, 1, 1),
+        )
 
 
 # --- SUP-007: split price/availability lookups into batches of at most 1000 ------------------
@@ -309,8 +333,9 @@ def test_shortfall_is_absent_when_stock_covers_the_need_and_keeps_old_fingerprin
     assert "shortfall" not in quantity
 
 
-def test_material_cap_matches_the_supplier_limit_until_lookups_are_batched():
+def test_basket_cap_is_one_hundred_and_the_lookup_cap_stays_the_suppliers_limit():
     from aimo import purchases
     from aimo.schemas import MAX_BASKET_LINES, MAX_LOOKUP_IDS
 
-    assert MAX_BASKET_LINES == MAX_LOOKUP_IDS == purchases.MAX_MATERIALS == SUPPLIER_LIMIT
+    assert MAX_BASKET_LINES == 100
+    assert MAX_LOOKUP_IDS == purchases.MAX_MATERIALS == SUPPLIER_LIMIT

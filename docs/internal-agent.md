@@ -141,6 +141,19 @@ A looser request value or a dropped flag adds `CONSTRAINT_LOOSENED` (unresolved,
 and a looser budget is enforced at the customer's number (`HARD_BUDGET_EXCEEDED`, denied). Nothing fills
 the record yet: extraction from the conversation (#75) is person 1's work, so production passes `None`.
 
+**Limits (MEA-013, owner Q-67: "raise the limit to 100, not 1000, and apply this everywhere").** A
+meal plan, a saved recipe, a purchase request and a `match_ingredients` batch hold at most 100
+ingredients or lines (`MAX_BASKET_LINES`); `scale_recipe` refuses a larger recipe
+(`RECIPE_TOO_LARGE`). The supplier lookup keeps the supplier's own limit of 1000 product ids per
+request (`MAX_LOOKUP_IDS`, `MAX_MATERIALS`); larger lookups are split into batches (SUP-007). The
+guardrail limits were raised with the cap (`MAX_STATE_BYTES` 28,000 to 120,000, `MAX_NARRATIVE_CHARS`
+12,000 to 30,000). Measured offline with realistic Finnish product names: the output-review state
+is 27,944 bytes at 30 lines and 86,772 bytes at 100 lines (683 bytes per proposal line), the
+displayed plan 16,917 characters, and the check that gates preparation only 16,535 bytes (below
+TypeSafe's long-context threshold of about 32,000 bytes). The classifier's latency above that
+threshold is not measured (no key here); a timeout fails closed (reply replaced, plan withheld,
+proposal and link kept).
+
 The current UI renders ingredient names/amounts and plan notes; it does not show
 a per-row unresolved status. The agent now supplies an explicit unresolved list
 in persisted final text. Person 1 must add the row state and persist any required
