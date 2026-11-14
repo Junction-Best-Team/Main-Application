@@ -101,8 +101,8 @@ jobs:
       - uses: ./.github/actions/python-env
       - name: Lint Python
         run: .venv/bin/ruff check src tests scripts
-      - name: Test backend against PostgreSQL and fixture data
-        run: .venv/bin/pytest -q --durations=10
+      - name: Test core app flows (full suite on manual runs)
+        run: tests/pr-tests.sh ${{ github.event_name == 'workflow_dispatch' && '--full' || '' }}
       - name: Black-box sweep of the buyer-facing API (sign-in, CSRF, conversations, purchases)
         run: tests/ci.sh --skip-unit
 
