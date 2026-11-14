@@ -53,7 +53,9 @@ def database():
 @pytest.fixture(autouse=True)
 def reset_buyers():
     with connection() as c:
-        c.execute("TRUNCATE buyers,login_attempts RESTART IDENTITY CASCADE")
+        # The history tables refuse TRUNCATE unless the transaction says it is a deliberate reset.
+        c.execute("SET LOCAL aimo.allow_history_truncate = 'on'")
+        c.execute("TRUNCATE buyers,login_attempts,purged_proposals RESTART IDENTITY CASCADE")
     seed()
 
 

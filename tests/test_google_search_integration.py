@@ -20,6 +20,8 @@ def test_google_product_and_recipe_indexes_rebuild_without_mixing_old_vectors(
 
     cfg = settings()
     with connection() as c:
+        # A recipe reset cascades into guarded history (PER-002): say it is deliberate.
+        c.execute("SET LOCAL aimo.allow_history_truncate = 'on'")
         c.execute("TRUNCATE recipes,recipe_catalogs,recipe_embedding_cache CASCADE")
     import_fixture(tmp_path)
     data = fixture_facts()
@@ -77,4 +79,5 @@ def test_google_product_and_recipe_indexes_rebuild_without_mixing_old_vectors(
         monkeypatch.setattr(cfg, "embedding_backend", "fixture")
         publish(data, "restore-fixtures", fingerprint(data))
         with connection() as c:
+            c.execute("SET LOCAL aimo.allow_history_truncate = 'on'")
             c.execute("TRUNCATE recipes,recipe_catalogs,recipe_embedding_cache CASCADE")

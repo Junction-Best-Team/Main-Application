@@ -1425,7 +1425,10 @@ export interface operations {
     };
     current_purchase_api_purchases__proposal_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description An earlier revision of this proposal; default the current one. */
+                revision?: number | null;
+            };
             header?: never;
             path: {
                 proposal_id: string;

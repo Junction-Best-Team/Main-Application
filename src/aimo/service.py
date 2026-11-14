@@ -108,8 +108,15 @@ class Service:
         return recipe_batch.match_ingredients(identity, request)
 
     @operation("service.get_proposal")
-    def get_proposal(self, identity, proposal_id):
-        return workflow.get_proposal(identity, proposal_id)
+    def get_proposal(self, identity, proposal_id, revision=None):
+        return workflow.get_proposal(identity, proposal_id, revision)
+
+    @operation("service.get_recipe_plan_revision")
+    def get_recipe_plan_revision(self, identity, plan_id, revision=None):
+        """A saved recipe plan by ID: the current revision, or an earlier one (PER-003)."""
+        from aimo import recipes
+
+        return recipes.get_plan_revision(identity, plan_id, revision)
 
     @operation("service.commit_order")
     def commit_order(self, identity, request: CommitRequest):

@@ -53,6 +53,13 @@ DROPS = [
     ("DROP FUNCTION save_buyer_policy(text,integer,jsonb)", "014_policy_settings.sql"),
     ("ALTER TABLE conversation_messages DROP COLUMN image", "015_recipe_images.sql"),
     ("DROP TABLE recipe_image_jobs", "015_recipe_images.sql"),
+    ("DROP TABLE purged_proposals", "018_purge_unfinished_proposals.sql"),
+    (
+        "DROP TRIGGER immutable_recipe_plan_revisions ON recipe_plan_revisions",
+        "019_history_immutability.sql",
+    ),
+    ("DROP TRIGGER immutable_recipe_versions ON recipe_versions", "019_history_immutability.sql"),
+    ("DROP TRIGGER immutable_truncate ON orders", "019_history_immutability.sql"),
 ]
 
 

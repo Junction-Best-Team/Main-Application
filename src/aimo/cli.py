@@ -151,6 +151,17 @@ def main():
     ing.add_argument(
         "--stage", action="store_true", help="Import without replacing the active catalog"
     )
+    purge = sub.add_parser(
+        "purge-proposals",
+        help="Operator command, run as the schema owner (DATABASE_URL of the owner, not the runtime "
+        "role): remove proposals and approvals that never became orders (CNF-021); orders are kept",
+    )
+    purge.add_argument(
+        "--older-than-days",
+        type=int,
+        help="Days after the current revision expired (default: $UNFINISHED_PROPOSAL_RETENTION_DAYS, 30)",
+    )
+    purge.add_argument("--dry-run", action="store_true", help="Count only; delete nothing")
     activation = sub.add_parser("activate-catalog", help="Explicit catalog cutover or rollback")
     activation.add_argument("--generation", required=True)
     from aimo.ingest import CATALOG_PRODUCT_COUNT, CATALOG_SHA256
@@ -171,6 +182,22 @@ def main():
         migrate(runtime_role=args.runtime_role, catalog_role=args.catalog_role)
     elif args.command == "seed":
         seed()
+    elif args.command == "purge-proposals":
+        from datetime import timedelta
+
+        from aimo import approval_workflow
+        from aimo.config import settings
+
+        if args.older_than_days is not None and args.older_than_days < 1:
+            parser.error("--older-than-days must be at least 1")
+        days = args.older_than_days or settings().unfinished_proposal_retention_days
+        print(
+            json.dumps(
+                approval_workflow.purge_unfinished_proposals(
+                    timedelta(days=days), dry_run=args.dry_run
+                )
+            )
+        )
     elif args.command == "activate-catalog":
         from aimo.ingest import activate_catalog
 
