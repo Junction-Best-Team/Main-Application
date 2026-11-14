@@ -1,13 +1,10 @@
 name: CI
 
-# Backend tests and the API sweep share one environment; frontend builds run in parallel.
-# Keep the existing check names for repository rules. The component check now only
-# detects infrastructure changes. CI gate blocks releases unless every applicable job passes.
+# Validate PRs before merging. Protected main pushes build releases without repeating CI.
+# Keep the existing check names for repository rules; skip only unrelated jobs.
 
 on:
   pull_request:
-    branches: [develop, main]
-  push:
     branches: [develop, main]
   workflow_dispatch:
 
@@ -16,8 +13,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
-  # Never cancel a main release halfway through its deployment.
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: true
 
 jobs:
   components:
@@ -25,38 +21,50 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
-      terraform: ${{ steps.terraform.outputs.changed }}
+      backend: ${{ steps.changes.outputs.backend }}
+      frontend: ${{ steps.changes.outputs.frontend }}
+      terraform: ${{ steps.changes.outputs.changed }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
           fetch-depth: 0
-      - id: terraform
-        name: Detect infrastructure changes
+      - id: changes
+        name: Detect affected checks
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
-          PUSH_BASE: ${{ github.event.before }}
-          PUSH_HEAD: ${{ github.sha }}
+          PROMOTE_DEVELOP: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
-          if [[ "$EVENT_NAME" == pull_request ]]; then
-            range="$PR_BASE...$PR_HEAD"
-          elif [[ "$EVENT_NAME" == push && ! "$PUSH_BASE" =~ ^0+$ ]]; then
-            range="$PUSH_BASE..$PUSH_HEAD"
-          else
-            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          # Protected develop already required contribution CI; promotion does not repeat it.
+          if [[ "$PROMOTE_DEVELOP" == true ]]; then
+            printf 'backend=false\nfrontend=false\nchanged=false\n' >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Include deletions/renames and changes to either CI workflow.
-          if git diff --quiet --no-renames "$range" -- infra/ .github/workflows/ci.yml .github/workflows/terraform.yml .github/workflows/deploy.yml; then
-            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          if [[ "$EVENT_NAME" == pull_request ]]; then
+            range="$PR_BASE...$PR_HEAD"
           else
-            status=$?
-            if [[ "$status" != 1 ]]; then exit "$status"; fi
-            echo 'changed=true' >> "$GITHUB_OUTPUT"
+            printf 'backend=true\nfrontend=true\nchanged=true\n' >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          # Fail closed on diff errors; include both sides of renames and deleted files.
+          git diff --name-only --no-renames -z "$range" > "$RUNNER_TEMP/ci-paths"
+          backend=false frontend=false terraform=false
+          while IFS= read -r -d '' path; do
+            case "$path" in
+              .github/*) backend=true; frontend=true; terraform=true ;;
+              frontend/openapi.json) backend=true; frontend=true ;;
+              frontend/*) frontend=true ;;
+              src/*|scripts/*) backend=true; frontend=true ;;
+              tests/*|migrations/*|pyproject.toml|uv.lock) backend=true ;;
+              infra/*) terraform=true ;;
+              docs/*|*.md) ;;
+              *) backend=true; frontend=true ;;
+            esac
+          done < "$RUNNER_TEMP/ci-paths"
+          printf 'backend=%s\nfrontend=%s\nchanged=%s\n' "$backend" "$frontend" "$terraform" >> "$GITHUB_OUTPUT"
 
   terraform:
     name: Terraform
@@ -66,6 +74,8 @@ jobs:
 
   backend:
     name: Python lint and tests
+    needs: components
+    if: needs.components.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
@@ -78,6 +88,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
+          --tmpfs /var/lib/postgresql/data
           --health-cmd "pg_isready -U aimo -d aimo_test"
           --health-interval 5s
           --health-timeout 5s
@@ -96,13 +107,15 @@ jobs:
       - uses: ./.github/actions/python-env
       - name: Lint Python
         run: .venv/bin/ruff check src tests scripts
-      - name: Test backend against PostgreSQL and fixture data
-        run: .venv/bin/pytest -q
+      - name: Test core app flows (full suite on manual runs)
+        run: tests/pr-tests.sh ${{ github.event_name == 'workflow_dispatch' && '--full' || '' }}
       - name: Black-box sweep of the buyer-facing API (sign-in, CSRF, conversations, purchases)
         run: tests/ci.sh --skip-unit
 
   frontend:
     name: Frontend types and build
+    needs: components
+    if: needs.components.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     defaults:
@@ -131,32 +144,21 @@ jobs:
     steps:
       - name: Require every applicable check to pass
         env:
-          REQUIRED_RESULTS: ${{ needs.components.result }} ${{ needs.backend.result }} ${{ needs.frontend.result }}
+          COMPONENTS_RESULT: ${{ needs.components.result }}
+          BACKEND_CHANGED: ${{ needs.components.outputs.backend }}
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          FRONTEND_CHANGED: ${{ needs.components.outputs.frontend }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
           TERRAFORM_CHANGED: ${{ needs.components.outputs.terraform }}
           TERRAFORM_RESULT: ${{ needs.terraform.result }}
         run: |
-          if [[ "$REQUIRED_RESULTS" != 'success success success' ]]; then
-            echo "Required checks did not all pass: $REQUIRED_RESULTS"
-            exit 1
-          fi
-          case "$TERRAFORM_CHANGED" in
-            true) [[ "$TERRAFORM_RESULT" == success ]] ;;
-            false) [[ "$TERRAFORM_RESULT" == skipped ]] ;;
-            *) echo 'Missing or invalid infrastructure change detection'; exit 1 ;;
-          esac
-
-  release:
-    name: Build and deploy release
-    needs: gate
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    permissions:
-      contents: read
-      packages: write
-    uses: ./.github/workflows/deploy.yml
-    with:
-      deploy: ${{ vars.DEPLOY_ENABLED == 'true' }}
-    secrets:
-      DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
-      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
+          [[ "$COMPONENTS_RESULT" == success ]] || exit 1
+          check() {
+            case "$1:$2" in
+              true:success|false:skipped) ;;
+              *) echo "Unexpected check result: changed=$1 result=$2"; return 1 ;;
+            esac
+          }
+          check "$BACKEND_CHANGED" "$BACKEND_RESULT"
+          check "$FRONTEND_CHANGED" "$FRONTEND_RESULT"
+          check "$TERRAFORM_CHANGED" "$TERRAFORM_RESULT"

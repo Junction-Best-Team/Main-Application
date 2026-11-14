@@ -732,7 +732,9 @@ def _protected(c):
     rows = c.execute(
         """SELECT cl.relname AS tbl, a.attname AS col FROM pg_constraint k
         JOIN pg_class cl ON cl.oid=k.conrelid
-        JOIN pg_attribute a ON a.attrelid=k.conrelid AND a.attnum = ANY(k.conkey)
+        CROSS JOIN LATERAL unnest(k.conkey, k.confkey) AS u(refering, referenced)
+        JOIN pg_attribute fa ON fa.attrelid=k.confrelid AND fa.attnum=u.referenced AND fa.attname='id'
+        JOIN pg_attribute a ON a.attrelid=k.conrelid AND a.attnum=u.refering
         WHERE k.contype='f' AND k.confrelid='proposals'::regclass AND cl.relname = ANY(%s)
         AND cl.relnamespace=current_schema()::regnamespace ORDER BY 1,2""",
         (list(PROTECTED_TABLES),),

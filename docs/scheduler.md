@@ -57,10 +57,23 @@ first run date of today would be missed at once: use "Run now (demo)" there.
   runtime role: `aimo seed` and the migration create them; a buyer without one fails closed.
 - `terms_fingerprint` is not `material_fingerprint`: it leaves out dates, request id, stock, supplier cutoff
   and product facts. The field set is the `TERMS_*` constants in `scheduler.py`.
+  Owner Q-109 (CNF-024): the terms are compared exactly (product, quantity, delivery, substitutes) and prices are
+  judged by the agreed range, not by the literal fingerprint.
+  The stored `terms_fingerprint` binds the customer's agreement at creation; it is **not** compared at run time,
+  because it includes unit prices and the customer's percentage range lets those move. At run time `compare` (and
+  the commit gate, under the buyer lock) re-checks what the range does not cover: the product set (with the accepted
+  substitutes), requested amount and unit, converted sales quantity and unit, deposit structure, destination, the
+  run's delivery date,
+  currency, the per-line price range and the ceiling, and the policy outcome. Any difference is a disruption
+  (`RUN_TERMS_CHANGED`, ...); nothing is committed. Not re-checked: product facts, tax rate (inside the gross price),
+  deposit prices (bounded by the ceiling).
+- A buyer who confirms the scheduled proposal in the product while the run is prepared settles the run as committed
+  (their order, no second order, no disruption). A pause or cancel between the engine's checks and the gate skips the
+  run (`PAUSED` or `AUTHORIZATION_*`). A terms revision that keeps changing is counted and ends as `TERMS_UNSETTLED`.
 - A standing order is a free-form basket (a recipe link would attach to the already ordered proposal).
 - Accepted substitutes must be inside the buyer's approved product scope (standing product authority).
 - Cancelled means an order **request** (append-only `order_request_cancellations`); placed orders stay immutable.
   The unfinished-proposal purge must skip proposals referenced by `scheduled_runs` or the cancellations.
 
-Migration `020_scheduled_orders.sql`; tests `tests/test_schedul*.py`, `test_worker_scheduler.py`,
+Migration `023_scheduled_orders.sql`; tests `tests/test_schedul*.py`, `test_worker_scheduler.py`,
 `test_commit_role_gate.py`, `test_confirm_role.py`. Local runs in fixture mode, not CI.

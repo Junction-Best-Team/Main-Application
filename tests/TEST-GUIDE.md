@@ -1,5 +1,7 @@
 # What the tests really check
 
+Current hackathon CI: PRs run the explicit core-flow selection in `tests/pr-tests.sh`, lint, strict HTTP sweep and applicable frontend/infrastructure checks. The full pytest suite described below runs locally or on manual CI. Historical per-test descriptions below do not imply every test is a required PR check.
+
 Written by reading the test code, not the test names. Branch `tests-ci-coverage`, rewritten after the chat-purchasing cutover (PR #15) removed the external agent API and MCP. If a claim says "unclear from the code", I could not settle it by reading.
 
 > Scope of this guide: it explains line by line the tests this branch's author read and wrote (supplier checking, policy, workflow, upstream mode, the sweep, the coverage files). The tests teammates added in PRs #4 and #15 (`test_agent.py`, `test_agent_integration.py`, `test_conversations.py`, `test_hardening.py`, `test_retries.py`, `frontend/e2e/chat.spec.ts`) are summarised in section 2.8 **from their names and a skim, not read test by test**. The per-test tables in 2.1 to 2.6 were written against the earlier gateway; their scenarios still pass, and where Otto's later changes altered a test, the table says so.

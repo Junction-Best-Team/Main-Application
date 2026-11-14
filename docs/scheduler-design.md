@@ -1,13 +1,15 @@
 # WS-E scheduler: design (no feature code)
 
 > **Status note (implementation).** This is the design written before the build and kept as the record of
-> the questions and the code evidence. The owner's later answers changed it: migration number **020**; a price
+> the questions and the code evidence. The owner's later answers changed it: migration number **023**; a price
 > outside the agreed range with no accepted substitute is a **disruption** (no `needs_customer` run state);
 > pause, `placed` orders, per-ingredient accepted substitutes with a percentage range, and restart by
 > `replace` were added; sections 1-5 were built as described otherwise. What exists and how it runs:
 > [scheduler.md](scheduler.md). O-7 (missed dates) became: a date missed by a short outage runs late within
 > `SCHEDULER_GRACE_HOURS` (default 6) after that date's run time (06:00, so until 12:00), otherwise `RUN_MISSED` (owner Q-104); the first
 > run date is tomorrow to a year ahead, today only in demo mode (Q-103).
+> CNF-024 (Q-109): the run compares the terms (product, quantity, delivery, substitutes) exactly and judges prices by the
+> agreed range, not by the literal fingerprint; section 3's "terms fingerprint" binds the agreement at creation only.
 
 
 Status: design for the owner's review, 2026-11-14. Author: scheduler design session (reports to junction-b5).

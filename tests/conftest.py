@@ -1,5 +1,7 @@
 import os
 from datetime import timedelta
+from functools import cache
+from types import SimpleNamespace
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
@@ -51,13 +53,24 @@ def database():
     publish(data, "authored-test-fixtures", fingerprint(data))
 
 
+@pytest.fixture(scope="session")
+def fixture_password_hasher():
+    from aimo.auth import hasher
+
+    # Reuse a real Argon2 hash during fixture setup instead of recomputing it
+    # thousands of times. Tests of seed() and login still use the real hasher.
+    return SimpleNamespace(hash=cache(hasher.hash))
+
+
 @pytest.fixture(autouse=True)
-def reset_buyers():
+def reset_buyers(monkeypatch, fixture_password_hasher):
     with connection() as c:
         # The history tables refuse TRUNCATE unless the transaction says it is a deliberate reset.
         c.execute("SET LOCAL aimo.allow_history_truncate = 'on'")
         c.execute("TRUNCATE buyers,login_attempts,purged_proposals RESTART IDENTITY CASCADE")
-    seed()
+    with monkeypatch.context() as patch:
+        patch.setattr("aimo.cli.hasher", fixture_password_hasher)
+        seed()
 
 
 @pytest.fixture

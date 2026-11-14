@@ -190,12 +190,20 @@ demo credentials on reruns.
 
 ## Simple main-to-cluster release pipeline
 
-The main CI workflow calls `Build and deploy` only after its `CI gate` passes on
-a push to `main`. It builds the frontend, API and worker Docker targets for
+`Build and deploy` runs immediately on a push to protected `main`, after the
+release PR passes its required `CI gate`. Merged pushes do not repeat PR tests.
+Keep the PR-only branch rules and required checks enabled. It builds the frontend,
+API and worker Docker targets for
 `linux/amd64`, pushes component SHA tags, and records each immutable digest in
 the run summary. PRs and pushes to `develop` never publish or deploy.
 Docker layers are cached. Main releases are serialized so a new commit cannot
-cancel a deployment halfway through.
+cancel a deployment halfway through. After migrations succeed, all three app
+rollouts start before waiting for readiness; a failed rollout still restores
+every changed image.
+The frontend image bundles production files with Vite; required PR CI still runs
+frontend lint, type checks and the production build. Browser tests and documentation
+do not invalidate the frontend packaging layer. Unused repository directories stay
+out of the Docker build context.
 
 ### One-time setup
 
@@ -320,7 +328,7 @@ terraform -chdir=infra/kubernetes test
 ```
 
 All Terraform tests use mocked providers and `command=plan`. The main CI workflow
-calls the Terraform workflow when `infra/` or either CI workflow changes (or on a
+calls the Terraform workflow when `infra/` or `.github/` changes (or on a
 manual run). Its required, always-present `CI gate` rejects failed, cancelled or
 unexpectedly skipped Terraform checks, while unrelated PRs can skip Terraform.
 CI validates these checks without credentials, app builds, model downloads or

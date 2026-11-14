@@ -396,7 +396,12 @@ def test_the_gate_itself_refuses_a_direct_commit_after_the_customer_cancelled(
     """Not the engine's own check: the scheduler identity calls the Service directly."""
     s = scheduled(buyer, service, placed_order)
     scheduler.run_due_schedules(service, now=at())
-    schedules.cancel(buyer, s["id"])
+    with connection() as c:  # the status alone, so that the gate is what refuses (schedules.cancel
+        # also cancels the open proposal, which is refused one step earlier)
+        c.execute(
+            "UPDATE scheduled_authorizations SET status='cancelled',next_run_date=NULL WHERE id=%s",
+            (s["id"],),
+        )
     run = run_of(s)
     before = len(orders())
     with pytest.raises(Problem) as refused:

@@ -2,8 +2,12 @@ FROM node:24.6.0-bookworm-slim AS web-build
 WORKDIR /web
 COPY frontend/package*.json ./
 RUN npm ci
-COPY frontend/ ./
-RUN npm run build
+# Required PR CI runs lint/types. Package the same locked source without
+# repeating those checks or invalidating this layer for browser-test/doc edits.
+COPY frontend/index.html frontend/vite.config.ts frontend/tsconfig.json ./
+COPY frontend/src/ ./src/
+COPY frontend/public/ ./public/
+RUN npm exec -- vite build
 
 FROM python:3.12.12-slim-bookworm AS api-build
 COPY --from=ghcr.io/astral-sh/uv:0.12.5 /uv /usr/local/bin/uv

@@ -6,6 +6,10 @@ import { ChatPage } from "../features/chat/pages/ChatPage";
 import { VoiceModeProvider } from "../features/chat/components/VoiceModeProvider";
 import { PurchasesPage } from "../features/purchases/pages/PurchasesPage";
 import { PurchaseDetailPage } from "../features/purchases/pages/PurchaseDetailPage";
+import { SchedulesPage } from "../features/schedules/pages/SchedulesPage";
+import { ScheduleDetailPage } from "../features/schedules/pages/ScheduleDetailPage";
+import { ScheduleCreatePage } from "../features/schedules/pages/ScheduleCreatePage";
+import { ScheduleEditPage } from "../features/schedules/pages/ScheduleEditPage";
 import { PreferencesPage } from "../features/preferences/pages/PreferencesPage";
 import { SettingsPage } from "../features/settings/pages/SettingsPage";
 import { AppShell } from "./layout/AppShell";
@@ -27,6 +31,13 @@ export function AppRoutes() {
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/request" element={<ChatPage />} />
         <Route path="/conversations/:conversationId" element={<ChatPage />} />
+        <Route path="/schedules" element={<SchedulesPage />} />
+        <Route path="/schedules/new" element={<ScheduleCreatePage />} />
+        <Route path="/schedules/:scheduleId" element={<ScheduleDetailPage />} />
+        <Route
+          path="/schedules/:scheduleId/edit"
+          element={<ScheduleEditPage />}
+        />
         <Route path="/purchases" element={<PurchasesPage />} />
         <Route path="/purchases/:proposalId" element={<PurchasesPage />} />
         <Route path="/approvals/:approvalId" element={<PurchaseDetailPage />} />

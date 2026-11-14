@@ -1,143 +1,74 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { Proposal } from "../src/shared/api/types";
+import type { OrderListItem } from "../src/shared/api/types";
+import { json, mockSignedIn, ordersPage } from "./support/schedulerFixtures";
 
-const session = {
-  username: "buyer",
-  buyer_id: "demo-hotel",
-  csrf_token: "test-csrf",
-};
+// Past Orders search, period, sort and status (person 1's controls) over the rows of
+// GET /api/orders. The mock honours `status` and `q` like the server; period and sort run in the
+// browser. Everything is mocked; nothing here proves the live backend.
 
-function acceptedOrder(
-  overrides: Partial<Proposal> & {
-    proposal_id: string;
+function placedOrder(
+  overrides: Partial<OrderListItem> & {
     order_id: string;
-    request_id: string;
+    title: string;
     placed_at: string;
     gross_total: string;
   },
-): Proposal {
-  const { proposal_id, order_id, request_id, placed_at, gross_total, ...rest } =
-    overrides;
+): OrderListItem {
   return {
-    recipe_basis: "free_form",
-    proposal_id,
-    revision: 1,
-    fingerprint: "a".repeat(64),
-    current_revision: 1,
-    committed_revision: 1,
-    current_proposal_url: `/purchases/${proposal_id}`,
-    policy_version: 1,
-    policy_outcome: "ready_to_commit",
-    approval_status: "approved",
-    order_status: "accepted_mock",
-    reasons: [],
-    expires_at: "2099-11-15T12:00:00Z",
-    next_action: { type: "wait" },
-    approval_id: null,
-    approval_url: null,
-    order_id,
-    buyer_id: "demo-hotel",
-    agent_id: "internal-demo-hotel",
-    request: {
-      request_id,
-      lines: [{ product_id: "pasta", amount: "20", unit: "KG" }],
-      destination: "hotel-helsinki",
-      delivery_date: "2026-11-16",
-      requirements: { lactose_free: false, milk_free: false },
-      allow_substitution: true,
-      allow_overbuy: true,
-    },
-    snapshot: {
-      lines: [
-        {
-          product_id: "pasta",
-          name: "Spaghetti 5 kg",
-          quantity: {
-            requested_amount: "20",
-            requested_unit: "KG",
-            sales_unit: "BAG",
-            sales_quantity: "4",
-            proposed_amount: "20",
-            excess: "0",
-            status: "known",
-            basis: ["catalog"],
-            source_step: "1",
-          },
-          substitutes_for: null,
-          net: "100.00",
-          gross: gross_total,
-          tax: "14.00",
-          deposits_gross: "0",
-          deposit_lines: [],
-          product_evidence: {},
-          commercial_evidence: {},
-        },
-      ],
-      currency: "EUR",
-      net_total: "100.00",
-      gross_total,
-      tax_total: "14.00",
-      deposits_gross: "0",
-      charges_gross: "0",
-      charges_basis: "demo",
-      mode: "fixture",
-      observed_at: placed_at,
-      reasons: [],
-    },
-    history: [
-      {
-        event: "purchase_confirmed",
-        created_at: placed_at,
-        actor: "buyer",
-        detail: {},
-      },
-    ],
-    can_decide: false,
-    ...rest,
+    status: "placed",
+    proposal_id: `proposal-${overrides.order_id}`,
+    paused: false,
+    currency: "EUR",
+    line_count: 1,
+    line_names: ["Spaghetti 5 kg"],
+    updated_at: overrides.placed_at,
+    ...overrides,
   };
 }
 
-async function mockSession(page: Page) {
-  await page.route("**/api/session", (route) =>
-    route.fulfill({ status: 200, json: session }),
-  );
-  await page.route("**/api/login", (route) => route.fulfill({ json: session }));
-  await page.route("**/api/logout", (route) => route.fulfill({ status: 204 }));
-  await page.route("**/api/conversations*", (route) =>
-    route.fulfill({ json: { items: [], next_offset: null } }),
-  );
+async function mockOrderList(page: Page, items: OrderListItem[]) {
+  await mockSignedIn(page);
+  await page.route("**/api/orders?*", (route) => {
+    const url = new URL(route.request().url());
+    const status = url.searchParams.get("status");
+    const q = (url.searchParams.get("q") ?? "").toLowerCase();
+    const matching = items.filter(
+      (o) =>
+        (!status || status.split(",").includes(o.status)) &&
+        (!q ||
+          [o.title, o.order_id, o.proposal_id, ...(o.line_names ?? [])]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase()
+            .includes(q)),
+    );
+    return json(route, ordersPage(matching, null, matching.length));
+  });
 }
 
-test("Past Orders search, period, sort and status filter loaded accepted orders", async ({
+test("Past Orders search, period, sort and status filter the orders", async ({
   page,
 }) => {
-  await mockSession(page);
-  const recent = acceptedOrder({
-    proposal_id: "recent-order",
+  const day = 24 * 60 * 60 * 1000;
+  const recent = placedOrder({
     order_id: "VA-1001",
-    request_id: "Carbonara for 200",
+    title: "Carbonara for 200",
     placed_at: new Date().toISOString(),
     gross_total: "114.00",
   });
-  const older = acceptedOrder({
-    proposal_id: "older-order",
+  const older = placedOrder({
     order_id: "VA-2002",
-    request_id: "Weekend tasting cheeses",
-    placed_at: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
+    title: "Weekend tasting cheeses",
+    placed_at: new Date(Date.now() - 40 * day).toISOString(),
     gross_total: "382.00",
   });
-  const ancient = acceptedOrder({
-    proposal_id: "ancient-order",
+  const ancient = placedOrder({
     order_id: "VA-3003",
-    request_id: "Spring pantry restock",
-    placed_at: new Date(Date.now() - 120 * 24 * 60 * 60 * 1000).toISOString(),
+    title: "Spring pantry restock",
+    placed_at: new Date(Date.now() - 120 * day).toISOString(),
     gross_total: "50.00",
   });
-  await page.route("**/api/purchases?*", (route) =>
-    route.fulfill({
-      json: { items: [recent, older, ancient], next_offset: null },
-    }),
-  );
+  await mockOrderList(page, [recent, older, ancient]);
   await page.goto("/purchases");
   await expect(
     page.getByRole("heading", { name: "Past Orders" }),
@@ -173,6 +104,31 @@ test("Past Orders search, period, sort and status filter loaded accepted orders"
   await expect(rows).toContainText("VA-1001");
 
   await page.getByLabel("Period").selectOption("all");
-  await page.getByLabel("Status").selectOption("accepted_mock");
+  await page.getByLabel("Status").selectOption("placed");
   await expect(rows).toHaveCount(3);
+});
+
+test("Past Orders search also finds a line name (the server matches it)", async ({
+  page,
+}) => {
+  const cheese = placedOrder({
+    order_id: "VA-4004",
+    title: "Weekend order",
+    placed_at: new Date().toISOString(),
+    gross_total: "99.00",
+    line_names: ["Salaneuvos 12 month aged cheese"],
+  });
+  const pasta = placedOrder({
+    order_id: "VA-5005",
+    title: "Kitchen restock",
+    placed_at: new Date().toISOString(),
+    gross_total: "20.00",
+  });
+  await mockOrderList(page, [cheese, pasta]);
+  await page.goto("/purchases");
+  const rows = page.locator(".purchase-row");
+  await expect(rows).toHaveCount(2);
+  await page.getByLabel("Search past orders").fill("salaneuvos");
+  await expect(rows).toHaveCount(1);
+  await expect(rows).toContainText("VA-4004");
 });

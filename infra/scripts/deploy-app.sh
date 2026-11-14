@@ -58,6 +58,9 @@ for index in "${!components[@]}"; do
     # API now reads the shared Google key to mint voice tokens; rotate both consumers.
     kubectl -n "$NAMESPACE" rollout restart "deployment/aimo-$component"
   fi
+done
+# Start the independent Deployments together, after migrations, then wait for all.
+for component in "${components[@]}"; do
   kubectl -n "$NAMESPACE" rollout status "deployment/aimo-$component" --timeout=5m
 done
 trap - ERR
