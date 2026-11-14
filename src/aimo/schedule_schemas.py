@@ -163,6 +163,9 @@ class ScheduleResponse(Model):
     stop_reason: str | None = None
     source_order_id: str
     supersedes_id: str | None = None
+    replaced_by: str | None = Field(
+        default=None, description="The schedule that replaced or restarted this one, if any"
+    )
     recurrence: Recurrence
     first_run_date: date
     valid_until: date
