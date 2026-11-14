@@ -8,11 +8,11 @@ chat model can use this tool; it does not need to become an image model.
 Set `GEMINI_API_KEY` and `CLOUDINARY_URL` in the worker environment or ignored
 local `.env`. Both are GitHub repository secrets. Provisioning can supply them
 through `runtime_secrets`, and `sync-llm-secret.py` can merge both into the worker
-Secret when given them in its environment during an authorized release. The
-Actions workflows still need to forward these two secrets through `ci.yml`'s
-release call and `deploy.yml`'s declared secrets/deploy environment. The prepared
-workflow patch is local because the publishing credential lacks GitHub's
-`workflow` scope; repository secrets alone do not reach running containers.
+Secret when given them in its environment during an authorized release. Actions
+forwards both secrets through `ci.yml`'s release call and `deploy.yml`'s declared
+secrets/deploy environment. Existing runtime values are preserved when no new
+credentials are supplied. Repository secrets reach running containers only on
+an authorized deployment or explicit provisioning.
 Neither credential belongs in the API or frontend. This change does not deploy
 or enable the release switch.
 
