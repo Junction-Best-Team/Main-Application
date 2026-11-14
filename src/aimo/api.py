@@ -6,14 +6,11 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
-from fastapi.exception_handlers import http_exception_handler as fastapi_http_exception_handler
-from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
-from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.responses import HTMLResponse, StreamingResponse
 
 from aimo import approval_workflow as workflow
-from aimo import auth, conversations, memory, schema_state, upstream
+from aimo import auth, conversations, errors, memory, schema_state, upstream
 from aimo.chat_schemas import (
     ConversationCreate,
     ConversationList,
@@ -93,41 +90,7 @@ def create_app(service=None):
             headers={"Content-Security-Policy": policy, "Cache-Control": "no-store"},
         )
 
-    @app.exception_handler(Problem)
-    async def problem_handler(request, exc):
-        event("http.problem", error_code=exc.code, status=exc.status, retry_after=exc.retry_after)
-        return JSONResponse(
-            {"error": {"code": exc.code, "message": exc.message}},
-            status_code=exc.status,
-            headers={"Retry-After": str(exc.retry_after)} if exc.retry_after is not None else None,
-        )
-
-    @app.exception_handler(RequestValidationError)
-    async def validation_handler(request, exc):
-        # Same {"detail": [...]} shape and type/loc/msg as FastAPI's default, but never the
-        # submitted `input` (a password, or the whole body for a missing field) or `ctx`.
-        errors = [
-            {key: value for key, value in error.items() if key not in ("input", "ctx")}
-            for error in exc.errors()
-        ]
-        return JSONResponse({"detail": jsonable_encoder(errors)}, status_code=422)
-
-    @app.exception_handler(StarletteHTTPException)
-    async def http_exception_handler(request, exc):
-        # An unknown route or a wrong method answers in the application's own error shape.
-        # Anything else keeps FastAPI's default body and headers (for example a route's own detail).
-        codes = {
-            404: ("NOT_FOUND", "Not found."),
-            405: ("METHOD_NOT_ALLOWED", "Method not allowed."),
-        }
-        if exc.status_code not in codes:
-            return await fastapi_http_exception_handler(request, exc)
-        code, message = codes[exc.status_code]
-        return JSONResponse(
-            {"error": {"code": code, "message": message}},
-            status_code=exc.status_code,
-            headers=getattr(exc, "headers", None),
-        )
+    errors.install(app)  # one error body for every failure (TCT-008)
 
     @app.middleware("http")
     async def security_headers(request, call_next):
@@ -390,7 +353,6 @@ def create_app(service=None):
             import time
 
             import anyio
-            from fastapi.encoders import jsonable_encoder
 
             deadline, previous = time.monotonic() + 25, None
             while time.monotonic() < deadline and not await request.is_disconnected():
