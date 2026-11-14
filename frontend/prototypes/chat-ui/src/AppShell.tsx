@@ -3,11 +3,12 @@
 // their <main> landmark and inner layout (e.g. Request adds its own right-hand
 // Overview column). Placeholders (search, hub, notifications, help, account)
 // are inert and read their content from MOCK.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { MOCK } from "./mock";
 import { Icon, InertButton, InertInput } from "./placeholders";
 import { store } from "./store";
+import type { ConversationListItem } from "./types";
 
 type NavItem = { label: string; to: string; icon: string; isActive: (path: string) => boolean };
 
@@ -49,27 +50,123 @@ export function Wordmark({ className = "" }: { className?: string }) {
   );
 }
 
-function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+/** Conversation titles for the Request sub-list, refreshed on navigation and
+ * on every store change (e.g. a first message creating a conversation). */
+function useConversationTitles() {
+  const { pathname } = useLocation();
+  const [items, setItems] = useState<ConversationListItem[] | null>(null);
+  const latest = useRef(0);
+  useEffect(() => {
+    const load = () => {
+      const seq = ++latest.current;
+      store
+        .listConversations()
+        .then((list) => seq === latest.current && setItems(list.items))
+        .catch(() => undefined); // Keep the last list; the chat shows its own errors.
+    };
+    load();
+    const unsubscribe = store.subscribe(load);
+    return () => {
+      unsubscribe();
+    };
+  }, [pathname]);
+  return items;
+}
+
+type ConversationNav = {
+  items: ConversationListItem[] | null;
+  expanded: boolean;
+  onToggle: () => void;
+};
+
+const navItemClass = (active: boolean) =>
+  `flex min-w-0 flex-1 items-center gap-space-sm rounded-lg px-space-md py-space-sm font-label text-label-lg no-underline transition-colors hover:no-underline ${
+    active
+      ? "bg-primary-container text-on-primary"
+      : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+  }`;
+
+/** Collapsible tree of the buyer's conversations under the Request item. */
+function ConversationSubList({
+  items,
+  pathname,
+  onNavigate,
+}: {
+  items: ConversationListItem[] | null;
+  pathname: string;
+  onNavigate?: () => void;
+}) {
+  return (
+    <ul
+      id="nav-conversations"
+      aria-label="Conversations"
+      className="m-0 ml-[1.625rem] flex list-none flex-col gap-0.5 border-l border-border-subtle py-space-xs pl-0"
+    >
+      {!items ? (
+        <li className="px-space-md py-space-xs font-body text-body-sm text-on-surface-variant">Loading conversations…</li>
+      ) : (
+        items.map((item) => {
+          const to = `/conversations/${item.id}`;
+          const current = pathname === to;
+          return (
+            <li key={item.id} className="relative flex">
+              <span aria-hidden="true" className="mt-[1.0625rem] h-px w-space-sm shrink-0 bg-border-subtle" />
+              <Link
+                to={to}
+                onClick={onNavigate}
+                aria-current={current ? "page" : undefined}
+                title={item.title}
+                className={`block min-w-0 flex-1 truncate rounded-lg px-space-sm py-space-xs font-body text-body-sm no-underline transition-colors hover:no-underline ${
+                  current
+                    ? "bg-secondary-container font-bold text-primary"
+                    : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+                }`}
+              >
+                {item.title}
+              </Link>
+            </li>
+          );
+        })
+      )}
+    </ul>
+  );
+}
+
+function NavLinks({ conversations, onNavigate }: { conversations: ConversationNav; onNavigate?: () => void }) {
   const { pathname } = useLocation();
   return (
     <nav aria-label="Main navigation" className="flex flex-col gap-space-xs px-space-sm pt-space-sm">
       {NAV_ITEMS.map((item) => {
         const active = item.isActive(pathname);
-        return (
-          <Link
-            key={item.to}
-            to={item.to}
-            onClick={onNavigate}
-            aria-current={active ? "page" : undefined}
-            className={`flex items-center gap-space-sm rounded-lg px-space-md py-space-sm font-label text-label-lg no-underline transition-colors hover:no-underline ${
-              active
-                ? "bg-primary-container text-on-primary"
-                : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-            }`}
-          >
+        // Request is the current page only for a new request; inside a
+        // conversation it marks the current section and the conversation is the page.
+        const current = active ? (item.to === "/request" && pathname !== "/request" ? "true" : "page") : undefined;
+        const link = (
+          <Link key={item.to} to={item.to} onClick={onNavigate} aria-current={current} className={navItemClass(active)}>
             <Icon name={item.icon} className="text-[20px]" />
             {item.label}
           </Link>
+        );
+        if (item.to !== "/request") return link;
+        return (
+          <div key={item.to} className="flex flex-col">
+            <div className="flex items-center gap-space-xs">
+              {link}
+              <button
+                type="button"
+                aria-expanded={conversations.expanded}
+                aria-controls="nav-conversations"
+                aria-label={conversations.expanded ? "Hide conversations" : "Show conversations"}
+                onClick={conversations.onToggle}
+                className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent p-0 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+              >
+                <Icon name={conversations.expanded ? "expand_less" : "expand_more"} className="text-[20px]" />
+              </button>
+            </div>
+            {conversations.expanded && (
+              <ConversationSubList items={conversations.items} pathname={pathname} onNavigate={onNavigate} />
+            )}
+          </div>
         );
       })}
     </nav>
@@ -104,7 +201,7 @@ function AccountBlock() {
     navigate("/login", { replace: true });
   }
   return (
-    <div className="flex flex-col gap-space-xs bg-surface-container-low p-space-sm">
+    <div className="flex shrink-0 flex-col gap-space-xs bg-surface-container-low p-space-sm">
       <InertButton
         label="Switch account"
         className="flex w-full items-center justify-between rounded-lg bg-surface-pure p-space-sm text-left"
@@ -148,19 +245,21 @@ function NotificationsButton() {
   );
 }
 
-function Sidebar() {
-  // pb-16 keeps the account block clear of the fixed prototype DemoBar.
+function Sidebar({ conversations }: { conversations: ConversationNav }) {
+  // Fixed to the viewport, top to bottom, so it never scrolls with the page;
+  // its nav scrolls internally if it outgrows the screen. pb-20 keeps the
+  // account block clear of the fixed prototype DemoBar.
   return (
     <aside
       aria-label="Sidebar"
-      className="sticky top-0 hidden h-screen w-72 shrink-0 flex-col justify-between border-r border-border-subtle bg-surface-pure pb-20 md:flex"
+      className="fixed inset-y-0 left-0 z-50 hidden h-dvh w-72 flex-col border-r border-border-subtle bg-surface-pure pb-20 md:flex"
     >
-      <div className="flex flex-col">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <Link to="/" aria-label="aimo. home" className="flex h-16 items-center px-space-lg no-underline hover:no-underline">
           <Wordmark className="text-[2.25rem]" />
         </Link>
         <HubBadge />
-        <NavLinks />
+        <NavLinks conversations={conversations} />
       </div>
       <AccountBlock />
     </aside>
@@ -219,7 +318,7 @@ function MobileTopBar({ menuOpen, onOpenMenu }: { menuOpen: boolean; onOpenMenu:
   );
 }
 
-function MobileMenu({ onClose }: { onClose: () => void }) {
+function MobileMenu({ conversations, onClose }: { conversations: ConversationNav; onClose: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -249,7 +348,7 @@ function MobileMenu({ onClose }: { onClose: () => void }) {
             </button>
           </div>
           <HubBadge />
-          <NavLinks onNavigate={onClose} />
+          <NavLinks conversations={conversations} onNavigate={onClose} />
         </div>
         <AccountBlock />
       </div>
@@ -262,15 +361,22 @@ export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { pathname } = useLocation();
   useEffect(() => setMenuOpen(false), [pathname]);
+  const [expanded, setExpanded] = useState(true);
+  const conversations: ConversationNav = {
+    items: useConversationTitles(),
+    expanded,
+    onToggle: () => setExpanded((open) => !open),
+  };
   return (
-    <div className="min-h-screen bg-canvas font-body text-on-surface md:flex">
-      <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
+    <div className="min-h-screen bg-canvas font-body text-on-surface">
+      <Sidebar conversations={conversations} />
+      <div className="flex min-w-0 flex-col md:pl-72">
+        <NoticeBar />
         <DesktopHeader />
         <MobileTopBar menuOpen={menuOpen} onOpenMenu={() => setMenuOpen(true)} />
         <Outlet />
       </div>
-      {menuOpen && <MobileMenu onClose={() => setMenuOpen(false)} />}
+      {menuOpen && <MobileMenu conversations={conversations} onClose={() => setMenuOpen(false)} />}
     </div>
   );
 }

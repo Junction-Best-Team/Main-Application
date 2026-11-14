@@ -89,9 +89,12 @@ test("the chat link to an accepted order lands on Past Orders with that order ex
   await panel.getByRole("button", { name: "Approve & Push to Dispatch" }).click();
   await expect(panel.getByText("Accepted by demo order service")).toBeVisible();
   // Re-open the conversation so its basket list reflects the placed order.
-  if (info.project.name === "mobile") await page.getByRole("button", { name: "Open menu" }).click();
-  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Request" }).click();
-  await page.getByRole("navigation", { name: "Conversations" }).getByRole("link", { name: "200 portions of carbonara" }).click();
+  await (await mainNav(page, info)).getByRole("link", { name: "Request", exact: true }).click();
+  await expect(page).toHaveURL(/\/request$/);
+  await (await mainNav(page, info))
+    .getByRole("list", { name: "Conversations" })
+    .getByRole("link", { name: "200 portions of carbonara" })
+    .click();
   await page.getByRole("link", { name: /REQ-CARB-200/ }).click();
   await expect(page).toHaveURL(/\/purchases\/prop-ready$/);
   await expect(page.getByRole("button", { name: "Order details: REQ-CARB-200" })).toHaveAttribute("aria-expanded", "true");
