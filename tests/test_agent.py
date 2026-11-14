@@ -760,6 +760,25 @@ def test_long_narrative_keeps_authoritative_state_notice(identity):
     assert result.text.endswith("No supplier order has been placed.")
 
 
+def test_variable_weight_estimate_reaches_the_trusted_notice(identity):
+    """BAS-007: the customer is told the price is an estimate even when the model forgets."""
+    service = FakeService(identity)
+    service.saved["policy_outcome"] = "ready_to_commit"
+    service.saved["reasons"] = [
+        {
+            "code": "VARIABLE_WEIGHT_UNRESOLVED",
+            "message": "Sold by variable weight: the final price is an estimate.",
+            "product_id": "p",
+            "severity": "warning",
+        }
+    ]
+    session = matched_session(identity, service)
+    invoke(session, "prepare_order", purchase())
+    text = session.result("Here is your basket.").text
+    assert "the final price is an estimate" in text
+    assert text.endswith("No supplier order has been placed.")
+
+
 def test_unsupported_dietary_tool_fields_require_resolution(identity):
     request = purchase() | {"requirements": {"vegan": True}}
     service = FakeService(identity)

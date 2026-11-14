@@ -1,5 +1,5 @@
 from datetime import timedelta
-from decimal import ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, ROUND_UP
 from fractions import Fraction
 from math import floor
 
@@ -7,13 +7,14 @@ from pydantic import ValidationError
 
 from aimo import upstream
 from aimo.basket import allocate_line, line_contributions
-from aimo.catalog import quantity, requirement_reasons
+from aimo.catalog import line_weight_kg, quantity, requirement_reasons
 from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, now
 from aimo.numeric import D, fraction_text
 from aimo.schemas import ApproverAuthority, PolicyRules, PurchaseRequest
 
 MAX_MATERIALS = 1000  # request lines plus deposit materials in one supplier lookup
+MAX_ORDER_WEIGHT_KG = Fraction(30_000)  # MEA-011 (owner Q-70): per order, in kilograms
 
 
 def money(value):
@@ -84,6 +85,41 @@ def load_products(c, ids):
     }
 
 
+def check_order_weight(request, products, whole_packs, count_evidence):
+    """MEA-011: refuse an order heavier than 30,000 kg before any supplier call, naming the limit
+    and the computed weight. Only lines with kilogram evidence count; the error says how many
+    lines had none, so the number is never presented as complete when it is not."""
+    total, unweighed = Fraction(0), 0
+    for line in request.lines:
+        p = products.get(line.product_id)
+        if not p:
+            continue
+        weight = line_weight_kg(
+            p, line.amount, line.unit, whole_packs, count_evidence.get(line.product_id)
+        )
+        if weight is None:
+            unweighed += 1
+        else:
+            total += weight
+    if total <= MAX_ORDER_WEIGHT_KG:
+        return
+    shown = (D(total.numerator) / D(total.denominator)).quantize(D(".01"), rounding=ROUND_UP)
+    text = f"{shown:,.2f}".rstrip("0").rstrip(".")
+    note = (
+        f" ({unweighed} line{'s have' if unweighed != 1 else ' has'} no weight in the catalogue "
+        f"and {'are' if unweighed != 1 else 'is'} not counted)"
+        if unweighed
+        else ""
+    )
+    raise Problem(
+        "ORDER_WEIGHT_LIMIT_EXCEEDED",
+        f"This order weighs {text} kg{note}, over the limit of {int(MAX_ORDER_WEIGHT_KG):,} kg per "
+        "order (a litre counts as 1 kg per litre where the catalogue gives no weight). Reduce the "
+        "quantities or split it into several orders.",
+        422,
+    )
+
+
 def build_snapshot(identity, request: PurchaseRequest, connector):
     current = now()
     with connection() as c:
@@ -114,12 +150,14 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
             f"Shortlist plus deposits exceeds {MAX_MATERIALS} materials.",
             422,
         )
+    check_order_weight(request, products, policy["rules"].get("whole_sales_units", True), count_evidence)
     raw = connector.lookup(buyer["upstream_customer"], ids, request.delivery_date)
     evidence = upstream.validate_lookup(
         raw, buyer["upstream_customer"], ids, request.delivery_date, products, current
     )
     net_total, gross_total, deposit_total = D(0), D(0), D(0)
     complete = True
+    estimated = False
     for line in request.lines:
         pid = line.product_id
         p = products.get(pid)
@@ -131,13 +169,16 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
         if p["deleted"]:
             add("PRODUCT_DELETED", "Product has been withdrawn.", pid, "denied")
         if p["variable_weight"]:
-            # BAS-007: flagged for the buyer, never a blocker.
+            # BAS-007 (owner Q-68): a warning on the line, never a blocker. The code keeps its
+            # earlier name; the severity says what it does. The price is an estimate.
             add(
                 "VARIABLE_WEIGHT_UNRESOLVED",
-                "Actual-weight settlement is outside this fixed-quantity MVP.",
+                "Sold by variable weight: the final weight and price settle at delivery, so "
+                "this price is an estimate.",
                 pid,
                 "warning",
             )
+            estimated = True
         q = quantity(
             p,
             line.amount,
@@ -161,6 +202,8 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
             "product_evidence": p,
             "commercial_evidence": e,
         }
+        if p["variable_weight"]:  # absent otherwise, so earlier proposals are unchanged
+            row["price_is_estimate"] = True
         if pid in contributions:  # absent otherwise, so earlier proposals are unchanged
             row["contributions"] = allocate_line(q, contributions[pid])
         if q["sales_quantity"] is None:
@@ -279,6 +322,8 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
         "observed_at": raw["observed_at"],
         "reasons": reasons,
     }
+    if estimated:  # absent otherwise, so earlier proposals are unchanged
+        snapshot["totals_are_estimates"] = True
     if not complete:
         add("TOTAL_UNRESOLVED", "Complete gross payable cannot be established.")
     return snapshot, expires, policy["version"]

@@ -1194,9 +1194,9 @@ def test_recipe_creation_requires_turn_known_version_and_supported_size(tmp_path
         get_plan(actor, PlanReference(plan_id=uuid4()))
     assert error.value.code == "NOT_FOUND"
     raw = source_recipe()
-    raw["ingredients"] = [raw["ingredients"][0] | {"id": f"ingredient-{i}"} for i in range(1001)]
+    raw["ingredients"] = [raw["ingredients"][0] | {"id": f"ingredient-{i}"} for i in range(101)]
     with pytest.raises(
-        ValueError, match="at most 1000"
+        ValueError, match="at most 100"
     ):  # MEA-013: the import refuses a larger recipe
         import_fixture(tmp_path, [raw])
 
