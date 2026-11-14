@@ -144,6 +144,12 @@ def run_turn(
     errors = 0
     progress.emit("started")
     tool_log = []
+    guard = None
+
+    def finish(text=""):
+        # Under enforcement a model-authored plan is shown only after a passed output review.
+        return session.result(text, include_plan=guard is None or guard.plan_visible)
+
     try:
         with httpx.Client(follow_redirects=False) as client:
             provider = ChatProvider(cfg, client)
@@ -153,7 +159,7 @@ def run_turn(
             guard.screen_input()
             early = guard.input_reply()
             if early:
-                result = session.result(early)
+                result = finish(early)
                 progress.emit(
                     "complete", error_code="GUARDRAIL_" + guard.input_result.verdict.upper()
                 )
@@ -171,7 +177,7 @@ def run_turn(
                     narrative = guard.review_output(session, reply.content.strip(), tool_log)
                     if guard.prepare_refused and not session.proposal:
                         narrative += "\n\n" + PREPARE_NOTICE
-                    result = session.result(narrative)
+                    result = finish(narrative)
                     progress.emit("complete")
                     return result
                 outputs = []
@@ -211,7 +217,7 @@ def run_turn(
                         tool_log.append({"tool": name, "outcome": "ok"})
                         outputs.append((call.id, name, output))
                     if errors >= 4:
-                        result = session.result(
+                        result = finish(
                             "The assistant could not resolve the tool errors. "
                             "Clarify the requirements and retry."
                         )
@@ -224,7 +230,7 @@ def run_turn(
                     history.append(
                         {"role": "tool", "tool_call_id": call_id, "content": encode(content)}
                     )
-            result = session.result(
+            result = finish(
                 "The assistant reached its step limit. Clarify missing "
                 "requirements and continue. No purchase was authorized."
             )
@@ -233,7 +239,7 @@ def run_turn(
     except Problem as exc:
         progress.emit("error", error_code=exc.code)
         if session.proposal or session.receipt:
-            result = session.result()
+            result = finish()
             progress.emit("complete", error_code=exc.code)
             return result
         raise
@@ -241,7 +247,7 @@ def run_turn(
         logging.getLogger(__name__).error("Agent turn failed unexpectedly")
         progress.emit("error", error_code="AGENT_FAILED")
         if session.proposal or session.receipt:
-            result = session.result()
+            result = finish()
             progress.emit("complete", error_code="AGENT_FAILED")
             return result
         raise Problem(

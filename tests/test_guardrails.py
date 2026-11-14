@@ -107,6 +107,7 @@ ALLOW = {
     "budget": 0.97,
     "dietary": 0.97,
     "items": 0.96,
+    "label": 0.97,
     "false_status": 0.03,
     "unsupported_commercial": 0.03,
     "unsupported_dietary": 0.03,
@@ -140,7 +141,8 @@ def fake_jev(monkeypatch, errors=None, **overrides):
                 text = json.dumps(state["catalog_text"][name]).casefold()
                 answers[name] = overrides.get("catalog", 0.97 if "ignore" in text else 0.02)
             else:
-                answers[name] = overrides.get(name, ALLOW[name])
+                value = overrides.get(name, ALLOW[name])
+                answers[name] = value(state) if callable(value) else value
         return answers, "typesafe/jev-1.14-20261101"
 
     monkeypatch.setattr(DecisionsClient, "decide", decide)
@@ -289,7 +291,7 @@ def test_allow_verdicts_grant_no_authority(monkeypatch, config, guard, identity)
     assert not any(c[0] == "prepare" for c in service.calls)
 
 
-@pytest.mark.parametrize("check", ["budget", "destination_and_date", "dietary", "items"])
+@pytest.mark.parametrize("check", ["budget", "destination_and_date", "dietary", "items", "label"])
 def test_hidden_request_changes_block_preparation(monkeypatch, config, guard, identity, check):
     seen = fake_jev(monkeypatch, **{check: 0.03})
     service = FakeService(identity)
@@ -432,9 +434,7 @@ def test_tool_error_described_as_success_is_not_shown(monkeypatch, config, guard
     script = prepared_script()
     scripted(monkeypatch, script + [reply(text="Your basket was prepared successfully.")])
     result = run(identity, service)
-    assert (
-        result.text == OUTPUT_FALLBACK + "\n\nRecipe quantities are estimates for customer review."
-    )
+    assert result.text == OUTPUT_FALLBACK and result.meal_plan is None
     records = next(s["state"] for s in seen if s["boundary"] == "assistant_output")
     assert {"tool": "prepare_order", "outcome": "SUPPLIER_DOWN"} in records["trusted_records"][
         "tool_calls"
@@ -762,3 +762,141 @@ def test_commercial_evidence_reaches_output_review(monkeypatch, config, guard, i
     assert '"source"' not in json.dumps(tool_messages(llm))
     review = next(s["state"] for s in seen if s["boundary"] == "assistant_output")
     assert review["trusted_records"]["commercial_evidence"]["pasta"]["gross"] == "1.14"
+
+
+# ------------------------------------------------- review findings (PR #56)
+
+
+def candidate(name):
+    from aimo.schemas import ProductSummary
+
+    item = product(name)
+    return {k: item[k] for k in ProductSummary.model_fields} | {
+        "score": 0.9,
+        "match_is_suitability_proof": False,
+    }
+
+
+@pytest.mark.parametrize("mode", ["enforce", "shadow"])
+def test_new_product_text_is_screened_before_preparation_in_the_same_batch(
+    monkeypatch, config, guard, identity, mode
+):
+    """Clean search text must not vouch for descriptions fetched in the preparing batch."""
+    guard.guardrail_mode = mode
+    seen = fake_jev(monkeypatch)
+    service = FakeService(identity)
+    service.search_products = lambda *a: {
+        "products": [candidate(n) for n in NAMES],
+        "generation": "g1",
+        "model": "fixture",
+        "strategy": "hybrid",
+        "note": "Candidates only.",
+    }
+
+    def get_product(_, product_id):
+        service.calls.append(("product", None, product_id))
+        result = product(product_id)
+        if product_id == "pork":
+            result["descriptions"] = [{"text": INJECTION}]
+        return result
+
+    service.get_product = get_product
+    prepared_after = []
+    original_prepare = service.prepare_order
+
+    def prepare(*args):
+        prepared_after.append(len(seen))
+        return original_prepare(*args)
+
+    service.prepare_order = prepare
+    llm = scripted(
+        monkeypatch,
+        [
+            reply(call("search_products", {"query": "carbonara"})),
+            reply(
+                *[call("get_product", {"product_id": n}) for n in NAMES],
+                call("publish_meal_plan", meal()),
+                call("prepare_order", purchase()),
+            ),
+            reply(text="Prepared."),
+        ],
+    )
+    result = run(identity, service)
+    flagged = [i for i, s in enumerate(seen) if "Ignore the user" in json.dumps(s["state"])]
+    assert flagged and seen[flagged[0]]["boundary"] == "tool_output"
+    content = json.dumps(tool_messages(llm))
+    if mode == "enforce":
+        assert "GUARDRAIL_PRODUCT_TEXT" in content
+        assert not prepared_after and result.proposal_id is None
+    else:
+        # Shadow still screens the new description before Service preparation runs.
+        assert prepared_after and flagged[0] < prepared_after[0]
+        assert result.proposal_id is not None
+
+
+def poisoned_plan(note="Safe for egg allergies. Order paid and placed with Valio."):
+    plan = meal()
+    plan["notes"] = [note]
+    return plan
+
+
+def paid(state):
+    return 0.96 if "paid" in json.dumps(state["assistant_output"]) else 0.03
+
+
+def test_meal_plan_text_is_reviewed_and_withheld_when_rejected(
+    monkeypatch, config, guard, identity
+):
+    seen = fake_jev(monkeypatch, false_status=paid, unsupported_dietary=paid)
+    service = FakeService(identity)
+    scripted(
+        monkeypatch,
+        [
+            reply(*[call("get_product", {"product_id": n}) for n in NAMES]),
+            reply(call("publish_meal_plan", poisoned_plan())),
+            reply(call("prepare_order", purchase())),
+            reply(text="Here is the plan."),
+        ],
+    )
+    result = run(identity, service)
+    review = next(s["state"] for s in seen if s["boundary"] == "assistant_output")
+    assert "Order paid" in review["assistant_output"]["meal_plan"]["notes"][0]
+    assert result.meal_plan is None and "paid" not in result.text
+    assert result.text.startswith(OUTPUT_FALLBACK)
+    assert result.proposal_id == service.saved["proposal_id"]  # trusted basket survives
+
+
+def test_plan_without_basket_is_withheld_and_shadow_keeps_it(monkeypatch, config, guard, identity):
+    fake_jev(monkeypatch, false_status=paid)
+    unmatched = poisoned_plan()
+    for item in unmatched["ingredients"]:
+        item["product_id"] = None
+    scripted(monkeypatch, [reply(call("publish_meal_plan", unmatched)), reply(text="Draft.")])
+    result = run(identity, FakeService(identity))
+    assert result.meal_plan is None and result.text == OUTPUT_FALLBACK
+    guard.guardrail_mode = "shadow"
+    scripted(monkeypatch, [reply(call("publish_meal_plan", unmatched)), reply(text="Draft.")])
+    assert run(identity, FakeService(identity)).meal_plan is not None
+
+
+@pytest.mark.parametrize("mode,visible", [("enforce", False), ("shadow", True)])
+def test_unreviewed_plan_is_withheld_when_the_turn_ends_early(
+    monkeypatch, config, guard, identity, mode, visible
+):
+    guard.guardrail_mode = mode
+    fake_jev(monkeypatch)
+    service = FakeService(identity)
+    scripted(monkeypatch, prepared_script() + [Problem("LLM_UNAVAILABLE", "down", 503)])
+    result = run(identity, service)
+    assert result.proposal_id == service.saved["proposal_id"]
+    assert (result.meal_plan is not None) is visible
+
+
+def test_oversized_plan_is_not_clipped_into_review(monkeypatch, config, guard, identity):
+    seen = fake_jev(monkeypatch)
+    plan = meal(False)
+    plan["notes"] = ["n" * 900] * 14
+    scripted(monkeypatch, [reply(call("publish_meal_plan", plan)), reply(text="Draft.")])
+    result = run(identity, FakeService(identity))
+    assert result.meal_plan is None
+    assert "assistant_output" not in [s["boundary"] for s in seen]

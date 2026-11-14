@@ -5,7 +5,7 @@ authority and run in every mode. **Semantic checks** (TypeSafe Jev) add a
 probabilistic opinion at four boundaries. A Jev "allow" never grants permission,
 skips validation or replaces the customer's confirmation.
 
-Code: `src/aimo/guardrails.py` (policy `guard-2026-11-14.1`), wired in
+Code: `src/aimo/guardrails.py` (policy `guard-2026-11-14.2`), wired in
 `agent.py`, `agent_tools.py` and `conversations.py`.
 
 ## What is deterministic
@@ -29,8 +29,8 @@ redefine the guard policy. A response from a different model is rejected.
 | --- | --- | --- | --- |
 | User → LLM | Once per turn: latest customer message plus up to four earlier customer messages (multi-turn attacks) | `manipulation` (override rules, impersonation, secrets, chat purchasing authority, steering the classifier); `in_scope` | Blocked → server reply, no model call. Out of scope → short redirect. Uncertain → the turn runs but cannot prepare a basket. Unavailable → turn fails with `GUARDRAIL_UNAVAILABLE` (retryable). |
 | Tool → LLM | Catalog text in search/product/proposal results, batched once per model reply and cached by exact text | Does the text contain instructions aimed at an assistant/reviewer? | Flagged or unchecked text is withheld from the model, and that product cannot be prepared. |
-| LLM → tool | Before a new `prepare_order` only, after the deterministic checks | Destination/date, budget, lactose/milk-free requirements and items match what the **customer** said (assistant text and the model's meal plan are labelled as not evidence) | Blocked/uncertain/unavailable → no preparation; the model is told to ask the customer. Same arguments reuse the verdict, so retrying cannot fish for an allow. |
-| LLM → user | Final narrative, against trusted records (proposal, receipt, tool outcomes, product and commercial evidence) | Unsupported purchase status, prices/stock, dietary safety, disclosure | Replaced by a server-authored fallback. The proposal, its link and the trusted status notice are kept. |
+| LLM → tool | Before a new `prepare_order` only, after the deterministic checks. The current text of every selected product is screened first, because one reply can fetch new descriptions and prepare before that reply's tool results are screened | Destination/date, budget, lactose/milk-free requirements and items match what the **customer** said (assistant text and the model's meal plan are labelled as not evidence); the displayed basket label (`request_id`) is neutral | Blocked/uncertain/unavailable → no preparation; the model is told to ask the customer. Same arguments reuse the verdict, so retrying cannot fish for an allow. |
+| LLM → user | Everything the model wrote for display, the reply **and** the meal plan (title, ingredient names, notes), against trusted records (proposal, receipt, tool outcomes, product and commercial evidence). Text is never clipped into review: oversized output counts as uncertain | Unsupported purchase status, prices/stock, dietary safety, disclosure | The reply is replaced by a server-authored fallback and the plan is withheld. The proposal, its link and the trusted status notice are kept. Under enforcement a plan is also withheld when the turn ends before review (provider failure, step or error limit). |
 
 Read-only tools other than catalog text are not sent to Jev. A typical turn makes
 2 calls (input and output); a basket turn adds about one per batch of tool calls

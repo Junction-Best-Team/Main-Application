@@ -256,7 +256,9 @@ class ToolSession:
         self.receipt = result
         return result
 
-    def result(self, narrative=""):
+    def result(self, narrative="", include_plan=True):
+        """Trusted status notices; ``include_plan=False`` withholds the model-authored plan."""
+        plan = self.plan if include_plan else None
         notice = ""
         if self.proposal:
             if self.proposal.get("order_id"):
@@ -272,9 +274,9 @@ class ToolSession:
                 )
         elif self.receipt:
             notice = "Accepted by demo order service. No supplier order or inventory reservation."
-        if self.plan:
+        if plan:
             recipe_notice = "Recipe quantities are estimates for customer review."
-            unresolved = [item.name for item in self.plan.ingredients if not item.product_id]
+            unresolved = [item.name for item in plan.ingredients if not item.product_id]
             if unresolved:
                 recipe_notice += " Unresolved ingredients: " + ", ".join(unresolved) + "."
             notice = "\n\n".join(part for part in (recipe_notice, notice) if part)
@@ -284,6 +286,6 @@ class ToolSession:
         text = "\n\n".join(part for part in (narrative, notice) if part)
         return AgentTurn(
             text=(text or "Review the recipe and resolve missing ingredient evidence.")[:20_000],
-            meal_plan=self.plan,
+            meal_plan=plan,
             proposal_id=self.proposal["proposal_id"] if self.proposal else None,
         )
