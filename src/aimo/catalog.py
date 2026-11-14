@@ -229,17 +229,23 @@ def line_weight_kg(
     p: dict, amount: Decimal, unit: str, whole_packs: bool, count_evidence=None
 ) -> Fraction | None:
     """Kilograms actually bought for one line (MEA-011): the whole sales units the basket
-    proposes times the kilograms in one sales unit, from catalogue evidence only (the sales unit
-    is KG, the units table lists KG, or a known KG measure). None when there is no kilogram
-    evidence; a litre or piece product without a weight is never guessed."""
+    proposes times the kilograms in one sales unit. The kilograms come from catalogue evidence
+    (the sales unit is KG, the units table lists KG, or a known KG measure); where there is none
+    a litre counts as 1 kg per litre (owner Q-98), so the litres in one sales unit are used. None
+    when there is neither kilogram nor litre evidence (for example eggs counted in pieces), or
+    when the catalogue's evidence conflicts: nothing else is guessed."""
     q = quantity(p, Decimal(amount), unit, whole_packs, count_evidence=count_evidence)
     if q["sales_quantity"] is None:
         return None
     if not {"sales_unit", "units"} <= p.keys() or not p["units"].get(p["sales_unit"]):
         return None
     per_sales, _, conflicting = per_sales_for(p, "KG")
-    if conflicting or not per_sales:
+    if conflicting:
         return None
+    if not per_sales:
+        per_sales, _, conflicting = per_sales_for(p, "L")  # Q-98: 1 kg per litre
+        if conflicting or not per_sales:
+            return None
     return Fraction(q["sales_quantity"]) * per_sales
 
 

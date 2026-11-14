@@ -114,7 +114,8 @@ def check_order_weight(request, products, whole_packs, count_evidence):
     raise Problem(
         "ORDER_WEIGHT_LIMIT_EXCEEDED",
         f"This order weighs {text} kg{note}, over the limit of {int(MAX_ORDER_WEIGHT_KG):,} kg per "
-        "order. Reduce the quantities or split it into several orders.",
+        "order (a litre counts as 1 kg per litre where the catalogue gives no weight). Reduce the "
+        "quantities or split it into several orders.",
         422,
     )
 

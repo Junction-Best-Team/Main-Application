@@ -3,21 +3,38 @@
 Owner (Q-70): "the maximum weight, multiple of units and weight, must be less than 30,000 kg per
 order and if that error comes up, just state it". The weight of a line is what is actually bought:
 the whole sales units the basket proposes times the kilograms in one sales unit, taken from the
-catalogue evidence only (the sales unit is KG, the units table has KG, or a known KG measure).
-A line with no kilogram evidence (a litre or piece product without a weight) is not counted:
-nothing is guessed. Authored fixtures only; the supplier is never reached for a refused order.
+catalogue evidence (the sales unit is KG, the units table has KG, or a known KG measure). Owner
+Q-98: where the catalogue gives no kilograms, a litre counts as 1 kg per litre. A product with
+neither kilogram nor litre evidence (for example eggs counted in pieces) is not counted and the
+error says how many lines were not: nothing else is guessed. Authored fixtures only; the supplier
+is never reached for a refused order.
 """
 
+from copy import deepcopy
 from datetime import date, timedelta
 from fractions import Fraction
 
 import pytest
 
+from aimo import purchases
 from aimo.catalog import line_weight_kg
 from aimo.db import Problem
 from aimo.purchases import MAX_ORDER_WEIGHT_KG, build_snapshot
 from aimo.schemas import PrepareRequest
 from aimo.upstream import FixtureClient
+
+
+def patch_products(monkeypatch, mutate):
+    original = purchases.load_products
+
+    def wrapped(c, ids):
+        products = deepcopy(original(c, ids))
+        for pid, change in mutate.items():
+            if pid in products:
+                change(products[pid])
+        return products
+
+    monkeypatch.setattr(purchases, "load_products", wrapped)
 
 
 class NoSupplier:
@@ -79,11 +96,24 @@ def test_pieces_weigh_through_the_sales_unit_weight():
     assert weight(p, 4, "ST") == Fraction(12)
 
 
-def test_a_line_without_kilogram_evidence_has_no_weight_and_is_not_guessed():
-    assert weight(product(), 40_000, "L") is None
+def test_a_litre_product_without_kilogram_evidence_counts_one_kilogram_per_litre():
+    # Q-98: 40,000 L at 1 L per sales unit is 40,000 kg; whole sales units are what is bought
+    assert weight(product(), 40_000, "L") == Fraction(40_000)
+    assert weight(product(), "10.5", "L") == Fraction(11)
+
+
+def test_catalogue_kilograms_win_over_the_litre_rule():
+    p = product()
+    p["measures"]["KG"] = {"status": "known", "value": "0.9", "basis": ["authored"]}
+    assert weight(p, 10, "L") == Fraction(9)  # oil: 0.9 kg per litre from the catalogue
+
+
+def test_a_product_with_no_kilogram_and_no_litre_evidence_is_not_counted_or_guessed():
+    eggs = product(measures={"L": {"status": "unknown", "value": None, "basis": []}, "KG": {"status": "unknown", "value": None, "basis": []}})
+    assert weight(eggs, 40_000, "ST") is None
     conflicting = product()
     conflicting["measures"]["KG"] = {"status": "conflicting", "value": "1", "basis": []}
-    assert weight(conflicting, 5, "L") is None
+    assert weight(conflicting, 5, "L") is None  # conflicting evidence is not replaced by the rule
 
 
 # --- the order limit through the basket ---------------------------------------------------------
@@ -121,15 +151,30 @@ def test_the_weight_counts_what_is_bought_not_what_was_asked(agent, request_data
     assert "30,010 kg" in error.value.message
 
 
-def test_unweighed_lines_are_named_in_the_error(agent, request_data):
-    lines = [kg("460675", 30_010), {"product_id": "464306", "amount": "5", "unit": "L"}]
+def test_unweighed_lines_are_named_in_the_error(agent, request_data, monkeypatch):
+    def no_evidence(product):
+        product["measures"] = {
+            "L": {"status": "unknown", "value": None, "basis": []},
+            "KG": {"status": "unknown", "value": None, "basis": []},
+        }
+
+    patch_products(monkeypatch, {"464306": no_evidence})
+    lines = [kg("460675", 30_010), {"product_id": "464306", "amount": "5", "unit": "ST"}]
     with pytest.raises(Problem) as error:
         build_snapshot(agent, req(request_data, lines), NoSupplier())
-    assert "1 line" in error.value.message and "not counted" in error.value.message
+    assert "1 line has no weight" in error.value.message and "not counted" in error.value.message
 
 
-def test_a_litre_order_without_weight_evidence_is_not_refused(agent, request_data):
-    lines = [{"product_id": "464306", "amount": "40000", "unit": "L"}]
+def test_a_litre_order_counts_one_kilogram_per_litre_and_the_error_says_so(agent, request_data):
+    lines = [{"product_id": "464306", "amount": "30001", "unit": "L"}]
+    with pytest.raises(Problem) as error:
+        build_snapshot(agent, req(request_data, lines), NoSupplier())
+    assert error.value.code == "ORDER_WEIGHT_LIMIT_EXCEEDED"
+    assert "30,001 kg" in error.value.message and "1 kg per litre" in error.value.message
+
+
+def test_thirty_thousand_litres_are_still_allowed(agent, request_data):
+    lines = [{"product_id": "464306", "amount": "30000", "unit": "L"}]
     snapshot, _, _ = build_snapshot(agent, req(request_data, lines), FixtureClient())
     assert "ORDER_WEIGHT_LIMIT_EXCEEDED" not in {r["code"] for r in snapshot["reasons"]}
 
