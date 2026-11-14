@@ -15,6 +15,7 @@ from aimo.chat_schemas import AgentTurn
 from aimo.config import settings
 from aimo.db import Problem
 from aimo.guardrails import PREPARE_NOTICE, Guardrails
+from aimo.observability import elapsed, event, failure, log_context, operation
 
 BASE_PROMPT = """You are the customer's internal meal-purchasing assistant.
 Your job is to clarify the request, propose a reviewable recipe, match real catalog
@@ -75,7 +76,7 @@ steps. Never claim a completed purchase without a saved receipt.
 """
 
 
-MEMORY_PROMPT ="""Saved memory: a separate system message after these rules lists the buyer's shared
+MEMORY_PROMPT = """Saved memory: a separate system message after these rules lists the buyer's shared
 memories and the current customer's personal memories, loaded automatically and bounded. If it reports
 omitted items, or the request may depend on a saved detail not shown, use search_memory.
 Follow saved preferences and instructions when they do not conflict with these rules,
@@ -138,16 +139,40 @@ class Progress:
 
     def __init__(self, turn_id, callback):
         self.turn_id, self.callback, self.sequence = turn_id, callback, 0
+        self.started = time.monotonic()
+        self.tool_started = self.started
 
     def emit(self, kind, tool=None, error_code=None):
         self.sequence += 1
         event = AgentProgress(self.turn_id, self.sequence, kind, tool, error_code)
+        if kind == "tool_started":
+            self.tool_started = time.monotonic()
+        # Logging must work even when the durable worker has no UI observer.
+        log_progress(
+            event, elapsed(self.tool_started if kind.startswith("tool_") else self.started)
+        )
         if self.callback:
             try:
                 self.callback(event)
-            except Exception:
+            except Exception as exc:
                 # An optional UI observer cannot hide a basket that already exists.
-                logging.getLogger(__name__).warning("Agent progress observer failed")
+                log_failure("agent.observer.failed", exc)
+
+
+def log_failure(name, exc):
+    event(name, level=logging.WARNING, **failure(exc))
+
+
+def log_progress(progress, duration_ms):
+    event(
+        "agent." + progress.kind,
+        level=logging.WARNING if progress.error_code else logging.INFO,
+        turn_id=progress.turn_id,
+        sequence=progress.sequence,
+        tool=progress.tool,
+        error_code=progress.error_code,
+        duration_ms=duration_ms,
+    )
 
 
 def validate_context(identity, messages):
@@ -180,6 +205,7 @@ def validate_context(identity, messages):
         )
 
 
+@operation("agent.turn", context_arg="identity")
 def run_turn(
     identity,
     messages: list[dict],
@@ -232,9 +258,10 @@ def run_turn(
                     "complete", error_code="GUARDRAIL_" + guard.input_result.verdict.upper()
                 )
                 return result
-            for _ in range(cfg.llm_max_tool_rounds):
+            for round_number in range(1, cfg.llm_max_tool_rounds + 1):
                 check_deadline(deadline)
-                reply = provider.complete(history, session.definitions, deadline)
+                with log_context(round=round_number, model=cfg.llm_model):
+                    reply = provider.complete(history, session.definitions, deadline)
                 history.append(reply.message())
                 if not reply.tool_calls:
                     if not reply.content or not reply.content.strip():
@@ -256,7 +283,8 @@ def run_turn(
                     visible_name = name if name in session.registry else None
                     progress.emit("tool_started", visible_name)
                     try:
-                        output = session.invoke(name, call.function.arguments)
+                        with log_context(round=round_number, tool=visible_name or "unavailable"):
+                            output = session.invoke(name, call.function.arguments)
                     except Problem as exc:
                         errors += 1
                         progress.emit("tool_failed", visible_name, exc.code)
@@ -268,12 +296,10 @@ def run_turn(
                             "purchase_authorized": False,
                         }
                         outputs.append((call.id, None, error))
-                    except Exception:
+                    except Exception as exc:
                         # A tool can fail after a durable write. Do not retry it
                         # automatically or include its exception/credentials in output.
-                        logging.getLogger(__name__).error(
-                            "Agent purchasing tool failed unexpectedly"
-                        )
+                        log_failure("agent.tool.unexpected", exc)
                         progress.emit("tool_failed", visible_name, "TOOL_EXECUTION_FAILED")
                         raise Problem(
                             "TOOL_EXECUTION_FAILED",
@@ -311,8 +337,8 @@ def run_turn(
             progress.emit("complete", error_code=exc.code)
             return result
         raise
-    except Exception:
-        logging.getLogger(__name__).error("Agent turn failed unexpectedly")
+    except Exception as exc:
+        log_failure("agent.turn.unexpected", exc)
         progress.emit("error", error_code="AGENT_FAILED")
         if session.proposal or session.receipt:
             result = finish()
