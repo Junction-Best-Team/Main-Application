@@ -53,11 +53,13 @@ def configure_runtime_role(conn, role_name):
 
 # Catalog sync touches only these tables. Everything else (identities, sessions, policies,
 # purchases, conversations, migration ledger) stays invisible to the ingestion credential.
+# The protection view exposes only product IDs that catalog cleanup must retain.
 CATALOG_SYNC_GRANTS = {
     "catalog_generations": "SELECT, INSERT",
     "active_catalog": "SELECT, INSERT, UPDATE",
     "products": "SELECT, INSERT, DELETE",
     "embedding_cache": "SELECT, INSERT, UPDATE",
+    "catalog_protected_products": "SELECT",
 }
 
 
@@ -73,3 +75,4 @@ def configure_catalog_sync_role(conn, role_name):
         conn.execute(
             sql.SQL("GRANT {} ON {} TO {}").format(sql.SQL(privileges), sql.Identifier(table), role)
         )
+    conn.execute(sql.SQL("GRANT UPDATE (product_count) ON catalog_generations TO {}").format(role))

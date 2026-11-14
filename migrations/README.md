@@ -14,6 +14,7 @@ Do not rename applied migrations or delete their ledger rows.
 | **011** | **PR #38** proposal revision ordering |
 | 012_buyer_user_memory | Buyer and user memory (`docs/memory.md`) |
 | 012_catalog_import_profile | Catalog sync: `catalog_generations.import_profile` (additive, nullable) |
+| 013_catalog_sync_withdrawals | Release integration: source snapshot count and product-ID-only cleanup protection view |
 
 Before allocating another number, check remote branch tips and open PRs and update
 this table with the agreed allocation. Reservations do not create migration files.

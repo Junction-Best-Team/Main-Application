@@ -36,7 +36,7 @@ CATALOG_PRODUCT_COUNT = 17546
 SNAPSHOT_NAME = "valio_aimo_junction26_product_data.json"
 DOWNLOAD_PATH = "/api/products/download"
 # Bump when stored catalog semantics change in a way the source digest below cannot see.
-IMPORT_PROFILE_VERSION = 1
+IMPORT_PROFILE_VERSION = 2
 # Transaction lock: one publisher/activation at a time (unchanged since the first import).
 PUBLISH_LOCK_KEY = 893017
 # Session lock: one ingestion run (scheduled, manual Job or `aimo ingest`) at a time.
@@ -286,10 +286,6 @@ def read_snapshot(path: Path, expected_count, expected_sha, source_name=None):
     return facts, source, actual
 
 
-def _valid_id(value):
-    return isinstance(value, (str, int)) and not isinstance(value, bool) and str(value).strip()
-
-
 # --- import ----------------------------------------------------------------------------------
 
 
@@ -307,7 +303,13 @@ def ingest_file(
         if carry_withdrawn:
             facts += _absent_as_withdrawn(facts)
         return publish(
-            facts, source, actual, activate=activate, lock=lock, trim_withdrawn=carry_withdrawn
+            facts,
+            source,
+            actual,
+            activate=activate,
+            lock=lock,
+            trim_withdrawn=carry_withdrawn,
+            source_product_count=expected_count,
         )
 
 
@@ -346,7 +348,16 @@ def _normalize_record(index, raw, source):
     return facts
 
 
-def publish(facts, source, source_hash, *, activate=True, lock=None, trim_withdrawn=False):
+def publish(
+    facts,
+    source,
+    source_hash,
+    *,
+    activate=True,
+    lock=None,
+    trim_withdrawn=False,
+    source_product_count=None,
+):
     if not facts or len({p["id"] for p in facts}) != len(facts):
         raise CatalogError("SNAPSHOT_DUPLICATE_IDS", "Empty or duplicate import")
     key = model_key()
@@ -377,8 +388,17 @@ def publish(facts, source, source_hash, *, activate=True, lock=None, trim_withdr
             lock.verify(c)
         c.execute(
             "INSERT INTO catalog_generations(id,source,source_hash,model_key,product_count,"
-            "embedding_dimensions,import_profile) VALUES(%s,%s,%s,%s,%s,%s,%s)",
-            (generation, source, source_hash, key, len(facts), dimensions(), profile),
+            "embedding_dimensions,import_profile,source_product_count) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)",
+            (
+                generation,
+                source,
+                source_hash,
+                key,
+                len(facts),
+                dimensions(),
+                profile,
+                len(facts) if source_product_count is None else source_product_count,
+            ),
         )
         # The first date a product was withdrawn wins; a product that returns clears it.
         prior = {
@@ -414,7 +434,7 @@ def publish(facts, source, source_hash, *, activate=True, lock=None, trim_withdr
         trimmed = _cleanup(c, WITHDRAWN_LIMIT)["removed"] if activate and trim_withdrawn else 0
     return {
         "generation": str(generation),
-        "products": len(facts),
+        "products": len(facts) - trimmed,
         "withdrawn_products": sum(bool(p["deleted"]) for p in facts) - trimmed,
         "trimmed_withdrawn": trimmed,
         "new_embeddings": generated,
@@ -547,7 +567,10 @@ def rebuild_reason(state, source_hash, expected_count):
         return "embedding_profile_changed"
     if state["import_profile"] != import_profile():
         return "import_profile_changed"
-    if state["product_count"] != expected_count or state["stored_products"] != expected_count:
+    if (
+        state["source_product_count"] != expected_count
+        or state["stored_products"] != state["product_count"]
+    ):
         return "active_catalog_incomplete"
     return None
 
@@ -583,7 +606,15 @@ def sync_catalog(*, file=None, expected_sha=CATALOG_SHA256, expected_count=CATAL
                     "reused_embeddings": 0,
                 }
             facts, source, actual = read_snapshot(path, expected_count, expected_sha, SNAPSHOT_NAME)
-            result = publish(facts, source, actual, lock=lock)
+            facts += _absent_as_withdrawn(facts)
+            result = publish(
+                facts,
+                source,
+                actual,
+                lock=lock,
+                trim_withdrawn=True,
+                source_product_count=expected_count,
+            )
     return {
         "outcome": "updated",
         "reason": reason,
@@ -661,16 +692,8 @@ def _cleanup(c, max_share):
         return {"removed": 0, "kept_in_use": 0, "removed_ids": []}
     generation = active["generation"]
     rows = c.execute(
-        """SELECT id, id IN (
-            SELECT DISTINCT line->>'product_id' FROM proposals p
-            JOIN proposal_revisions r ON r.proposal_id=p.id AND r.revision=p.current_revision
-            LEFT JOIN approvals a ON a.proposal_id=p.id AND a.revision=p.current_revision
-            CROSS JOIN LATERAL jsonb_array_elements(r.snapshot->'lines') AS line
-            WHERE p.order_id IS NULL AND COALESCE(a.status,'') NOT IN ('rejected','superseded')
-            AND line->>'product_id' IS NOT NULL
-            AND ((r.policy_outcome <> 'denied' AND r.expires_at > now())
-                 OR EXISTS (SELECT 1 FROM recipe_plans rp WHERE rp.proposal_id=p.id))
-        ) AS protected FROM products
+        """SELECT id, id IN (SELECT product_id FROM catalog_protected_products)
+        AS protected FROM products
         WHERE generation=%s AND facts->'deleted'='true'::jsonb
         ORDER BY withdrawn_since NULLS FIRST, id""",
         (generation,),
