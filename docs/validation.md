@@ -2,6 +2,23 @@
 
 These records describe the external-agent gateway before the chat purchasing migration. Current checks and their limits are recorded in [Chat purchasing migration](chat-purchasing.md#verification-record): 139 backend tests, nine browser checks, image/restart, Terraform and local SSE checks. Retain the dated results below as historical evidence.
 
+The subsequent Person 2 agent rebuild on `develop` `f13b75b` passed Ruff, **66
+agent/provider tests** and **174 full backend tests** in dedicated PostgreSQL
+`aimo_person_two_rebuild_test`, including the provider HTTP protocol and real
+purchasing/confirmation/receipt flow. Provider responses, catalog, embeddings and
+supplier facts were fixtures. Live provider smoke was **skipped** because
+`LLM_API_KEY` was absent. No new schema, route, migration, frontend, dependency or
+deployment change. See [agent verification and limits](internal-agent.md#verification).
+
+Subsequent owner-authorized OpenRouter configuration: the private local `.env`
+and GitHub repository secret/variables were set without exposing the key. The
+required-config live smoke **passed**, making two real OpenRouter completions with
+one authored read-only tool result. The backend suite still passes **174 tests**;
+**23 infrastructure helper tests**, Actionlint, shell syntax and Terraform format
+checks cover the added future-release Secret wiring. No actual deployment,
+Terraform apply or cluster Secret update was performed. Earlier skipped-provider
+records describe the initial rebuild before credentials were supplied.
+
 Implemented on `codex/valio-aimo-mvp` in an isolated worktree, originally based on main `76296c1`. The original checkout remained clean on `codex/valio-aimo-plan` during implementation. PR #2 was closed **without merging**; this implementation includes the agreed brief while preserving PR #3's reference work. PR #4 now targets the shared integration branch, `develop`.
 
 ## Second PR #4 review — correctness and runtime hardening
@@ -92,3 +109,13 @@ Broad English milk queries can rank flavored drinks, coffee products or sweets t
 - Demo identity/password/bearer auth is implemented, not identity federation or MCP OAuth discovery. Seed runs are privileged and preserve existing settings. No policy-editing endpoint or autonomous approval tool exists.
 - Kubernetes resources are templates for an existing environment; cluster, registry, ingress/TLS and deployment resource adequacy have not been verified. No paid infrastructure or live deployment was created.
 - Existing policies/revisions/audit records are immutable by database trigger. Product/vector generation retention is now bounded at publication; generation metadata, reusable embeddings and audit/history retention remain operator concerns.
+
+
+Person 2 review follow-up (2026-11-14): Ruff, 79 agent/provider cases and the full
+188-test backend suite passed against `aimo_person_two_rebuild_test` (one existing
+Starlette/httpx deprecation warning). New regressions cover remote HTTP rejection,
+loopback development, unexpected Service/provider failures before/after preparation,
+safe progress/errors, and server-authored estimate/unresolved notices. Provider and
+supplier facts in these tests remain authored fixtures. Shared recipe/provenance
+acceptance gaps are explicit in `internal-agent.md`; no new live-provider run,
+cluster modification, merge or deployment was performed in this follow-up.
