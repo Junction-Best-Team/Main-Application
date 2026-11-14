@@ -206,7 +206,10 @@ terraform -chdir=infra/kubernetes validate
 terraform -chdir=infra/kubernetes test
 ```
 
-All Terraform tests use mocked providers and `command=plan`. CI validates these
-checks without credentials, app builds, model downloads or cloud changes. A green
-plan does not establish actual cluster capacity, ACME issuance, extension grants,
+All Terraform tests use mocked providers and `command=plan`. The main CI workflow
+calls the Terraform workflow when `infra/` or either CI workflow changes (or on a
+manual run). Its required, always-present `CI gate` rejects failed, cancelled or
+unexpectedly skipped Terraform checks, while unrelated PRs can skip Terraform.
+CI validates these checks without credentials, app builds, model downloads or
+cloud changes. A green plan does not establish actual cluster capacity, ACME issuance, extension grants,
 catalog throughput, or app readiness; those require the later operator rollout.
