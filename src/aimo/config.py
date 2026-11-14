@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     upstream_mode: Literal["auto", "fixture", "live"] = "auto"
     valio_aimo_base_url: str = "https://junction26.valioaimo.fi"
     valio_aimo_api_key: str = ""
+    # SUP-007: ids per price/availability request; the supplier accepts 1 to 1000.
+    supplier_lookup_batch_size: int = Field(default=100, ge=1, le=1000)
     embedding_model: str = EMBEDDING_MODEL
     embedding_model_revision: str = ""
     embedding_backend: Literal["sentence_transformers", "fixture", "openrouter"] = (

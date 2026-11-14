@@ -5,8 +5,8 @@ The supplier accepts 1 to 1000 product ids per request (`ProductsRequest.product
 maxItems 1000 in docs/reference/aimo-api.openapi.json). The owner's answer: the batch size is the
 setting `supplier_lookup_batch_size` (env SUPPLIER_LOOKUP_BATCH_SIZE), default 100, validated 1..1000.
 
-No network: httpx.Client is backed by httpx.MockTransport. Every test that is not the control is a
-strict xfail, so it turns into an error (XPASS) the moment the batching is built.
+No network: httpx.Client is backed by httpx.MockTransport. The batch size is the
+`supplier_lookup_batch_size` setting (default 100, 1..1000).
 """
 
 import json
@@ -126,10 +126,6 @@ def test_the_batches_are_exactly_the_requested_ids_in_order_without_duplicates(s
     assert [p["productId"] for p in raw["availability"]["products"]] == requested
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="waiting for person 1: add supplier_lookup_batch_size to config.py",
-)
 def test_with_batch_size_1000_exactly_1000_ids_is_one_call_and_1001_is_two(supplier):
     """JNP3-SUP-007 (c): with the batch size set to 1000, 1000 ids make one POST per endpoint and
     1001 ids make two (1000 + 1)."""
@@ -144,10 +140,6 @@ def test_with_batch_size_1000_exactly_1000_ids_is_one_call_and_1001_is_two(suppl
         assert sizes == [1000, 1], sizes
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="waiting for person 1: add supplier_lookup_batch_size to config.py",
-)
 def test_the_batch_size_is_a_setting_with_default_100(monkeypatch):
     """JNP3-SUP-007 (d): Settings has `supplier_lookup_batch_size`, default 100, read from
     SUPPLIER_LOOKUP_BATCH_SIZE."""
@@ -158,10 +150,6 @@ def test_the_batch_size_is_a_setting_with_default_100(monkeypatch):
     assert Settings(_env_file=None).supplier_lookup_batch_size == 37
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="waiting for person 1: add supplier_lookup_batch_size to config.py",
-)
 @pytest.mark.parametrize("value", [1, 1000])
 def test_the_batch_size_accepts_the_supplier_limits(value, monkeypatch):
     """JNP3-SUP-007 (d): 1 and 1000 are valid values of supplier_lookup_batch_size."""
@@ -172,10 +160,6 @@ def test_the_batch_size_accepts_the_supplier_limits(value, monkeypatch):
     ).supplier_lookup_batch_size == (value)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="waiting for person 1: add supplier_lookup_batch_size to config.py",
-)
 @pytest.mark.parametrize("value", [0, 1001])
 def test_the_batch_size_outside_1_to_1000_is_rejected(value, monkeypatch):
     """JNP3-SUP-007 (d): 0 and 1001 raise a validation error (supplier accepts 1 to 1000 ids)."""
