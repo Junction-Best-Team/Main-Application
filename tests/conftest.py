@@ -65,6 +65,43 @@ def buyer():
 
 
 @pytest.fixture
+def confirm_terms(buyer):
+    """Record the buyer's confirmation of one exact proposal revision, as `conversations.confirm`
+    does, but without approving or committing, so a test can drive the agent's commit itself."""
+
+    def record(p, revision=None, actor_id=None):
+        from aimo import approval_workflow as workflow
+
+        revision = revision or p["revision"]
+        with connection() as c:
+            r = c.execute(
+                "SELECT fingerprint FROM proposal_revisions WHERE proposal_id=%s AND revision=%s",
+                (p["proposal_id"], revision),
+            ).fetchone()
+            c.execute(
+                """INSERT INTO customer_confirmations(proposal_id,revision,fingerprint,actor_id,key,buyer_id)
+                VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
+                (
+                    p["proposal_id"],
+                    revision,
+                    r["fingerprint"],
+                    actor_id or buyer["id"],
+                    str(uuid4()),
+                    buyer["buyer_id"],
+                ),
+            )
+            workflow.audit(
+                c,
+                p["proposal_id"],
+                actor_id or buyer["id"],
+                "customer_confirmed",
+                {"revision": revision},
+            )
+
+    return record
+
+
+@pytest.fixture
 def connector():
     return FixtureClient()
 
