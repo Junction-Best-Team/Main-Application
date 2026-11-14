@@ -23,6 +23,8 @@ Implemented on top of `ea8e9aa`. The review's underlying issues were addressed w
 
 Migration `002_review_hardening.sql`, required prepare keys, explicit product-scope provisioning for existing buyers, and trusted proxy setup are documented in README/deploy instructions. One backend and one database remain the architecture; no new service was added. Live supplier authentication, fresh live stock and Kubernetes deployment remain unverified.
 
+Before CI, `develop` advanced to `d1b2317` with the team's Terraform/release work. Those changes were merged into the PR branch, preserving the infrastructure and release workflows while resolving documentation/configuration conflicts. The portable deployment now requires explicit non-wildcard `FORWARDED_ALLOW_IPS` before enabling replicas and uses the application's model pin. Terraform formatting/validation, **6 mocked Kubernetes plan tests** and **16 infrastructure helper tests** passed locally. Application source/assets were unchanged by this synchronization; no provisioning or deployment was performed.
+
 ## PR #4 review fixes — 14 November 2026
 
 Fixed the four findings against `6acfe89`, starting from the current PR head `cd16b09`:

@@ -12,7 +12,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Never cancel a main release halfway through its deployment.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   components:
@@ -22,10 +23,12 @@ jobs:
     outputs:
       backend: ${{ steps.detect.outputs.backend }}
       frontend: ${{ steps.detect.outputs.frontend }}
+      terraform: ${{ steps.terraform.outputs.changed }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+          fetch-depth: 0
       - id: detect
         shell: bash
         run: |
@@ -47,6 +50,38 @@ jobs:
             echo 'frontend=false' >> "$GITHUB_OUTPUT"
             echo '::notice::No frontend application yet; frontend checks skipped.'
           fi
+      - id: terraform
+        name: Detect infrastructure changes
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BASE: ${{ github.event.before }}
+          PUSH_HEAD: ${{ github.sha }}
+        run: |
+          if [[ "$EVENT_NAME" == pull_request ]]; then
+            range="$PR_BASE...$PR_HEAD"
+          elif [[ "$EVENT_NAME" == push && ! "$PUSH_BASE" =~ ^0+$ ]]; then
+            range="$PUSH_BASE..$PUSH_HEAD"
+          else
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Include deletions/renames and changes to either CI workflow.
+          if git diff --quiet --no-renames "$range" -- infra/ .github/workflows/ci.yml .github/workflows/terraform.yml .github/workflows/deploy.yml; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          else
+            status=$?
+            if [[ "$status" != 1 ]]; then exit "$status"; fi
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+
+  terraform:
+    name: Terraform
+    needs: components
+    if: needs.components.outputs.terraform == 'true'
+    uses: ./.github/workflows/terraform.yml
 
   backend:
     name: Python lint and tests
@@ -115,3 +150,46 @@ jobs:
         run: npm ci
       - name: Check TypeScript and build production assets
         run: npm run build
+
+  gate:
+    name: CI gate
+    needs: [components, backend, frontend, terraform]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every applicable check to pass
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          needs = json.loads(os.environ["NEEDS_JSON"])
+          if needs["components"]["result"] != "success":
+              sys.exit("Component/change detection did not succeed.")
+          for job in ("backend", "frontend", "terraform"):
+              enabled = needs["components"]["outputs"].get(job)
+              if enabled not in ("true", "false"):
+                  sys.exit(f"Missing or invalid detection output for {job}.")
+              expected = "success" if enabled == "true" else "skipped"
+              actual = needs[job]["result"]
+              if actual != expected:
+                  sys.exit(f"{job}: expected {expected}, got {actual}.")
+              print(f"{job}: {actual}")
+          PY
+
+  release:
+    name: Build and deploy release
+    needs: gate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/deploy.yml
+    with:
+      deploy: ${{ vars.DEPLOY_ENABLED == 'true' }}
+    secrets:
+      DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}

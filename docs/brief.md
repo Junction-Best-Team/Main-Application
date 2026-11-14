@@ -2,6 +2,8 @@
 
 Updated **14 November 2026 (Europe/Helsinki)** with the agreed scope and the discussion after the first draft. This records the agreed design at handoff. The MVP implementation and actual validation are now described in [README](../README.md) and [validation](validation.md); authenticated live Valio integration and cluster deployment remain unverified.
 
+Infrastructure follow-up: the owner requested optional Terraform provisioning after this plan. See [the infrastructure runbook](../infra/README.md) for the DigitalOcean adapter and portable Kubernetes stack. These configurations have not been applied in this implementation task; the existing-cluster assumptions below describe the original application scope.
+
 ## Implementation contract amendments from PR #4 review
 
 The authorized correctness fixes clarify these interfaces without adding a service:

@@ -4,6 +4,8 @@ One seller-side FastAPI service exposes eight HTTP/MCP tools, serves a React buy
 
 The agreed scope is in [docs/brief.md](docs/brief.md). PR #2 was **closed without merging** before implementation; this branch starts from `main` at `76296c1`, preserves PR #3's reference documents, and implements the attached PR #2 brief. `Plan/post-mvp-plan.md` is a separate draft, not the implementation contract. See [actual validation and limitations](docs/validation.md).
 
+[Terraform infrastructure](infra/README.md) provides the team's optional DigitalOcean Kubernetes/managed PostgreSQL stack and portable Kubernetes deployment. Provisioning is an explicit operator action.
+
 ## Working in parallel
 
 - Start a task from the latest `develop`: `git switch develop`, then `git pull --ff-only` with a clean working tree. For an existing clone without that branch, first run `git fetch origin` and `git switch --track origin/develop`.
@@ -20,10 +22,19 @@ GitHub Actions runs on PRs into `develop` and `main`, and pushes to either branc
 - Python lint: `ruff check src tests scripts`.
 - Backend regression tests: `pytest -q` against temporary PostgreSQL/pgvector, using fixture embeddings and supplier responses. Test dependencies come from `uv.lock`; the unused ML stack is pruned to keep installation small.
 - Frontend TypeScript checks and production build: `npm ci` then `npm run build` in `frontend`.
+- Terraform formatting, validation, mocked plan tests, helper tests and ingress chart rendering when `infra/` or either CI workflow changes.
 
-Backend and frontend jobs run in parallel, dependency downloads are cached, and a new commit cancels outdated runs. Components are explicitly skipped only while their application code has not been added; incomplete manifests fail the workflow. No model weights, full catalog imports, Docker builds, browser tests, production credentials, or deployments are needed for this pipeline. Run broader demo/browser checks locally when the change warrants them.
+Backend and frontend jobs run in parallel, dependency downloads are cached, and a new commit cancels outdated PR/develop runs. Main releases are serialized. Components are explicitly skipped only while their application code has not been added; incomplete manifests fail the workflow. No model weights, full catalog imports, Docker builds, browser tests, production credentials, or deployments are needed for PR validation. Run broader demo/browser checks locally when the change warrants them.
 
-Our workflow is **task PR → green CI → self-merge**. Reviews are optional, and the optional `skip-review` label does not bypass CI. GitHub's current plan blocks branch protection for this private repository, so teammates and agents must follow this convention; the merge button is not technically gated. No approval gates or special GitHub board are required. Use the team chat to coordinate.
+The always-present `CI gate` requires successful detection and every applicable application/Terraform check; it accepts a skipped job only when detection says that job is unnecessary. Branch protection requires this gate alongside the three existing application checks on both `develop` and `main`.
+
+Our workflow is **task PR → green CI → self-merge**. Reviews are optional, and the optional `skip-review` label does not bypass CI. The repository is public, and GitHub protects both `develop` and `main`: pull requests and required checks apply even to administrators; force-pushes and branch deletion are blocked. Human approvals are not required. GitHub does not require updating a PR branch after every base-branch change. No special GitHub board is required. Use the team chat to coordinate.
+
+## Build and deploy releases
+
+After a release PR reaches `main` and CI passes, GitHub builds the application Docker image and pushes it to GHCR with a commit tag and immutable digest. Once the cluster is bootstrapped and `DEPLOY_ENABLED=true`, the same release updates the running app and waits for readiness; a failed rollout restores the previous image. Human approval is not required.
+
+Deployment is off until the one-time setup is complete. Terraform provisioning, database migrations and catalog import remain explicit operator steps. See [the release setup instructions](infra/README.md#simple-main-to-cluster-release-pipeline) for the cluster ID, deployment token, initial public image, and activation switch.
 
 ## Local setup
 
