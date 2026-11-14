@@ -338,7 +338,17 @@ def test_missing_saved_recipe_falls_back_to_visible_scaled_draft(
         reply(call("draft_recipe", draft_basis())),
         reply(text="I've drafted an estimated recipe for 500 portions. What delivery date should I use?"),
     ])
-    turn = agent.run_turn(identity, [{"role": "user", "content": "Vegan lasagna for 500 people."}], service)
+    events = []
+    turn = agent.run_turn(
+        identity, [{"role": "user", "content": "Vegan lasagna for 500 people."}], service,
+        on_progress=events.append,
+    )
+    draft = next(e.draft for e in events if e.kind == "tool_completed" and e.tool == "draft_recipe")
+    assert [(item.amount, item.unit) for item in draft.items] == [
+        ("50", "KG"), ("75", "KG"), ("125", "L")
+    ]
+    assert not any(item.matched or item.price for item in draft.items)
+    assert draft.proposal_id is None and events[-1].draft == draft
     assert turn.meal_plan.portions == 500
     assert turn.meal_plan.ingredients[0].amount == "50"
     assert not turn.proposal_id
@@ -1079,3 +1089,63 @@ def test_q44_model_sees_the_details_in_the_tool_error(monkeypatch, config, ident
         "amount": "20.5",
         "unit": "KG",
     }
+
+
+def test_selected_recipe_streams_unmatched_matched_and_checked_prices(monkeypatch, config, identity):
+    service = FakeService(identity)
+    saved = meal(False) | {"recipe_plan_id": str(uuid4()), "recipe_plan_revision": 1}
+    for item in saved["ingredients"]:
+        item.update(ingredient_id=item["name"], status="unresolved")
+    service.scale_recipe = lambda actor, request: deepcopy(saved)
+
+    def match(actor, request):
+        item = saved["ingredients"][0]
+        item.update(product_id="pasta", status="matched", purchase_amount="20", purchase_unit="KG")
+        saved["recipe_plan_revision"] += 1
+        return deepcopy(saved)
+
+    service.match_ingredient = match
+    expiry = datetime.now(timezone.utc) + timedelta(minutes=10)
+    evidence = {
+        "product_id": "pasta", "currency": "EUR", "net": "10", "gross": "11.4",
+        "tax_rate": "0.14", "available_sales_quantity": "100", "expires_at": expiry,
+        "reasons": [], "mode": "fixture", "observed_at": datetime.now(timezone.utc),
+        "source": {"price": {"private_raw": "omit"}, "availability": None},
+        "sales_unit": "BOX", "base_unit": "KG", "price_basis": "per_sales_unit",
+    }
+    service.check_price_and_availability = lambda actor, request: {
+        "mode": "fixture", "products": {"pasta": evidence}
+    }
+    scripted(monkeypatch, [
+        reply(call("scale_recipe", {"recipe_id": "recipe", "version": "v1", "portions": 200})),
+        reply(call("get_product", {"product_id": "pasta"})),
+        reply(call("match_ingredient", {"plan_id": saved["recipe_plan_id"], "revision": 1,
+                                       "ingredient_id": "pasta", "product_id": "pasta"})),
+        reply(call("check_price_and_availability", {"product_ids": ["pasta"],
+                                                   "delivery_date": "2026-11-17"})),
+        reply(text="Four ingredients still need matches."),
+    ])
+    events = []
+    result = agent.run_turn(identity, HISTORY, service, on_progress=events.append)
+    drafts = [e.draft for e in events if e.kind == "tool_completed"]
+    assert len(drafts[0].items) == 5 and not any(i.matched for i in drafts[0].items)
+    assert not any(i.matched for i in drafts[1].items)  # Reading a candidate does not select it.
+    assert drafts[2].items[0].matched and drafts[2].items[0].price is None
+    price = drafts[3].items[0].price
+    assert price.gross == "11.4" and price.sales_unit == "BOX"  # Not 20 * a box price.
+    assert price.mode == "fixture" and price.delivery_date == "2026-11-17"
+    assert "private_raw" not in drafts[3].model_dump_json()
+    assert drafts[3].proposal_id is None and result.proposal_id is None
+    assert events[-1].draft == drafts[-1]
+    from aimo.chat_draft import cart_snapshot
+
+    session = matched_session(identity, service)
+    session.commercial = {"pasta": evidence | {"expires_at": datetime.now(timezone.utc) - timedelta(seconds=1)}}
+    session.commercial_dates = {"pasta": "2026-11-17"}
+    assert cart_snapshot(session, plan_visible=True).items[0].price is None
+    assert cart_snapshot(session, plan_visible=False) is None
+    session.commercial["pasta"] = evidence | {"reasons": [{
+        "code": "PRICE_OUTSIDE_VALIDITY", "severity": "unresolved",
+        "message": "Not valid for requested delivery", "product_id": "pasta",
+    }]}
+    assert cart_snapshot(session, plan_visible=True).items[0].price is None

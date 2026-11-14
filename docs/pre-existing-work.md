@@ -225,6 +225,22 @@ transcript, design tokens and Playwright route fixtures. Markdown and unsafe
 content examples are authored synthetic fixtures; no supplier or model calls,
 external images or customer messages were used.
 
+## Streamed chat tool activity — 2026-11-14
+
+Reused the runner's existing `AgentProgress` observer, durable worker attempt/lease
+fencing, authenticated conversation SSE snapshots, and Nordic UI tokens/icons.
+Added server-authored display labels and fixture-backed activity scenarios; no
+external assets, provider calls or new dependencies. The owner's screenshot
+identified the static busy line to replace.
+
+## Progressive purchasing draft — 2026-11-15
+
+Reused typed saved recipe plans, product/commercial tool evidence, output guardrails, worker
+attempt fencing, authenticated SSE and the existing confirmation UI. Added a display-only
+cart projection and authored plan/matching/quote/browser fixtures. Unit prices and orders
+in these checks remain explicitly synthetic; no live provider or supplier calls, new
+external assets or dependencies were used.
+
 ## Purchasing settings simplification — 2026-11-14
 
 Reused the owner-reviewed interactive mockup from this chat, existing Nordic UI
@@ -251,6 +267,13 @@ existing Overview design. Assistant-authored recipe bases remain labelled estima
 separate from imported saved recipes. Calculation and browser fixtures are authored
 synthetic examples, not verified recipes or live supplier records. No new external
 recipe source, dataset, visual asset or dependency was introduced.
+## Header user dropdown — 2026-11-14
+
+Reused the existing account settings/preferences routes, session logout action,
+Material Symbols and Nordic UI tokens. Adapted the sidebar actions into a shared
+desktop/mobile header dropdown using the owner's screenshot as layout context.
+Browser verification uses the existing authored API fixtures. No new external
+assets or dependencies were introduced.
 
 ## Chat attachments — 2026-11-14
 

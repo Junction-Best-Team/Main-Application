@@ -121,6 +121,8 @@ def test_carbonara_actual_catalog_policy_customer_confirmation_and_persisted_rec
         first = client.get(f"/api/conversations/{cid}")
         assert "delivery date" in first.json()["messages"][-1]["text"]
         assert first.json()["purchases"] == []
+        assert first.json()["activity"]["state"] == "complete"
+        assert first.json()["activity"]["events"][1]["label"] == "Checking purchasing rules"
         second_body = {"text": f"{delivery}, hotel-helsinki, no dietary restrictions, 1000 EUR. "
                        "Use the traditional carbonara recipe with pasta, eggs, pork, cheese and pepper.",
                        "idempotency_key": str(uuid4())}
@@ -135,6 +137,8 @@ def test_carbonara_actual_catalog_policy_customer_confirmation_and_persisted_rec
         assert [i["amount"] for i in data["messages"][-1]["meal_plan"]["ingredients"]] == [
             amount for _, amount in INGREDIENTS
         ]
+        assert len([e for e in data["activity"]["events"] if e["kind"] == "tool_started"]) == 13
+        assert data["activity"]["events"][-1]["kind"] == "complete"
         basket = data["purchases"][0]
         assert len(basket["snapshot"]["lines"]) == 5
         assert basket["snapshot"]["gross_total"] == "71.74"

@@ -186,3 +186,25 @@
     cursor: not-allowed;
   }
 }
+
+/* Indeterminate activity: no fabricated percentage or completion time. */
+@keyframes activity-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(400%);
+  }
+}
+
+@layer components {
+  .activity-sweep {
+    animation: activity-sweep 1.6s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .activity-sweep {
+      animation: none;
+      transform: translateX(100%);
+    }
+  }
+}
