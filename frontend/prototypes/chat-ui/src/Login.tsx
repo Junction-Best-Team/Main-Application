@@ -33,10 +33,8 @@ export function Login() {
     }
   }
 
-  // Tailwind utilities sit in a cascade layer, so the unlayered legacy element rules
-  // (button, h1, h2, p, input:focus-visible) win unless a utility is marked important (!).
   const field =
-    "mt-2 box-border block h-11 w-full rounded border border-border-subtle bg-surface-pure px-3 font-body text-body-md text-on-surface outline-none focus:border-2 focus:border-wholesale-teal focus-visible:!outline-none";
+    "mt-2 box-border block h-11 w-full rounded border border-border-subtle bg-surface-pure px-3 font-body text-body-md text-on-surface outline-none focus:border-2 focus:border-wholesale-teal focus-visible:outline-none";
   return (
     <div className="min-h-screen bg-canvas px-gutter-sm py-8 font-body text-on-surface md:px-margin md:py-16">
       <main className="mx-auto grid max-w-[1100px] overflow-hidden rounded-lg border border-border-subtle bg-surface-pure md:grid-cols-[1.2fr_1fr]">
@@ -47,7 +45,7 @@ export function Login() {
           >
             aimo<span className="text-status-fresh-green">.</span>
           </span>
-          <h1 className="!mb-4 !text-headline-lg-mobile !leading-8 font-bold !tracking-normal md:!mb-6 md:!text-headline-xl md:!leading-[56px]">
+          <h1 className="mb-4 text-headline-lg-mobile leading-8 font-bold tracking-normal md:mb-6 md:text-headline-xl md:leading-[56px]">
             From the menu
             <br />
             to your basket.
@@ -62,7 +60,7 @@ export function Login() {
           </div>
         </section>
         <section className="p-8 md:p-14">
-          <h2 className="!mb-2 !text-headline-md !leading-8 font-bold text-deep-ocean-navy">Buyer sign in</h2>
+          <h2 className="mb-2 text-headline-md leading-8 font-bold text-deep-ocean-navy">Buyer sign in</h2>
           <p className="m-0 text-body-md text-on-surface-variant">Use your preconfigured buyer account.</p>
           <form onSubmit={submit} className="my-6">
             <label className="mb-5 block text-label-lg text-deep-ocean-navy">
@@ -82,7 +80,7 @@ export function Login() {
             <ErrorMessage message={error} />
             <button
               disabled={busy}
-              className="!mt-2 box-border block !h-11 w-full !rounded !border-0 !bg-wholesale-teal !px-4 !py-0 !text-body-md !font-semibold !text-on-primary hover:enabled:!bg-deep-ocean-navy focus-visible:!outline-2 focus-visible:!outline-offset-2 focus-visible:!outline-wholesale-teal disabled:opacity-50"
+              className="mt-2 box-border block h-11 w-full rounded border-0 bg-wholesale-teal px-4 py-0 text-body-md font-semibold text-on-primary hover:enabled:bg-deep-ocean-navy focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wholesale-teal disabled:opacity-50"
             >
               {busy ? "Signing in…" : "Sign in"}
             </button>
