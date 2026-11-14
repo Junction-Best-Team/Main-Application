@@ -546,7 +546,7 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "user" | "assistant";
+            role: "user" | "assistant" | "system";
             /** Text */
             text: string;
             /**
