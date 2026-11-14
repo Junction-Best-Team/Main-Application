@@ -33,6 +33,12 @@ def proposal(c, pid, identity, lock=False):
     ).fetchone()
     if not p or (identity["role"] == "agent" and p["agent_id"] != identity["id"]):
         raise Problem("NOT_FOUND", "Purchase not found.", 404)
+    if identity["role"] == "scheduler":
+        from aimo import scheduler
+
+        # The scheduler sees only the proposals that belong to one of its runs (CNF-023).
+        if not scheduler.owns_proposal(c, pid, identity["buyer_id"]):
+            raise Problem("NOT_FOUND", "Purchase not found.", 404)
     r = c.execute(
         "SELECT * FROM proposal_revisions WHERE proposal_id=%s AND revision=%s",
         (pid, p["current_revision"]),
@@ -609,6 +615,10 @@ def commit_order(identity, request: CommitRequest, connector):
             "accepted_at": now().isoformat(),
             "explanation": "Current policy, commercial evidence and any required exact-revision buyer approval were checked.",
         }
+        if identity["role"] == "scheduler":
+            from aimo import scheduler
+
+            receipt["scheduled_run"] = scheduler.receipt_note(c, p["id"])  # CNF-036 order note
         c.execute(
             "INSERT INTO orders(id,proposal_id,buyer_id,revision,receipt) VALUES(%s,%s,%s,%s,%s)",
             (oid, p["id"], identity["buyer_id"], r["revision"], js(receipt)),

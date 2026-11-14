@@ -209,6 +209,7 @@ class FixtureClient:
 
     def __init__(self):
         self.price_multiplier = D(1)
+        self.product_multipliers = {}  # per-product factor on top of price_multiplier
         self.stock = {}
 
     def lookup(self, customer: str, ids: list[str], delivery_date: date):
@@ -219,7 +220,7 @@ class FixtureClient:
         facts = {p["id"]: p for p in fixture_facts()}
         for pid in ids:
             p = facts.get(pid)
-            net = D("1.50") * self.price_multiplier
+            net = D("1.50") * self.price_multiplier * self.product_multipliers.get(pid, 1)
             if pid == "demo-deposit":
                 net = D(".10")
             rate = D("13.5") if pid != "demo-deposit" else D("25.5")

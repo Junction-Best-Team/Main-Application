@@ -1,12 +1,28 @@
 """Scheduled (standing) re-orders, WS-E. Every order placed here is a MOCK order.
 
-Only the commit guard exists so far. It fails closed: no scheduled authorization or run exists
-yet, so the scheduler identity can commit nothing. The run engine replaces this body.
+The run engine. `run_due_schedules` does one step of one run per call, so a worker iteration stays
+far below its 270 second health limit even when the supplier is slow:
+
+  materialise  create the run of each due date (idempotent: unique authorization + date)
+  due          prepare the basket as the buyer's internal agent and compare it with the terms
+               the customer agreed; plan an accepted substitute when a line cannot be used
+  prepared     commit as the scheduler identity, gated by ensure_commit_allowed
+  committed / disrupted (the schedule stops, the customer is told) / skipped (a pause)
+
+The scheduler identity commits only against a valid, active authorization; it never creates,
+edits or restarts one (those are the customer's functions in aimo.schedules).
 """
 
+import logging
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from uuid import uuid4
 
-from aimo.db import Problem, fingerprint
+from aimo import auth as auth_module
+from aimo.config import settings
+from aimo.db import Problem, connection, fingerprint, js
+from aimo.observability import event, failure
+from aimo.schemas import CommitRequest, LookupRequest, PrepareRequest
 from aimo.upstream import HELSINKI
 
 ONE_DAY = timedelta(days=1)
@@ -15,14 +31,6 @@ ONE_DAY = timedelta(days=1)
 def helsinki_today(now=None):
     """The Helsinki calendar date: every schedule date and every run is in this zone."""
     return (now or datetime.now(timezone.utc)).astimezone(HELSINKI).date()
-
-
-def ensure_commit_allowed(c, identity, p, r, snapshot, evaluated):
-    raise Problem(
-        "SCHEDULE_NOT_AUTHORIZED",
-        "A scheduler identity commits only against a valid scheduled authorization.",
-        403,
-    )
 
 
 # --- Terms fingerprint ---------------------------------------------------------------------
@@ -123,3 +131,572 @@ def next_dates(recurrence, first_run_date, valid_until, *, after=None, limit=1):
             found.append(day)
         day += ONE_DAY
     return found
+
+
+# --- Comparing a prepared basket with the agreed terms -------------------------------------
+UNAVAILABLE_CODES = {
+    "INSUFFICIENT_STOCK", "SALES_BLOCK", "CUTOFF_PASSED", "DELIVERY_TOO_LATE", "DELIVERY_UNRESOLVED",
+    "UNVERIFIED_STOCK", "AVAILABILITY_UNIT_UNKNOWN",
+}  # fmt: skip
+WITHDRAWN_CODES = {"PRODUCT_DELETED", "PRODUCT_UNKNOWN"}
+BLOCKING = ("denied", "unresolved")
+DISRUPTION_CODES = {
+    "unavailable": "PRODUCT_UNAVAILABLE",
+    "withdrawn": "PRODUCT_WITHDRAWN",
+    "price_outside_range": "PRICE_OUTSIDE_RANGE",
+}
+
+
+def gross_of(line):
+    value = (line.get("commercial_evidence") or {}).get("gross")
+    return None if value is None else Decimal(value)
+
+
+def percent_off(current, agreed):
+    return abs(current - agreed) * 100 / agreed
+
+
+def compare(auth, request, snapshot, outcome, plan=()):
+    """Pure. Does a prepared basket match what the customer agreed (CNF-024, CNF-036, POL-012)?
+
+    A line matches when its product is usable and its unit gross price is within the customer's
+    percentage range of the agreed price, or when it is a planned accepted substitute that is
+    usable and within the range of the ORIGINAL agreed price. Returns the verdict with a status for
+    every line, the substitutions used and the first disruption code."""
+    swaps = {item["product_id"]: item["substitute_product_id"] for item in plan}
+    current = {line["product_id"]: line for line in snapshot["lines"]}
+    blocked = {}
+    for reason in snapshot["reasons"]:
+        if reason.get("product_id") and reason["severity"] in BLOCKING:
+            blocked.setdefault(reason["product_id"], set()).add(reason["code"])
+    lines, substitutions, codes, wanted = [], [], [], set()
+    for agreed in auth["agreed_lines"]:
+        pid = agreed["product_id"]
+        target = swaps.get(pid, pid)
+        wanted.add(target)
+        rule = (auth["line_rules"] or {}).get(pid, {})
+        limit = Decimal(rule.get("price_range_pct", "0"))
+        before = Decimal(agreed["unit_gross"])
+        row = {"product_id": pid, "name": agreed["name"], "agreed_gross": str(before)}
+        line = current.get(target)
+        problems = blocked.get(target, set())
+        quantity = (line or {}).get("quantity") or {}
+        if line is None or (
+            Decimal(quantity.get("requested_amount") or "0") != Decimal(agreed["amount"])
+            or quantity.get("requested_unit") != agreed["unit"]
+        ):
+            status = "unavailable"
+        elif problems & WITHDRAWN_CODES:
+            status = "withdrawn"
+        elif problems:
+            status = "unavailable"
+        else:
+            now_gross = gross_of(line)
+            row["current_gross"] = None if now_gross is None else str(now_gross)
+            if now_gross is None:
+                status = "unavailable"
+            elif percent_off(now_gross, before) > limit:
+                status = "price_outside_range"
+            elif target != pid:
+                status = "substituted"
+            elif now_gross == before:
+                status = "available_same_price"
+            else:
+                status = "price_within_range"
+        row["status"] = status
+        if target != pid:
+            row["substitute_product_id"] = target
+            gross = row.get("current_gross")
+            row["note"] = f"Used {target} instead of {pid}" + (
+                f" (price {Decimal(gross) - before:+.2f} per unit)" if gross else ""
+            )
+            if status == "substituted":
+                substitutions.append(row | {"name": line["name"]})
+        if status in DISRUPTION_CODES:
+            codes.append(DISRUPTION_CODES[status])
+        lines.append(row)
+    if set(current) - wanted:
+        codes.append("RUN_TERMS_CHANGED")
+    if request.get("destination") != (auth["request"] or {}).get("destination"):
+        codes.append("RUN_TERMS_CHANGED")
+    total = None if snapshot["gross_total"] is None else Decimal(snapshot["gross_total"])
+    if total is not None and total > Decimal(auth["price_ceiling_gross"]):
+        codes.append("CEILING_EXCEEDED")
+    if not codes and outcome != "ready_to_commit":
+        codes.append("POLICY_NOT_READY")
+    return {
+        "ok": not codes,
+        "codes": list(dict.fromkeys(codes)),
+        "lines": lines,
+        "substitutions": substitutions,
+        "agreed_gross_total": str(auth["agreed_gross_total"]),
+        "current_gross_total": None if total is None else str(total),
+    }
+
+
+def reason_of(verdict):
+    return {k: verdict[k] for k in ("codes", "lines", "agreed_gross_total", "current_gross_total")}
+
+
+# --- The commit gate -----------------------------------------------------------------------
+
+
+def refuse(message="A scheduler identity commits only against a valid scheduled authorization."):
+    raise Problem("SCHEDULE_NOT_AUTHORIZED", message, 403)
+
+
+def owns_proposal(c, proposal_id, buyer_id):
+    return (
+        c.execute(
+            "SELECT 1 FROM scheduled_runs WHERE proposal_id=%s AND buyer_id=%s",
+            (proposal_id, buyer_id),
+        ).fetchone()
+        is not None
+    )
+
+
+def ensure_commit_allowed(c, identity, p, r, snapshot, evaluated):
+    """CNF-023/024: the scheduler may commit this proposal only if, right now and under the buyer
+    lock, a prepared run owns it, its authorization is active and unexpired, the customer who
+    created it is still an active approver, and the fresh terms match what was agreed."""
+    run = c.execute(
+        "SELECT * FROM scheduled_runs WHERE proposal_id=%s AND buyer_id=%s AND status='prepared'",
+        (p["id"], identity["buyer_id"]),
+    ).fetchone()
+    if not run:
+        refuse()
+    auth = c.execute(
+        "SELECT * FROM scheduled_authorizations WHERE id=%s AND buyer_id=%s FOR SHARE",
+        (run["authorization_id"], identity["buyer_id"]),
+    ).fetchone()
+    if not auth or auth["status"] != "active" or auth["valid_until"] < helsinki_today():
+        refuse("The scheduled authorization is not active.")
+    customer = c.execute(
+        "SELECT 1 FROM identities WHERE id=%s AND buyer_id=%s AND active AND role='approver'",
+        (auth["created_by"], identity["buyer_id"]),
+    ).fetchone()
+    if not customer:
+        refuse("The customer who created the schedule is no longer active.")
+    verdict = compare(
+        auth, r["request"], snapshot, evaluated["policy_outcome"], run["substitutions"]
+    )
+    if not verdict["ok"]:
+        refuse("The current terms differ from the agreed terms.")
+
+
+def receipt_note(c, proposal_id):
+    run = c.execute("SELECT * FROM scheduled_runs WHERE proposal_id=%s", (proposal_id,)).fetchone()
+    return {
+        "run_id": str(run["id"]),
+        "schedule_id": str(run["authorization_id"]),
+        "scheduled_date": str(run["scheduled_date"]),
+        "substitutions": run["substitutions"] or [],
+    }
+
+
+# --- The engine ----------------------------------------------------------------------------
+LOCK_KEY = 893021
+LEASE_SECONDS = 240
+BACKOFF_SECONDS = (120, 240, 480, 900)
+TRANSIENT = {"UPSTREAM_UNAVAILABLE", "UPSTREAM_RATE_LIMITED", "DATABASE_BUSY"}
+ENDED = ("cancelled", "superseded", "expired", "stopped")
+
+
+def run_event(c, run_id, actor, name, detail=None):
+    c.execute(
+        "INSERT INTO scheduled_run_events(run_id,actor_id,event,detail) VALUES(%s,%s,%s,%s)",
+        (run_id, actor, name, js(detail or {})),
+    )
+
+
+def auth_event(c, aid, name, detail=None):
+    c.execute(
+        "INSERT INTO scheduled_authorization_events(authorization_id,actor_id,event,detail) "
+        "VALUES(%s,'scheduler',%s,%s)",
+        (aid, name, js(detail or {})),
+    )
+
+
+def cancel_request(c, proposal_id, buyer_id, reason, run_id):
+    """Record that an order request will not be placed (never for a placed order)."""
+    if c.execute("SELECT 1 FROM orders WHERE proposal_id=%s", (proposal_id,)).fetchone():
+        return
+    scheduler_id = scheduler_identity_id(c, buyer_id)
+    c.execute(
+        """INSERT INTO order_request_cancellations(proposal_id,buyer_id,reason,run_id,cancelled_by)
+        VALUES(%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
+        (proposal_id, buyer_id, reason, run_id, scheduler_id),
+    )
+
+
+def scheduler_identity_id(c, buyer_id):
+    row = c.execute(
+        """SELECT i.id FROM scheduler_identities s JOIN identities i ON i.id=s.identity_id
+        WHERE s.buyer_id=%s AND i.active AND i.role='scheduler'""",
+        (buyer_id,),
+    ).fetchone()
+    return row["id"] if row else None
+
+
+def materialise(now=None):
+    """Create the run of each due date. Short, idempotent and serialized across replicas."""
+    now = now or datetime.now(timezone.utc)
+    today = helsinki_today(now)
+    after_hour = now.astimezone(HELSINKI).hour >= settings().scheduler_run_after_hour
+    created = 0
+    with connection() as c:
+        c.execute("SELECT pg_advisory_xact_lock(%s)", (LOCK_KEY,))
+        for row in c.execute(
+            """UPDATE scheduled_authorizations SET status='expired',next_run_date=NULL,paused_at=NULL,
+            updated_at=%s WHERE status IN ('active','paused') AND valid_until < %s RETURNING id""",
+            (now, today),
+        ).fetchall():
+            auth_event(c, row["id"], "expired")
+        due = c.execute(
+            """SELECT * FROM scheduled_authorizations WHERE status IN ('active','paused')
+            AND next_run_date IS NOT NULL AND next_run_date <= %s
+            ORDER BY next_run_date,id LIMIT %s FOR UPDATE SKIP LOCKED""",
+            (today, settings().scheduler_max_runs_per_pass),
+        ).fetchall()
+        for auth in due:
+            created += open_dates(c, auth, today, after_hour, now)
+    return created
+
+
+def open_dates(c, auth, today, after_hour, now):
+    """Open the runs of one authorization. A paused one skips every date up to today."""
+    made, day = 0, auth["next_run_date"]
+    while day is not None and day <= today:
+        if day == today and not after_hour:
+            break
+        run_id = uuid4()
+        if auth["status"] == "paused":
+            state, code = "skipped", "PAUSED"
+        elif day < today:
+            state, code = "disrupted", "RUN_MISSED"
+        else:
+            state, code = "due", None
+        row = c.execute(
+            """INSERT INTO scheduled_runs(id,authorization_id,buyer_id,scheduled_date,delivery_date,
+            status,reason_code,reason) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT(authorization_id,scheduled_date) DO NOTHING RETURNING *""",
+            (
+                run_id,
+                auth["id"],
+                auth["buyer_id"],
+                day,
+                day + timedelta(days=auth["delivery_offset_days"]),
+                state,
+                code,
+                js({"codes": [code], "lines": []}) if code else None,
+            ),
+        ).fetchone()
+        following = next_dates(
+            auth["recurrence"], auth["first_run_date"], auth["valid_until"], after=day
+        )
+        day = following[0] if following else None
+        c.execute(
+            "UPDATE scheduled_authorizations SET next_run_date=%s,updated_at=%s WHERE id=%s",
+            (day, now, auth["id"]),
+        )
+        if row:
+            made += 1
+            run_event(c, row["id"], "scheduler", "created", {"status": state})
+            if state == "disrupted":
+                stop(c, row, auth, code, now)
+                break
+    return made
+
+
+def stop(c, run, auth, code, now):
+    """The schedule stops after a disruption (CNF-030); the customer restarts or replaces it."""
+    c.execute(
+        """UPDATE scheduled_authorizations SET status='stopped',stop_reason=%s,next_run_date=NULL,
+        paused_at=NULL,updated_at=%s WHERE id=%s AND status IN ('active','paused')""",
+        (code, now, auth["id"]),
+    )
+    auth_event(c, auth["id"], "stopped", {"run_id": str(run["id"]), "code": code})
+
+
+def claim_run(now):
+    with connection() as c:
+        run = c.execute(
+            """SELECT * FROM scheduled_runs WHERE status IN ('due','prepared')
+            AND (lease_until IS NULL OR lease_until <= %s)
+            ORDER BY scheduled_date,created_at,id LIMIT 1 FOR UPDATE SKIP LOCKED""",
+            (now,),
+        ).fetchone()
+        if not run:
+            return None
+        return c.execute(
+            "UPDATE scheduled_runs SET lease_until=%s,updated_at=%s WHERE id=%s RETURNING *",
+            (now + timedelta(seconds=LEASE_SECONDS), now, run["id"]),
+        ).fetchone()
+
+
+def run_due_schedules(service, *, now=None, materialise_first=True):
+    """One step of one run. Returns whether any work was done."""
+    now = now or datetime.now(timezone.utc)
+    created = materialise(now) if materialise_first else 0
+    run = claim_run(now)
+    if run is None:
+        return created > 0
+    try:
+        step(service, run, now)
+    except Exception as exc:
+        # A failed step is retried with backoff; after the limit the run is a disruption.
+        event("scheduler.step_failed", level=logging.WARNING, run_id=str(run["id"]), **failure(exc))
+        retry_later(
+            run,
+            getattr(exc, "code", "RUN_FAILED") if isinstance(exc, Problem) else "RUN_FAILED",
+            now,
+        )
+    return True
+
+
+def retry_later(run, code, now):
+    attempts = run["attempts"] + 1
+    with connection() as c:
+        if attempts >= settings().scheduler_max_attempts:
+            auth = c.execute(
+                "SELECT * FROM scheduled_authorizations WHERE id=%s FOR UPDATE",
+                (run["authorization_id"],),
+            ).fetchone()
+            disrupt(c, run, auth, code, {"codes": [code], "lines": []}, now)
+            return
+        wait = BACKOFF_SECONDS[min(attempts - 1, len(BACKOFF_SECONDS) - 1)]
+        c.execute(
+            "UPDATE scheduled_runs SET attempts=%s,lease_until=%s,updated_at=%s WHERE id=%s",
+            (attempts, now + timedelta(seconds=wait), now, run["id"]),
+        )
+        run_event(c, run["id"], "scheduler", "retry", {"code": code, "attempt": attempts})
+
+
+def disrupt(c, run, auth, code, reason, now):
+    c.execute(
+        """UPDATE scheduled_runs SET status='disrupted',reason_code=%s,reason=%s,lease_until=NULL,
+        updated_at=%s WHERE id=%s""",
+        (code, js(reason), now, run["id"]),
+    )
+    if run["proposal_id"]:
+        cancel_request(c, run["proposal_id"], run["buyer_id"], "run_disrupted", run["id"])
+    run_event(c, run["id"], "scheduler", "disrupted", {"code": code})
+    stop(c, run, auth, code, now)
+    start_customer_chat(c, run, auth, code, reason, now)
+
+
+def start_customer_chat(c, run, auth, code, reason, now):
+    """The system-authored first message of the revision chat (CNF-028). Added with the chat."""
+
+
+def skip(c, run, code, now, cancel_reason=None):
+    c.execute(
+        """UPDATE scheduled_runs SET status='skipped',reason_code=%s,reason=%s,lease_until=NULL,
+        updated_at=%s WHERE id=%s""",
+        (code, js({"codes": [code], "lines": []}), now, run["id"]),
+    )
+    if run["proposal_id"] and cancel_reason:
+        cancel_request(c, run["proposal_id"], run["buyer_id"], cancel_reason, run["id"])
+    run_event(c, run["id"], "scheduler", "skipped", {"code": code})
+
+
+def step(service, run, now):
+    with connection() as c:
+        auth = c.execute(
+            "SELECT * FROM scheduled_authorizations WHERE id=%s", (run["authorization_id"],)
+        ).fetchone()
+        sched = scheduler_identity_id(c, run["buyer_id"])
+        customer = c.execute(
+            "SELECT 1 FROM identities WHERE id=%s AND buyer_id=%s AND active AND role='approver'",
+            (auth["created_by"], run["buyer_id"]),
+        ).fetchone()
+    with connection() as c:
+        if auth["status"] == "paused":
+            return skip(c, run, "PAUSED", now, "customer_cancelled")
+        if auth["status"] in ENDED or auth["valid_until"] < helsinki_today(now):
+            return skip(
+                c, run, "AUTHORIZATION_" + auth["status"].upper(), now, "customer_cancelled"
+            )
+        if sched is None:
+            auth = c.execute(
+                "SELECT * FROM scheduled_authorizations WHERE id=%s FOR UPDATE", (auth["id"],)
+            ).fetchone()
+            return disrupt(
+                c,
+                run,
+                auth,
+                "SCHEDULER_NOT_CONFIGURED",
+                {"codes": ["SCHEDULER_NOT_CONFIGURED"], "lines": []},
+                now,
+            )
+        if not customer:
+            return disrupt(
+                c,
+                run,
+                auth,
+                "AUTHORIZATION_WITHDRAWN",
+                {"codes": ["AUTHORIZATION_WITHDRAWN"], "lines": []},
+                now,
+            )
+    (prepare if run["status"] == "due" else commit)(service, run, auth, sched, now)
+
+
+def basket(auth, run, plan):
+    """The request of one run: the agreed lines with this date's delivery, planned swaps applied."""
+    swaps = {item["product_id"]: item["substitute_product_id"] for item in plan}
+    request = dict(auth["request"])
+    request["lines"] = [
+        line | {"product_id": swaps.get(line["product_id"], line["product_id"])}
+        for line in request["lines"]
+    ]
+    return request | {
+        "request_id": f"standing-{str(auth['id'])[:8]}-{run['scheduled_date']}",
+        "delivery_date": str(run["delivery_date"]),
+    }
+
+
+def prepare(service, run, auth, sched, now):
+    plan = run["substitutions"] or []
+    agent = auth_module.internal_agent({"buyer_id": run["buyer_id"]})
+    request = basket(auth, run, plan) | {
+        "idempotency_key": f"sched-{run['id']}-{run['attempts']}-{'plan' if plan else 'agreed'}"
+    }
+    proposal = service.prepare_order(agent, PrepareRequest.model_validate(request))
+    verdict = compare(
+        auth, proposal["request"], proposal["snapshot"], proposal["policy_outcome"], plan
+    )
+    with connection() as c:
+        if verdict["ok"]:
+            c.execute(
+                """UPDATE scheduled_runs SET status='prepared',proposal_id=%s,substitutions=%s,
+                lease_until=NULL,updated_at=%s WHERE id=%s""",
+                (proposal["proposal_id"], js(verdict["substitutions"]), now, run["id"]),
+            )
+            return run_event(
+                c, run["id"], sched, "prepared", {"proposal_id": proposal["proposal_id"]}
+            )
+        c.execute(
+            "UPDATE scheduled_runs SET proposal_id=%s WHERE id=%s",
+            (proposal["proposal_id"], run["id"]),
+        )
+    swaps = [] if plan else choose_substitutes(service, agent, auth, run, verdict)
+    with connection() as c:
+        auth_row = c.execute(
+            "SELECT * FROM scheduled_authorizations WHERE id=%s FOR UPDATE", (auth["id"],)
+        ).fetchone()
+        run = c.execute(
+            "SELECT * FROM scheduled_runs WHERE id=%s FOR UPDATE", (run["id"],)
+        ).fetchone()
+        if swaps:
+            cancel_request(c, proposal["proposal_id"], run["buyer_id"], "run_retry", run["id"])
+            c.execute(
+                """UPDATE scheduled_runs SET substitutions=%s,proposal_id=NULL,lease_until=NULL,
+                updated_at=%s WHERE id=%s""",
+                (js(swaps), now, run["id"]),
+            )
+            return run_event(c, run["id"], sched, "substitution_planned", {"lines": swaps})
+        disrupt(c, run, auth_row, verdict["codes"][0], reason_of(verdict), now)
+
+
+def choose_substitutes(service, agent, auth, run, verdict):
+    """For each unusable line with accepted substitutes, the available one whose unit price is
+    closest to the ORIGINAL agreed price and inside the customer's range (POL-012)."""
+    wanted = {}
+    for line in verdict["lines"]:
+        rule = (auth["line_rules"] or {}).get(line["product_id"], {})
+        if line["status"] in DISRUPTION_CODES and rule.get("accepted_substitutes"):
+            wanted[line["product_id"]] = rule
+    if not wanted or set(verdict["codes"]) - set(DISRUPTION_CODES.values()):
+        return []
+    ids = sorted({s for rule in wanted.values() for s in rule["accepted_substitutes"]})
+    found = service.check_price_and_availability(
+        agent, LookupRequest(product_ids=ids, delivery_date=run["delivery_date"])
+    )["products"]
+    agreed = {line["product_id"]: line for line in auth["agreed_lines"]}
+    swaps = []
+    for pid, rule in wanted.items():
+        before = Decimal(agreed[pid]["unit_gross"])
+        options = []
+        for candidate in rule["accepted_substitutes"]:
+            evidence = found.get(candidate) or {}
+            if evidence.get("reasons") or evidence.get("gross") is None:
+                continue
+            price = Decimal(evidence["gross"])
+            if percent_off(price, before) <= Decimal(rule.get("price_range_pct", "0")):
+                options.append((abs(price - before), candidate, price))
+        if not options:
+            return []
+        _, best, price = min(options)
+        swaps.append(
+            {
+                "product_id": pid,
+                "name": agreed[pid]["name"],
+                "status": "substituted",
+                "agreed_gross": str(before),
+                "current_gross": str(price),
+                "substitute_product_id": best,
+            }
+        )
+    return swaps
+
+
+def commit(service, run, auth, sched, now):
+    with connection() as c:
+        revision = c.execute(
+            "SELECT current_revision FROM proposals WHERE id=%s", (run["proposal_id"],)
+        ).fetchone()["current_revision"]
+    identity = scheduler_row(sched)
+    body = CommitRequest(
+        proposal_id=run["proposal_id"],
+        revision=revision,
+        idempotency_key=f"sched-commit-{run['id']}-{revision}",
+    )
+    try:
+        result = service.commit_order(identity, body)
+    except Problem as exc:
+        if exc.code in TRANSIENT:
+            raise
+        with connection() as c:
+            if exc.code == "PROPOSAL_EXPIRED":
+                cancel_request(c, run["proposal_id"], run["buyer_id"], "run_retry", run["id"])
+                c.execute(
+                    """UPDATE scheduled_runs SET status='due',proposal_id=NULL,attempts=attempts+1,
+                    lease_until=NULL,updated_at=%s WHERE id=%s""",
+                    (now, run["id"]),
+                )
+                return run_event(c, run["id"], sched, "expired_prepare_again", {})
+            auth_row = c.execute(
+                "SELECT * FROM scheduled_authorizations WHERE id=%s FOR UPDATE", (auth["id"],)
+            ).fetchone()
+            return disrupt(c, run, auth_row, exc.code, {"codes": [exc.code], "lines": []}, now)
+    with connection() as c:
+        if result.get("status") != "revised":
+            c.execute(
+                """UPDATE scheduled_runs SET status='committed',order_id=%s,lease_until=NULL,
+                updated_at=%s WHERE id=%s""",
+                (result["order_id"], now, run["id"]),
+            )
+            return run_event(c, run["id"], sched, "committed", {"order_id": result["order_id"]})
+        # The terms moved between prepare and commit: judge the new revision again.
+        verdict = compare(
+            auth,
+            result["request"],
+            result["snapshot"],
+            result["policy_outcome"],
+            run["substitutions"],
+        )
+        if verdict["ok"]:
+            c.execute(
+                "UPDATE scheduled_runs SET lease_until=NULL,updated_at=%s WHERE id=%s",
+                (now, run["id"]),
+            )
+            return run_event(c, run["id"], sched, "revised", {"revision": result["revision"]})
+        auth_row = c.execute(
+            "SELECT * FROM scheduled_authorizations WHERE id=%s FOR UPDATE", (auth["id"],)
+        ).fetchone()
+        disrupt(c, run, auth_row, verdict["codes"][0], reason_of(verdict), now)
+
+
+def scheduler_row(identity_id):
+    with connection() as c:
+        return c.execute("SELECT * FROM identities WHERE id=%s", (identity_id,)).fetchone()

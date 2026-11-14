@@ -45,7 +45,13 @@ def orders():
 
 @pytest.mark.parametrize(
     ("role", "code", "status"),
-    [("scheduler", "SCHEDULE_NOT_AUTHORIZED", 403), ("janitor", "FORBIDDEN", 403)],
+    [
+        # The scheduler sees only proposals that belong to one of its runs, so a proposal that
+        # belongs to none is not even found; the gate branch below it is tested in
+        # test_scheduler_engine.py.
+        ("scheduler", "NOT_FOUND", 404),
+        ("janitor", "FORBIDDEN", 403),
+    ],
 )
 def test_a_role_without_a_gate_branch_cannot_commit(
     role, code, status, service, buyer, request_data, monkeypatch
