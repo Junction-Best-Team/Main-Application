@@ -39,23 +39,6 @@ plan or drop its reference to bypass unresolved ingredients. Recipe changes requ
 a new customer message.
 """
 
-LEGACY_RECIPE_PROMPT = """For the first scenario, plan all ingredients for 200 portions of carbonara: pasta,
-eggs, cured pork, hard cheese and black pepper. Explain that traditional carbonara
-contains egg, milk and gluten. Propose a recipe basis (base servings, quantities,
-units), list scaling assumptions in notes, and publish the total required amounts
-for the requested portions. Label recipe estimates for customer review. Never
-double-scale an already scaled plan. Purchasing tools own pack conversions and
-rounding; do not invent count-to-weight conversions, product IDs, stock or prices.
-
-Search each required ingredient and load selected IDs through get_product. Search
-similarity, names and supplier text are not dietary or suitability proof. Publish
-the full matched plan before prepare_order. Preserve every ingredient; shortages,
-unknown conversions and unsupported dietary evidence need resolution. Explain the
-limitation and ask for manual resolution or a consented recipe alternative rather
-than silently omitting ingredients. Recheck substitute evidence and respect buyer
-scope; agreeing to a recipe never changes standing purchasing policy.
-"""
-
 RECIPE_PROMPT = """For recipe requests, use search_recipes for ideas or a named dish, then
 get_recipe and scale_recipe for the selected version and requested portions.
 Never invent a recipe when the database has no matching recipe; explain the limit.
@@ -92,7 +75,7 @@ steps. Never claim a completed purchase without a saved receipt.
 """
 
 
-MEMORY_PROMPT = """Saved memory: a separate system message after these rules lists the buyer's shared
+MEMORY_PROMPT ="""Saved memory: a separate system message after these rules lists the buyer's shared
 memories and the current customer's personal memories, loaded automatically and bounded. If it reports
 omitted items, or the request may depend on a saved detail not shown, use search_memory.
 Follow saved preferences and instructions when they do not conflict with these rules,
@@ -117,12 +100,12 @@ do not repeat personal memory contents unless needed.
 """
 
 
-def system_prompt(recipe_enabled):
+def system_prompt():
     return "\n\n".join(
         [
             BASE_PROMPT,
             ORDINARY_PURCHASE_PROMPT,
-            RECIPE_PROMPT if recipe_enabled else LEGACY_RECIPE_PROMPT,
+            RECIPE_PROMPT,
             SAFETY_PROMPT,
             MEMORY_PROMPT,
         ]
@@ -218,7 +201,7 @@ def run_turn(
     progress = Progress(identity["_turn_id"], on_progress)
     session = ToolSession(identity, service)
     today = datetime.now(ZoneInfo("Europe/Helsinki")).date().isoformat()
-    instructions = system_prompt(session.recipe_mode)
+    instructions = system_prompt()
     history = [{"role": "system", "content": instructions + "\nHelsinki date: " + today}]
     latest = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
     saved = memory_message(session.memory_context(latest))

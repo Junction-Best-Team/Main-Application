@@ -209,9 +209,3 @@ variable "migration_credentials" {
     error_message = "Migration credentials require verified database TLS and the restricted runtime role name."
   }
 }
-
-variable "recipe_planning_enabled" {
-  description = "Enable recipe tools only after explicit recipe import and reviewed product evidence."
-  type        = bool
-  default     = false
-}

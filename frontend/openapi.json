@@ -2655,11 +2655,6 @@
           "csrf_token": {
             "type": "string",
             "title": "Csrf Token"
-          },
-          "recipe_planning_enabled": {
-            "type": "boolean",
-            "title": "Recipe Planning Enabled",
-            "default": false
           }
         },
         "additionalProperties": false,

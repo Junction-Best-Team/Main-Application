@@ -231,7 +231,8 @@ def test_carbonara_clarifies_then_returns_a_verified_full_basket(monkeypatch, co
     assert not any(c[0] == "prepare" for c in service.calls)
     prompt = seen[0]["messages"][0]["content"]
     assert all(
-        word in prompt for word in ("base servings", "count-to-weight", "untrusted", "scope")
+        word in prompt
+        for word in ("search_recipes", "scale_recipe", "guess conversions", "untrusted", "scope")
     )
 
     history = HISTORY + [
@@ -742,13 +743,7 @@ def test_final_recipe_labels_estimates_and_lists_unresolved_ingredients(identity
     assert result.proposal_id is None
 
 
-@pytest.mark.parametrize("recipe_enabled", [False, True])
-def test_direct_product_request_works_with_recipe_tools_enabled(
-    monkeypatch, config, identity, recipe_enabled
-):
-    monkeypatch.setattr(
-        "aimo.agent_tools.settings", lambda: SimpleNamespace(recipe_planning_enabled=recipe_enabled)
-    )
+def test_direct_product_request_works_alongside_recipe_tools(monkeypatch, config, identity):
     service = FakeService(identity)
     plan = {
         "title": "10 kg butter",
@@ -769,19 +764,15 @@ def test_direct_product_request_works_with_recipe_tools_enabled(
     assert turn.proposal_id == service.saved["proposal_id"]
     prompt = seen[0]["messages"][0]["content"]
     assert "direct product requests" in prompt and "10 kg butter" in prompt
-    if recipe_enabled:
-        assert "search_recipes" in prompt
-        assert "For the first scenario" not in prompt
+    assert "search_recipes" in prompt
+    assert "For the first scenario" not in prompt
     assert [c[0] for c in service.calls].count("prepare") == 1
 
 
 def test_prompt_sections_can_be_reworded_without_breaking_recipe_turns(
     monkeypatch, config, identity
 ):
-    monkeypatch.setattr(
-        "aimo.agent_tools.settings", lambda: SimpleNamespace(recipe_planning_enabled=True)
-    )
-    monkeypatch.setattr(agent, "LEGACY_RECIPE_PROMPT", "Reworded ordinary recipe guidance.")
+    monkeypatch.setattr(agent, "ORDINARY_PURCHASE_PROMPT", "Reworded ordinary purchase guidance.")
     monkeypatch.setattr(agent, "SAFETY_PROMPT", "Reworded safety guidance.")
     seen = scripted(monkeypatch, [reply(text="How many portions do you need?")])
     assert agent.run_turn(identity, HISTORY, FakeService(identity)).text

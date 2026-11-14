@@ -173,11 +173,12 @@ schema/grant Job, its one-time Secret provisioning, and image rollback limitatio
 
 [Preparation and third-party provenance](docs/pre-existing-work.md) must accompany the event submission. Restricted raw data, credentials, downloaded weights and generated browser test artifacts are ignored.
 
-### Recipe planning (opt-in)
+### Recipe planning
 
 See [recipe planning](docs/recipes.md) for versioned UniTools ingestion, independent
 recipe embeddings/search, server-scaled saved plans, reviewed product matching and
-complete-basket checks. Import recipes explicitly after migrations; enable
-`RECIPE_PLANNING_ENABLED` only when data and reviewed matching evidence are ready.
+complete-basket checks. Recipe tools are always available to the chat agent; import
+recipes explicitly after migrations (until then they report `RECIPES_NOT_READY`).
+Purchasing through a recipe additionally needs reviewed forms and product evidence.
 Qwen recipe search reuses PR #34's hosted provider. Dataset import is separate from
 the release migration Job and from product-catalog ingestion.
