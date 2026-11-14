@@ -6,7 +6,7 @@ Updated **14 November 2026 (Europe/Helsinki)** with the agreed scope and the dis
 
 Build **one seller-side backend with HTTP and MCP interfaces** that lets an external purchasing agent search Valio Aimo's products, obtain prices and availability, prepare a valid purchase, obtain any required buyer approval, and submit a mock order.
 
-The buyer already has an agent. We provide the tools it calls and enforce the purchasing rules. We do not build a buyer-agent application or a separate approval frontend. The human buyer approves inside the chosen existing agent application, subject to verifying its human-confirmation capabilities.
+The buyer already has an agent, which may be conversational or run a mission without an active chat. We provide the tools it calls and enforce the purchasing rules. The default human-approval route is **one small server-rendered page served by this same backend**. We do not build a buyer-agent application, separate frontend service, or React application. Direct approval inside a compatible agent client is an optional later integration.
 
 The [official challenge](https://hackjunction.app/participate/45/challenges/327) requires structured lookup, inquiry-to-order interaction at fixed prices, and permissions/human approval. Judging weights are end-to-end demonstration **30%**, matching buyer needs **20%**, controls **20%**, exceptions **15%**, and openness/production path **15%**. Include a small shortage-recovery demonstration after the basic flow works. MCP is our interface choice, not a sponsor requirement.
 
@@ -17,25 +17,29 @@ The first milestone is **one complete milk purchase**, not a general purchasing 
 | Element | Count | Responsibility and ownership |
 | --- | --- | --- |
 | Our continuously running backend | **1** | Product search, Valio connectors, proposal calculations, permission checks, approval recording, and mock ordering are modules in the same application. |
-| Public access interfaces | **2** | HTTP/OpenAPI and MCP expose the same application functions; they are not separate services. |
+| Machine access interfaces | **2** | HTTP/OpenAPI and MCP expose the same application functions; they are not separate services. The human approval view uses the same backend and HTTPS endpoint. |
 | Ingestion task | **1 when invoked** | Another command in the same application image; imports/updates the catalog, then exits. |
 | PostgreSQL database | **1 shared database endpoint** | Holds derived search data and our new transaction records in separate tables. Existing/managed PostgreSQL is preferred if available. |
 | Product search index | **1 logical index** | Product IDs, searchable text, embeddings, and relevant structured attributes, stored in PostgreSQL using pgvector and full-text search. |
 | Embedding model | **1 pinned model, loaded per serving/import process** | Runs as a library in our application; no separate model-serving service is planned. |
-| Custom frontend / buyer agent | **0 / 0** | The existing buyer agent application provides conversation and human confirmation. |
+| Human approval view | **1** | Minimal server-rendered review/approve/reject page with buyer authentication; no separate frontend deployment. |
+| Custom buyer agent | **0** | Any compatible external client can use the tools, receive an approval URL, and check proposal status. |
 | Valio endpoints used initially | **3** | Catalog download, price lookup, and availability lookup. Valio operates these. |
 
 **Deployment count:** one custom application service plus one database service/dependency, and an occasional ingestion Job. A PostgreSQL instance can be outside the cluster. Search, approval, ordering, and MCP do not each get a separate deployment.
 
 ```mermaid
 flowchart TB
-    Buyer["Buyer / authorized purchasing manager"] <-->|"Request, clarification, human confirmation"| Agent["Existing buyer agent application"]
+    Buyer["Buyer / authorized purchasing manager"] -->|"Mission or request"| Agent["Existing buyer agent application"]
+    Agent -->|"Approval URL presented or delivered by host"| Buyer
+    Buyer <-->|"Authenticate, review and decide"| Page
     Agent <-->|"Tool discovery and calls"| MCP
     Client["Other authorized API clients"] <--> HTTP
 
     subgraph App["Our backend: one running application"]
         MCP["MCP adapter"] --> Core["Shared application functions"]
         HTTP["HTTP API / OpenAPI"] --> Core
+        Page["Minimal server-rendered approval page"] --> Core
         Core --> Search["Hybrid search + query embedding"]
         Core --> Validate["Quantity, total, requirement and permission checks"]
         Validate --> Order["Mock order adapter"]
@@ -59,13 +63,13 @@ flowchart TB
 | Area | Planned choice | Reason |
 | --- | --- | --- |
 | Language and dependencies | Python, `uv`, committed lockfile | One environment for the API, ingestion, normalization, and embedding work. Pin runtime/dependency versions during the skeleton. |
-| HTTP service | FastAPI, Pydantic, Uvicorn | Typed requests/responses, validation, generated OpenAPI, and one HTTP process per container. |
-| Agent interface | Official Python MCP SDK, HTTP transport supported by the chosen client | Reuse application functions; pin a compatible SDK/protocol version. Verify human confirmation separately from basic tool connectivity. |
+| HTTP service | FastAPI, Pydantic, Uvicorn | Typed requests/responses, validation, generated OpenAPI, HTML approval routes, and one HTTP process per container. |
+| Agent interface | Official Python MCP SDK, HTTP transport supported by the chosen client | Reuse application functions; pin a compatible SDK/protocol version. Client-specific human-confirmation support is not required for the default approval page. |
 | Embeddings | Sentence Transformers; initial candidate `intfloat/multilingual-e5-small` | Concrete multilingual starting point. Verify Finnish/English retrieval quality and CPU latency before locking the model revision. |
 | Semantic and keyword retrieval | PostgreSQL + pgvector + native full-text search | One shared store can support vector retrieval, keyword retrieval, and metadata filters. Combine result rankings with reciprocal rank fusion. |
 | Transaction records | PostgreSQL | Shared proposals, approvals, and idempotency records survive process/pod restarts and are available to additional backend replicas. |
 | Packaging and target | One Docker image; Kubernetes Deployment and manually triggered Job | The same image runs the service or ingestion. Use an available cluster; provisioning a new cluster is outside the application MVP. |
-| Frontend | Existing agent application | No React approval screen in the minimum build. |
+| Human approval UI | FastAPI server-rendered HTML templates, using Jinja2 | One small review/approve/reject view served by the existing backend. No React app, separate frontend build, or admin dashboard. |
 
 The initial draft suggested SQLite and a local embedding matrix for a single-instance demo. **For the selected Kubernetes direction, the proposed default is PostgreSQL with pgvector**, consolidating shared transaction state and the search index without adding a separate vector-search service. SQLite plus file/in-memory indexes remains a possible single-instance simplification, not a second backend we must implement alongside PostgreSQL.
 
@@ -134,18 +138,21 @@ Use language-aware text preparation for Finnish and English. Evaluate keyword-on
 
 ## 6. Tools and upstream APIs
 
-The six ordinary agent tools call the same application functions as the HTTP API:
+The seven ordinary agent tools call the same application functions as the HTTP API:
 
 | Operation | Inputs / result |
 | --- | --- |
 | `search_products` | Free-text query, supported requirements, limit → concise candidates with IDs, units, evidence, and unresolved fields. |
 | `get_product` | Product ID → detailed attributes, packaging, and source evidence. |
 | `check_price_and_availability` | Shortlisted IDs and delivery date → timestamped dynamic evidence. Customer identity is taken from authenticated account configuration. |
-| `prepare_order` | Selected products, requested amounts/units, requirements, destination and delivery date → immutable proposal revision, calculations, and authorization state. |
+| `prepare_order` | Selected products, requested amounts/units, requirements, destination and delivery date → immutable proposal revision, calculations, authorization state, and an approval URL when required. |
+| `get_proposal` | Proposal ID → current revision, authorization/approval state, expiry, approval URL when applicable, and resulting order ID if committed. Enables an agent to pause and resume. |
 | `commit_order` | Proposal revision and idempotency key → accepted mock order, revised proposal, or structured blocker. |
 | `get_order` | Order ID → authorized access to status, receipt, and explanation. |
 
-A **restricted human-approval action** is separate from these autonomous tool permissions. The chosen client's trusted human-confirmation path submits that action; it must not become a generic `approved: true` field the model can grant itself.
+A **restricted human-approval action** is separate from these autonomous tool permissions. The authenticated buyer submits it through our approval page. The purchasing model must not gain approval authority through a generic `approved: true` field or possession of the page URL.
+
+The minimal human routes are `GET /approvals/{approval_id}` for authenticated review and `POST /approvals/{approval_id}/decision` for approve/reject. These routes are served in the same application as the API/MCP adapters. Viewing a page has no approval or purchase side effect. The decision records authorization; the agent still calls `commit_order` after checking status.
 
 | Valio endpoint | Usage |
 | --- | --- |
@@ -182,7 +189,7 @@ Availability is in sales units. Check product-level and schedule-line sales bloc
 
 Initial autonomous ordering supports fixed-quantity products with sufficient evidence. Variable-weight products, unresolved Terminal fulfillment, and conflicting critical attributes can be returned as unresolved cases. A human spending approval does not establish missing inventory or product facts.
 
-## 8. Buyer authority and approval inside the existing agent
+## 8. Buyer authority and the minimal approval page
 
 The **buyer's authorized human** approves spending or preference exceptions, for example a hotel's purchasing manager. Valio Aimo is the seller. Our backend enforces the buyer's configured authority and records the decision; it does not substitute its own approval for the buyer's.
 
@@ -194,15 +201,19 @@ Proposal states:
 - **Approval required:** a permitted commercial exception needs buyer confirmation.
 - **Needs resolution:** missing, conflicting, or unacceptable facts prevent commitment.
 
-The in-agent approval flow:
+The default approval flow works for both conversational and mission-driven agents:
 
-1. Our service returns the exact proposal revision, total, exception reasons, and `approval_required`.
-2. The external agent application displays the proposal and asks the human to approve or reject in its existing interaction.
-3. The client's trusted confirmation path sends the authenticated human decision for that revision. The purchasing model cannot invent the decision or acquire an approver role through its arguments.
-4. Our backend validates approver authority and records the decision, proposal fingerprint, and expiry.
-5. The agent resumes `commit_order`; our backend revalidates the proposal and current conditions.
+1. Our service persists the exact proposal revision and returns its ID, total, exception reasons, expiry, `approval_required`, and an absolute `approval_url` under our configured public origin.
+2. A conversational client can show the link in chat. A mission-driven agent pauses while its host application makes the link available to the buyer. The demo can present the returned link directly; building email, Slack, or other notification integrations is outside the MVP.
+3. The buyer opens the page and authenticates as an authorized approver. The page shows the buyer account, destination/date, exact product lines and units, requested versus proposed quantities, payable total with tax/deposits, substitutions, exception reasons, and expiry.
+4. The buyer explicitly approves or rejects. Our backend verifies authority and the current proposal revision, then records the human identity, decision, time, and proposal fingerprint. The purchasing agent never receives approver credentials.
+5. The agent uses `get_proposal` to check the persisted decision, then calls `commit_order` only when ready/approved. Its host can suspend and resume the task or use bounded polling; no tool request must stay open while waiting for a human.
 
-**First integration gate:** select a client and demonstrate this authenticated confirmation path before relying on it. Ordinary tool discovery or a conversational “yes” interpreted only by a model is not by itself a server-verifiable approval. Use the client's supported mechanism or a small host-side integration; do not assume every MCP client implements it. If the selected client cannot support this, report that concrete blocker and agree a fallback rather than silently adding a custom frontend. Production identity federation remains future work.
+Keep the page small: a readable proposal, approve/reject buttons, and the resulting status. Use server-rendered, escaped HTML with minimal styling. Use a seeded demo approver account/session in the same backend or the cluster's existing buyer identity mechanism; do not build account registration or role administration. Enforce account/approver access for both viewing and deciding, secure session handling and CSRF protection for browser submissions. A proposal ID or URL alone is not authorization.
+
+Repeated decisions must be safe, and an expired, superseded, rejected, or already-finalized request must not silently change state. Display those states clearly. The page records a decision but does not itself place an order, lock a price, or reserve stock. Show this distinction next to the approval action.
+
+**Optional direct in-agent approval:** a client with a verified authenticated human-confirmation mechanism may later submit the same restricted decision without opening the page. That is not required for the default demo. Conversational text or a model-generated approval boolean alone is insufficient, and the same account/revision checks apply to every approval route.
 
 Approval binds to buyer/account, destination, delivery date, product IDs, quantities/units, substitutions, currency, total, expiry, and policy version. The fingerprint describes the commercial proposal, not changing lookup timestamps. A material change creates a new revision and authorization decision. Reject expired, revoked, rejected, cross-account, or wrong-revision approvals.
 
@@ -211,9 +222,10 @@ sequenceDiagram
     actor Buyer
     participant Agent as Existing agent application
     participant API as Our backend
+    participant Page as Approval page in same backend
     participant Valio as Valio lookup APIs
     participant DB as PostgreSQL
-    Buyer->>Agent: Request products and delivery
+    Buyer->>Agent: Give request or autonomous purchasing mission
     Agent->>API: Search and select products
     API-->>Agent: Candidates with IDs and evidence
     Agent->>API: Prepare selected order
@@ -223,17 +235,27 @@ sequenceDiagram
     alt Within configured buyer authority
         API-->>Agent: Ready to commit
     else Permitted exception needs approval
-        API-->>Agent: Approval required plus exact proposal
-        Agent->>Buyer: Show proposal and request confirmation
-        Buyer->>Agent: Approve or reject via trusted client interaction
-        Agent->>API: Authenticated human decision via restricted path
+        API-->>Agent: Approval required, proposal ID and approval URL
+        Agent-->>Buyer: Host presents or delivers the approval URL
+        Buyer->>Page: Authenticate and review exact proposal
+        Buyer->>Page: Explicitly approve or reject
+        Page->>API: Validate human authority and proposal revision
         API->>DB: Record decision for exact revision
+        Agent->>API: get_proposal after pause or bounded polling
+        API-->>Agent: Approved, rejected, pending, expired or superseded
     end
-    Agent->>API: Commit proposal with idempotency key
-    API->>Valio: Recheck price, stock, date and cutoff
-    Note over API,DB: Commit only if authorization and current conditions still pass
-    API->>DB: Record mock order once
-    API-->>Agent: Receipt or revised proposal / blocker
+    alt Proposal ready or approved
+        Agent->>API: Commit proposal with idempotency key
+        API->>Valio: Recheck price, stock, date and cutoff
+        alt Authorization and current conditions still pass
+            API->>DB: Record mock order once
+            API-->>Agent: Mock receipt
+        else Material change or invalid authority
+            API-->>Agent: Revised proposal or blocker, no order
+        end
+    else Waiting, rejected, expired or superseded
+        Note over Agent,API: Pause, revise or stop. No order is placed.
+    end
     Agent-->>Buyer: Explain outcome
 ```
 
@@ -253,19 +275,20 @@ Kubernetes is the intended hosting target; it can run this small application wel
 
 | Resource | Initial role |
 | --- | --- |
-| Backend Deployment | One Docker image, one serving process per pod; HTTP and MCP share it. |
+| Backend Deployment | One Docker image, one serving process per pod; HTTP API, MCP, and the approval page share it. |
 | Ingestion Job | Same image, different command; runs once on initial import or a requested catalog update. No always-on worker or CronJob required. |
-| Service and HTTPS routing | Stable public endpoint through the cluster's existing Ingress/Gateway and TLS setup. |
+| Service and HTTPS routing | One stable public origin through the cluster's existing Ingress/Gateway and TLS setup, serving API/MCP traffic and browser approval routes. |
 | PostgreSQL with pgvector | Existing/managed database if available. If hosted in-cluster, use the team's established persistent database deployment and volume. Do not build a database operator. |
-| Secret/config injection | API key, database connection, and client-auth settings supplied at runtime; non-secret model/base-URL settings are configuration. |
+| Secret/config injection | API key, database connection, browser-session and agent-auth settings supplied at runtime; public origin, model, and upstream base URL are configuration. |
 | Health checks | Liveness for the running service; readiness verifies required database/index/model readiness without depending on the remote Valio API being up. |
 
 ```mermaid
 flowchart TB
     Agent["Existing external agent"] --> HTTPS["Existing cluster HTTPS routing"]
+    BuyerBrowser["Authorized buyer browser"] -->|"Review / approve / reject"| HTTPS
     subgraph Cluster["Kubernetes target"]
         HTTPS --> Service["Service"]
-        Service --> Pod["Backend Deployment: 1 replica initially"]
+        Service --> Pod["Backend Deployment: API, MCP and approval page; 1 replica"]
         Job["Manually triggered ingestion Job"]
         Config["Runtime secrets and configuration"] --> Pod
         Config --> Job
@@ -289,14 +312,14 @@ Actual cluster access, namespace, registry, database endpoint/pgvector availabil
 
 ## 11. MVP boundaries, demo, and execution
 
-**Build now:** ingestion, hybrid search, the six agent tools, unit/price validation, simple buyer limits, an authenticated in-agent approval path, persistent mock ordering, and a retrievable explanation/receipt.
+**Build now:** ingestion, hybrid search, the seven agent tools including proposal-status retrieval, unit/price validation, simple buyer limits, the minimal authenticated approval page, persistent mock ordering, and a retrievable explanation/receipt.
 
-**Defer:** a custom buyer agent, React approval/admin UI, broad policy engine, daily/organization budget management, production identity federation, dedicated search/model services, message queues, continuous ingestion, autoscaling, multi-agent orchestration, recipe planning, sustainability scoring, payments, and marketplace features. Add distinctive features only after the complete core purchase works.
+**Defer:** a custom buyer agent, standalone React frontend/admin UI, direct in-agent approval integrations, email/chat notification infrastructure, broad policy engine, daily/organization budget management, production identity federation, dedicated search/model services, message queues, continuous ingestion, autoscaling, multi-agent orchestration, recipe planning, sustainability scoring, payments, and marketplace features. Add distinctive features only after the complete core purchase works.
 
 Demo sequence:
 
 1. **Autonomous purchase:** a fully supported milk request within authority completes and returns a mock receipt.
-2. **Buyer confirmation in their agent:** a purchase exceeds the illustrative spend limit; approval/rejection happens through the existing client, and the backend enforces the result.
+2. **Buyer confirmation through the approval page:** a purchase exceeds the illustrative spend limit. The agent receives a link and pauses; the buyer approves/rejects in the page, and the agent checks proposal status before resuming. Demonstrate that an active conversation is not required while waiting.
 3. **Small shortage scenario:** a labeled fixture makes 600 L of `464306` available. The agent proposes another 400 L using listed UHT alternative `464398`; a configured buyer rule requires approval of the substitution.
 4. **Changed conditions and retry:** a material change after approval prevents the old revision from committing; repeating an already successful request returns the same receipt.
 
@@ -304,24 +327,24 @@ Use actual catalog records. Clearly distinguish live lookup mode, controlled fai
 
 | Priority / nominal build budget | Deliverable |
 | --- | --- |
-| First, hours 0–6 | Verify small live API requests, representative conversions, and the chosen client's human-confirmation path. Verify database/cluster prerequisites. |
-| Hours 6–16 | Complete one purchase with explicit product IDs, valid totals, simple authority, in-agent approval, and a persistent mock receipt. |
+| First, hours 0–6 | Verify small live API requests, representative conversions, MCP tool connectivity, and buyer authentication for the approval page. Verify database/cluster prerequisites. |
+| Hours 6–16 | Complete one purchase with explicit product IDs, valid totals, simple authority, the minimal approval page and proposal-status retrieval, and a persistent mock receipt. |
 | Hours 16–26 | Add API-fed catalog ingestion, semantic/keyword indexes, documented tools, and natural-language discovery. |
 | Hours 26–36 | Add shortage recovery, changed-revision handling, duplicate protection, and the first cluster rollout. |
 | Hours 36–48 | Compare retrieval quality, test critical failure cases, document assumptions, and rehearse the full demo. |
 
 These are an effort budget and priority order, not a claim about time remaining. Confirm the real event deadline and reserve submission time before assigning calendar dates.
 
-Acceptance checks should cover relevant retrieval, unchanged-product embedding reuse, failed-import preservation, valid unit/step calculations, supported dietary constraints, tax/deposit totals, customer isolation, authentic exact-revision approval, rejection/expiry/revocation, price/stock changes, concurrent duplicate submissions, and order retrieval after restart. Add no tests merely to mirror implementation details. Application tests, live API integration, client confirmation, and cluster deployment remain unverified at planning time.
+Acceptance checks should cover relevant retrieval, unchanged-product embedding reuse, failed-import preservation, valid unit/step calculations, supported dietary constraints, tax/deposit totals, customer isolation, authentic exact-revision approval, rejection/expiry/revocation, price/stock changes, concurrent duplicate submissions, and order retrieval after restart. Verify that opening an approval URL does not authorize a purchase, an unauthorized user/agent cannot view or approve another buyer's proposal, repeated decision submissions are safe, and a paused agent can retrieve a decision after a process restart. Add no tests merely to mirror implementation details. Application tests, live API integration, browser approval, and cluster deployment remain unverified at planning time.
 
-Suggested team work areas are catalog/search, offer/Valio integration, permissions/orders/client confirmation, and packaging/cluster/demo integration. These are code ownership areas, not separate microservices. Agree shared schemas first, assign named owners, and integrate small changes. Integration coordinator, demo owner, submission owner/backup, freeze time, and submission format remain **TBD**.
+Suggested team work areas are catalog/search, offer/Valio integration, permissions/orders/approval page, and packaging/cluster/demo integration. These are code ownership areas, not separate microservices. Agree shared schemas first, assign named owners, and integrate small changes. Integration coordinator, demo owner, submission owner/backup, freeze time, and submission format remain **TBD**.
 
 ## 12. Open checks and sources
 
 Resolve early:
 
 - Does the sponsor provide another order interface, and is mock commitment accepted?
-- Which existing agent client supports the required authenticated human-confirmation path?
+- Which external agent client will drive the demo, how will its host expose the approval URL, and which seeded or existing buyer authentication will protect the page?
 - Can missing deposit IDs be priced, and what other charges belong in the total?
 - Are unit/code mappings or corrections available for ambiguous/conflicting catalog facts?
 - How should variable weight and uncertain Terminal fulfillment be represented if included later?
