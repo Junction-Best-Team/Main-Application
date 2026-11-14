@@ -1778,6 +1778,10 @@ for (const width of [1440, 320]) {
       );
     });
     await expect(page.getByText("restock.txt", { exact: true })).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath(`home-attachment-${width}.png`),
+      fullPage: true,
+    });
     await expect(
       page.getByRole("button", { name: "Send Order Request" }),
     ).toBeEnabled();
