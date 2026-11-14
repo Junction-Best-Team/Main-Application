@@ -6,6 +6,7 @@ import { MOCK } from "./mock";
 import { Icon, InertButton } from "./placeholders";
 import { store, FakeApiError } from "./store";
 import { useStoreState } from "./useStoreState";
+import { OverviewPanel } from "./OverviewPanel";
 
 export function ChatPage() {
   const { conversationId } = useParams();
@@ -324,6 +325,7 @@ export function ChatPage() {
       </div>
       {/* #86 mounts the Overview panel here: desktop right-hand column, mobile bottom drawer. */}
       <div data-testid="overview-slot" className="md:sticky md:top-space-lg md:w-80 md:shrink-0 lg:w-96" />
+      <OverviewPanel conversation={conversation} />
     </main>
   );
 }

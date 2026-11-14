@@ -9,14 +9,17 @@ export function useConfirmFlow(onUpdate: (p: Proposal) => void) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [revised, setRevised] = useState(false);
 
   async function confirm(proposal: Proposal) {
     setBusy(true);
     setError("");
     setMessage("");
+    setRevised(false);
     try {
       const result = await store.confirm(proposal.proposal_id, proposal.revision);
       onUpdate(result.proposal);
+      setRevised(result.status === "revised");
       setMessage(
         result.status === "revised"
           ? "Terms changed during verification. Review the new revision and confirm again."
@@ -44,5 +47,5 @@ export function useConfirmFlow(onUpdate: (p: Proposal) => void) {
     }
   }
 
-  return { busy, message, error, confirm, reject };
+  return { busy, message, error, revised, confirm, reject };
 }

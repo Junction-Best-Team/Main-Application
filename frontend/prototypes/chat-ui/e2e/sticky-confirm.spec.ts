@@ -24,20 +24,3 @@ test("the chat thread card only links to the basket, with no decision buttons", 
   await expect(page.getByRole("link", { name: "Review basket and purchasing checks" })).toBeVisible();
   await expect(page.getByRole("button", { name: /confirm this purchase/i })).toHaveCount(0);
 });
-
-test("confirming from the sticky panel produces the receipt", async ({ page }) => {
-  await signIn(page, "/purchases/prop-ready");
-  const panel = page.getByRole("region", { name: "Confirm this purchase" });
-  await panel.getByRole("button", { name: "Confirm this purchase" }).click();
-  await expect(page.getByText("Confirmation saved. Your demo receipt is below.").first()).toBeVisible();
-  await expect(page.getByText("Accepted by demo order service.")).toBeVisible();
-  await expect(page.getByText(/Order /).first()).toBeVisible();
-});
-
-test("rejecting from the sticky panel records the rejection", async ({ page }) => {
-  await signIn(page, "/purchases/prop-ready");
-  const panel = page.getByRole("region", { name: "Confirm this purchase" });
-  await panel.getByRole("button", { name: "Reject purchase" }).click();
-  await expect(page.getByText("Rejection recorded. This purchase cannot be committed.").first()).toBeVisible();
-  await expect(page.getByRole("region", { name: "Confirm this purchase" })).toHaveCount(0);
-});

@@ -3,7 +3,6 @@ import { Link, useParams } from "react-router-dom";
 import type { Proposal } from "./types";
 import { Badge, currency, dateTime, statusOf, title } from "./shared";
 import { store } from "./store";
-import { StickyConfirmPanel } from "./ConfirmPanels";
 
 export function DetailPage() {
   const { approvalId, proposalId } = useParams();
@@ -174,7 +173,6 @@ export function DetailPage() {
                 </pre>
               </details>
             </article>
-            <StickyConfirmPanel p={p} onUpdate={setProposal} />
           </div>
         </>
       )}

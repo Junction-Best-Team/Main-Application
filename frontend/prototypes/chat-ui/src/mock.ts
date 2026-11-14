@@ -25,4 +25,10 @@ export const MOCK = {
     composerHint: "Press Shift+Enter for new line",
     composerPlaceholder: "Ask Aimo Assistant or paste recipe ingredients, EAN codes, or meal counts...",
   },
+  /** Request screen Overview panel. */
+  overview: {
+    substitutionsLabel: "Substitutions allowed",
+    substitutionsOn: true,
+    accountManager: { initials: "MV", name: "Mikael Virtanen", phone: "+358 10 381 00" },
+  },
 } as const;

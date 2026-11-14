@@ -276,6 +276,41 @@ export const PROPOSALS: Record<string, Proposal> = {
       },
     ],
   }),
+  "prop-blocked": proposal({
+    proposal_id: "prop-blocked",
+    approval_id: "appr-blocked",
+    policy_outcome: "denied",
+    can_decide: false,
+    request: {
+      request_id: "REQ-BRUNCH-40",
+      destination: "Kitchen 3, Vallila, Helsinki",
+      delivery_date: new Date(Date.now() + 1000 * 60 * 60 * 24 * 3).toISOString().slice(0, 10),
+      budget_gross: "150.00",
+    },
+    snapshot: {
+      mode: "fixture",
+      observed_at: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
+      lines: CARBONARA_LINES.slice(0, 2),
+      net_total: "215.81",
+      tax_total: "22.85",
+      deposits_gross: "0.00",
+      charges_gross: "1.74",
+      gross_total: "239.80",
+    },
+    reasons: [
+      {
+        code: "BUDGET-EXCEEDED",
+        message: "The basket total is above the 150.00 EUR budget set for this request.",
+      },
+    ],
+    history: [
+      {
+        event: "proposal_created",
+        actor_id: "aimo-agent",
+        created_at: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
+      },
+    ],
+  }),
   "prop-superseded": proposal({
     proposal_id: "prop-superseded",
     approval_id: "appr-superseded",
@@ -375,6 +410,68 @@ export const INITIAL_CONVERSATIONS: Conversation[] = [
         order_status: "none",
         policy_outcome: "ready_to_commit",
         expires_at: PROPOSALS["prop-conflict"].expires_at,
+      },
+    ],
+  },
+  {
+    id: "conv-blocked",
+    title: "Brunch for 40 (over budget)",
+    busy: false,
+    messages: [
+      {
+        id: "m-6",
+        role: "user",
+        text: "Brunch basics for 40 people, budget 150 EUR.",
+        created_at: new Date(Date.now() - 1000 * 60 * 8).toISOString(),
+      },
+      {
+        id: "m-7",
+        role: "assistant",
+        text: "I prepared the basket, but it is above your budget, so it cannot be approved as it stands.",
+        created_at: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
+        proposal_id: "prop-blocked",
+      },
+    ],
+    purchases: [
+      {
+        proposal_id: "prop-blocked",
+        request: { request_id: "REQ-BRUNCH-40" },
+        snapshot: { gross_total: "239.80" },
+        approval_status: "pending",
+        order_status: "none",
+        policy_outcome: "denied",
+        expires_at: PROPOSALS["prop-blocked"].expires_at,
+      },
+    ],
+  },
+  {
+    id: "conv-expired",
+    title: "Vallila dairy (expired)",
+    busy: false,
+    messages: [
+      {
+        id: "m-8",
+        role: "user",
+        text: "Dairy top-up for Vallila.",
+        created_at: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
+      },
+      {
+        id: "m-9",
+        role: "assistant",
+        text: "Here is the basket for your review.",
+        created_at: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(),
+        proposal_id: "prop-expired",
+      },
+    ],
+    purchases: [
+      {
+        proposal_id: "prop-expired",
+        request: { request_id: "REQ-PREV-0031" },
+        snapshot: { gross_total: PROPOSALS["prop-expired"].snapshot.gross_total },
+        approval_status: "pending",
+        order_status: "none",
+        policy_outcome: "ready_to_commit",
+        expires_at: PROPOSALS["prop-expired"].expires_at,
       },
     ],
   },
