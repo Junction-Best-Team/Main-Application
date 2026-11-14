@@ -14,7 +14,7 @@ Add any starter code or earlier prototypes separately. Describe which parts exis
 
 | Material | Date | Source or author | Work performed |
 | --- | --- | --- | --- |
-| Valio Aimo implementation plan and diagrams | 2026-11-14 | Team-provided research brief and discussions with AI assistants; plan developed with Codex after checking the official challenge, portal/API documentation, product schema, and selected catalog records | Documentation and read-only catalog analysis only. Covers the smaller MVP, a minimal approval page in the existing backend, conversational/mission-driven agent support, API-fed ingestion and updates, hybrid search, and Kubernetes hosting with shared storage. Direct in-agent approval is optional. No application implementation, authenticated Valio API calls, or deployment at planning time. See [the plan](brief.md). |
+| Valio Aimo implementation plan and diagrams | 2026-11-14 | Team-provided research brief and discussions with AI assistants; plan developed with Codex after checking the official challenge, portal/API documentation, product schema, and selected catalog records | Documentation and read-only catalog analysis only. Covers the smaller MVP, seeded customer rules and authority, backend policy/workflow modules, a minimal approval page in the existing backend, concurrent commit enforcement, conversational/mission-driven agent support, API-fed ingestion and updates, hybrid search, and Kubernetes hosting with shared storage. Direct in-agent approval and policy-management MCP tools are optional later extensions. No application implementation, authenticated Valio API calls, or deployment at planning time. See [the plan](brief.md). |
 
 ## Reused code, data, models, and assets
 
