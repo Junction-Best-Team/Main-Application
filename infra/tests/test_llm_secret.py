@@ -31,7 +31,7 @@ class LlmSecretTest(unittest.TestCase):
         body = json.loads(run.call_args.kwargs["input"])
         self.assertEqual(body, {"stringData": {
             "LLM_API_KEY": "synthetic-secret", "LLM_BASE_URL": "https://openrouter.ai/api/v1",
-            "LLM_MODEL": "openai/gpt-4.1-mini",
+            "LLM_MODEL": "anthropic/claude-sonnet-5.5",
         }})
         self.assertTrue(run.call_args.kwargs["capture_output"])
 
@@ -87,7 +87,7 @@ class UnchangedSecretTest(unittest.TestCase):
 
     def test_unchanged_fields_do_not_patch_or_request_restart(self):
         fields = {"LLM_API_KEY": "synthetic-secret", "LLM_BASE_URL": "https://openrouter.ai/api/v1",
-                  "LLM_MODEL": "openai/gpt-4.1-mini", "DATABASE_URL": "untouched"}
+                  "LLM_MODEL": "anthropic/claude-sonnet-5.5", "DATABASE_URL": "untouched"}
         current = json.dumps({"data": {k: base64.b64encode(v.encode()).decode() for k, v in fields.items()}})
         with patch.object(helper.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout=current)) as run:
             self.assertFalse(helper.sync(self.env))

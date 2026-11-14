@@ -1,6 +1,7 @@
 """Bounded OpenAI-compatible function calling, independent of purchasing logic."""
 
 import json
+import logging
 import time
 from ipaddress import ip_address
 from typing import Literal
@@ -10,6 +11,7 @@ import httpx
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from aimo.db import Problem
+from aimo.observability import elapsed, event, failure, operation
 
 MAX_RESPONSE_BYTES = 1_000_000
 MAX_CONTEXT_BYTES = 512_000
@@ -30,6 +32,9 @@ class AssistantReply(BaseModel):
     role: Literal["assistant"] = "assistant"
     content: str | None = Field(default=None, max_length=20_000)
     tool_calls: list[ToolCall] = Field(default_factory=list, max_length=12)
+    # Opaque provider reasoning/signatures must survive the next tool round unchanged.
+    # Never persisted to conversation history, rendered to customers or logged.
+    reasoning_details: list[dict] | None = Field(default=None, repr=False)
 
     @model_validator(mode="after")
     def unique_call_ids(self):
@@ -42,6 +47,8 @@ class AssistantReply(BaseModel):
         result = {"role": "assistant", "content": self.content}
         if self.tool_calls:
             result["tool_calls"] = [call.model_dump() for call in self.tool_calls]
+        if self.reasoning_details is not None:
+            result["reasoning_details"] = self.reasoning_details
         return result
 
 
@@ -95,6 +102,7 @@ class ChatProvider:
             )
         self.url = config.llm_base_url.rstrip("/") + "/chat/completions"
 
+    @operation("llm.completion")
     def complete(self, messages, tools, deadline):
         payload = {
             "model": self.config.llm_model,
@@ -102,8 +110,11 @@ class ChatProvider:
             "tools": tools,
             "tool_choice": "auto",
             "parallel_tool_calls": True,
-            "max_completion_tokens": 4000,
+            "max_completion_tokens": getattr(self.config, "llm_max_completion_tokens", 8192),
         }
+        effort = getattr(self.config, "llm_reasoning_effort", "")
+        if effort:
+            payload["reasoning_effort"] = effort
         if len(encode(payload).encode()) > MAX_CONTEXT_BYTES:
             raise Problem(
                 "LLM_CONTEXT_LIMIT",
@@ -113,6 +124,7 @@ class ChatProvider:
             )
         for attempt in range(2):
             remaining = check_deadline(deadline)
+            started = time.monotonic()
             try:
                 with self.client.stream(
                     "POST",
@@ -122,6 +134,13 @@ class ChatProvider:
                     timeout=min(self.config.llm_timeout_seconds, remaining),
                 ) as response:
                     status = response.status_code
+                    event(
+                        "llm.response",
+                        model=self.config.llm_model,
+                        attempt=attempt + 1,
+                        status=status,
+                        duration_ms=elapsed(started),
+                    )
                     if status in (401, 403):
                         raise Problem(
                             "LLM_CONFIGURATION",
@@ -136,6 +155,9 @@ class ChatProvider:
                             503,
                         )
                     if transient and attempt == 0:
+                        event(
+                            "llm.retry", level=logging.WARNING, attempt=attempt + 1, status=status
+                        )
                         continue
                     if not response.is_success:
                         raise Problem(
@@ -153,8 +175,41 @@ class ChatProvider:
                             )
                         body.extend(chunk)
                     check_deadline(deadline)
+                    # Record bounded metadata even when parsing rejects a truncated reply.
+                    try:
+                        data = json.loads(body)
+                    except ValueError:
+                        data = {}
+                    data = data if isinstance(data, dict) else {}
+                    usage = data.get("usage")
+                    usage = usage if isinstance(usage, dict) else {}
+                    choices = data.get("choices")
+                    choice = choices[0] if isinstance(choices, list) and choices else {}
+                    choice = choice if isinstance(choice, dict) else {}
+                    finish_reason = choice.get("finish_reason")
+                    event(
+                        "llm.result",
+                        model=self.config.llm_model,
+                        finish_reason=finish_reason
+                        if finish_reason
+                        in ("stop", "length", "tool_calls", "content_filter", "error", None)
+                        else "other",
+                        duration_ms=elapsed(started),
+                        usage={
+                            k: usage[k]
+                            for k in ("prompt_tokens", "completion_tokens", "total_tokens")
+                            if type(usage.get(k)) is int
+                        },
+                    )
                     return self.parse(body)
-            except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError):
+            except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError) as exc:
+                event(
+                    "llm.transport_failed",
+                    level=logging.WARNING,
+                    attempt=attempt + 1,
+                    duration_ms=elapsed(started),
+                    **failure(exc),
+                )
                 if attempt == 0:
                     continue
                 raise Problem(

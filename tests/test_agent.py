@@ -1,6 +1,7 @@
 """Person 2's deterministic acceptance tests; provider and Service are explicit fakes."""
 
 import json
+import logging
 import time
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
@@ -439,6 +440,104 @@ def test_error_limit_stops_inside_a_batch_before_later_tool_calls(monkeypatch, c
     assert events[-1].error_code == "TOOL_ERROR_LIMIT"
     assert [e.sequence for e in events] == list(range(1, len(events) + 1))
     assert all(e.tool is None for e in events)
+
+
+def test_failed_tools_are_logged_without_progress_observer(monkeypatch, config, identity, caplog):
+    scripted(
+        monkeypatch,
+        [
+            reply(
+                *[
+                    call("get_product", {"private-unknown-field": "private-tool-value"})
+                    for _ in range(4)
+                ]
+            )
+        ],
+    )
+    with caplog.at_level(logging.INFO):
+        result = agent.run_turn(identity, HISTORY, FakeService(identity))
+    assert "tool errors" in result.text
+    rows = [json.loads(r.message) for r in caplog.records if r.name == "aimo.operations"]
+    failed = [r for r in rows if r["event"] == "agent.tool_failed"]
+    assert len(failed) == 4
+    assert all(
+        r["tool"] == "get_product"
+        and r["error_code"] == "INVALID_TOOL_ARGUMENTS"
+        and r["turn_id"] == identity["_turn_id"]
+        and r["duration_ms"] >= 0
+        for r in failed
+    )
+    assert any(r.get("error_code") == "TOOL_ERROR_LIMIT" for r in rows)
+    invalid = next(r for r in rows if r["event"] == "tool.arguments_invalid")
+    assert "product_id" in invalid["invalid_fields"]
+    assert "<unknown>" in invalid["invalid_fields"]
+    assert all(
+        s not in caplog.text
+        for s in (
+            "private-tool-value",
+            "private-unknown-field",
+            "private-provider-key",
+            HISTORY[0]["content"],
+        )
+    )
+
+
+def test_reasoning_signatures_survive_tool_round_without_logging(config, caplog):
+    config.llm_model = "anthropic/claude-sonnet-5.5"
+    config.llm_reasoning_effort = "low"
+    config.llm_max_completion_tokens = 8192
+    reasoning = [
+        {
+            "type": "reasoning.encrypted",
+            "data": "private-reasoning-signature",
+            "id": "thinking-block",
+            "format": "anthropic-claude-v1",
+            "index": 0,
+        }
+    ]
+    tool = call("get_purchase_policy")
+    requests = []
+
+    def handler(request):
+        requests.append(json.loads(request.content))
+        message = (
+            reply(tool) | {"reasoning_details": reasoning}
+            if len(requests) == 1
+            else reply(text="What date?")
+        )
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": message, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
+            },
+        )
+
+    with (
+        caplog.at_level(logging.INFO),
+        httpx.Client(transport=httpx.MockTransport(handler)) as client,
+    ):
+        provider = ChatProvider(config, client)
+        first = provider.complete(HISTORY, [], time.monotonic() + 10)
+        second = provider.complete(
+            HISTORY
+            + [
+                first.message(),
+                {
+                    "role": "tool",
+                    "tool_call_id": tool["id"],
+                    "content": "{}",
+                },
+            ],
+            [],
+            time.monotonic() + 10,
+        )
+    assert requests[1]["messages"][-2]["reasoning_details"] == reasoning
+    assert requests[0]["reasoning_effort"] == "low"
+    assert requests[0]["max_completion_tokens"] == 8192
+    assert second.content == "What date?"
+    assert "private-reasoning-signature" not in caplog.text + repr(first)
+    assert '"prompt_tokens": 100' in caplog.text
 
 
 def test_round_limit_is_bounded(monkeypatch, config, identity):

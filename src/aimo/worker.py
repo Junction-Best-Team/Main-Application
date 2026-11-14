@@ -9,9 +9,8 @@ from threading import Event, Thread
 from aimo import conversations
 from aimo.config import settings
 from aimo.db import close_pools, connection
+from aimo.observability import configure_logging, event, failure
 from aimo.service import Service
-
-log = logging.getLogger(__name__)
 
 
 def check_readiness():
@@ -40,12 +39,25 @@ def run_once(service, runner=None):
     turn = conversations.claim_turn()
     if turn is None:
         return False
+    event(
+        "worker.claimed",
+        turn_id=str(turn["id"]),
+        conversation_id=str(turn["conversation_id"]),
+        attempt_id=str(turn["attempt"]),
+        worker_attempts=turn["worker_attempts"],
+    )
     conversations.execute_turn(turn, service, runner)
     return True
 
 
 def main():
-    logging.basicConfig(level=logging.INFO)
+    configure_logging()
+    event(
+        "worker.started",
+        model=settings().llm_model,
+        embedding_backend=settings().embedding_backend,
+        guardrail_mode=settings().guardrail_mode,
+    )
     stop = Event()
     state = {"ready": False, "progress": time.monotonic()}
 
@@ -76,6 +88,8 @@ def main():
         while not stop.is_set():
             try:
                 check_readiness()
+                if not state["ready"]:
+                    event("worker.ready")
                 state.update(ready=True, progress=time.monotonic())
                 worked = run_once(service)
                 state["progress"] = time.monotonic()
@@ -83,10 +97,11 @@ def main():
                     stop.wait(1)
             except Exception as exc:
                 # Do not log customer messages, provider payloads or connection URLs.
-                log.warning("Worker iteration failed (%s)", type(exc).__name__)
+                event("worker.iteration_failed", level=logging.WARNING, **failure(exc))
                 state["ready"] = False
                 stop.wait(2)
     finally:
+        event("worker.stopped")
         state["ready"] = False
         server.shutdown()
         close_pools()

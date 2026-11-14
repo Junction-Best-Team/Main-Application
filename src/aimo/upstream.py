@@ -15,6 +15,7 @@ import httpx
 from aimo.config import settings
 from aimo.db import Problem, now
 from aimo.numeric import D
+from aimo.observability import elapsed, event, failure, operation
 
 log = logging.getLogger(__name__)
 HELSINKI = ZoneInfo("Europe/Helsinki")
@@ -51,6 +52,7 @@ def retry_delay(response, attempt):
 class ValioClient:
     mode = "live"
 
+    @operation("supplier.request")
     def post(self, endpoint, payload):
         cfg = settings()
         if not cfg.valio_aimo_api_key:
@@ -62,6 +64,7 @@ class ValioClient:
         with httpx.Client(timeout=15, follow_redirects=False) as client:
             for attempt in range(3):
                 response = None
+                started = time.monotonic()
                 try:
                     response = client.post(
                         cfg.valio_aimo_base_url + endpoint,
@@ -71,8 +74,18 @@ class ValioClient:
                             "User-Agent": "Junction-Aimo-Gateway/0.1",
                         },
                     )
-                except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError):
-                    pass  # Retry only transient transport failures, within the same small budget.
+                except (
+                    httpx.TimeoutException,
+                    httpx.NetworkError,
+                    httpx.RemoteProtocolError,
+                ) as exc:
+                    event(
+                        "supplier.transport_failed",
+                        level=logging.WARNING,
+                        attempt=attempt + 1,
+                        duration_ms=elapsed(started),
+                        **failure(exc),
+                    )
                 except httpx.HTTPError:
                     raise Problem(
                         "UPSTREAM_UNAVAILABLE",
@@ -80,6 +93,15 @@ class ValioClient:
                         502,
                     ) from None
                 else:
+                    event(
+                        "supplier.response",
+                        endpoint=endpoint
+                        if endpoint in {"/api/price", "/api/availability"}
+                        else "other",
+                        status=response.status_code,
+                        attempt=attempt + 1,
+                        duration_ms=elapsed(started),
+                    )
                     if 200 <= response.status_code < 300:
                         try:
                             return response.json()
@@ -109,6 +131,12 @@ class ValioClient:
                         503,
                         retry_after=wait,
                     )
+                event(
+                    "supplier.retry",
+                    level=logging.WARNING,
+                    attempt=attempt + 1,
+                    retry_after=round(delay, 2),
+                )
                 time.sleep(delay)
         raise Problem("UPSTREAM_UNAVAILABLE", "Supplier lookup failed.", 503)
 
