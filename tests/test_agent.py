@@ -218,6 +218,133 @@ def matched_session(identity, service):
     return session
 
 
+def draft_basis():
+    # Authored calculation fixture, not a culinary recipe or supplier evidence.
+    return {
+        "title": "Vegan lasagna estimate",
+        "base_servings": 4,
+        "portions": 500,
+        "ingredients": [
+            {"name": "Dry pasta", "amount": "400", "unit": "g"},
+            {"name": "Plant mince", "amount": "600", "unit": "g"},
+            {"name": "Tomato sauce", "amount": "1000", "unit": "ml"},
+        ],
+    }
+
+
+def test_recipe_draft_scales_base_once_and_is_visible_without_delivery_or_budget(identity):
+    tools = ToolSession(identity, FakeService(identity))
+    result = invoke(tools, "draft_recipe", draft_basis())
+    plan = result["meal_plan"]
+    assert [(i["amount"], i["unit"]) for i in plan["ingredients"]] == [
+        ("50", "KG"), ("75", "KG"), ("125", "L")
+    ]
+    assert plan["base_servings"] == 4 and plan["portions"] == 500
+    assert not plan["recipe_plan_id"] and not plan["recipe_id"]
+    assert "Assistant-drafted recipe estimate" in plan["notes"][0]
+    assert result["purchase_authorized"] is False
+    assert tools.result().meal_plan.portions == 500
+    assert tools.result().proposal_id is None
+    assert "3 ingredients still need catalog matches." in tools.result().text
+    assert "Unresolved ingredients:" not in tools.result().text
+    assert invoke(tools, "draft_recipe", draft_basis()) == result
+    assert tools.service.calls == []
+
+
+@pytest.mark.parametrize("unit,expected", [("g", "0.0004"), ("ml", "0.0004"), ("piece", "0.3334")])
+def test_draft_fractional_scaling_rounds_up(unit, expected, identity):
+    basis = draft_basis() | {
+        "base_servings": 3, "portions": 1,
+        "ingredients": [{"name": "Ingredient", "amount": "1", "unit": unit}],
+    }
+    result = invoke(ToolSession(identity, FakeService(identity)), "draft_recipe", basis)
+    assert result["meal_plan"]["ingredients"][0]["amount"] == expected
+
+
+@pytest.mark.parametrize("field,value", [("amount", "0"), ("amount", "NaN"), ("unit", "handful")])
+def test_draft_rejects_unknown_or_invalid_quantities(field, value, identity):
+    basis = draft_basis()
+    basis["ingredients"][0][field] = value
+    with pytest.raises(Problem, match="Correct these arguments") as error:
+        invoke(ToolSession(identity, FakeService(identity)), "draft_recipe", basis)
+    assert error.value.code == "INVALID_TOOL_ARGUMENTS"
+
+
+@pytest.mark.parametrize("change", ["amount", "omission", "portions", "title"])
+def test_matching_cannot_edit_server_scaled_draft(change, identity):
+    tools = ToolSession(identity, FakeService(identity))
+    plan = invoke(tools, "draft_recipe", draft_basis())["meal_plan"]
+    if change == "amount":
+        plan["ingredients"][0]["amount"] = "25000"  # accidental second scaling
+    elif change == "omission":
+        plan["ingredients"].pop()
+    elif change == "portions":
+        plan["portions"] = 250
+    else:
+        plan["title"] = "Another dish"
+    with pytest.raises(Problem) as error:
+        invoke(tools, "publish_meal_plan", plan)
+    assert error.value.code == "DRAFT_QUANTITY_MISMATCH"
+
+
+def test_draft_matching_retains_labels_and_prepares_exact_totals(identity):
+    service = FakeService(identity)
+    tools = ToolSession(identity, service)
+    plan = invoke(tools, "draft_recipe", draft_basis())["meal_plan"]
+    for index, item in enumerate(plan["ingredients"]):
+        item["product_id"] = f"ingredient-{index}"
+        invoke(tools, "get_product", {"product_id": item["product_id"]})
+    plan["notes"] = []
+    published = invoke(tools, "publish_meal_plan", plan)["meal_plan"]
+    assert "Assistant-drafted" in published["notes"][0]
+    request = purchase() | {
+        "budget_gross": None, "requirements": {"unsupported": ["vegan"]},
+        "lines": [{"product_id": i["product_id"], "amount": i["amount"], "unit": i["unit"]}
+                  for i in published["ingredients"]],
+    }
+    invoke(tools, "prepare_order", request)
+    prepared = next(c[2] for c in service.calls if c[0] == "prepare")
+    assert prepared.budget_gross is None
+    assert prepared.requirements.unsupported == ["vegan"]
+    assert [str(line.amount) for line in prepared.lines] == ["50", "75", "125"]
+    assert all(line.contributions for line in prepared.lines)
+    # Neither draft generation nor preparation authorizes or commits a purchase.
+    assert set(c[0] for c in service.calls) == {"product", "prepare"}
+
+
+def test_draft_cannot_replace_a_selected_saved_recipe(identity):
+    tools = ToolSession(identity, FakeService(identity))
+    tools.plan = MealPlan(**meal(False), recipe_plan_id=str(uuid4()))
+    with pytest.raises(Problem) as error:
+        invoke(tools, "draft_recipe", draft_basis())
+    assert error.value.code == "RECIPE_PLAN_REQUIRED"
+    assert tools.draft_basis is None
+
+
+@pytest.mark.parametrize("discovery_ready", [True, False])
+def test_missing_saved_recipe_falls_back_to_visible_scaled_draft(
+    monkeypatch, config, identity, discovery_ready
+):
+    service = FakeService(identity)
+
+    def search(identity, request):
+        if not discovery_ready:
+            raise Problem("RECIPES_NOT_READY", "Recipe data is not ready.", 503)
+        return {"recipes": [], "rerank_status": "disabled", "note": "No matching recipe."}
+
+    service.search_recipes = search
+    scripted(monkeypatch, [
+        reply(call("search_recipes", {"query": "vegan lasagna"})),
+        reply(call("draft_recipe", draft_basis())),
+        reply(text="I've drafted an estimated recipe for 500 portions. What delivery date should I use?"),
+    ])
+    turn = agent.run_turn(identity, [{"role": "user", "content": "Vegan lasagna for 500 people."}], service)
+    assert turn.meal_plan.portions == 500
+    assert turn.meal_plan.ingredients[0].amount == "50"
+    assert not turn.proposal_id
+    assert not service.calls
+
+
 def test_carbonara_clarifies_then_returns_a_verified_full_basket(monkeypatch, config, identity):
     service = FakeService(identity)
     events = []

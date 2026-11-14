@@ -146,7 +146,7 @@ timeouts; the budget cannot interrupt a synchronous tool already running.
 | Product discovery and facts | `search_products`, `get_product`, `check_price_and_availability` |
 | Policy and planning | `get_purchase_policy`, `publish_meal_plan` |
 | Proposal preparation and history | `prepare_order`, `get_proposal`, `get_order` |
-| Recipes, when enabled | `search_recipes`, `get_recipe`, `scale_recipe`, `get_recipe_plan`, `match_ingredient` |
+| Recipe discovery, saved plans and draft estimates | `search_recipes`, `get_recipe`, `scale_recipe`, `get_recipe_plan`, `match_ingredient`, `match_ingredients`, `draft_recipe` |
 | Optional recipe illustrations | `generate_recipe_image` (Google generation, signed Cloudinary upload) |
 
 There is no approval, confirmation, commitment or policy-editing tool. Typed validation,

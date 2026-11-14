@@ -931,3 +931,36 @@ Add new findings below, under your track heading.
 
 - Date: 2026-11-14. Customer and assistant messages now render Markdown headings, emphasis, nested/ordered lists, quotes, links, code, tables and task lists using `react-markdown` and `remark-gfm`. Existing plain-text line breaks remain visible. Code and tables scroll within their bubbles on narrow screens. Raw HTML stays inert, unsafe URL protocols are filtered, and Markdown images render alt text without network requests; validated recipe illustrations retain their existing component.
 - Verification: locked `npm ci` and `npm run check --prefix frontend` passed. All 65 fixture-backed browser tests passed, with two optional backend integration tests skipped. Four new cases cover desktop/320px rendering and reload, no document overflow, and unsafe HTML/URLs/images in both message roles. Desktop and phone screenshots were visually inspected. An initial overlapping test invocation lost the reused Vite server; the complete sequential rerun passed. Vite reports a nonblocking 548 kB chunk-size warning. No backend, schema, deployment or purchasing-authority changes.
+
+### F-MEAL-PLANNING-001: The assistant owns recipe quantities
+
+- Date: 2026-11-15. Owner clarified that customers describe a dish and guest count;
+  the assistant chooses a recipe and calculates ingredient quantities. Removed the
+  instruction to stop when an exact saved recipe is absent. Saved recipes retain
+  their existing scaling/matching controls; the new `draft_recipe` tool labels an
+  assistant-authored recipe estimate and reuses exact server scaling. Matching
+  cannot change its totals or omit ingredients in the same turn. Drafts remain
+  free-form plans without saved-recipe completeness or cooked-yield guarantees.
+- The assistant publishes the recipe before investigating purchasing blockers,
+  chooses normal serving sizes, retains stated dietary needs/budgets, leaves an
+  unstated budget unset and asks only for material missing facts. Reply instructions
+  keep ingredient lists in the plan card and limit chat to three short sentences.
+  Overview now shows the latest persisted draft before a proposal exists, including
+  after an older basket; prepared proposals retain exact confirmation controls.
+- Verification: full fixture-backed `tests/ci.sh` passed against isolated local
+  databases (2,229 tests and all 11 strict HTTP sweep checks). Frontend `npm run check`
+  passed; 68 browser tests passed, with two optional backend integration tests
+  skipped. Desktop/320px draft screenshots were inspected. Regression coverage
+  includes missing/unavailable recipe discovery, exact/fractional scaling, repeated
+  calls, invalid units, changed/omitted quantities, saved-plan bypass prevention,
+  retained unsupported dietary requirements and draft-to-confirmed-mock-receipt
+  persistence. Two existing tests assumed a single saved-recipe scaling caller or
+  an exhaustive old tool list; both now cover the separate draft path.
+- Live limits: one Google chat/guardrail run using authored empty catalogs produced
+  a labelled 500-portion, 19-ingredient draft without asking for weights or preparing
+  an order. Its reply was verbose; the subsequent concise-prompt recheck failed with
+  provider `LLM_UNAVAILABLE` after a 45-second completion timeout. An earlier retry
+  exposed a missing substitution stub in the local smoke harness, which was fixed.
+  These runs do not establish culinary yields, live supplier matching or reliable
+  final reply style. No customer data, supplier call, new public API, migration,
+  dependency, shared-branch merge, Terraform operation or deployment.

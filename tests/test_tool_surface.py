@@ -45,6 +45,7 @@ def registry():
 
 ALL_TOOLS = sorted(registry())
 RECIPE_TOOLS = [
+    "draft_recipe",
     "get_recipe",
     "get_recipe_plan",
     "match_ingredient",
@@ -99,7 +100,7 @@ def assert_agent_safe(problem):
 def test_the_full_tool_list_is_always_exposed():
     """Purchasing, recipe and explicit memory tools are always registered."""
     memory_tools = {"search_memory", "manage_memory"}
-    assert len(ALL_TOOLS) == 18, ALL_TOOLS
+    assert len(ALL_TOOLS) == 19, ALL_TOOLS
     assert set(RECIPE_TOOLS) | memory_tools <= set(ALL_TOOLS)
     assert len(set(ALL_TOOLS) - set(RECIPE_TOOLS) - memory_tools - {"generate_recipe_image"}) == 9
 
@@ -611,6 +612,21 @@ def test_tct005_recipe_tool_results_carry_units_basis_and_attribution(actor, ser
     assert reloaded == plan
 
 
+def test_tct005_draft_recipe_carries_units_basis_and_estimate_label():
+    result = call(build(NoService()), "draft_recipe", {
+        "title": "Authored pasta estimate", "base_servings": 4, "portions": 200,
+        "ingredients": [{"name": "Dry pasta", "amount": "400", "unit": "g"}],
+    })
+    plan = result["meal_plan"]
+    assert plan["ingredients"][0]["amount"] == "20"
+    assert plan["ingredients"][0]["unit"] == "KG"
+    assert plan["base_servings"] == 4 and plan["portions"] == 200
+    assert "Assistant-drafted" in plan["notes"][0]
+    assert "server-scaled" in plan["notes"][1]
+    assert not plan["recipe_id"] and not plan["recipe_plan_id"]
+    assert result["purchase_authorized"] is False
+
+
 def test_tct005_every_registered_tool_is_covered_by_a_result_check_here():
     """Fails when a tool is added: extend the TCT-005 checks above, then this list."""
     covered = {
@@ -630,6 +646,7 @@ def test_tct005_every_registered_tool_is_covered_by_a_result_check_here():
         "search_recipes": "test_tct005_recipe_tool_results_carry_units_basis_and_attribution",
         "get_recipe": "test_tct005_recipe_tool_results_carry_units_basis_and_attribution",
         "scale_recipe": "test_tct005_recipe_tool_results_carry_units_basis_and_attribution",
+        "draft_recipe": "test_tct005_draft_recipe_carries_units_basis_and_estimate_label",
         "get_recipe_plan": "test_tct005_recipe_tool_results_carry_units_basis_and_attribution",
         "match_ingredient": "test_tct005_recipe_tool_results_carry_units_basis_and_attribution",
         "match_ingredients": "same plan result as match_ingredient; test_batch_match_tool_matches_every_ingredient_in_one_revision",

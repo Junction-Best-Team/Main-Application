@@ -5,6 +5,26 @@ flag). It uses the existing Service, PostgreSQL/pgvector and purchasing/confirma
 controls. All orders remain mock. The merged release pipeline applies schema/grants
 before rollout; recipe import remains an explicit operator action.
 
+## Customer flow
+
+The customer names a meal and guest count. The assistant chooses a suitable saved
+recipe, scales it on the server, finds catalog products and prepares the basket.
+It chooses normal serving sizes and does not ask the customer to calculate grams,
+ingredient ratios or pack counts. Missing delivery facts are asked for only when
+needed for preparation; a missing hard budget is left unset, with policy limits
+and exact customer confirmation still enforced.
+
+If no suitable saved recipe exists or discovery is unavailable, `draft_recipe`
+accepts an assistant-authored ingredient basis and base servings. The server uses
+the same exact scaling and upward four-decimal rounding as saved recipes, publishes
+the estimate, and preserves its totals while products are attached. This draft is
+labelled as assistant-authored and stays a free-form plan: it has no saved-recipe
+completeness, suitability or cooked-yield guarantee. It never creates a recipe
+database entry or replaces a selected unresolved saved recipe. Plans persist in
+ordinary conversation messages; Overview shows the latest draft before a proposal
+exists. Pricing, policy and dietary blockers do not prevent showing a draft, but
+still prevent a purchase. No new public API, schema migration or dependency.
+
 ## Setup and import
 
 1. After the migration credential bootstrap, the release pipeline applies
@@ -22,7 +42,8 @@ before rollout; recipe import remains an explicit operator action.
    for an executable basket.
 4. Recipe tools are always registered. Before an import, or if the active corpus
    was built with a different embedding profile, they report `RECIPES_NOT_READY` or
-   `RECIPE_MODEL_MISMATCH`. No invented fallback.
+   `RECIPE_MODEL_MISMATCH`. These tools never invent database records; the
+   assistant can offer the separately labelled draft flow above.
 
 Download a selected revision of [UniTools World Recipes](https://github.com/farcrak/unitools-recipes),
 retain it privately, independently check its SHA-256, then run:
@@ -79,10 +100,10 @@ recipe version, retain the original source record and record the review referenc
 Do not set `linear` merely to bypass `damped`: establish an appropriate recipe
 basis first. Only linear quantities in g/kg/ml/l/piece currently produce executable
 amounts; other units, unspecified quantities and fixed/damped/sublinear rules stay
-unresolved. Nonterminating or >4-decimal scaled totals are not silently rounded.
+unresolved. Scaled totals round upward to four decimal places.
 All source ingredients are required, including salt and pantry items. There is no
-pantry exemption, customer quantity-resolution UI, AI recipe generation or arbitrary
-recipe editing in this initial implementation.
+pantry exemption, customer quantity-resolution UI or arbitrary editing of saved
+recipes. Assistant-authored drafts remain separate from these reviewed records.
 
 Product evidence is also an explicit reviewed import:
 
@@ -114,7 +135,7 @@ pack counts. Revoked suitability blocks confirmation.
 
 ## Agent and persistence
 
-Tools: `search_recipes`, `get_recipe`, `scale_recipe`, `get_recipe_plan`,
+Tools: `search_recipes`, `get_recipe`, `scale_recipe`, `get_recipe_plan`, `draft_recipe`,
 `match_ingredient`, `match_ingredients` (several ingredient and product pairs, one plan revision,
 all-or-nothing), plus the existing product discovery and purchasing tools.
 

@@ -216,3 +216,12 @@ upstream documentation, with locked dependencies. Reused the existing message
 transcript, design tokens and Playwright route fixtures. Markdown and unsafe
 content examples are authored synthetic fixtures; no supplier or model calls,
 external images or customer messages were used.
+
+## Meal planning without customer arithmetic — 2026-11-15
+
+Reused saved-recipe exact scaling and upward rounding, typed internal tools,
+conversation meal-plan persistence, product inspection, basket validation and the
+existing Overview design. Assistant-authored recipe bases remain labelled estimates,
+separate from imported saved recipes. Calculation and browser fixtures are authored
+synthetic examples, not verified recipes or live supplier records. No new external
+recipe source, dataset, visual asset or dependency was introduced.
