@@ -69,7 +69,7 @@ export function ChatPage() {
                 className="flex items-center gap-space-xs text-wholesale-teal"
               >
                 <Icon name="tune" className="text-[16px]" />
-                Assistant preferences
+                Memory
               </Link>
             </div>
           </div>
