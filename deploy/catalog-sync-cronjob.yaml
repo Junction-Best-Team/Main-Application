@@ -1,0 +1,62 @@
+# Alternative to the Terraform-managed CronJob (infra/kubernetes/catalog_sync.tf), for an
+# existing environment. Terraform is authoritative for the Junction installation.
+# Prerequisites: migrations and grants applied (`aimo migrate --runtime-role ... --catalog-role
+# ...`), plus Secret `aimo-catalog-sync` holding ONLY DATABASE_URL (the dedicated catalog-sync
+# role), VALIO_AIMO_API_KEY and any embedding-profile keys shared with the API/worker.
+# First population: kubectl -n NAMESPACE create job aimo-catalog-sync-initial \
+#   --from=cronjob/aimo-catalog-sync      (see docs/catalog-sync.md)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: aimo-catalog-sync
+  labels: {app: aimo-catalog-sync, app.kubernetes.io/part-of: aimo}
+spec:
+  schedule: "30 3 * * *"
+  timeZone: Europe/Helsinki
+  suspend: false
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      labels: {app: aimo-catalog-sync, app.kubernetes.io/part-of: aimo}
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 604800
+      template:
+        metadata:
+          labels: {app: aimo-catalog-sync, app.kubernetes.io/part-of: aimo}
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: catalog-sync
+              # Use the released worker digest; releases update it with `kubectl set image`.
+              image: registry.example.invalid/aimo@sha256:REPLACE_WITH_WORKER_DIGEST
+              args: [sync-catalog]
+              envFrom: [{configMapRef: {name: aimo-config}}, {secretRef: {name: aimo-catalog-sync}}]
+              env: [{name: CATALOG_WORK_DIR, value: /tmp}]
+              resources:
+                requests: {cpu: 250m, memory: 768Mi, ephemeral-storage: 512Mi}
+                limits: {cpu: "1", memory: 3Gi, ephemeral-storage: 1Gi}
+              securityContext:
+                runAsNonRoot: true
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+                - {name: database-ca, mountPath: /etc/aimo-db, readOnly: true}
+          volumes:
+            - name: tmp
+              emptyDir: {sizeLimit: 1Gi}
+            - name: database-ca
+              secret: {secretName: aimo-database-ca}

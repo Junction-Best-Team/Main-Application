@@ -133,11 +133,12 @@ variable "storage_class" {
 }
 
 variable "bootstrap_credentials" {
-  description = "Temporary admin URL, runtime username, and private demo credentials. Remove after successful bootstrap."
+  description = "Temporary admin URL, runtime username, optional catalog-sync username, and private demo credentials. Remove after successful bootstrap."
   type = object({
-    database_url   = string
-    database_user  = string
-    buyer_password = string
+    database_url               = string
+    database_user              = string
+    buyer_password             = string
+    catalog_sync_database_user = optional(string)
   })
   sensitive = true
   default   = null
@@ -150,7 +151,7 @@ variable "bootstrap_credentials" {
 }
 
 variable "bootstrap_generation" {
-  description = "Set once to run migrations, seed, runtime grants, and full catalog import. Change only for an intentional rerun."
+  description = "Set once to run migrations, seed and runtime/catalog-sync grants. The catalog itself is populated by the catalog-sync Job. Change only for an intentional rerun."
   type        = string
   default     = null
   validation {
@@ -193,10 +194,11 @@ variable "frontend_image" {
 }
 
 variable "migration_credentials" {
-  description = "Persistent schema-owner URL and restricted runtime username, supplied only to release Jobs. Separate from temporary bootstrap/seed credentials."
+  description = "Persistent schema-owner URL, restricted runtime username and optional catalog-sync username, supplied only to release Jobs. Separate from temporary bootstrap/seed credentials."
   type = object({
-    database_url  = string
-    database_user = string
+    database_url               = string
+    database_user              = string
+    catalog_sync_database_user = optional(string)
   })
   sensitive = true
   default   = null
@@ -204,8 +206,48 @@ variable "migration_credentials" {
     condition = var.migration_credentials == null ? true : (
       strcontains(var.migration_credentials.database_url, "sslmode=verify-full") &&
       strcontains(var.migration_credentials.database_url, "sslrootcert=/etc/aimo-db/ca.crt") &&
-      trimspace(var.migration_credentials.database_user) != ""
+      trimspace(var.migration_credentials.database_user) != "" &&
+      coalesce(var.migration_credentials.catalog_sync_database_user, "-") != var.migration_credentials.database_user
     )
-    error_message = "Migration credentials require verified database TLS and the restricted runtime role name."
+    error_message = "Migration credentials require verified database TLS and the restricted runtime role name; the catalog-sync role must be a different role."
+  }
+}
+
+variable "catalog_sync" {
+  description = "Scheduled `aimo sync-catalog` CronJob. Enable after migrations/grants, the dedicated catalog database role and the supplier key exist."
+  type = object({
+    enabled                 = optional(bool, false)
+    suspend                 = optional(bool, false)
+    schedule                = optional(string, "30 3 * * *")
+    timezone                = optional(string, "Europe/Helsinki")
+    active_deadline_seconds = optional(number, 3600)
+    backoff_limit           = optional(number, 2)
+    cpu_request             = optional(string, "250m")
+    cpu_limit               = optional(string, "1")
+    memory_request          = optional(string, "768Mi")
+    memory_limit            = optional(string, "3Gi")
+    storage_request         = optional(string, "512Mi")
+    storage_limit           = optional(string, "1Gi")
+  })
+  default  = {}
+  nullable = false
+  validation {
+    condition     = length(split(" ", trimspace(var.catalog_sync.schedule))) == 5 && trimspace(var.catalog_sync.timezone) != ""
+    error_message = "Use a five-field cron schedule and an explicit IANA timezone."
+  }
+  validation {
+    condition     = var.catalog_sync.backoff_limit >= 0 && var.catalog_sync.backoff_limit <= 3 && var.catalog_sync.active_deadline_seconds >= 300 && var.catalog_sync.active_deadline_seconds <= 7200
+    error_message = "Bound retries (0-3) and the execution deadline (300-7200 seconds)."
+  }
+}
+
+variable "catalog_sync_database_url" {
+  description = "Dedicated catalog-sync role URL (catalog tables only), never the runtime or admin URL."
+  type        = string
+  sensitive   = true
+  default     = null
+  validation {
+    condition     = var.catalog_sync_database_url == null ? true : strcontains(var.catalog_sync_database_url, "sslmode=verify-full") && strcontains(var.catalog_sync_database_url, "sslrootcert=/etc/aimo-db/ca.crt")
+    error_message = "Use verified PostgreSQL TLS and the mounted CA file for catalog sync."
   }
 }

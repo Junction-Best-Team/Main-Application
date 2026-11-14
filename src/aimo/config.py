@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     rerank_enabled: bool = True
     rerank_candidates: int = Field(default=30, ge=20, le=80)
     catalog_generations_to_keep: int = Field(default=2, ge=1, le=10)
+    # Supplier snapshot download bounds for `aimo sync-catalog` / `aimo ingest --download`.
+    catalog_download_timeout_seconds: float = Field(default=60, gt=0, le=300)
+    catalog_download_deadline_seconds: float = Field(default=900, gt=0, le=3600)
+    catalog_download_max_bytes: int = Field(default=256 * 1024 * 1024, ge=1)
+    catalog_download_attempts: int = Field(default=3, ge=1, le=5)
+    # Blank uses the system temporary directory; the Job mounts a bounded emptyDir there.
+    catalog_work_dir: str = ""
     proposal_ttl_seconds: int = 900
     # Conversational provider configuration is independent of local embeddings.
     llm_api_key: str = ""

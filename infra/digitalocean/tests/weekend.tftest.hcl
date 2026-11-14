@@ -26,6 +26,10 @@ run "weekend_budget_and_database_isolation" {
     condition     = digitalocean_kubernetes_cluster.demo.control_plane_firewall[0].enabled
     error_message = "The Kubernetes API must use the operator allowlist."
   }
+  assert {
+    condition     = digitalocean_database_user.catalog_sync.name != digitalocean_database_user.runtime.name && output.catalog_sync_database_user == "aimo_catalog_sync"
+    error_message = "Catalog ingestion needs its own database role, separate from the runtime role."
+  }
 }
 
 run "reject_world_open_api" {

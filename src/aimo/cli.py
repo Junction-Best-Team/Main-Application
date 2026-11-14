@@ -11,7 +11,9 @@ from aimo.schemas import PolicyRules
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def migrate(runtime_role=None):
+def migrate(runtime_role=None, catalog_role=None):
+    if catalog_role and catalog_role == runtime_role:
+        raise ValueError("The catalog sync role must differ from the runtime role")
     with connection() as c:
         # Serialize ledger checks, DDL and grants in one atomic transaction.
         # Keep this key stable across bootstrap, CLI and release Job callers.
@@ -35,7 +37,15 @@ def migrate(runtime_role=None):
             from aimo.permissions import configure_runtime_role
 
             configure_runtime_role(c, runtime_role)
-    print("Migrations committed" + (" with runtime grants." if runtime_role else "."), flush=True)
+        if catalog_role:
+            from aimo.permissions import configure_catalog_sync_role
+
+            configure_catalog_sync_role(c, catalog_role)
+    grants = [name for name, role in (("runtime", runtime_role), ("catalog sync", catalog_role)) if role]
+    print(
+        "Migrations committed" + (f" with {' and '.join(grants)} grants." if grants else "."),
+        flush=True,
+    )
 
 
 def seed():
@@ -141,6 +151,11 @@ def main():
         sub.add_parser(name)
     migration = sub.add_parser("migrate")
     migration.add_argument("--runtime-role", help="Reapply restricted runtime grants atomically")
+    migration.add_argument(
+        "--catalog-role",
+        default=os.getenv("CATALOG_SYNC_DATABASE_USER") or None,
+        help="Reapply catalog-sync-only grants (default: $CATALOG_SYNC_DATABASE_USER)",
+    )
     scope = sub.add_parser(
         "set-product-scope", help="Privileged provisioning: version a buyer's approved product IDs"
     )
@@ -162,15 +177,22 @@ def main():
     )
     activation = sub.add_parser("activate-catalog", help="Explicit catalog cutover or rollback")
     activation.add_argument("--generation", required=True)
-    ing.add_argument("--expected-count", type=int, default=17546)
-    from aimo.ingest import CATALOG_SHA256
+    from aimo.ingest import CATALOG_PRODUCT_COUNT, CATALOG_SHA256
 
+    ing.add_argument("--expected-count", type=int, default=CATALOG_PRODUCT_COUNT)
     ing.add_argument("--expected-sha256", default=CATALOG_SHA256)
+    sync = sub.add_parser(
+        "sync-catalog",
+        help="Unattended: obtain the approved snapshot, skip if current, else import and activate",
+    )
+    sync.add_argument("--file", type=Path, help="Use a local snapshot instead of downloading")
+    sync.add_argument("--expected-count", type=int, default=CATALOG_PRODUCT_COUNT)
+    sync.add_argument("--expected-sha256", default=CATALOG_SHA256)
     args = parser.parse_args()
     if args.command == "configure":
         configure()
     elif args.command == "migrate":
-        migrate(runtime_role=args.runtime_role)
+        migrate(runtime_role=args.runtime_role, catalog_role=args.catalog_role)
     elif args.command == "seed":
         seed()
     elif args.command == "set-product-scope":
@@ -220,6 +242,15 @@ def main():
         from aimo.recipe_import import import_product_evidence
 
         print(json.dumps(import_product_evidence(args.file)))
+    elif args.command == "sync-catalog":
+        from aimo.ingest import run_sync
+
+        result, code = run_sync(
+            file=args.file, expected_sha=args.expected_sha256, expected_count=args.expected_count
+        )
+        print(json.dumps(result), flush=True)
+        if code:
+            raise SystemExit(code)
     elif args.command == "ingest":
         from aimo.ingest import download, ingest_file
 

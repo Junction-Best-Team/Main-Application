@@ -9,9 +9,10 @@ npm ci
 npm run check
 ```
 
-`check` runs `build`, which runs ESLint, Prettier check, strict TypeScript and
-Vite build. The existing CI and Docker build commands therefore enforce these
-checks without workflow changes. ESLint
+`check` runs local Prettier validation and then `build`, which runs ESLint,
+strict TypeScript and Vite build. The existing CI and Docker commands enforce
+the build checks without workflow changes; formatting and browser checks stay
+local per the repository CI policy. ESLint
 checks hook rules/dependencies and import direction. Generated schema, build
 output and the historical prototype are excluded from lint/format rewriting.
 `npm run format` updates maintained source/config/docs. Production output is

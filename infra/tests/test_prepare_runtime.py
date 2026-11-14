@@ -67,6 +67,33 @@ class PrivateRuntimeInputsTest(unittest.TestCase):
         self.assertNotIn("agent_token", inputs["bootstrap_credentials"])
         self.assertGreaterEqual(len(inputs["bootstrap_credentials"]["buyer_password"]), 12)
 
+    def test_catalog_sync_role_reaches_only_its_secret_and_grant_inputs(self):
+        data = json.loads(self.result.stdout)
+        data["catalog_sync_database_url"] = {"value": "synthetic-catalog-url"}
+        data["catalog_sync_database_user"] = {"value": "synthetic-catalog-role"}
+        result = SimpleNamespace(returncode=0, stdout=json.dumps(data))
+        with patch.object(self.helper.subprocess, "run", return_value=result):
+            output = self.invoke()
+        self.assertNotIn("synthetic", output)
+        inputs = json.loads((self.runtime / "runtime.auto.tfvars.json").read_text())
+        self.assertEqual(inputs["catalog_sync_database_url"], "synthetic-catalog-url")
+        self.assertEqual(inputs["database_url"], "synthetic-runtime-url")
+        self.assertEqual(
+            inputs["migration_credentials"]["catalog_sync_database_user"], "synthetic-catalog-role"
+        )
+        self.assertEqual(
+            inputs["bootstrap_credentials"]["catalog_sync_database_user"], "synthetic-catalog-role"
+        )
+        self.assertNotIn("catalog_sync", inputs)  # the CronJob is enabled explicitly later
+
+    def test_half_configured_catalog_sync_outputs_write_nothing(self):
+        data = json.loads(self.result.stdout)
+        data["catalog_sync_database_url"] = {"value": "synthetic-catalog-url"}
+        result = SimpleNamespace(returncode=0, stdout=json.dumps(data))
+        with patch.object(self.helper.subprocess, "run", return_value=result), self.assertRaises(SystemExit):
+            self.invoke()
+        self.assertEqual(list(self.runtime.iterdir()), [])
+
     def test_existing_credentials_are_never_overwritten(self):
         existing = self.runtime / "runtime.auto.tfvars.json"
         existing.write_text("preserve-me")

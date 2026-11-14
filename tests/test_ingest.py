@@ -16,7 +16,7 @@ import aimo.ingest as ingestion
 from aimo.config import Settings
 from aimo.db import connection, fingerprint
 from aimo.fixtures import fixture_facts
-from aimo.ingest import download, ingest_file, publish
+from aimo.ingest import CatalogError, download, ingest_file, publish
 
 
 @pytest.fixture(autouse=True)
@@ -165,10 +165,10 @@ def test_publish_rejects_wrong_number_of_vectors(monkeypatch):
 def configure(monkeypatch, handler, key="test-key-not-real"):
     cfg = Settings(_env_file=None, valio_aimo_api_key=key, valio_aimo_base_url="https://api.test")
     monkeypatch.setattr(ingestion, "settings", lambda: cfg)
-    real = httpx.Client
+    real = httpx.AsyncClient
     monkeypatch.setattr(
         ingestion.httpx,
-        "Client",
+        "AsyncClient",
         lambda **kw: real(transport=httpx.MockTransport(handler), **kw),
     )
 
@@ -241,8 +241,9 @@ def test_download_refuses_a_non_https_redirect(monkeypatch, tmp_path):
 def test_download_http_error_leaves_no_file(monkeypatch, tmp_path):
     configure(monkeypatch, lambda request: httpx.Response(403))
     out = tmp_path / "out.json"
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(CatalogError, match="HTTP 403") as failure:
         download(out)
+    assert failure.value.code == "DOWNLOAD_FAILED"
     assert not out.exists()
 
 

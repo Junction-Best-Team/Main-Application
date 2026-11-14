@@ -17,27 +17,25 @@ See the [architecture diagrams](docs/architecture.md) for the system overview, p
 
 ## CI
 
-One workflow, `.github/workflows/ci.yml`, runs on PRs into `develop` and `main` and on pushes to either. Its jobs run in parallel:
+One workflow, `.github/workflows/ci.yml`, runs on PRs into `develop` and `main` and on pushes to either. Backend and frontend checks start in parallel:
 
 | Job (GitHub name) | What it does |
 | --- | --- |
-| Detect application components | Decides which jobs apply (backend, frontend, Terraform) |
-| Python lint and tests | `ruff check`, then `pytest` against temporary PostgreSQL/pgvector with fixture embeddings and supplier responses; saves coverage data |
-| Frontend types and build | `npm ci`, TypeScript check, production build. There are no UI tests in CI: the current UI is an old mockup, so UI testing waits for the real design |
-| API sweep | Starts the real server and drives the buyer-facing API: sign-in, CSRF and Origin checks, conversations, purchases and approvals, and that a chat turn without an LLM provider fails honestly (`tests/sweep/run_sweep.py`) |
+| Python lint and tests | `ruff check`, then `pytest` against temporary PostgreSQL/pgvector, then the strict buyer-facing API sweep; uses fixture embeddings and supplier responses |
+| Frontend types and build | `npm ci`, TypeScript check and production build; formatting and browser tests stay local |
+| Detect application components | Only detects infrastructure/workflow changes; retains its existing name for required status checks |
 | Terraform | Format, validate, mocked-provider plan tests and Helm render for `infra/` (only when it or the workflows changed) |
-| Coverage (95% minimum) | Combines the pytest and sweep coverage data and fails below `fail_under` in `pyproject.toml` |
-| **CI gate** | Waits for every job above; the required status check |
+| **CI gate** | Requires backend, frontend and change detection to succeed, plus Terraform when applicable |
 
-Dependencies come from the lockfiles with the unused ML stack pruned, downloads are cached and a new commit cancels outdated PR runs (main releases are serialized). Everything runs on fixtures: CI never has the Valio API key, and no model weights, full catalog imports, Docker builds or deployments are needed. The live check is the local `tests/ci.sh --live`. What every check verifies is in [tests/README.md](tests/README.md) and [tests/TEST-GUIDE.md](tests/TEST-GUIDE.md).
+The API sweep shares the backend job's Python environment and PostgreSQL service. Coverage is an optional local diagnostic, with no percentage requirement or coverage artifact jobs in CI. Dependencies are locked and cached; new commits cancel outdated PR runs. CI uses fixtures, without supplier keys, model downloads or full catalog imports. The live check is local: `tests/ci.sh --live`. See [tests/README.md](tests/README.md) and [tests/TEST-GUIDE.md](tests/TEST-GUIDE.md).
 
-Our workflow is **task PR → green CI → self-merge**. Branch protection on `develop` requires the CI gate plus the three application checks; reviews are optional and the `skip-review` label does not bypass CI. Adding a job: give it a `name`, add it to the gate's `needs` and `applies` table in `ci.yml`.
+Our workflow is **task PR → green CI → self-merge**. Repository rules require the CI gate plus the three existing application check names; reviews are optional and the `skip-review` label does not bypass CI. If adding a job, include its result in the gate.
 
 ## Build and deploy releases
 
 After a release PR reaches `main` and CI passes, GitHub builds the frontend, API and worker Docker images and pushes each to GHCR with a component/commit tag and immutable digest. Once the cluster is bootstrapped and `DEPLOY_ENABLED=true`, the same release updates all three apps and waits for readiness; a failed rollout restores every changed image. Human approval is not required.
 
-Deployment is off until the one-time setup is complete. Terraform provisioning, database migrations and catalog import remain explicit operator steps. See [the release setup instructions](infra/README.md#simple-main-to-cluster-release-pipeline) for the cluster ID, deployment token, initial public image, and activation switch.
+Deployment is off until the one-time setup is complete. Terraform provisioning, database migrations, grants and secret provisioning remain explicit operator steps. Product-catalog ingestion then runs automatically as the scheduled `aimo-catalog-sync` Kubernetes Job, which skips unchanged snapshots ([catalog sync](docs/catalog-sync.md)). See [the release setup instructions](infra/README.md#simple-main-to-cluster-release-pipeline) for the cluster ID, deployment token, initial public image, and activation switch.
 
 ## Local setup
 
@@ -61,13 +59,16 @@ uv run aimo ingest --file /absolute/path/valio_aimo_junction26_product_data.json
 # Or obtain it from the sponsor with a server-side VALIO_AIMO_API_KEY:
 mkdir -p data
 uv run aimo ingest --download --file data/valio_aimo_junction26_product_data.json
+# Or the unattended command the Kubernetes CronJob runs: download (or --file), verify the
+# approved hash, skip if the active catalog is current, otherwise import and activate.
+uv run aimo sync-catalog
 uv run aimo serve                    # API terminal
 # In separate terminals: uv run aimo worker, and npm run dev --prefix frontend
 ```
 
 For hosted Qwen3 Embedding 8B and shortlist reranking through OpenRouter, follow the [hosted search migration and cutover](docs/hosted-search.md). Existing deployments keep the local model until explicitly migrated and reindexed.
 
-The first import downloads the pinned `intfloat/multilingual-e5-small` model and embeds the catalog on CPU. Subsequent imports reuse unchanged text embeddings. Publication is atomic: failures leave the old generation active. Updated snapshots require an explicitly verified `--expected-count` and `--expected-sha256`. There is no import on requests or startup. Imports retain withdrawal markers for explicit purchase denial while excluding withdrawn products from discovery. Publication retains the active and previous generation's product/vector rows by default (`CATALOG_GENERATIONS_TO_KEEP=2`). Generation metadata, reusable embedding cache and immutable purchase snapshots remain. Semantic retrieval ranks the filtered active generation exactly, avoiding filtered approximate-index recall loss at this MVP catalog size.
+The first import downloads the pinned `intfloat/multilingual-e5-small` model and embeds the catalog on CPU. Subsequent imports reuse unchanged text embeddings. Publication is atomic: failures leave the old generation active. Updated snapshots require an explicitly verified `--expected-count` and `--expected-sha256`. There is no import on requests or startup. `aimo ingest` always builds a new generation, while `aimo sync-catalog` skips a snapshot whose hash, embedding profile, import profile and complete row count already match the active catalog. Only one ingestion run (either command) can hold the database lock at a time. Imports retain withdrawal markers for explicit purchase denial while excluding withdrawn products from discovery. Publication retains the active and previous generation's product/vector rows by default (`CATALOG_GENERATIONS_TO_KEEP=2`). Generation metadata, reusable embedding cache and immutable purchase snapshots remain. Semantic retrieval ranks the filtered active generation exactly, avoiding filtered approximate-index recall loss at this MVP catalog size.
 
 For a quick authored-fixture catalog, use `uv run aimo fixture-catalog` instead of `ingest`. Set `EMBEDDING_BACKEND=fixture` in `.env` only when you also want deterministic fake embeddings; ingestion and serving must use the same setting. The default uses the real model, including for a small fixture catalog. `UPSTREAM_MODE=fixture` is independent: commercial prices/stock remain invented unless explicitly switched to `live` with private credentials. There is no silent live-to-fixture fallback.
 

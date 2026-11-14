@@ -1,31 +1,27 @@
-"""Run inside the PR #4 image, only as an explicit Terraform setup Job."""
+"""Run in the worker image, only as an explicit Terraform setup Job.
+
+Migrates with the setup role, seeds missing demo identities/policies and applies the
+restricted runtime and catalog-sync grants. It does not import the catalog: the first
+catalog population is a run of the same `aimo-catalog-sync` Job template (infra/README.md).
+"""
 
 import os
-from pathlib import Path
 
 from aimo.cli import migrate, seed
 from aimo.config import settings
-from aimo.db import connection
-from aimo.ingest import download, ingest_file
-from aimo.permissions import configure_runtime_role
 
 
 def main():
-    runtime_url = os.environ["DATABASE_URL"]
     os.environ["DATABASE_URL"] = os.environ.pop("BOOTSTRAP_DATABASE_URL")
     settings.cache_clear()
-    migrate()  # doadmin can enable pgvector; ordinary serving credentials cannot.
+    # doadmin can enable pgvector; ordinary serving credentials cannot. Grants commit
+    # atomically with the schema.
+    migrate(
+        runtime_role=os.environ["RUNTIME_DATABASE_USER"],
+        catalog_role=os.environ.get("CATALOG_SYNC_DATABASE_USER") or None,
+    )
     seed()  # Inserts missing demo rules/identities; never overwrites credentials.
-    with connection() as conn:
-        configure_runtime_role(conn, os.environ["RUNTIME_DATABASE_USER"])
-
-    # Import with the same restricted role and pinned model used by the app.
-    os.environ["DATABASE_URL"] = runtime_url
-    settings.cache_clear()
-    catalog = Path("/tmp/valio_aimo_junction26_product_data.json")
-    download(catalog)
-    ingest_file(catalog)
-    print("Database setup and verified full-catalog import completed.")
+    print("Database setup completed. Populate the catalog with the aimo-catalog-sync Job.")
 
 
 if __name__ == "__main__":

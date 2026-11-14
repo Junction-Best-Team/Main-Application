@@ -173,8 +173,11 @@ def test_unchanged_embeddings_and_failed_import_keep_generation(monkeypatch, age
     assert reused["new_embeddings"] == 0 and reused["reused_embeddings"] == len(data)
     changed = deepcopy(data)
     changed[0]["names"]["en"] = "a new unique search string"
-    with pytest.raises(RuntimeError):
+    # Provider failures surface as a stable, log-safe code; the original text is not echoed.
+    with pytest.raises(ingestion.CatalogError) as failure:
         publish(changed, "failed", fingerprint(changed))
+    assert failure.value.code == "EMBEDDING_FAILED"
+    assert "injected" not in str(failure.value)
     with connection() as c:
         assert (
             str(c.execute("SELECT generation FROM active_catalog").fetchone()["generation"])

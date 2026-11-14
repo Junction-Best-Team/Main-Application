@@ -121,3 +121,8 @@ transport/types, formatting and UI. Generated OpenAPI types were relocated
 without changing their content. Added agent/architecture/development/testing
 guides and ESLint/Prettier checks; no new customer screen or mock backend was
 introduced by the structural refactor.
+
+On 2026-11-14, at the owner's request, Codex simplified the existing CI for the
+hackathon: reused the existing backend tests, API sweep, frontend build and
+infrastructure checks, removed coverage gating/artifact jobs and shared the
+backend setup. No new dependency, dataset, model or asset was introduced.

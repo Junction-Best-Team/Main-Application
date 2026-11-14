@@ -62,7 +62,7 @@ Run these inside `frontend/`, or append `--prefix frontend` from the root.
 | `npm run lint`             | TypeScript/React rules and dependency boundaries                  |
 | `npm run format`           | Format maintained source, config and docs                         |
 | `npm run typecheck`        | Strict TypeScript without building assets                         |
-| `npm run build`            | Lint, formatting, TypeScript and Vite output in `dist/`           |
+| `npm run build`            | Lint, TypeScript and Vite output in `dist/`                       |
 | `npm run preview`          | Preview `dist/`; API requests still require backend hosting/proxy |
 | `npm test`                 | UI regressions; live integration specs skip by default            |
 | `npm run test:integration` | Opt in to backend/database browser checks                         |

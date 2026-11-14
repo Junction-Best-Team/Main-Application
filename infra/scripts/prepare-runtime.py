@@ -18,16 +18,23 @@ REQUIRED_CLOUD_OUTPUTS = (
     "database_user",
     "database_ca",
 )
+# Optional pair: a dedicated catalog-sync role for the scheduled ingestion Job. A stack that
+# omits both still works; the CronJob then stays disabled until an operator supplies one.
+OPTIONAL_CLOUD_OUTPUTS = ("catalog_sync_database_url", "catalog_sync_database_user")
 
 
 def read_cloud_outputs(raw):
     data = json.loads(raw)
     outputs = {}
-    for name in REQUIRED_CLOUD_OUTPUTS:
+    for name in REQUIRED_CLOUD_OUTPUTS + OPTIONAL_CLOUD_OUTPUTS:
+        if name in OPTIONAL_CLOUD_OUTPUTS and name not in data:
+            continue
         value = data[name]["value"]
         if not isinstance(value, str) or not value.strip():
             raise ValueError("Cloud output must be a nonempty string")
         outputs[name] = value
+    if sum(name in outputs for name in OPTIONAL_CLOUD_OUTPUTS) == 1:
+        raise ValueError("Catalog sync outputs must be provided together")
     return outputs
 
 
@@ -83,6 +90,11 @@ def main():
                 "buyer_password": secrets.token_urlsafe(24),
             },
         }
+        if "catalog_sync_database_url" in outputs:
+            role = outputs["catalog_sync_database_user"]
+            values["catalog_sync_database_url"] = outputs["catalog_sync_database_url"]
+            values["migration_credentials"]["catalog_sync_database_user"] = role
+            values["bootstrap_credentials"]["catalog_sync_database_user"] = role
         kubeconfig = outputs["kubeconfig"]
     except (ValueError, KeyError, TypeError):
         parser.error("Invalid portable cloud outputs; see infra/README.md for the required contract.")
