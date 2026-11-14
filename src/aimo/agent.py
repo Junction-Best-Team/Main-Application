@@ -304,6 +304,7 @@ def run_turn(
     on_progress: Callable[[AgentProgress], None] | None = None,
     budget_seconds: float = 90,
     constraints: list[dict] | None = None,
+    stored_plan: dict | None = None,
 ) -> AgentTurn:
     """Synchronous runner; product APIs own worker execution, persistence and leases.
 
@@ -317,6 +318,8 @@ def run_turn(
     cfg = settings()
     progress = Progress(identity["_turn_id"], on_progress)
     session = ToolSession(identity, service, constraints=constraints)
+    if stored_plan:
+        session.restore_plan(stored_plan)  # fails closed; see ToolSession.restore_plan
     today = datetime.now(ZoneInfo("Europe/Helsinki")).date().isoformat()
     instructions = system_prompt()
     history = [{"role": "system", "content": instructions + "\nHelsinki date: " + today}]
