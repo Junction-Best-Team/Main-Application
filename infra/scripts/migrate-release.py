@@ -56,7 +56,21 @@ def job_manifest(namespace, image, name, pull_secrets):
                                 }
                                 for key in ("DATABASE_URL", "RUNTIME_DATABASE_USER")
                             ]
-                            + [{"name": "PGOPTIONS", "value": "-c statement_timeout=240000"}],
+                            + [
+                                # Optional: `aimo migrate` also refreshes catalog-sync-only
+                                # grants when the release Secret names that role.
+                                {
+                                    "name": "CATALOG_SYNC_DATABASE_USER",
+                                    "valueFrom": {
+                                        "secretKeyRef": {
+                                            "name": "aimo-migration",
+                                            "key": "CATALOG_SYNC_DATABASE_USER",
+                                            "optional": True,
+                                        }
+                                    },
+                                },
+                                {"name": "PGOPTIONS", "value": "-c statement_timeout=240000"},
+                            ],
                             "resources": {
                                 "requests": {"cpu": "100m", "memory": "128Mi"},
                                 "limits": {"cpu": "1", "memory": "256Mi"},

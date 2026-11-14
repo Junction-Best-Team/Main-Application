@@ -131,29 +131,46 @@ def test_missing_claim_is_unknown_not_dietary_denial():
     assert len(reasons) == 2 and all(r["severity"] == "unresolved" for r in reasons)
 
 
+GROSS_RULES = {
+    "currency": "EUR",
+    "destinations": ["hotel"],
+    "approved_product_ids": [],
+    "substitution": "requires_approval",
+    "overbuy": "requires_approval",
+}
+APPROVER_5000 = {"currency": "EUR", "max_gross": "5000", "exceptions": ["overbuy"]}
+
+
 @pytest.mark.parametrize(
     "total,outcome",
     [
-        ("1499.99", "ready_to_commit"),
-        ("1500.00", "ready_to_commit"),
-        ("1500.01", "approval_required"),
+        ("4999.99", "ready_to_commit"),
+        ("5000.00", "ready_to_commit"),
+        ("5000.01", "needs_resolution"),
     ],
 )
 def test_gross_boundary(total, outcome):
-    rules = {
-        "currency": "EUR",
-        "autonomous_limit": "1500",
-        "destinations": ["hotel"],
-        "approved_product_ids": [],
-        "substitution": "requires_approval",
-        "overbuy": "requires_approval",
-    }
+    """Q-35: the boundary is the approver's maximum, not an autonomous limit."""
     result = evaluate_purchase(
         {"destination": "hotel", "lines": []},
         {"reasons": [], "currency": "EUR", "gross_total": total, "lines": []},
-        rules,
-        {"currency": "EUR", "autonomous_limit": "2000"},
-        [{"currency": "EUR", "max_gross": "5000", "exceptions": ["spend"]}],
+        GROSS_RULES,
+        [APPROVER_5000],
+    )
+    assert result["policy_outcome"] == outcome
+    assert "AUTONOMOUS_LIMIT_EXCEEDED" not in {r["code"] for r in result["reasons"]}
+
+
+@pytest.mark.parametrize(
+    "budget,outcome",
+    [("100.00", "ready_to_commit"), ("100.01", "ready_to_commit"), ("99.99", "denied")],
+)
+def test_hard_budget_boundary(budget, outcome):
+    result = evaluate_purchase(
+        {"destination": "hotel", "lines": [], "budget_gross": budget},
+        {"reasons": [], "currency": "EUR", "gross_total": "100.00", "lines": []},
+        GROSS_RULES,
+        [APPROVER_5000],
     )
     assert result["policy_outcome"] == outcome
 
@@ -173,8 +190,11 @@ def test_unchanged_embeddings_and_failed_import_keep_generation(monkeypatch, age
     assert reused["new_embeddings"] == 0 and reused["reused_embeddings"] == len(data)
     changed = deepcopy(data)
     changed[0]["names"]["en"] = "a new unique search string"
-    with pytest.raises(RuntimeError):
+    # Provider failures surface as a stable, log-safe code; the original text is not echoed.
+    with pytest.raises(ingestion.CatalogError) as failure:
         publish(changed, "failed", fingerprint(changed))
+    assert failure.value.code == "EMBEDDING_FAILED"
+    assert "injected" not in str(failure.value)
     with connection() as c:
         assert (
             str(c.execute("SELECT generation FROM active_catalog").fetchone()["generation"])
@@ -206,8 +226,7 @@ def test_missing_currency_is_unresolved():
     result = evaluate_purchase(
         {"destination": "hotel", "lines": []},
         {"reasons": [], "currency": None, "gross_total": None, "lines": []},
-        {"currency": "EUR", "autonomous_limit": "1500", "destinations": ["hotel"]},
-        {"currency": "EUR", "autonomous_limit": "1500"},
+        {"currency": "EUR", "destinations": ["hotel"]},
         [],
     )
     assert result["policy_outcome"] == "needs_resolution"

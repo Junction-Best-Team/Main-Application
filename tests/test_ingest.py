@@ -16,7 +16,7 @@ import aimo.ingest as ingestion
 from aimo.config import Settings
 from aimo.db import connection, fingerprint
 from aimo.fixtures import fixture_facts
-from aimo.ingest import download, ingest_file, publish
+from aimo.ingest import CatalogError, download, ingest_file, publish
 
 
 @pytest.fixture(autouse=True)
@@ -74,7 +74,7 @@ def test_ingest_file_keeps_withdrawn_products_for_exact_denial(tmp_path):
         raw_product("t-gone", deleted=True),
     ]
     path, sha = write_snapshot(tmp_path, records)
-    result = ingest_file(path, 3, sha)
+    result = ingest_file(path, 3, sha, carry_withdrawn=False)
     # Withdrawn products stay in the snapshot so a lookup can be denied exactly; discovery hides them.
     assert result["products"] == 3
     assert result["withdrawn_products"] == 1
@@ -98,8 +98,8 @@ def test_ingest_file_keeps_withdrawn_products_for_exact_denial(tmp_path):
 
 def test_ingest_file_reuses_embeddings_on_second_import(tmp_path):
     path, sha = write_snapshot(tmp_path, [raw_product("t-1"), raw_product("t-2", "Other 1 l")])
-    first = ingest_file(path, 2, sha)
-    second = ingest_file(path, 2, sha)
+    first = ingest_file(path, 2, sha, carry_withdrawn=False)
+    second = ingest_file(path, 2, sha, carry_withdrawn=False)
     assert first["generation"] != second["generation"]
     assert second["new_embeddings"] == 0
     assert second["reused_embeddings"] == 2
@@ -133,7 +133,7 @@ def test_duplicate_identifiers_are_refused(tmp_path):
 
 def test_snapshot_of_only_withdrawn_products_publishes_them_as_withdrawn(tmp_path):
     path, sha = write_snapshot(tmp_path, [raw_product("t-1", deleted=True)])
-    result = ingest_file(path, 1, sha)
+    result = ingest_file(path, 1, sha, carry_withdrawn=False)
     assert result["products"] == 1 and result["withdrawn_products"] == 1
     assert active()[1] == {"t-1"}
 
@@ -165,10 +165,10 @@ def test_publish_rejects_wrong_number_of_vectors(monkeypatch):
 def configure(monkeypatch, handler, key="test-key-not-real"):
     cfg = Settings(_env_file=None, valio_aimo_api_key=key, valio_aimo_base_url="https://api.test")
     monkeypatch.setattr(ingestion, "settings", lambda: cfg)
-    real = httpx.Client
+    real = httpx.AsyncClient
     monkeypatch.setattr(
         ingestion.httpx,
-        "Client",
+        "AsyncClient",
         lambda **kw: real(transport=httpx.MockTransport(handler), **kw),
     )
 
@@ -241,8 +241,9 @@ def test_download_refuses_a_non_https_redirect(monkeypatch, tmp_path):
 def test_download_http_error_leaves_no_file(monkeypatch, tmp_path):
     configure(monkeypatch, lambda request: httpx.Response(403))
     out = tmp_path / "out.json"
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(CatalogError, match="HTTP 403") as failure:
         download(out)
+    assert failure.value.code == "DOWNLOAD_FAILED"
     assert not out.exists()
 
 
@@ -250,7 +251,7 @@ def test_large_import_embeds_in_batches_of_128(tmp_path, capsys):
     run = uuid4().hex  # unique texts: the embedding cache persists between test runs
     records = [raw_product(f"bulk-{i:03d}", f"Synthetic {run} number {i}") for i in range(130)]
     path, sha = write_snapshot(tmp_path, records)
-    result = ingest_file(path, 130, sha)
+    result = ingest_file(path, 130, sha, carry_withdrawn=False)
     assert result["products"] == 130 and result["new_embeddings"] == 130
     out = capsys.readouterr().out
     assert "Embedded 128/130 changed texts" in out and "Embedded 130/130 changed texts" in out

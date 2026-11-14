@@ -4,7 +4,7 @@ Three independently deployed apps serve chat purchasing: a React/Nginx frontend,
 
 The current [product migration](docs/chat-purchasing.md) overrides the external-agent entry points in the [original brief](docs/brief.md). The underlying purchasing controls remain. [Infrastructure](infra/README.md) is optional and operator-managed; this migration does not apply Terraform, deploy or enable releases.
 
-See the [architecture diagrams](docs/architecture.md) for the system overview, purchase confirmation flow and code map. [Agent guardrails](docs/guardrails.md) separates deterministic controls from the TypeSafe Jev checks, which enforce by default using the OpenRouter `LLM_API_KEY` (`GUARDRAIL_MODE=enforce|shadow|off`).
+See the [architecture diagrams](docs/architecture.md) for the system overview, purchase confirmation flow and code map. The assistant keeps explicitly saved buyer-shared and personal preferences across conversations; see [buyer and user memory](docs/memory.md) (`/api/memories`, migration 012). Memory never grants purchasing authority. [Agent guardrails](docs/guardrails.md) separates deterministic controls from the TypeSafe Jev checks, which enforce by default using the OpenRouter `LLM_API_KEY` (`GUARDRAIL_MODE=enforce|shadow|off`).
 
 ## Working in parallel
 
@@ -17,27 +17,25 @@ See the [architecture diagrams](docs/architecture.md) for the system overview, p
 
 ## CI
 
-One workflow, `.github/workflows/ci.yml`, runs on PRs into `develop` and `main` and on pushes to either. Its jobs run in parallel:
+One workflow, `.github/workflows/ci.yml`, runs on PRs into `develop` and `main` and on pushes to either. Backend and frontend checks start in parallel:
 
 | Job (GitHub name) | What it does |
 | --- | --- |
-| Detect application components | Decides which jobs apply (backend, frontend, Terraform) |
-| Python lint and tests | `ruff check`, then `pytest` against temporary PostgreSQL/pgvector with fixture embeddings and supplier responses; saves coverage data |
-| Frontend types and build | `npm ci`, TypeScript check, production build. There are no UI tests in CI: the current UI is an old mockup, so UI testing waits for the real design |
-| API sweep | Starts the real server and drives the buyer-facing API: sign-in, CSRF and Origin checks, conversations, purchases and approvals, and that a chat turn without an LLM provider fails honestly (`tests/sweep/run_sweep.py`) |
+| Python lint and tests | `ruff check`, then `pytest` against temporary PostgreSQL/pgvector, then the strict buyer-facing API sweep; uses fixture embeddings and supplier responses |
+| Frontend types and build | `npm ci`, TypeScript check and production build; formatting and browser tests stay local |
+| Detect application components | Only detects infrastructure/workflow changes; retains its existing name for required status checks |
 | Terraform | Format, validate, mocked-provider plan tests and Helm render for `infra/` (only when it or the workflows changed) |
-| Coverage (95% minimum) | Combines the pytest and sweep coverage data and fails below `fail_under` in `pyproject.toml` |
-| **CI gate** | Waits for every job above; the required status check |
+| **CI gate** | Requires backend, frontend and change detection to succeed, plus Terraform when applicable |
 
-Dependencies come from the lockfiles with the unused ML stack pruned, downloads are cached and a new commit cancels outdated PR runs (main releases are serialized). Everything runs on fixtures: CI never has the Valio API key, and no model weights, full catalog imports, Docker builds or deployments are needed. The live check is the local `tests/ci.sh --live`. What every check verifies is in [tests/README.md](tests/README.md) and [tests/TEST-GUIDE.md](tests/TEST-GUIDE.md).
+The API sweep shares the backend job's Python environment and PostgreSQL service. Coverage is an optional local diagnostic, with no percentage requirement or coverage artifact jobs in CI. Dependencies are locked and cached; new commits cancel outdated PR runs. CI uses fixtures, without supplier keys, model downloads or full catalog imports. The live check is local: `tests/ci.sh --live`. See [tests/README.md](tests/README.md) and [tests/TEST-GUIDE.md](tests/TEST-GUIDE.md).
 
-Our workflow is **task PR → green CI → self-merge**. Branch protection on `develop` requires the CI gate plus the three application checks; reviews are optional and the `skip-review` label does not bypass CI. Adding a job: give it a `name`, add it to the gate's `needs` and `applies` table in `ci.yml`.
+Our workflow is **task PR → green CI → self-merge**. Repository rules require the CI gate plus the three existing application check names; reviews are optional and the `skip-review` label does not bypass CI. If adding a job, include its result in the gate.
 
 ## Build and deploy releases
 
 After a release PR reaches `main` and CI passes, GitHub builds the frontend, API and worker Docker images and pushes each to GHCR with a component/commit tag and immutable digest. Once the cluster is bootstrapped and `DEPLOY_ENABLED=true`, the same release updates all three apps and waits for readiness; a failed rollout restores every changed image. Human approval is not required.
 
-Deployment is off until the one-time setup is complete. Terraform provisioning, database migrations and catalog import remain explicit operator steps. See [the release setup instructions](infra/README.md#simple-main-to-cluster-release-pipeline) for the cluster ID, deployment token, initial public image, and activation switch.
+Deployment is off until the one-time setup is complete. Terraform provisioning, database migrations, grants and secret provisioning remain explicit operator steps. Product-catalog ingestion then runs automatically as the scheduled `aimo-catalog-sync` Kubernetes Job, which skips unchanged snapshots ([catalog sync](docs/catalog-sync.md)). See [the release setup instructions](infra/README.md#simple-main-to-cluster-release-pipeline) for the cluster ID, deployment token, initial public image, and activation switch.
 
 ## Local setup
 
@@ -61,13 +59,16 @@ uv run aimo ingest --file /absolute/path/valio_aimo_junction26_product_data.json
 # Or obtain it from the sponsor with a server-side VALIO_AIMO_API_KEY:
 mkdir -p data
 uv run aimo ingest --download --file data/valio_aimo_junction26_product_data.json
+# Or the unattended command the Kubernetes CronJob runs: download (or --file), verify the
+# approved hash, skip if the active catalog is current, otherwise import and activate.
+uv run aimo sync-catalog
 uv run aimo serve                    # API terminal
 # In separate terminals: uv run aimo worker, and npm run dev --prefix frontend
 ```
 
 For hosted Qwen3 Embedding 8B and shortlist reranking through OpenRouter, follow the [hosted search migration and cutover](docs/hosted-search.md). Existing deployments keep the local model until explicitly migrated and reindexed.
 
-The first import downloads the pinned `intfloat/multilingual-e5-small` model and embeds the catalog on CPU. Subsequent imports reuse unchanged text embeddings. Publication is atomic: failures leave the old generation active. Updated snapshots require an explicitly verified `--expected-count` and `--expected-sha256`. There is no import on requests or startup. Imports retain withdrawal markers for explicit purchase denial while excluding withdrawn products from discovery. Publication retains the active and previous generation's product/vector rows by default (`CATALOG_GENERATIONS_TO_KEEP=2`). Generation metadata, reusable embedding cache and immutable purchase snapshots remain. Semantic retrieval ranks the filtered active generation exactly, avoiding filtered approximate-index recall loss at this MVP catalog size.
+The first import downloads the pinned `intfloat/multilingual-e5-small` model and embeds the catalog on CPU. Subsequent imports reuse unchanged text embeddings. Publication is atomic: failures leave the old generation active. Updated snapshots require an explicitly verified `--expected-count` and `--expected-sha256`. There is no import on requests or startup. `aimo ingest` always builds a new generation, while `aimo sync-catalog` skips a snapshot whose hash, embedding profile, import profile and complete row count already match the active catalog. Only one ingestion run (either command) can hold the database lock at a time. Imports retain withdrawal markers for explicit purchase denial while excluding withdrawn products from discovery. Publication retains the active and previous generation's product/vector rows by default (`CATALOG_GENERATIONS_TO_KEEP=2`). Generation metadata, reusable embedding cache and immutable purchase snapshots remain. Semantic retrieval ranks the filtered active generation exactly, avoiding filtered approximate-index recall loss at this MVP catalog size.
 
 For a quick authored-fixture catalog, use `uv run aimo fixture-catalog` instead of `ingest`. Set `EMBEDDING_BACKEND=fixture` in `.env` only when you also want deterministic fake embeddings; ingestion and serving must use the same setting. The default uses the real model, including for a small fixture catalog. `UPSTREAM_MODE=fixture` is independent: commercial prices/stock remain invented unless explicitly switched to `live` with private credentials. There is no silent live-to-fixture fallback.
 
@@ -105,9 +106,9 @@ Authenticated JSON routes are `/api/conversations`, `/api/conversations/{id}`, `
 
 `/mcp` and every `/api/agent/*` route are removed and return JSON 404. The internal typed agent calls `Service` directly with a server-controlled buyer identity. There is no external bearer-token provisioning or MCP client. A PostgreSQL-backed job queue connects the API to the independent worker.
 
-Apply additive migration `003_chat_purchasing.sql` using the setup role before running the new image. It retains all historical purchasing records and creates zero-autonomous-limit internal agents for existing buyers without broadening their product scope. New demo provisioning needs only `DEMO_BUYER_PASSWORD`. Old private `DEMO_AGENT_TOKEN` settings can be removed from your secret store; historical identity rows must stay. See [upgrade and operational details](docs/chat-purchasing.md).
+Apply additive migration `003_chat_purchasing.sql` using the setup role before running the new image. It retains all historical purchasing records and creates internal agents (which since the spend-authority removal hold no authority at all) for existing buyers without broadening their product scope. New demo provisioning needs only `DEMO_BUYER_PASSWORD`. Old private `DEMO_AGENT_TOKEN` settings can be removed from your secret store; historical identity rows must stay. See [upgrade and operational details](docs/chat-purchasing.md).
 
-Policy is seeded in PostgreSQL, versioned and read-only at runtime. The demo autonomous gross limit is €1,500; the buyer can approve up to €5,000 for spend, substitution and overbuy exceptions. Only `hotel-helsinki` is allowed. Mission budgets and permissions can tighten these rules. Whole discrete sales units are an **explicit buyer rule**, retaining the source lot step. Unknown conversions, variable weight, conflicting dietary evidence, missing costs, uncertain supplier stock and passed cutoffs cannot be fixed by approval.
+Policy is seeded in PostgreSQL, versioned and read-only at runtime. Agents hold no spending authority: there is no autonomous limit and no `spend` exception. The only spending limits are each human approver's maximum gross amount (the demo buyer can approve up to €5,000, plus substitution and overbuy exceptions) and the request's hard budget; a total above every active approver's maximum, or no active approver, is `needs_resolution`. Every purchase still waits for the customer's confirmation. Stored policy versions and identities that still carry the old `autonomous_limit` / `spend` keys are tolerated and ignored. Only `hotel-helsinki` is allowed. Mission budgets and permissions can tighten these rules. Whole discrete sales units are an **explicit buyer rule**, retaining the source lot step. Unknown conversions, variable weight, conflicting dietary evidence, missing costs, uncertain supplier stock and passed cutoffs cannot be fixed by approval.
 
 The policy also contains a **buyer-approved product scope**, seeded as `approved_product_ids=["464306"]`. A product outside that scope counts as a substitution even if the agent omits `substitutes_for`; the policy then requires approval or denies it. This is standing product authority, not verification of an arbitrary natural-language mission. Products inside the approved set are selectable by the agent. Missing scope fails closed when substitution restrictions apply. Only privileged setup can change the scope by inserting a new policy version; agents cannot submit or edit it.
 
@@ -173,11 +174,12 @@ schema/grant Job, its one-time Secret provisioning, and image rollback limitatio
 
 [Preparation and third-party provenance](docs/pre-existing-work.md) must accompany the event submission. Restricted raw data, credentials, downloaded weights and generated browser test artifacts are ignored.
 
-### Recipe planning (opt-in)
+### Recipe planning
 
 See [recipe planning](docs/recipes.md) for versioned UniTools ingestion, independent
 recipe embeddings/search, server-scaled saved plans, reviewed product matching and
-complete-basket checks. Import recipes explicitly after migrations; enable
-`RECIPE_PLANNING_ENABLED` only when data and reviewed matching evidence are ready.
+complete-basket checks. Recipe tools are always available to the chat agent; import
+recipes explicitly after migrations (until then they report `RECIPES_NOT_READY`).
+Purchasing through a recipe additionally needs reviewed forms and product evidence.
 Qwen recipe search reuses PR #34's hosted provider. Dataset import is separate from
 the release migration Job and from product-catalog ingestion.

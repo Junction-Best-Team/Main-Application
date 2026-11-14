@@ -18,6 +18,11 @@ both external APIs. Live prices and stock are not embedded.
 These are explicit operator steps after migration review. This PR does not deploy,
 merge itself, apply Terraform or enable the release switch.
 
+0. If the scheduled `aimo-catalog-sync` CronJob is enabled, suspend it for this
+   staged cutover (`catalog_sync.suspend = true`). Otherwise a run with the new
+   profile would rebuild and activate before the coordinated restart. Resume it
+   only after API, worker and CronJob share the new profile
+   ([catalog sync](catalog-sync.md)).
 1. Run `aimo migrate` as the schema owner. Migration `005_hosted_search.sql`
    preserves old rows and removes the unused HNSW index. Vector columns can hold
    both 384- and 4096-dimensional generations; a database trigger enforces each

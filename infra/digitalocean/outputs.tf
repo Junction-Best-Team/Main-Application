@@ -32,6 +32,16 @@ output "database_url" {
   sensitive = true
 }
 
+# Optional portable outputs: the dedicated catalog-sync role for the ingestion CronJob.
+output "catalog_sync_database_user" {
+  value = digitalocean_database_user.catalog_sync.name
+}
+
+output "catalog_sync_database_url" {
+  value     = "postgresql://${urlencode(digitalocean_database_user.catalog_sync.name)}:${urlencode(digitalocean_database_user.catalog_sync.password)}@${local.database_host}:${local.database_port}/${local.database_name}?${local.database_tls}"
+  sensitive = true
+}
+
 output "bootstrap_database_url" {
   value     = "postgresql://${urlencode(digitalocean_database_cluster.postgres.user)}:${urlencode(digitalocean_database_cluster.postgres.password)}@${local.database_host}:${local.database_port}/${local.database_name}?${local.database_tls}"
   sensitive = true

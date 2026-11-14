@@ -191,6 +191,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/memories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Memory List */
+        get: operations["memory_list_api_memories_get"];
+        put?: never;
+        /** Memory Create */
+        post: operations["memory_create_api_memories_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/memories/{memory_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Memory Update */
+        put: operations["memory_update_api_memories__memory_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/memories/{memory_id}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Memory Delete */
+        post: operations["memory_delete_api_memories__memory_id__delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/conversations": {
         parameters: {
             query?: never;
@@ -411,6 +463,7 @@ export interface components {
             product_fingerprint?: string | null;
             conversion?: components["schemas"]["QuantityCalculation"] | null;
         };
+        JsonValue: unknown;
         /** LineRequest */
         LineRequest: {
             /** Product Id */
@@ -454,6 +507,120 @@ export interface components {
             base_servings?: number | null;
             /** Attribution */
             attribution?: string | null;
+        };
+        /** MemoryCreate */
+        MemoryCreate: {
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "buyer" | "self";
+            /** Key */
+            key: string;
+            /** Value */
+            value: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Description */
+            description?: string | null;
+            /** Idempotency Key */
+            idempotency_key: string;
+        };
+        /** MemoryDelete */
+        MemoryDelete: {
+            /** Expected Revision */
+            expected_revision: number;
+            /** Idempotency Key */
+            idempotency_key: string;
+        };
+        /** MemoryItem */
+        MemoryItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "buyer" | "user";
+            /** Owner Id */
+            owner_id: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "default" | "preference" | "instruction";
+            /** Key */
+            key: string;
+            /** Value */
+            value: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Description */
+            description: string | null;
+            /** Revision */
+            revision: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Created By */
+            created_by: string;
+            /** Updated By */
+            updated_by: string;
+            /** Source Conversation Id */
+            source_conversation_id: string | null;
+            /** Source Message Id */
+            source_message_id: number | null;
+        };
+        /** MemoryList */
+        MemoryList: {
+            /** Items */
+            items: components["schemas"]["MemoryItem"][];
+            /** Next Offset */
+            next_offset?: number | null;
+        };
+        /** MemoryMutationResponse */
+        MemoryMutationResponse: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "created" | "updated" | "unchanged" | "deleted";
+            /**
+             * Memory Id
+             * Format: uuid
+             */
+            memory_id: string;
+            /** Revision */
+            revision: number;
+            memory?: components["schemas"]["MemoryItem"] | null;
+            /**
+             * Replayed
+             * @default false
+             */
+            replayed: boolean;
+        };
+        /** MemoryUpdate */
+        MemoryUpdate: {
+            /** Expected Revision */
+            expected_revision: number;
+            /** Value */
+            value: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Description */
+            description?: string | null;
+            /** Idempotency Key */
+            idempotency_key: string;
         };
         /** MessageRequest */
         MessageRequest: {
@@ -777,11 +944,6 @@ export interface components {
             buyer_id: string;
             /** Csrf Token */
             csrf_token: string;
-            /**
-             * Recipe Planning Enabled
-             * @default false
-             */
-            recipe_planning_enabled: boolean;
         };
         /** SnapshotLine */
         SnapshotLine: {
@@ -1129,6 +1291,144 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CommitResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    memory_list_api_memories_get: {
+        parameters: {
+            query?: {
+                scope?: "all" | "buyer" | "self";
+                kind?: ("default" | "preference" | "instruction") | null;
+                q?: string | null;
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    memory_create_api_memories_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    memory_update_api_memories__memory_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    memory_delete_api_memories__memory_id__delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryDelete"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryMutationResponse"];
                 };
             };
             /** @description Validation Error */

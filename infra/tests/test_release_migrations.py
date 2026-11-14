@@ -40,6 +40,12 @@ class MigrationJobTest(unittest.TestCase):
                     "key": env["name"],
                 },
             )
+        catalog = container["env"][2]
+        self.assertEqual(catalog["name"], "CATALOG_SYNC_DATABASE_USER")
+        self.assertEqual(
+            catalog["valueFrom"]["secretKeyRef"],
+            {"name": "aimo-migration", "key": "CATALOG_SYNC_DATABASE_USER", "optional": True},
+        )
         self.assertTrue(container["securityContext"]["readOnlyRootFilesystem"])
         self.assertEqual(pod["volumes"][0]["secret"]["secretName"], "aimo-database-ca")
         with self.assertRaises(ValueError):

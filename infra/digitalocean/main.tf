@@ -78,6 +78,15 @@ resource "digitalocean_database_user" "runtime" {
   settings {}
 }
 
+# Scheduled catalog ingestion connects as its own role. Release migrations grant it only
+# the catalog tables; it never reads identities, sessions, policies or purchases.
+resource "digitalocean_database_user" "catalog_sync" {
+  cluster_id = digitalocean_database_cluster.postgres.id
+  name       = "aimo_catalog_sync"
+
+  settings {}
+}
+
 data "digitalocean_database_ca" "postgres" {
   cluster_id = digitalocean_database_cluster.postgres.id
 }

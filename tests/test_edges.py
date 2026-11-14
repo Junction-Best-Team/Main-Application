@@ -21,14 +21,12 @@ from aimo.service import Service
 
 RULES = {
     "currency": "EUR",
-    "autonomous_limit": "1500",
     "destinations": ["hotel"],
     "substitution": "requires_approval",
     "overbuy": "requires_approval",
     "approved_product_ids": ["464306"],
 }
-AUTHORITY = {"currency": "EUR", "autonomous_limit": "1500"}
-APPROVER = {"currency": "EUR", "max_gross": "5000", "exceptions": ["spend", "overbuy"]}
+APPROVER = {"currency": "EUR", "max_gross": "5000", "exceptions": ["overbuy"]}
 
 
 def snapshot(total="10.00", currency="EUR", excess="0"):
@@ -40,35 +38,32 @@ def snapshot(total="10.00", currency="EUR", excess="0"):
     }
 
 
-def evaluate(request=None, snap=None, rules=RULES, authority=AUTHORITY, approvers=(APPROVER,)):
+def evaluate(request=None, snap=None, rules=RULES, approvers=(APPROVER,)):
     request = request or {
         "destination": "hotel",
         "lines": [{"product_id": "464306", "substitutes_for": None}],
     }
-    return evaluate_purchase(request, snap or snapshot(), rules, authority, list(approvers))
+    return evaluate_purchase(request, snap or snapshot(), rules, list(approvers))
 
 
 def reason_codes(result):
     return {r["code"] for r in result["reasons"]}
 
 
-def test_missing_policy_or_authority_needs_resolution():
-    for rules, authority in [({}, AUTHORITY), (RULES, {})]:
-        result = evaluate(rules=rules, authority=authority)
-        assert "MISSING_AUTHORITY" in reason_codes(result)
-        assert result["policy_outcome"] in ("needs_resolution", "denied")
-        assert result["policy_outcome"] != "ready_to_commit"
+def test_missing_policy_or_approver_needs_resolution():
+    # Q-35: an agent holds no authority, so only the policy and the human approvers can be missing.
+    result = evaluate(rules={})
+    assert "MISSING_AUTHORITY" in reason_codes(result)
+    assert result["policy_outcome"] in ("needs_resolution", "denied")
+    no_approver = evaluate(approvers=())
+    assert "NO_ELIGIBLE_APPROVER" in reason_codes(no_approver)  # Q-37 / POL-014
+    assert no_approver["policy_outcome"] == "needs_resolution"
 
 
-@pytest.mark.parametrize(
-    "snap,authority",
-    [
-        (snapshot(currency="SEK"), AUTHORITY),
-        (snapshot(), {"currency": "SEK", "autonomous_limit": "1500"}),
-    ],
-)
-def test_currency_outside_authority_is_denied(snap, authority):
-    result = evaluate(snap=snap, authority=authority)
+def test_currency_outside_authority_is_denied():
+    # The agent-currency case is gone with the agent's authority (Q-35); an approver in another
+    # currency is covered by test_approver_must_cover_amount_currency_and_every_exception.
+    result = evaluate(snap=snapshot(currency="SEK"))
     assert "CURRENCY_NOT_ALLOWED" in reason_codes(result)
     assert result["policy_outcome"] == "denied"
 
@@ -126,18 +121,24 @@ def test_request_can_forbid_what_policy_would_allow_with_approval():
 
 def test_approver_must_cover_amount_currency_and_every_exception():
     total = Decimal("2000")
-    assert can_approve(APPROVER, total, "EUR", ["spend", "overbuy"])
+    assert can_approve(APPROVER, total, "EUR", ["overbuy"])
+    assert can_approve(APPROVER, total, "EUR", [])
     assert not can_approve(APPROVER, total, "EUR", ["substitution"])
-    assert not can_approve(APPROVER, Decimal("5000.01"), "EUR", ["spend"])
-    assert not can_approve(APPROVER, total, "SEK", ["spend"])
-    assert not can_approve({}, total, "EUR", ["spend"])
+    assert not can_approve(APPROVER, Decimal("5000.01"), "EUR", ["overbuy"])
+    assert not can_approve(APPROVER, total, "SEK", ["overbuy"])
+    assert not can_approve({}, total, "EUR", ["overbuy"])
 
 
-def test_exception_without_eligible_approver_needs_resolution():
-    result = evaluate(snap=snapshot(total="2000.00"), approvers=[{**APPROVER, "max_gross": "100"}])
-    assert {"AUTONOMOUS_LIMIT_EXCEEDED", "NO_ELIGIBLE_APPROVER"} <= reason_codes(result)
-    assert result["policy_outcome"] == "needs_resolution"
-    assert evaluate(snap=snapshot(total="2000.00"))["policy_outcome"] == "approval_required"
+def test_total_above_every_approvers_maximum_needs_resolution():
+    # Q-35/Q-37: no autonomous limit; the approver's maximum is the only spending limit.
+    small = [{**APPROVER, "max_gross": "100"}]
+    result = evaluate(snap=snapshot(total="2000.00"), approvers=small)
+    assert reason_codes(result) == {"NO_ELIGIBLE_APPROVER"}
+    assert result["policy_outcome"] == "needs_resolution" and result["required_exceptions"] == []
+    with_exception = evaluate(snap=snapshot(total="2000.00", excess="3"), approvers=small)
+    assert "NO_ELIGIBLE_APPROVER" in reason_codes(with_exception)
+    assert with_exception["policy_outcome"] == "needs_resolution"
+    assert evaluate(snap=snapshot(total="2000.00"))["policy_outcome"] == "ready_to_commit"
 
 
 # --- sessions and configuration ------------------------------------------------------------------

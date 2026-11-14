@@ -132,10 +132,21 @@ def enqueue(identity, cid, body):
             tid = old["id"] if old else uuid4()
             c.execute(
                 """INSERT INTO conversation_turns
-                (id,conversation_id,key,payload_hash,state,lease_until,attempt,requested_by,worker_attempts)
-                VALUES(%s,%s,%s,%s,'queued',%s,%s,%s,0) ON CONFLICT(conversation_id,key)
+                (id,conversation_id,key,payload_hash,state,lease_until,attempt,requested_by,
+                worker_attempts,submitted_by)
+                VALUES(%s,%s,%s,%s,'queued',%s,%s,%s,0,%s) ON CONFLICT(conversation_id,key)
                 DO UPDATE SET state='queued',requested_by=EXCLUDED.requested_by,worker_attempts=0""",
-                (tid, cid, body.idempotency_key, digest, now(), uuid4(), identity["id"]),
+                # A retry changes the executor (requested_by) but never the author.
+                (
+                    tid,
+                    cid,
+                    body.idempotency_key,
+                    digest,
+                    now(),
+                    uuid4(),
+                    identity["id"],
+                    identity["id"],
+                ),
             )
             c.execute(
                 """INSERT INTO conversation_messages(conversation_id,turn_id,role,text)
@@ -235,7 +246,18 @@ def execute_turn(turn, service, runner=None):
             ).fetchone()
         if not identity:
             raise Problem("UNAUTHENTICATED", "The requesting customer is no longer active.", 401)
+        # Purchasing tools keep the internal agent identity. Memory acts for the human who
+        # wrote this message, fenced to this claimed attempt (memory.chat_actor). A retry by
+        # a colleague runs without memory: their identity must not own the author's request.
         actor = auth.internal_agent(identity) | {"_turn_id": str(tid)}
+        if turn.get("submitted_by") == identity["id"]:
+            actor |= {
+                "_requested_by": identity["id"],
+                "_attempt": str(attempt),
+                "_conversation_id": str(cid),
+            }
+        else:
+            actor["_memory_unavailable"] = True
         data = detail(identity, cid)
         history = [{"role": m["role"], "content": m["text"]} for m in data["messages"]]
         # Structured persisted plans and status survive refresh, restarts and a provider context reset.

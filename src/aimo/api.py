@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from secrets import token_urlsafe
+from typing import Literal
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Query, Request, Response
@@ -7,7 +8,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 from aimo import approval_workflow as workflow
-from aimo import auth, conversations, upstream
+from aimo import auth, conversations, memory, upstream
 from aimo.chat_schemas import (
     ConversationCreate,
     ConversationList,
@@ -16,6 +17,16 @@ from aimo.chat_schemas import (
 )
 from aimo.config import settings
 from aimo.db import Problem, close_pools, connection
+from aimo.memory_schemas import (
+    Kind,
+    MemoryChange,
+    MemoryCreate,
+    MemoryDelete,
+    MemoryList,
+    MemoryMutationResponse,
+    MemorySearch,
+    MemoryUpdate,
+)
 from aimo.schemas import (
     CommitRequest,
     CommitResponse,
@@ -141,7 +152,6 @@ def create_app(service=None):
             "username": identity["id"],
             "buyer_id": identity["buyer_id"],
             "csrf_token": csrf,
-            "recipe_planning_enabled": settings().recipe_planning_enabled,
         }
 
     @app.get("/api/session", response_model=SessionResponse)
@@ -151,7 +161,6 @@ def create_app(service=None):
             "username": identity["id"],
             "buyer_id": identity["buyer_id"],
             "csrf_token": data["csrf"],
-            "recipe_planning_enabled": settings().recipe_planning_enabled,
         }
 
     @app.post("/api/logout", status_code=204)
@@ -205,6 +214,60 @@ def create_app(service=None):
             identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
         )
         return conversations.confirm(identity, proposal_id, body, service)
+
+    @app.get("/api/memories", response_model=MemoryList)
+    def memory_list(
+        scope: Literal["all", "buyer", "self"] = "all",
+        kind: Kind | None = None,
+        q: str | None = Query(None, min_length=1, max_length=200),
+        offset: int = Query(0, ge=0, le=100),
+        limit: int = Query(20, ge=1, le=50),
+        identity=Depends(buyer),
+    ):
+        request = MemorySearch(query=q, scope=scope, kind=kind, offset=offset, limit=limit)
+        return memory.search(memory.browser_actor(identity), request)
+
+    @app.post("/api/memories", response_model=MemoryMutationResponse)
+    def memory_create(body: MemoryCreate, request: Request, identity=Depends(buyer)):
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+        change = MemoryChange(
+            action="save",
+            scope=body.scope,
+            key=body.key,
+            value=body.value,
+            description=body.description,
+        )
+        return memory.mutate(memory.browser_actor(identity), change, body.idempotency_key)
+
+    @app.put("/api/memories/{memory_id}", response_model=MemoryMutationResponse)
+    def memory_update(
+        memory_id: UUID, body: MemoryUpdate, request: Request, identity=Depends(buyer)
+    ):
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+        change = MemoryChange(
+            action="update",
+            memory_id=memory_id,
+            expected_revision=body.expected_revision,
+            value=body.value,
+            description=body.description,
+        )
+        return memory.mutate(memory.browser_actor(identity), change, body.idempotency_key)
+
+    @app.post("/api/memories/{memory_id}/delete", response_model=MemoryMutationResponse)
+    def memory_delete(
+        memory_id: UUID, body: MemoryDelete, request: Request, identity=Depends(buyer)
+    ):
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+        change = MemoryChange(
+            action="delete", memory_id=memory_id, expected_revision=body.expected_revision
+        )
+        return memory.mutate(memory.browser_actor(identity), change, body.idempotency_key)
 
     @app.get("/api/conversations", response_model=ConversationList)
     def conversation_list(

@@ -3,24 +3,35 @@
 from decimal import Decimal
 
 
-def evaluate_purchase(
-    request: dict, snapshot: dict, rules: dict, authority: dict, approvers: list[dict]
-) -> dict:
+def evaluate_purchase(request: dict, snapshot: dict, rules: dict, approvers: list[dict]) -> dict:
+    """Spending authority belongs to the buyer's human approvers (their `max_gross`) and to the
+    request's hard budget. Agent identities carry none (owner decision Q-35)."""
     reasons = list(snapshot["reasons"])
     exceptions = []
 
     def add(code, message, severity):
         reasons.append(dict(code=code, message=message, product_id=None, severity=severity))
 
-    if not rules or not authority:
-        add("MISSING_AUTHORITY", "Buyer policy or agent authority is missing.", "unresolved")
+    if not rules:
+        add("MISSING_AUTHORITY", "Buyer policy is missing.", "unresolved")
     if rules and request["destination"] not in rules.get("destinations", []):
         add("DESTINATION_NOT_ALLOWED", "Destination is outside the buyer policy.", "denied")
-    if not snapshot["currency"] or not rules.get("currency") or not authority.get("currency"):
+    if not snapshot["currency"] or not rules.get("currency"):
         add("CURRENCY_UNRESOLVED", "Currency or its authority is not established.", "unresolved")
-    elif snapshot["currency"] != rules["currency"] or authority["currency"] != rules["currency"]:
+    elif snapshot["currency"] != rules["currency"]:
         add("CURRENCY_NOT_ALLOWED", "Currency is outside current authority.", "denied")
+    for item in (request.get("requirements") or {}).get("unsupported") or []:
+        # POL-009: a stated requirement the system cannot verify is never silently dropped.
+        add(
+            "REQUIREMENT_UNSUPPORTED",
+            f"The requirement '{item}' cannot be verified against the catalog; ask the customer.",
+            "unresolved",
+        )
     total = Decimal(snapshot["gross_total"]) if snapshot["gross_total"] is not None else None
+    if total is None and not any(r["code"] == "TOTAL_UNRESOLVED" for r in reasons):
+        # Owner decision (Q-30, POL-009): readiness never depends on the caller having reported
+        # an unknown total; every spending rule below is skipped when the total is unknown.
+        add("TOTAL_UNRESOLVED", "Complete gross payable cannot be established.", "unresolved")
     if (
         total is not None
         and request.get("budget_gross") is not None
@@ -32,13 +43,12 @@ def evaluate_purchase(
             "denied",
         )
     approved_ids = rules.get("approved_product_ids")
-    substitution_rule = rules.get("substitution", "forbidden")
-    if approved_ids is None and (
-        substitution_rule != "allowed" or not request.get("allow_substitution", True)
-    ):
+    if approved_ids is None:
+        # Owner decision 2026-11-14 (POL-004): missing trusted scope always blocks, whatever the
+        # substitution setting. Only privileged setup can configure it; approval cannot repair it.
         add(
             "PRODUCT_SCOPE_UNCONFIGURED",
-            "A buyer-approved product scope must be configured before substitution rules can be enforced.",
+            "A buyer-approved product scope must be configured before a purchase can be committed.",
             "unresolved",
         )
     outside_scope = approved_ids is not None and any(
@@ -72,21 +82,28 @@ def evaluate_purchase(
                 else f"{kind.title()} needs a buyer decision.",
                 "exception",
             )
-    limit = min(
-        Decimal(rules.get("autonomous_limit", "0")), Decimal(authority.get("autonomous_limit", "0"))
-    )
-    if total is not None and total > limit:
-        exceptions.append("spend")
-        add(
-            "AUTONOMOUS_LIMIT_EXCEEDED",
-            f"Gross payable exceeds autonomous authority of {limit}.",
-            "exception",
-        )
-    if (
-        exceptions
-        and total is not None
-        and not any(can_approve(a, total, rules.get("currency"), exceptions) for a in approvers)
+        elif kind == "substitution":
+            # Owner decision 2026-11-14 (POL-006): policy "allowed" is a permitted exception, so
+            # no approval is required, but each such line is recorded in the proposal and audit log.
+            for line in request["lines"]:
+                if line.get("substitutes_for") or (
+                    approved_ids is not None and line["product_id"] not in approved_ids
+                ):
+                    reasons.append(
+                        dict(
+                            code="SUBSTITUTION_ALLOWED_BY_POLICY",
+                            message="Product is outside the approved scope or declares a "
+                            "substitution; buyer policy allows this without approval.",
+                            product_id=line["product_id"],
+                            severity="exception",
+                        )
+                    )
+    if total is not None and not any(
+        can_approve(a, total, rules.get("currency"), exceptions) for a in approvers
     ):
+        # Owner decision Q-37 (POL-014): unconditional. Someone must be able to confirm this
+        # total, so a total above every active approver's maximum, or no active approver at
+        # all, is needs_resolution even when no exception is in play.
         add(
             "NO_ELIGIBLE_APPROVER",
             "No current approver covers the amount and every exception.",
