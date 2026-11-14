@@ -174,23 +174,30 @@ def test_authorize_commit_guards_expiry_and_rejection_on_its_own():
     run(future, None)  # ready_to_commit passes without an approval
     blocked = {"policy_outcome": "denied", "required_exceptions": []}
     assert code_of(lambda: run(future, None, blocked)) == "COMMIT_BLOCKED"
-    needs = {"policy_outcome": "approval_required", "required_exceptions": ["spend"]}
+    needs = {"policy_outcome": "approval_required", "required_exceptions": ["substitution"]}
     assert code_of(lambda: run(future, None, needs)) == "APPROVAL_REQUIRED"
 
 
 # --- authority drift as seen by readers ----------------------------------------------------------
 
 
-def test_proposal_with_an_invalid_agent_authority_reads_as_authority_changed(
-    service, agent, buyer, mission
-):
+def test_proposal_of_a_revoked_agent_reads_as_authority_changed(service, agent, buyer, mission):
+    # Q-35: the agent's stored authority is ignored; only its being revoked invalidates a basket.
     p = service.prepare_order(agent, mission)
     with connection() as c:
-        c.execute("UPDATE identities SET authority=%s WHERE id='demo-agent'", (js({}),))
+        c.execute("UPDATE identities SET active=false WHERE id='demo-agent'")
     seen = workflow.approval_detail(buyer, p["approval_id"])
     assert seen["approval_status"] == "authority_changed"
     assert seen["can_decide"] is False
     assert seen["next_action"]["type"] != "commit"
+
+
+def test_empty_agent_authority_does_not_change_how_a_basket_reads(service, agent, buyer, mission):
+    p = service.prepare_order(agent, mission)
+    with connection() as c:
+        c.execute("UPDATE identities SET authority=%s WHERE id='demo-agent'", (js({}),))
+    seen = workflow.approval_detail(buyer, p["approval_id"])
+    assert seen["approval_status"] == "pending" and seen["can_decide"] is True
 
 
 def test_approval_by_an_approver_who_lost_authority_no_longer_counts(
@@ -202,7 +209,7 @@ def test_approval_by_an_approver_who_lost_authority_no_longer_counts(
     with connection() as c:
         c.execute(
             "UPDATE identities SET authority=%s WHERE id='buyer'",
-            (js({"currency": "EUR", "max_gross": "100", "exceptions": ["spend"]}),),
+            (js({"currency": "EUR", "max_gross": "100", "exceptions": ["substitution"]}),),
         )
     after = service.get_proposal(agent, p["proposal_id"])
     assert after["approval_status"] == "authority_changed"
@@ -222,7 +229,7 @@ def test_approval_by_an_approver_who_lost_scope_is_void_even_if_another_could_ap
                     {
                         "currency": "EUR",
                         "max_gross": "5000",
-                        "exceptions": ["spend", "substitution", "overbuy"],
+                        "exceptions": ["substitution", "overbuy"],
                     }
                 ),
             ),

@@ -1,5 +1,5 @@
 from aimo import approval_workflow as workflow
-from aimo import search, upstream
+from aimo import meal_authorization, search, upstream
 from aimo.db import connection
 from aimo.purchases import context, load_products
 from aimo.schemas import CommitRequest, LookupRequest, PrepareRequest, SearchRequest
@@ -23,16 +23,8 @@ class Service:
     def get_purchase_policy(self, identity):
         with connection() as c:
             buyer, policy, actor, _ = context(c, identity)
-        from decimal import Decimal
-
-        rules = policy["rules"] | {
-            "autonomous_limit": str(
-                min(
-                    Decimal(policy["rules"]["autonomous_limit"]),
-                    Decimal(actor["authority"].get("autonomous_limit", "0")),
-                )
-            )
-        }
+        # No spending limit is shown for the agent: it has none (Q-35). Legacy key is dropped.
+        rules = {k: v for k, v in policy["rules"].items() if k != "autonomous_limit"}
         return {
             "buyer_id": buyer["id"],
             "agent_id": actor["id"],
@@ -104,3 +96,10 @@ class Service:
 
     def get_order(self, identity, order_id):
         return workflow.get_order(identity, order_id)
+
+    def get_meal_authorization(self, identity, proposal_id):
+        return meal_authorization.get(identity, proposal_id)
+
+    def withdraw_meal_authorization(self, identity, request):
+        """Customer-only (not an agent tool): withdraw the per-meal authorization (POL-010)."""
+        return meal_authorization.withdraw(identity, request)

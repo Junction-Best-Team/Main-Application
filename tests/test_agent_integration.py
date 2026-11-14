@@ -128,8 +128,7 @@ def test_carbonara_actual_catalog_policy_customer_confirmation_and_persisted_rec
             "meal-" + name for name, _ in INGREDIENTS}
         assert all(i["quantity"]["status"] == "derived" for i in basket["snapshot"]["lines"])
         assert basket["policy_outcome"] == "approval_required"
-        assert {r["code"] for r in basket["reasons"]} >= {
-            "SUBSTITUTION_REQUIRES_APPROVAL", "AUTONOMOUS_LIMIT_EXCEEDED"}
+        assert "SUBSTITUTION_REQUIRES_APPROVAL" in {r["code"] for r in basket["reasons"]}
         assert basket["order_id"] is None
         with connection() as c:
             current_scope = c.execute("SELECT rules FROM policies WHERE buyer_id=%s ORDER BY version DESC",

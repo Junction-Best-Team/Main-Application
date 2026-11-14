@@ -6,14 +6,12 @@ No network call or human wait occurs while these locks are held.
 from decimal import Decimal
 from uuid import uuid4
 
-from pydantic import ValidationError
-
+from aimo import meal_authorization as meals
 from aimo.approval_policy import can_approve, evaluate_purchase
 from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, js, now
 from aimo.purchases import build_snapshot, context, material_fingerprint
 from aimo.schemas import (
-    AgentAuthority,
     CommitRequest,
     DecisionRequest,
     PrepareRequest,
@@ -49,7 +47,7 @@ def append_revision(
     c, pid, revision, identity, request, snapshot, expires, policy, actor, approvers, evaluated=None
 ):
     evaluated = evaluated or evaluate_purchase(
-        request, snapshot, policy["rules"], actor["authority"], [a["authority"] for a in approvers]
+        request, snapshot, policy["rules"], [a["authority"] for a in approvers]
     )
     fp = material_fingerprint(request, snapshot, policy["version"])
     c.execute(
@@ -107,31 +105,26 @@ def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, hi
     if historical:
         status = "superseded"
     elif not committed and status != "rejected":
-        if r["expires_at"] <= current:
+        if (a is None or a["status"] == "superseded") and meals.is_withdrawn(c, p["id"]):
+            status = "authorization_withdrawn"  # POL-010; withdrawal supersedes open approvals
+        elif r["expires_at"] <= current:
             status = "expired"
         elif policy["version"] != r["policy_version"]:
             status = "policy_changed"
         else:
-            # Buyer views must evaluate the purchasing agent, not the approver's authority.
+            # The agent holds no authority (Q-35); only its being revoked invalidates a basket.
             if purchasing_agent is None:
                 purchasing_agent = c.execute(
-                    "SELECT authority,active FROM identities WHERE id=%s AND buyer_id=%s",
+                    "SELECT active FROM identities WHERE id=%s AND buyer_id=%s",
                     (p["agent_id"], p["buyer_id"]),
                 ).fetchone()
-            try:
-                authority = AgentAuthority.model_validate(
-                    purchasing_agent["authority"]
-                    if purchasing_agent and purchasing_agent["active"]
-                    else {}
-                ).model_dump(mode="json")
-            except ValidationError:
+            if not (purchasing_agent and purchasing_agent["active"]):
                 status = "authority_changed"
             else:
                 evaluated = evaluate_purchase(
                     r["request"],
                     r["snapshot"],
                     policy["rules"],
-                    authority,
                     [x["authority"] for x in approvers],
                 )
                 if evaluation_changed(r, evaluated):
@@ -154,7 +147,13 @@ def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, hi
         action = {"type": "complete", "tool": "get_order"}
     elif status == "rejected":
         action = {"type": "stop"}
-    elif status in ("expired", "superseded", "policy_changed", "authority_changed"):
+    elif status in (
+        "expired",
+        "superseded",
+        "policy_changed",
+        "authority_changed",
+        "authorization_withdrawn",
+    ):
         action = {"type": "request_fresh_proposal", "tool": "prepare_order"}
     elif r["policy_outcome"] == "denied":
         action = (
@@ -319,7 +318,7 @@ def list_approvals(identity, offset=0, limit=20):
             """SELECT p.*,r.revision,r.policy_version,r.request,r.snapshot,r.fingerprint,
           r.policy_outcome,r.reasons,r.required_exceptions,r.expires_at,
           a.id AS approval_id,a.status AS approval_status,a.actor_id AS approval_actor,
-          a.fingerprint AS approval_fingerprint,i.authority AS agent_authority,i.active AS agent_active
+          a.fingerprint AS approval_fingerprint,i.active AS agent_active
           FROM proposals p JOIN approvals a ON a.proposal_id=p.id AND a.revision=p.current_revision
           JOIN proposal_revisions r ON r.proposal_id=p.id AND r.revision=p.current_revision
           JOIN buyers b ON b.id=p.buyer_id
@@ -352,7 +351,6 @@ def list_approvals(identity, offset=0, limit=20):
                     identity,
                     auth_context=auth_context,
                     purchasing_agent={
-                        "authority": row["agent_authority"],
                         "active": row["agent_active"],
                     },
                     history=histories[row["id"]],
@@ -507,6 +505,7 @@ def commit_order(identity, request: CommitRequest, connector):
             raise Problem("STALE_REVISION", "Another caller revised this proposal.")
         if p["order_id"]:
             raise Problem("ALREADY_COMMITTED", "One order already exists for this proposal.")
+        meals.ensure_active(c, p["id"])  # POL-010: a withdrawn authorization never commits
         if version != policy["version"]:
             raise Problem(
                 "POLICY_CHANGED", "Policy changed during lookup; retry with fresh evidence."
@@ -520,7 +519,6 @@ def commit_order(identity, request: CommitRequest, connector):
             r["request"],
             snapshot,
             policy["rules"],
-            actor["authority"],
             [x["authority"] for x in approvers],
         )
         # Commercial terms can be identical while effective purchasing authority changes.

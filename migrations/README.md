@@ -10,7 +10,7 @@ Do not rename applied migrations or delete their ledger rows.
 | 005_hosted_search | Merged catalog embedding upgrade |
 | 005_recipe_planning | PR #38 recipe storage; retained because prior application is unknown |
 | 006–007 | PR #38 recipe/proposal link and refresh retry keys |
-| **008–010** | **Reserved for Person 3**: policy edit history, per-meal authorization/revocation, spare |
+| **008–010** | **Person 3**: `008_orders_immutable` (orders become history), `009` spare, `010_meal_authorization_withdrawals` (append-only record of a withdrawn per-meal authorization). Policy edit history is deferred |
 | **011** | **PR #38** proposal revision ordering |
 
 Before allocating another number, check remote branch tips and open PRs and update
