@@ -4,9 +4,10 @@ Reference for Persons 2 and 3 to integrate against the bare-min chat purchasing
 path on `fm/junction-chat-ui-prototypes` without waiting on the designer `ui/`
 skin pass. This documents the one existing FastAPI app (`src/aimo/api.py`,
 `src/aimo/schemas.py`, `src/aimo/chat_schemas.py`) — it is not a second HTTP
-server, and nothing here invents a new contract. Full behavior and rationale:
-[`chat-purchasing.md`](chat-purchasing.md). `/mcp` and `/api/agent/*` are out of
-scope for this bare-min path.
+server, and nothing here invents a new contract. How to start the real UI + API
+and which buyer path to exercise: [`run-notes.md`](run-notes.md). Full behavior
+and rationale: [`chat-purchasing.md`](chat-purchasing.md). `/mcp` and
+`/api/agent/*` are out of scope for this bare-min path.
 
 ## Trust boundary
 

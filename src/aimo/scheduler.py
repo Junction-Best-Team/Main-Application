@@ -20,6 +20,7 @@ from uuid import uuid4
 
 from aimo import auth as auth_module
 from aimo import cancellations
+from aimo.approval_policy import can_approve
 from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, js
 from aimo.observability import event, failure
@@ -154,10 +155,12 @@ def gross_of(line):
 
 
 def percent_off(current, agreed):
+    if agreed == 0:  # no percentage of nothing: any price above zero is outside every range
+        return Decimal(0) if current == 0 else Decimal("Infinity")
     return abs(current - agreed) * 100 / agreed
 
 
-def compare(auth, request, snapshot, outcome, plan=()):
+def compare(auth, request, snapshot, outcome, plan=(), delivery_date=None):
     """Pure. Does a prepared basket match what the customer agreed (CNF-024, CNF-036, POL-012)?
 
     A line matches when its product is usable and its unit gross price is within the customer's
@@ -165,12 +168,20 @@ def compare(auth, request, snapshot, outcome, plan=()):
     usable and within the range of the ORIGINAL agreed price. Returns the verdict with a status for
     every line, the substitutions used and the first disruption code."""
     swaps = {item["product_id"]: item["substitute_product_id"] for item in plan}
+    unaccepted = [
+        pid
+        for pid, substitute in swaps.items()
+        if substitute
+        not in ((auth["line_rules"] or {}).get(pid) or {}).get("accepted_substitutes", [])
+    ]  # a substitution is never taken on trust: it must come from the customer's own list
     current = {line["product_id"]: line for line in snapshot["lines"]}
     blocked = {}
     for reason in snapshot["reasons"]:
         if reason.get("product_id") and reason["severity"] in BLOCKING:
             blocked.setdefault(reason["product_id"], set()).add(reason["code"])
     lines, substitutions, codes, wanted = [], [], [], set()
+    if snapshot["currency"] != auth["currency"] or unaccepted:
+        codes.append("RUN_TERMS_CHANGED")
     for agreed in auth["agreed_lines"]:
         pid = agreed["product_id"]
         target = swaps.get(pid, pid)
@@ -205,6 +216,11 @@ def compare(auth, request, snapshot, outcome, plan=()):
             else:
                 status = "price_within_range"
         row["status"] = status
+        if target == pid and line is not None and changed_structure(agreed, line):
+            codes.append(
+                "RUN_TERMS_CHANGED"
+            )  # same product, but not the quantity or deposit agreed
+            row["note"] = "The converted quantity or the deposit differs from what was agreed"
         if target != pid:
             row["substitute_product_id"] = target
             gross = row.get("current_gross")
@@ -220,6 +236,8 @@ def compare(auth, request, snapshot, outcome, plan=()):
         codes.append("RUN_TERMS_CHANGED")
     if request.get("destination") != (auth["request"] or {}).get("destination"):
         codes.append("RUN_TERMS_CHANGED")
+    if delivery_date is not None and str(request.get("delivery_date")) != str(delivery_date):
+        codes.append("RUN_TERMS_CHANGED")  # the delivery date of this run is part of the terms
     total = None if snapshot["gross_total"] is None else Decimal(snapshot["gross_total"])
     if total is not None and total > Decimal(auth["price_ceiling_gross"]):
         codes.append("CEILING_EXCEEDED")
@@ -233,6 +251,31 @@ def compare(auth, request, snapshot, outcome, plan=()):
         "agreed_gross_total": str(auth["agreed_gross_total"]),
         "current_gross_total": None if total is None else str(total),
     }
+
+
+DEPOSIT_STRUCTURE_FIELDS = ("material", "quantity", "unit", "priced_sales_quantity", "sales_unit")
+
+
+def deposit_structure(line_deposits):
+    """What the line also buys as deposits, without their prices (the ceiling bounds those)."""
+    return sorted(
+        ({k: d.get(k) for k in DEPOSIT_STRUCTURE_FIELDS} for d in line_deposits or []),
+        key=lambda d: str(d["material"]),
+    )
+
+
+def changed_structure(agreed, line):
+    """Run time re-check of the stored terms that prices do not cover (CNF-024): the converted
+    sales quantity and the deposits of an unchanged product. `terms_fingerprint` itself is not
+    compared: it includes prices, which the customer's percentage range lets move."""
+    quantity = line.get("quantity") or {}
+    if str(quantity.get("sales_quantity")) != str(agreed.get("sales_quantity")) or str(
+        quantity.get("sales_unit")
+    ) != str(agreed.get("sales_unit")):
+        return True
+    if agreed.get("deposits") is None:
+        return False
+    return deposit_structure(line.get("deposit_lines")) != deposit_structure(agreed["deposits"])
 
 
 def reason_of(verdict):
@@ -273,13 +316,25 @@ def ensure_commit_allowed(c, identity, p, r, snapshot, evaluated):
     if not auth or auth["status"] != "active" or auth["valid_until"] < helsinki_today():
         refuse("The scheduled authorization is not active.")
     customer = c.execute(
-        "SELECT 1 FROM identities WHERE id=%s AND buyer_id=%s AND active AND role='approver'",
+        "SELECT * FROM identities WHERE id=%s AND buyer_id=%s AND active AND role='approver'",
         (auth["created_by"], identity["buyer_id"]),
     ).fetchone()
     if not customer:
         refuse("The customer who created the schedule is no longer active.")
+    if snapshot["gross_total"] is None or not can_approve(
+        customer["authority"],
+        Decimal(snapshot["gross_total"]),
+        snapshot["currency"],
+        evaluated["required_exceptions"],
+    ):
+        refuse("The customer who created the schedule no longer has authority for this amount.")
     verdict = compare(
-        auth, r["request"], snapshot, evaluated["policy_outcome"], run["substitutions"]
+        auth,
+        r["request"],
+        snapshot,
+        evaluated["policy_outcome"],
+        run["substitutions"],
+        run["delivery_date"],
     )
     if not verdict["ok"]:
         refuse("The current terms differ from the agreed terms.")
@@ -549,6 +604,7 @@ EXPLANATION = {
     "RUN_MISSED": "the date passed before the order could be placed",
     "AUTHORIZATION_WITHDRAWN": "the customer who set up the standing order is no longer active",
     "SCHEDULER_NOT_CONFIGURED": "the standing-order service is not set up for this account",
+    "TERMS_UNSETTLED": "the prices kept changing while the order was being placed",
     "UPSTREAM_UNAVAILABLE": "the supplier could not be reached",
     "UPSTREAM_RATE_LIMITED": "the supplier is limiting requests",
 }
@@ -776,7 +832,12 @@ def prepare(service, run, auth, sched, now):
         agent, PrepareRequest.model_validate(request), constraints=run_constraints(auth)
     )
     verdict = compare(
-        auth, proposal["request"], proposal["snapshot"], proposal["policy_outcome"], plan
+        auth,
+        proposal["request"],
+        proposal["snapshot"],
+        proposal["policy_outcome"],
+        plan,
+        run["delivery_date"],
     )
     with connection() as c:
         if verdict["ok"]:
@@ -853,11 +914,27 @@ def choose_substitutes(service, agent, auth, run, verdict):
     return swaps
 
 
+def settle_as_committed(c, run, sched, order_id, now, by):
+    c.execute(
+        """UPDATE scheduled_runs SET status='committed',order_id=%s,lease_until=NULL,
+        updated_at=%s WHERE id=%s""",
+        (order_id, now, run["id"]),
+    )
+    run_event(c, run["id"], sched, "committed", {"order_id": str(order_id), "by": by})
+
+
 def commit(service, run, auth, sched, now):
+    """Commit the prepared run as the scheduler identity. An order that already exists for the
+    proposal (the customer confirmed it in the product meanwhile) settles the run as committed: it is
+    never a disruption and never a second order. A pause or cancel that lands between the engine's
+    own checks and the gate skips the run instead of stopping the schedule."""
     with connection() as c:
-        revision = c.execute(
-            "SELECT current_revision FROM proposals WHERE id=%s", (run["proposal_id"],)
-        ).fetchone()["current_revision"]
+        proposal = c.execute(
+            "SELECT current_revision,order_id FROM proposals WHERE id=%s", (run["proposal_id"],)
+        ).fetchone()
+        if proposal["order_id"]:
+            return settle_as_committed(c, run, sched, proposal["order_id"], now, "customer")
+    revision = proposal["current_revision"]
     identity = scheduler_row(sched)
     body = CommitRequest(
         proposal_id=run["proposal_id"],
@@ -878,18 +955,28 @@ def commit(service, run, auth, sched, now):
                     (now, run["id"]),
                 )
                 return run_event(c, run["id"], sched, "expired_prepare_again", {})
+            placed = c.execute(
+                "SELECT order_id FROM proposals WHERE id=%s", (run["proposal_id"],)
+            ).fetchone()
+            if exc.code == "REQUEST_CANCELLED":
+                # The customer cancelled this one run's request: skip the run, keep the series.
+                return skip(c, run, "REQUEST_CANCELLED", now)
+            if exc.code == "ALREADY_COMMITTED" and placed["order_id"]:
+                return settle_as_committed(c, run, sched, placed["order_id"], now, "customer")
             auth_row = c.execute(
                 "SELECT * FROM scheduled_authorizations WHERE id=%s FOR UPDATE", (auth["id"],)
             ).fetchone()
+            if exc.code == "SCHEDULE_NOT_AUTHORIZED" and auth_row["status"] != "active":
+                code = (
+                    "PAUSED"
+                    if auth_row["status"] == "paused"
+                    else ("AUTHORIZATION_" + auth_row["status"].upper())
+                )
+                return skip(c, run, code, now, "customer_cancelled")
             return disrupt(c, run, auth_row, exc.code, {"codes": [exc.code], "lines": []}, now)
     with connection() as c:
         if result.get("status") != "revised":
-            c.execute(
-                """UPDATE scheduled_runs SET status='committed',order_id=%s,lease_until=NULL,
-                updated_at=%s WHERE id=%s""",
-                (result["order_id"], now, run["id"]),
-            )
-            return run_event(c, run["id"], sched, "committed", {"order_id": result["order_id"]})
+            return settle_as_committed(c, run, sched, result["order_id"], now, "scheduler")
         # The terms moved between prepare and commit: judge the new revision again.
         verdict = compare(
             auth,
@@ -897,17 +984,28 @@ def commit(service, run, auth, sched, now):
             result["snapshot"],
             result["policy_outcome"],
             run["substitutions"],
+            run["delivery_date"],
         )
-        if verdict["ok"]:
-            c.execute(
-                "UPDATE scheduled_runs SET lease_until=NULL,updated_at=%s WHERE id=%s",
-                (now, run["id"]),
-            )
-            return run_event(c, run["id"], sched, "revised", {"revision": result["revision"]})
         auth_row = c.execute(
             "SELECT * FROM scheduled_authorizations WHERE id=%s FOR UPDATE", (auth["id"],)
         ).fetchone()
-        disrupt(c, run, auth_row, verdict["codes"][0], reason_of(verdict), now)
+        if not verdict["ok"]:
+            return disrupt(c, run, auth_row, verdict["codes"][0], reason_of(verdict), now)
+        attempts = run["attempts"] + 1  # a revision that never settles must end
+        if attempts >= settings().scheduler_max_attempts:
+            return disrupt(
+                c,
+                run,
+                auth_row,
+                "TERMS_UNSETTLED",
+                {"codes": ["TERMS_UNSETTLED"], "lines": []},
+                now,
+            )
+        c.execute(
+            "UPDATE scheduled_runs SET attempts=%s,lease_until=NULL,updated_at=%s WHERE id=%s",
+            (attempts, now, run["id"]),
+        )
+        run_event(c, run["id"], sched, "revised", {"revision": result["revision"]})
 
 
 def scheduler_row(identity_id):

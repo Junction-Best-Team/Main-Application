@@ -176,7 +176,7 @@ def test_one_create_key_per_buyer_and_the_creator_must_belong_to_the_buyer(order
     authorization(order, create_key="same-key-1")
     with pytest.raises(psycopg.errors.UniqueViolation):
         authorization(order, create_key="same-key-1")
-    with pytest.raises(psycopg.errors.ForeignKeyViolation):
+    with pytest.raises(psycopg.errors.RaiseException, match="customer"):
         authorization(order, created_by="not-an-identity")
 
 
@@ -344,3 +344,195 @@ def test_a_stopped_authorization_can_only_be_cancelled(order):
     update(expired, status="expired", next_run_date=None)
     with pytest.raises(psycopg.errors.RaiseException, match="never changes"):
         update(expired, status="cancelled")
+
+
+# --- review R-11 to R-13 (WS-C, PR #189): the guards the application relied on ---------------------
+
+
+def stranger():
+    """A second buyer with an approver, a proposal and a placed order of its own."""
+    with connection() as c:
+        c.execute("INSERT INTO buyers VALUES('other','999',1)")
+        c.execute(
+            "INSERT INTO policies(buyer_id,version,rules) "
+            "SELECT 'other',1,rules FROM policies WHERE buyer_id='demo-hotel'"
+        )
+        c.execute(
+            "INSERT INTO identities VALUES('o','other','approver',true,'!',%s)",
+            (js({"currency": "EUR", "max_gross": "5000.00", "exceptions": []}),),
+        )
+        pid, oid = uuid4(), uuid4()
+        c.execute(
+            "INSERT INTO proposals(id,buyer_id,agent_id,current_revision) VALUES(%s,'other','o',1)",
+            (pid,),
+        )
+        c.execute(
+            "INSERT INTO orders(id,proposal_id,buyer_id,revision,receipt) VALUES(%s,%s,'other',1,'{}')",
+            (oid, pid),
+        )
+    return {"proposal_id": pid, "order_id": oid}
+
+
+def refuses(statement, *args, error=psycopg.Error):
+    with connection() as c, pytest.raises(error):
+        c.execute(statement, args)
+
+
+def test_a_run_is_never_deleted_and_its_identity_never_moves(order):
+    aid = authorization(order)
+    rid = run(aid)
+    refuses("DELETE FROM scheduled_runs WHERE id=%s", rid, error=psycopg.errors.RaiseException)
+    for column, value in [
+        ("scheduled_date", TODAY + timedelta(days=9)),
+        ("buyer_id", "other"),
+        ("authorization_id", authorization(order)),
+    ]:
+        refuses(
+            f"UPDATE scheduled_runs SET {column}=%s WHERE id=%s",
+            value,
+            rid,
+            error=psycopg.Error,
+        )
+
+
+def test_a_handled_run_cannot_be_reopened_or_lose_its_order(order):
+    aid = authorization(order)
+    rid = run(aid, status="committed", order_id=order["order_id"], proposal_id=order["proposal_id"])
+    for statement, args in [
+        ("UPDATE scheduled_runs SET status='due' WHERE id=%s", (rid,)),
+        ("UPDATE scheduled_runs SET order_id=NULL WHERE id=%s", (rid,)),
+        ("UPDATE scheduled_runs SET proposal_id=NULL WHERE id=%s", (rid,)),
+        ("UPDATE scheduled_runs SET reason_code='X' WHERE id=%s", (rid,)),
+    ]:
+        refuses(statement, *args, error=psycopg.errors.RaiseException)
+    skipped = run(aid, TODAY + timedelta(days=1), status="skipped", reason_code="PAUSED")
+    refuses(
+        "UPDATE scheduled_runs SET status='due' WHERE id=%s",
+        skipped,
+        error=psycopg.errors.RaiseException,
+    )
+
+
+def test_a_disrupted_run_may_still_receive_its_chat_once(order):
+    aid = authorization(order)
+    rid = run(aid, status="disrupted", reason_code="RUN_MISSED")
+    cid = conversations.create(
+        {"id": "buyer", "buyer_id": "demo-hotel", "role": "approver"},
+        __import__("aimo.chat_schemas", fromlist=["x"]).ConversationCreate(
+            idempotency_key=str(uuid4())
+        ),
+    )["id"]
+    with connection() as c:
+        c.execute("UPDATE scheduled_runs SET conversation_id=%s WHERE id=%s", (cid, rid))
+    refuses(
+        "UPDATE scheduled_runs SET conversation_id=NULL WHERE id=%s",
+        rid,
+        error=psycopg.errors.RaiseException,
+    )
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"status": "committed"},  # no order
+        {"status": "prepared"},  # no proposal
+        {"attempts": -1},
+    ],
+)
+def test_a_run_state_needs_what_the_state_means(order, changes):
+    with pytest.raises(psycopg.errors.CheckViolation):
+        run(authorization(order), **changes)
+
+
+def test_an_order_must_belong_to_the_proposal_of_its_run(order):
+    other = stranger()
+    aid = authorization(order)
+    with pytest.raises(psycopg.Error):
+        run(aid, status="committed", order_id=other["order_id"], proposal_id=order["proposal_id"])
+
+
+def test_an_authorization_never_points_at_another_buyers_order(order):
+    other = stranger()
+    with pytest.raises(psycopg.errors.ForeignKeyViolation):
+        authorization(order, source_order_id=other["order_id"])
+
+
+def test_an_authorization_never_supersedes_another_buyers_authorization(order):
+    other = stranger()
+    mine = authorization(order)
+    with pytest.raises(psycopg.errors.ForeignKeyViolation):
+        authorization(
+            {"order_id": other["order_id"]},
+            buyer_id="other",
+            created_by="o",
+            supersedes_id=mine,
+        )
+
+
+def test_a_run_never_points_at_another_buyers_rows(order):
+    other = stranger()
+    aid = authorization(order)
+    for changes in ({"proposal_id": other["proposal_id"]}, {"order_id": other["order_id"]}):
+        with pytest.raises(psycopg.errors.ForeignKeyViolation):
+            run(aid, **changes)
+
+
+def test_a_cancellation_names_its_buyers_proposal_and_run(order):
+    other = stranger()
+    with connection() as c:
+        c.execute("INSERT INTO identities VALUES('x','other','approver',true,'!','{}')")
+    with pytest.raises(psycopg.errors.ForeignKeyViolation):
+        with connection() as c:
+            c.execute(
+                "INSERT INTO order_request_cancellations(proposal_id,buyer_id,reason,cancelled_by)"
+                " VALUES(%s,'demo-hotel','run_disrupted','buyer')",
+                (uuid4(),),
+            )
+    new = uuid4()
+    with connection() as c:
+        c.execute(
+            "INSERT INTO proposals(id,buyer_id,agent_id,current_revision) VALUES(%s,'other','o',1)",
+            (new,),
+        )
+    with pytest.raises(psycopg.errors.ForeignKeyViolation):
+        with connection() as c:
+            c.execute(
+                "INSERT INTO order_request_cancellations(proposal_id,buyer_id,reason,cancelled_by)"
+                " VALUES(%s,'demo-hotel','run_disrupted','buyer')",
+                (new,),  # another buyer's proposal under this buyer's name
+            )
+    assert other
+
+
+def test_only_a_customer_can_create_a_standing_order(order):
+    with connection() as c:
+        agent = c.execute(
+            "SELECT identity_id FROM internal_agents WHERE buyer_id='demo-hotel'"
+        ).fetchone()
+        sched = c.execute(
+            "SELECT identity_id FROM scheduler_identities WHERE buyer_id='demo-hotel'"
+        ).fetchone()
+    for who in (agent["identity_id"], sched["identity_id"]):
+        with pytest.raises(psycopg.errors.RaiseException, match="customer"):
+            authorization(order, created_by=who)
+
+
+def test_the_next_run_date_stays_inside_the_authorized_year(order):
+    aid = authorization(order)
+    for value in (TODAY - timedelta(days=1), TODAY + timedelta(days=400)):
+        refuses(
+            "UPDATE scheduled_authorizations SET next_run_date=%s WHERE id=%s",
+            value,
+            aid,
+            error=psycopg.errors.CheckViolation,
+        )
+    update(aid, next_run_date=None)  # the end of the series
+    with pytest.raises(psycopg.errors.CheckViolation):
+        authorization(order, valid_until=TODAY - timedelta(days=1), first_run_date=TODAY)
+
+
+def test_a_buyer_never_holds_more_than_twenty_open_standing_orders(order):
+    for _ in range(20):
+        authorization(order)
+    with pytest.raises(psycopg.errors.RaiseException, match="20"):
+        authorization(order)

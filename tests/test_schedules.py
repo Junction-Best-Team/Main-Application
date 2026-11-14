@@ -267,7 +267,7 @@ def test_resume_after_the_year_is_over_is_refused_and_expires_it(buyer, service,
             SELECT %s,buyer_id,created_by,source_order_id,'old-year-key',create_hash,request,
             agreed_lines,terms_fingerprint,currency,agreed_gross_total,price_ceiling_gross,
             delivery_offset_days,recurrence,current_date-400,current_date-35,'paused',now(),
-            current_date FROM scheduled_authorizations WHERE id=%s""",
+            current_date-35 FROM scheduled_authorizations WHERE id=%s""",
             (old_id := uuid4(), s["id"]),
         )
     refused("SCHEDULE_NOT_ACTIVE", schedules.resume, buyer, old_id)
