@@ -35,8 +35,11 @@ def test_session_has_no_recipe_feature_flag(http):
         json={"username": "buyer", "password": os.environ["DEMO_BUYER_PASSWORD"]},
     )
     assert response.status_code == 200
-    assert set(response.json()) == {"username", "buyer_id", "csrf_token"}
-    assert set(http.get("/api/session").json()) == {"username", "buyer_id", "csrf_token"}
+    fields = {"username", "buyer_id", "csrf_token", "role"}
+    assert set(response.json()) == fields
+    assert set(http.get("/api/session").json()) == fields
+    # The UI hides write buttons from any role but the customer's (junction-6c).
+    assert response.json()["role"] == "approver" == http.get("/api/session").json()["role"]
 
 
 def test_auth_inbox_csrf_and_logout(http, service, agent, mission):

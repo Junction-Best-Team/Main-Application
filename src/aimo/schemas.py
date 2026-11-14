@@ -277,6 +277,7 @@ class SessionResponse(Model):
     username: str
     buyer_id: str
     csrf_token: str
+    role: str
 
 
 class PolicyRules(Model):

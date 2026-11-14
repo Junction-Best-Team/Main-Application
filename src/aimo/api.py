@@ -214,6 +214,7 @@ def create_app(service=None):
             "username": identity["id"],
             "buyer_id": identity["buyer_id"],
             "csrf_token": csrf,
+            "role": identity["role"],
         }
 
     @app.get("/api/session", response_model=SessionResponse)
@@ -223,6 +224,7 @@ def create_app(service=None):
             "username": identity["id"],
             "buyer_id": identity["buyer_id"],
             "csrf_token": data["csrf"],
+            "role": identity["role"],
         }
 
     @app.post("/api/logout", status_code=204)
