@@ -8,7 +8,7 @@ from aimo.catalog import quantity, requirement_reasons
 from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, now
 from aimo.numeric import D
-from aimo.schemas import AgentAuthority, ApproverAuthority, PolicyRules, PurchaseRequest
+from aimo.schemas import ApproverAuthority, PolicyRules, PurchaseRequest
 
 
 def money(value):
@@ -44,9 +44,9 @@ def context(c, identity, lock=False):
         raise Problem("MISSING_POLICY", "No current buyer policy is configured.", 409)
     try:
         PolicyRules.model_validate(policy["rules"])
-        (AgentAuthority if actor["role"] == "agent" else ApproverAuthority).model_validate(
-            actor["authority"]
-        )
+        # Agent identities hold no authority (Q-35); their stored `authority` is ignored.
+        if actor["role"] == "approver":
+            ApproverAuthority.model_validate(actor["authority"])
     except ValidationError:
         raise Problem(
             "INVALID_POLICY_CONFIGURATION",

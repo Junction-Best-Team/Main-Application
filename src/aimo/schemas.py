@@ -3,7 +3,15 @@ from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, RootModel, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    RootModel,
+    field_validator,
+    model_validator,
+)
 
 Amount = Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)]
 Money = Annotated[Decimal, Field(ge=0, max_digits=16, decimal_places=4)]
@@ -185,26 +193,39 @@ class SessionResponse(Model):
 
 class PolicyRules(Model):
     currency: Literal["EUR"]
-    autonomous_limit: Money
     destinations: list[str] = Field(min_length=1)
     substitution: Literal["allowed", "requires_approval", "forbidden"]
     overbuy: Literal["allowed", "requires_approval", "forbidden"]
     whole_sales_units: bool
     approved_product_ids: list[str] | None = Field(
         default=None,
-        description="Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope blocks regulated substitutions until privileged setup supplies it.",
+        description="Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope always blocks a purchase until privileged setup supplies it.",
     )
 
-
-class AgentAuthority(Model):
-    currency: Literal["EUR"]
-    autonomous_limit: Money
+    @model_validator(mode="before")
+    @classmethod
+    def ignore_legacy_spend_limit(cls, data):
+        """Policy versions stored before Q-35 carry `autonomous_limit`. History is immutable, so
+        the key is tolerated and ignored; any other unknown key is still rejected."""
+        if isinstance(data, dict) and "autonomous_limit" in data:
+            return {k: v for k, v in data.items() if k != "autonomous_limit"}
+        return data
 
 
 class ApproverAuthority(Model):
+    """A human approver's limits: the maximum gross amount and the exceptions they may approve."""
+
     currency: Literal["EUR"]
     max_gross: Money
-    exceptions: list[Literal["spend", "substitution", "overbuy"]]
+    exceptions: list[Literal["substitution", "overbuy"]]
+
+    @field_validator("exceptions", mode="before")
+    @classmethod
+    def ignore_legacy_spend_exception(cls, value):
+        """Rows stored before Q-35 list the removed `spend` exception; it is ignored."""
+        if isinstance(value, list):
+            return [item for item in value if item != "spend"]
+        return value
 
 
 class Measure(Model):
