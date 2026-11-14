@@ -203,7 +203,25 @@ export function useChat(conversationId?: string) {
       sessionStorage.removeItem(storageKey);
       if (activeConversation.current === id) {
         snapshotVersion.current++;
-        setConversation(result);
+        // SSE can report tool work before the queued POST response reaches us.
+        setConversation((current) => {
+          const saved = current?.activity;
+          const incoming = result.activity;
+          const sameTurn =
+            saved && incoming && saved.turn_id === incoming.turn_id;
+          const moreEvents =
+            (saved?.events?.at(-1)?.sequence ?? 0) >
+            (incoming?.events?.at(-1)?.sequence ?? 0);
+          const laterState =
+            (saved?.state !== "queued" && incoming?.state === "queued") ||
+            ((saved?.state === "complete" || saved?.state === "failed") &&
+              incoming?.state === "running");
+          return sameTurn &&
+            current.updated_at >= result.updated_at &&
+            (moreEvents || laterState)
+            ? current
+            : result;
+        });
         setText("");
         setAttachments([]);
       }

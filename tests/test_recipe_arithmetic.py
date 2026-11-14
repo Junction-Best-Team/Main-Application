@@ -251,14 +251,15 @@ def test_feeding_scaled_amounts_back_as_a_recipe_is_the_only_way_to_scale_twice(
     assert wrong.ingredients[0].amount != plan.ingredients[0].amount
 
 
-def test_scaled_plan_has_exactly_one_caller_and_it_passes_a_stored_recipe_version():
+def test_scaled_plan_callers_keep_saved_recipe_and_labelled_draft_paths_separate():
     calls = []
     for path in SRC.glob("*.py"):
         tree = ast.parse(path.read_text())
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "scaled_plan":
                 calls.append((path.name, ast.unparse(node)))
-    assert calls == [
+    assert sorted(calls) == [
+        ("meal_draft.py", "scaled_plan(recipe, request.portions)"),
         (
             "recipes.py",
             "scaled_plan(Recipe.model_validate(detail['recipe']), request.portions)",

@@ -6,7 +6,7 @@ This product scope supersedes the original external-agent/MCP entry points in `b
 
 ## Integrated product
 
-The root opens chat after sign-in. Conversations have stable URLs and persisted user/assistant messages, proposed recipes and actual proposal links. The agent clarifies destination/date/dietary needs/budget, drafts ingredient quantities, searches catalog products, loads their evidence, and prepares the full matched basket through the existing Service. Recipe quantities are estimates for customer review. Every ingredient must have an actual product; the prepared request must exactly match the published plan. Unsupported dietary requirements require manual resolution.
+The root opens chat after sign-in. Conversations have stable URLs and persisted user/assistant messages, proposed recipes and actual proposal links. The customer names the meal and guest count; the agent chooses a suitable saved recipe and server-scales it, searches catalog products, loads their evidence, and prepares the full matched basket through the existing Service. If no suitable saved recipe is available, a labelled assistant-authored recipe estimate is server-scaled instead. The agent chooses ordinary serving sizes and does not ask the customer to calculate ingredient weights. It asks only for material missing facts, including delivery details before preparation, and retains stated dietary needs and hard budgets. Recipe drafts appear in Overview before a proposal exists. Recipe quantities are estimates for customer review. Every ingredient must have an actual product; the prepared request must exactly match the published plan. Unsupported dietary requirements require manual resolution. See [recipe planning](recipes.md) for the separate saved-recipe and draft guarantees.
 
 Purchase history includes existing proposals and accepted mock purchases. The exact old approval URL still loads its stored revision, preserving superseded/rejected/expired/accepted states and an explicit link to current terms. It never silently substitutes new terms.
 
@@ -44,3 +44,17 @@ Integrated local validation on 2026-11-14:
 - Fixture-mode idle measurement: local application container about 49 MiB and 0.23% CPU; local Traefik about 62 MiB and 0% CPU. These are neither production embedding-model nor load measurements. Resource allocations are unchanged.
 
 No live conversational-provider run was made; configure the server's private LLM key and run the documented demo for that acceptance check. Ordering remains mock.
+
+## When the model provider fails (owner Q-108)
+
+A turn that fails because the model provider fails (any `LLM_*` error of the provider layer) stores
+one plain assistant message and keeps the retry offer. The text is fixed and deterministic (no model
+call, no error detail) and follows the language of the customer's last message, English when unsure:
+"I could not reach the assistant just now. Please try again." / "En saanut yhteyttä avustajaan
+juuri nyt. Yritä uudelleen." / "Jag kunde inte nå assistenten just nu. Försök igen." The message
+carries `notice: "provider_unavailable"` (column `conversation_messages.notice`, migration 024), so
+the browser shows it as a notice and the model's history leaves it out. It occupies the turn's single
+assistant slot: a retry of the same message (same key) removes it, a repeated failure writes one again,
+and the real reply replaces it when the retry succeeds, so there is never more than one per turn.
+Guardrail, policy and programming errors store no notice. The unfinished message still appears as
+`retry_message`; a new message is refused until it is retried (`RETRY_PREVIOUS_MESSAGE`).

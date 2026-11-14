@@ -2586,6 +2586,75 @@
         ],
         "title": "CancellationResponse"
       },
+      "ChatActivity": {
+        "properties": {
+          "turn_id": {
+            "type": "string",
+            "title": "Turn Id"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "complete",
+              "failed"
+            ],
+            "title": "State"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/ChatActivityEvent"
+            },
+            "type": "array",
+            "maxItems": 600,
+            "title": "Events"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "turn_id",
+          "state"
+        ],
+        "title": "ChatActivity"
+      },
+      "ChatActivityEvent": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "maximum": 600.0,
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "started",
+              "tool_started",
+              "tool_completed",
+              "tool_failed",
+              "complete",
+              "error"
+            ],
+            "title": "Kind"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "kind",
+          "label"
+        ],
+        "title": "ChatActivityEvent"
+      },
       "ChatMessage": {
         "properties": {
           "id": {
@@ -2647,6 +2716,19 @@
             },
             "type": "array",
             "title": "Attachments"
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "provider_unavailable"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice",
+            "description": "Set on a plain assistant notice stored when the model provider failed; show it as a notice, not as an answer. The unfinished message keeps its retry offer."
           }
         },
         "additionalProperties": false,
@@ -2837,6 +2919,26 @@
             "title": "Busy",
             "default": false
           },
+          "activity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatActivity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "draft_cart": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DraftCart"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "retry_message": {
             "anyOf": [
               {
@@ -2914,6 +3016,161 @@
           "decision"
         ],
         "title": "DecisionRequest"
+      },
+      "DraftCart": {
+        "properties": {
+          "turn_id": {
+            "type": "string",
+            "title": "Turn Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DraftCartItem"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Items"
+          },
+          "proposal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposal Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "turn_id",
+          "title",
+          "items"
+        ],
+        "title": "DraftCart",
+        "description": "Display-only plan projection; never accepted by confirmation or preparation."
+      },
+      "DraftCartItem": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "product_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name"
+          },
+          "matched": {
+            "type": "boolean",
+            "title": "Matched",
+            "default": false
+          },
+          "price": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DraftPrice"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "amount",
+          "unit"
+        ],
+        "title": "DraftCartItem"
+      },
+      "DraftPrice": {
+        "properties": {
+          "gross": {
+            "type": "string",
+            "title": "Gross"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "sales_unit": {
+            "type": "string",
+            "title": "Sales Unit"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "delivery_date": {
+            "type": "string",
+            "title": "Delivery Date"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Observed At"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "gross",
+          "currency",
+          "sales_unit",
+          "mode",
+          "delivery_date",
+          "observed_at",
+          "expires_at"
+        ],
+        "title": "DraftPrice"
       },
       "EditablePolicy": {
         "properties": {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Proposal } from "../../../shared/api/types";
+import type { MealPlan, Proposal } from "../../../shared/api/types";
 import { currency } from "../../../shared/lib/format";
 import { Icon, InertButton } from "../../../shared/components/DesignPrimitives";
 import { DESIGN_PLACEHOLDERS as MOCK } from "../../../shared/lib/designPlaceholders";
@@ -9,6 +9,38 @@ import { getPurchaseStatus } from "../model/purchaseStatus";
 import { usePurchaseDetail } from "../hooks/usePurchaseDetail";
 import { PurchaseDecisionPanel } from "./PurchaseDecisionPanel";
 import { PurchaseSheet } from "./PurchaseSheet";
+
+function DraftItems({ plan }: { plan: MealPlan }) {
+  return (
+    <section aria-label="Recipe draft" className="flex flex-col gap-space-sm">
+      <h3 className="m-0 font-headline text-body-lg font-bold text-primary">
+        {plan.title}
+      </h3>
+      <p className="m-0 text-body-sm text-secondary">
+        {plan.portions} portions · Recipe estimate
+      </p>
+      <ul className="m-0 flex list-none flex-col gap-2 p-0 text-body-sm">
+        {plan.ingredients.map((item, index) => (
+          <li
+            key={index}
+            className="flex justify-between gap-space-sm border-b border-border-subtle/50 py-1"
+          >
+            <span className="min-w-0 break-words">{item.name}</span>
+            <strong className="shrink-0 font-mono text-primary">
+              {item.amount == null
+                ? "Unresolved"
+                : `${item.amount} ${item.unit}`}
+            </strong>
+          </li>
+        ))}
+      </ul>
+      <p className="m-0 text-body-sm text-secondary">
+        Draft ingredients. Products, prices and purchasing checks are still
+        being resolved. No order has been placed.
+      </p>
+    </section>
+  );
+}
 function Items({ p }: { p: Proposal }) {
   return (
     <div className="flex flex-col gap-space-sm">
@@ -21,11 +53,16 @@ function Items({ p }: { p: Proposal }) {
             key={l.product_id}
             className="flex items-center justify-between gap-space-sm border-b border-border-subtle/50 py-1"
           >
-            <span>{l.name}</span>
-            <span className="shrink-0 font-mono font-bold text-primary">
-              {l.quantity.sales_quantity ?? "Unresolved"}{" "}
-              {l.quantity.sales_unit}
-            </span>
+            <span className="min-w-0 break-words">{l.name}</span>
+            <div className="shrink-0 text-right font-mono text-primary">
+              <span className="block font-bold">
+                {l.quantity.sales_quantity ?? "Unresolved"}{" "}
+                {l.quantity.sales_unit}
+              </span>
+              <span className="text-label-sm">
+                {currency(l.gross, p.snapshot.currency ?? "EUR")}
+              </span>
+            </div>
           </li>
         ))}
       </ul>
@@ -75,47 +112,16 @@ function Substitutions({ p }: { p: Proposal }) {
   );
 }
 
-function AccountManager() {
-  const m = MOCK.overview.accountManager;
-  return (
-    <div className="flex items-center justify-between gap-space-sm rounded-xl bg-surface-container-low p-space-sm">
-      <div className="flex min-w-0 items-center gap-space-sm">
-        <span
-          aria-hidden="true"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary font-label text-label-sm font-bold text-on-primary"
-        >
-          {m.initials}
-        </span>
-        <span className="flex min-w-0 flex-col">
-          <span className="font-label text-[10px] font-bold uppercase tracking-wider text-secondary">
-            Account Manager · Placeholder
-          </span>
-          <span className="truncate font-headline text-[13px] font-bold text-on-surface">
-            {m.name}
-          </span>
-          <span className="truncate font-label text-[11px] text-on-surface-variant">
-            {m.phone}
-          </span>
-        </span>
-      </div>
-      <InertButton
-        label="Call account manager"
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-pure text-primary shadow-level-2"
-      >
-        <Icon name="call" className="text-[16px]" />
-      </InertButton>
-    </div>
-  );
-}
-
 export function OverviewPanel({
   flow,
   drawer = true,
   showEvidence = true,
+  draft,
 }: {
   flow: ReturnType<typeof usePurchaseDetail>;
   drawer?: boolean;
   showEvidence?: boolean;
+  draft?: MealPlan;
 }) {
   const { p, error } = flow;
   const [open, setOpen] = useState(false);
@@ -136,7 +142,13 @@ export function OverviewPanel({
         </h2>
         <span className="flex items-center gap-space-sm">
           <span className="font-label text-label-sm text-secondary">
-            {p ? `${p.snapshot.lines.length} items staged` : "Nothing staged"}
+            {p
+              ? `${p.snapshot.lines.length} items staged`
+              : draft
+                ? `${draft.ingredients.length} draft ingredients`
+                : error
+                  ? "Basket unavailable"
+                  : "Loading basket…"}
           </span>
           {drawer && (
             <button
@@ -153,13 +165,19 @@ export function OverviewPanel({
       </div>
       <ErrorMessage message={error} />
       <div className="flex flex-col gap-space-sm pt-space-sm">
-        {!p ? (
-          <p
-            className={`m-0 text-body-sm text-on-surface-variant ${drawer && !open ? "hidden lg:block" : ""}`}
-          >
-            No items staged yet. Describe a meal or an ingredient list and the
-            proposed basket appears here.
-          </p>
+        {!p && draft ? (
+          <div className={drawer && !open ? "hidden lg:block" : ""}>
+            <DraftItems plan={draft} />
+          </div>
+        ) : !p ? (
+          !error && (
+            <p
+              role="status"
+              className={`m-0 text-body-sm text-on-surface-variant ${drawer && !open ? "hidden lg:block" : ""}`}
+            >
+              Loading the proposed basket…
+            </p>
+          )
         ) : (
           <>
             <div
@@ -201,9 +219,6 @@ export function OverviewPanel({
             </div>
           </>
         )}
-        <div className={drawer && !open ? "hidden lg:block" : ""}>
-          <AccountManager />
-        </div>
       </div>
     </aside>
   );

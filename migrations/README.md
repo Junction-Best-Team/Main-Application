@@ -20,6 +20,9 @@ Do not rename applied migrations or delete their ledger rows.
 | 014_policy_settings | Buyer policy managers, append-only change attribution and restricted policy save function |
 | 015_recipe_images | Optional chat illustrations, durable generation/upload recovery |
 | 021_turn_constraints | The customer's structured limits (budget, dietary toggles) stored with the chat turn that carries them (POL-008 producer, owner Q-97). One nullable `jsonb` column on `conversation_turns`; additive |
+| 023_chat_draft_cart | Display-only selected ingredients and checked unit prices; attempt-fenced, no confirmation authority |
+| 022_chat_activity | Bounded, sanitized worker activity on conversation turns; attempt-fenced updates, no purchasing authority |
+
 | 022_buyer_settings | Narrow signed-in buyer settings save; preserve hidden scope and personal authority |
 | **023_scheduled_orders** | **Person 3 (WS-E)**: role `scheduler` and one scheduler identity per buyer, `scheduled_authorizations` (terms immutable, pause and resume allowed), `scheduled_runs` (unique per authorization and date), append-only event logs, `order_request_cancellations`, message role `system`. applies after 018 and 019 (WS-D) |
 

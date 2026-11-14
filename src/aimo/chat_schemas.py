@@ -137,6 +137,11 @@ class ChatMessage(Model):
     proposal_id: str | None = None
     image: RecipeImage | None = None
     attachments: list[AttachmentInfo] = Field(default_factory=list)
+    notice: Literal["provider_unavailable"] | None = Field(
+        default=None,
+        description="Set on a plain assistant notice stored when the model provider failed; show it "
+        "as a notice, not as an answer. The unfinished message keeps its retry offer.",
+    )
 
 
 class ConversationSummary(Model):
@@ -146,10 +151,53 @@ class ConversationSummary(Model):
     updated_at: datetime
 
 
+class ChatActivityEvent(Model):
+    sequence: int = Field(ge=1, le=600)
+    kind: Literal["started", "tool_started", "tool_completed", "tool_failed", "complete", "error"]
+    label: str = Field(min_length=1, max_length=80)
+
+
+class ChatActivity(Model):
+    turn_id: str
+    state: Literal["queued", "running", "complete", "failed"]
+    events: list[ChatActivityEvent] = Field(default_factory=list, max_length=600)
+
+
+class DraftPrice(Model):
+    gross: str
+    currency: str
+    sales_unit: str
+    mode: str
+    delivery_date: str
+    observed_at: datetime
+    expires_at: datetime
+
+
+class DraftCartItem(Model):
+    name: str
+    amount: str | None
+    unit: str
+    product_id: str | None = None
+    product_name: str | None = None
+    matched: bool = False
+    price: DraftPrice | None = None
+
+
+class DraftCart(Model):
+    """Display-only plan projection; never accepted by confirmation or preparation."""
+
+    turn_id: str
+    title: str
+    items: list[DraftCartItem] = Field(min_length=1, max_length=MAX_BASKET_LINES)
+    proposal_id: str | None = None
+
+
 class ConversationResponse(ConversationSummary):
     messages: list[ChatMessage]
     purchases: list[ProposalResponse]
     busy: bool = False
+    activity: ChatActivity | None = None
+    draft_cart: DraftCart | None = None
     retry_message: RetryMessage | None = None
 
 
