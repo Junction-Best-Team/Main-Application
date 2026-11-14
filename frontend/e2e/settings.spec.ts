@@ -154,18 +154,61 @@ for (const [name, width] of [
     );
     await page.goto("/settings");
     await expect(page.getByLabel("Approved product codes")).toBeVisible();
+    const trigger = page.getByRole("button", { name: "User menu" });
+    const account = page.getByRole("navigation", { name: "User account" });
+    const sidebar = page.getByRole("complementary", { name: "Sidebar" });
+    await expect(
+      sidebar.getByRole("link", { name: "Account Settings" }),
+    ).toHaveCount(0);
+    await expect(sidebar.getByRole("button", { name: "Sign out" })).toHaveCount(
+      0,
+    );
+    await expect(
+      page.getByRole("button", { name: "Switch account" }),
+    ).toHaveCount(0);
     if (width < 768) {
       await page.getByRole("button", { name: "Open menu" }).click();
-      const menu = page.getByRole("dialog", { name: "Menu", exact: true });
-      const settingsLink = menu.getByRole("link", { name: "Account Settings" });
-      await expect(settingsLink).toHaveAttribute("aria-current", "page");
-      await settingsLink.click();
-      await expect(menu).toHaveCount(0);
-    } else {
+      const drawer = page.getByRole("dialog", { name: "Menu", exact: true });
       await expect(
-        page.getByRole("link", { name: "Account Settings" }),
-      ).toHaveAttribute("aria-current", "page");
+        drawer.getByRole("link", { name: "Account Settings" }),
+      ).toHaveCount(0);
+      await expect(
+        drawer.getByRole("link", { name: "Assistant preferences" }),
+      ).toHaveCount(0);
+      await expect(
+        drawer.getByRole("button", { name: "Sign out" }),
+      ).toHaveCount(0);
+      await page.getByRole("button", { name: "Close menu" }).click();
     }
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
+    await trigger.focus();
+    await page.keyboard.press("Enter");
+    const settingsLink = account.getByRole("link", {
+      name: "Account Settings",
+    });
+    await expect(settingsLink).toBeFocused();
+    await expect(settingsLink).toHaveAttribute("aria-current", "page");
+    await page.keyboard.press("Tab");
+    await expect(
+      account.getByRole("link", { name: "Assistant preferences" }),
+    ).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(
+      account.getByRole("button", { name: "Sign out" }),
+    ).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(account).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    await trigger.click();
+    await trigger.click();
+    await expect(account).toHaveCount(0);
+    await trigger.click();
+    await page.getByLabel("Approved product codes").click();
+    await expect(account).toHaveCount(0);
+    await trigger.click();
+    await settingsLink.click();
+    await expect(account).toHaveCount(0);
+    await trigger.click();
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,

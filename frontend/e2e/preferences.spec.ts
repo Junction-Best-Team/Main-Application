@@ -537,14 +537,14 @@ test("session expiry signs out and the next sign-in reloads fresh lists", async 
   expect(stored).not.toContain("Personal instruction");
 });
 
-test("preferences are reachable from the sidebar and chat, beside Account Settings", async ({
+test("preferences are reachable from the user menu and chat, beside Account Settings", async ({
   page,
 }) => {
   await mockApi(page);
   await page.goto("/");
+  await page.getByRole("button", { name: "User menu" }).click();
   await page
-    .getByRole("complementary", { name: "Sidebar" })
-    .getByRole("link", { name: "Assistant preferences" })
+    .getByRole("link", { name: "Assistant preferences", exact: true })
     .click();
   await expect(page).toHaveURL(/\/settings\/preferences$/);
   await expect(
@@ -559,15 +559,16 @@ test("preferences are reachable from the sidebar and chat, beside Account Settin
   await expect(page).toHaveURL(/\/settings\/preferences$/);
 
   // Purchasing policy settings stay a separate screen and link.
-  const sidebar = page.getByRole("complementary", { name: "Sidebar" });
+  await page.getByRole("button", { name: "User menu" }).click();
+  const account = page.getByRole("navigation", { name: "User account" });
   await expect(
-    sidebar.getByRole("link", { name: "Account Settings" }),
+    account.getByRole("link", { name: "Account Settings" }),
   ).toHaveAttribute("href", "/settings");
   await expect(
-    sidebar.getByRole("link", { name: "Assistant preferences" }),
+    account.getByRole("link", { name: "Assistant preferences" }),
   ).toHaveAttribute("aria-current", "page");
   await expect(
-    sidebar.getByRole("link", { name: "Account Settings" }),
+    account.getByRole("link", { name: "Account Settings" }),
   ).not.toHaveAttribute("aria-current", "page");
 });
 
@@ -605,11 +606,9 @@ test("mobile layout fits the viewport and tabs work from the keyboard", async ({
     page.getByText("Prefer Finnish organic cream", { exact: false }),
   ).toBeVisible();
 
-  // The mobile menu links to the screen too.
-  await page.getByRole("button", { name: "Open menu" }).click();
-  await page
-    .getByRole("dialog", { name: "Menu" })
-    .getByRole("link", { name: "Assistant preferences" })
-    .click();
-  await expect(page.getByRole("dialog", { name: "Menu" })).toHaveCount(0);
+  // The mobile user dropdown links to the screen too.
+  await page.getByRole("button", { name: "User menu" }).click();
+  const account = page.getByRole("navigation", { name: "User account" });
+  await account.getByRole("link", { name: "Assistant preferences" }).click();
+  await expect(account).toHaveCount(0);
 });

@@ -208,3 +208,11 @@ The owner clarified the product scope and refusal style: accept food, products a
 nearby topics; decline clearly unrelated requests in simple language. Extended the
 same synthetic evaluation with workout, food-before-exercise, storage, kitchen-supply
 and community-serving cases. No new external material was used.
+
+## Header user dropdown — 2026-11-14
+
+Reused the existing account settings/preferences routes, session logout action,
+Material Symbols and Nordic UI tokens. Adapted the sidebar actions into a shared
+desktop/mobile header dropdown using the owner's screenshot as layout context.
+Browser verification uses the existing authored API fixtures. No new external
+assets or dependencies were introduced.
