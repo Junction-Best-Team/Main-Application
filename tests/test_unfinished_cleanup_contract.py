@@ -32,6 +32,10 @@ CLEANUP_DESIGN = {
     "conversation_messages": "set proposal_id NULL (the chat text stays)",
     "meal_authorization_withdrawals": "delete (exists once migration 010 is applied)",
     "orders": "never touched: an ordered proposal is not unfinished",
+    # Scheduler tables (not on every branch): history that must stay, so the purge skips any
+    # proposal they reference. See workflow.PROTECTED_TABLES.
+    "scheduled_runs": "protected, not purged: a run record stays, so does its proposal",
+    "order_request_cancellations": "protected, not purged: a cancellation stays, so does its proposal",
 }
 
 

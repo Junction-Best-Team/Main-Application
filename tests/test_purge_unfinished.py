@@ -202,3 +202,50 @@ def test_the_cli_refuses_a_period_below_one_day(
     with pytest.raises(SystemExit) as error:
         cli.main()
     assert error.value.code == 2 and count("proposals") == 1 and count("purged_proposals") == 0
+
+
+PROTECTED = [("scheduled_runs", "proposal_id"), ("order_request_cancellations", "proposal_id"),
+             ("scheduled_runs", "run_proposal_id")]  # fmt: skip
+
+
+@pytest.mark.parametrize(("table", "column"), PROTECTED)
+def test_a_proposal_a_protected_record_points_at_is_never_purged(
+    service, buyer, actor, request_data, table, column
+):
+    """Owner principle: keep history, never delete a run record or a cancellation.
+
+    scheduled_runs and order_request_cancellations (scheduler tables, added elsewhere) keep a
+    foreign key to the proposal they concern. The purge skips such a proposal wherever the
+    referencing column is called, and a dry run does not count it. The tables are created here in a
+    rolled-back transaction, so this also runs where they do not exist yet.
+    """
+    kept = prepare(service, actor, request_data, "11")
+    gone = prepare(service, actor, request_data, "12")
+    with psycopg.connect(settings().database_url, row_factory=dict_row) as conn:
+        try:
+            conn.execute(
+                sql.SQL(
+                    "CREATE TABLE {} (id serial PRIMARY KEY, {} uuid NOT NULL REFERENCES proposals(id))"
+                ).format(sql.Identifier(table), sql.Identifier(column))
+            )
+            conn.execute(
+                sql.SQL("INSERT INTO {} ({}) VALUES (%s)").format(
+                    sql.Identifier(table), sql.Identifier(column)
+                ),
+                (kept["proposal_id"],),
+            )
+            late = now() + LATE
+            dry = workflow.purge_unfinished_proposals(PERIOD, as_of=late, dry_run=True, conn=conn)
+            assert dry["proposals"] == 1
+            result = workflow.purge_unfinished_proposals(PERIOD, as_of=late, conn=conn)
+            assert result["proposals"] == 1
+            remaining = {str(r["id"]) for r in conn.execute("SELECT id FROM proposals").fetchall()}
+            assert remaining == {kept["proposal_id"]}
+            purged = {
+                str(r["proposal_id"])
+                for r in conn.execute("SELECT proposal_id FROM purged_proposals").fetchall()
+            }
+            assert purged == {gone["proposal_id"]}
+        finally:
+            conn.rollback()
+    assert count("proposals") == 2 and count("purged_proposals") == 0  # nothing leaked out

@@ -6,6 +6,8 @@ No network call or human wait occurs while these locks are held.
 from decimal import Decimal
 from uuid import uuid4
 
+from psycopg import sql
+
 from aimo import meal_authorization as meals
 from aimo.approval_policy import can_approve, evaluate_purchase
 from aimo.config import settings
@@ -660,14 +662,40 @@ def get_order(identity, oid):
 
 # --- CNF-021: remove proposals and approvals that never became orders ---------------------------
 
-# A proposal is unfinished when it has no order and the expiry of its current revision is older
-# than the cutoff. Rows are locked with SKIP LOCKED, under the buyer lock, like every purchasing
-# transaction, so a commit racing the cleanup is serialized by the same lock.
-_UNFINISHED = """FROM proposals p
+# Records that must stay forever (owner principle: keep history). A proposal that any of these
+# tables references is not "unfinished" and is never purged, wherever the column is called.
+# They are scheduler tables created by a later migration, so they may not exist yet.
+PROTECTED_TABLES = ("scheduled_runs", "order_request_cancellations")
+
+
+def _protected(c):
+    """SQL that excludes proposals referenced by a protected table (found via its foreign key)."""
+    rows = c.execute(
+        """SELECT cl.relname AS tbl, a.attname AS col FROM pg_constraint k
+        JOIN pg_class cl ON cl.oid=k.conrelid
+        JOIN pg_attribute a ON a.attrelid=k.conrelid AND a.attnum = ANY(k.conkey)
+        WHERE k.contype='f' AND k.confrelid='proposals'::regclass AND cl.relname = ANY(%s)
+        AND cl.relnamespace=current_schema()::regnamespace ORDER BY 1,2""",
+        (list(PROTECTED_TABLES),),
+    ).fetchall()
+    return "".join(
+        " AND NOT EXISTS (SELECT 1 FROM {} x WHERE x.{} = p.id)".format(
+            sql.Identifier(r["tbl"]).as_string(c), sql.Identifier(r["col"]).as_string(c)
+        )
+        for r in rows
+    )
+
+
+# A proposal is unfinished when it has no order, no protected record points at it, and the
+# expiry of its current revision is older than the cutoff. Rows are locked with SKIP LOCKED, under
+# the buyer lock, like every purchasing transaction, so a commit racing the cleanup is serialized
+# by the same lock.
+def _unfinished(c):
+    return """FROM proposals p
  JOIN proposal_revisions r ON r.proposal_id=p.id AND r.revision=p.current_revision
  WHERE p.buyer_id=%s AND p.order_id IS NULL
  AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.proposal_id=p.id)
- AND r.expires_at < %s"""
+ AND r.expires_at < %s""" + _protected(c)
 
 
 def purge_batch(c, proposal_ids, older_than):
@@ -683,8 +711,9 @@ def purge_batch(c, proposal_ids, older_than):
         r["id"]
         for r in c.execute(
             """SELECT p.id FROM proposals p WHERE p.id = ANY(%s::uuid[]) AND p.order_id IS NULL
-            AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.proposal_id=p.id)
-            ORDER BY p.id FOR UPDATE""",
+            AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.proposal_id=p.id)"""
+            + _protected(c)
+            + " ORDER BY p.id FOR UPDATE",
             ([str(i) for i in proposal_ids],),
         ).fetchall()
     ]
@@ -753,7 +782,7 @@ def purge_unfinished_proposals(older_than, *, as_of=None, dry_run=False, batch_s
         buyers = [
             r["buyer_id"]
             for r in c.execute(
-                f"SELECT DISTINCT p.buyer_id {_UNFINISHED.replace('p.buyer_id=%s', 'TRUE')} "
+                f"SELECT DISTINCT p.buyer_id {_unfinished(c).replace('p.buyer_id=%s', 'TRUE')} "
                 "ORDER BY 1",
                 (cutoff,),
             ).fetchall()
@@ -765,7 +794,7 @@ def purge_unfinished_proposals(older_than, *, as_of=None, dry_run=False, batch_s
         ids = [
             r["id"]
             for r in c.execute(
-                f"SELECT p.id {_UNFINISHED} ORDER BY p.id LIMIT %s FOR UPDATE OF p SKIP LOCKED",
+                f"SELECT p.id {_unfinished(c)} ORDER BY p.id LIMIT %s FOR UPDATE OF p SKIP LOCKED",
                 (buyer_id, cutoff, batch_size),
             ).fetchall()
         ]
@@ -780,11 +809,11 @@ def purge_unfinished_proposals(older_than, *, as_of=None, dry_run=False, batch_s
     if dry_run:
         with _use(conn) as c:
             total = c.execute(
-                f"SELECT count(*) AS n {_UNFINISHED.replace('p.buyer_id=%s', 'TRUE')}", (cutoff,)
+                f"SELECT count(*) AS n {_unfinished(c).replace('p.buyer_id=%s', 'TRUE')}", (cutoff,)
             ).fetchone()["n"]
             revisions = c.execute(
                 f"SELECT count(*) AS n FROM proposal_revisions WHERE proposal_id IN "
-                f"(SELECT p.id {_UNFINISHED.replace('p.buyer_id=%s', 'TRUE')})",
+                f"(SELECT p.id {_unfinished(c).replace('p.buyer_id=%s', 'TRUE')})",
                 (cutoff,),
             ).fetchone()["n"]
         totals.update(proposals=total, proposal_revisions=revisions)
