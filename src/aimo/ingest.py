@@ -157,11 +157,22 @@ def _activate(c, generation):
         "INSERT INTO active_catalog(singleton,generation) VALUES(true,%s) ON CONFLICT(singleton) DO UPDATE SET generation=excluded.generation",
         (generation,),
     )
+    # Retain rollback generations that differ from the new one. A rerun of an identical snapshot
+    # (same source hash and embedding model) must not consume the only different rollback target.
     c.execute(
         """DELETE FROM products WHERE generation <> %s AND generation NOT IN (
         SELECT id FROM catalog_generations WHERE id <> %s
+        AND NOT (source_hash=(SELECT source_hash FROM catalog_generations WHERE id=%s)
+                 AND model_key=(SELECT model_key FROM catalog_generations WHERE id=%s))
         ORDER BY (id=%s) DESC NULLS LAST,created_at DESC,id DESC LIMIT %s)""",
-        (generation, generation, previous_id, settings().catalog_generations_to_keep - 1),
+        (
+            generation,
+            generation,
+            generation,
+            generation,
+            previous_id,
+            settings().catalog_generations_to_keep - 1,
+        ),
     )
 
 
