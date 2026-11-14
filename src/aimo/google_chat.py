@@ -17,6 +17,7 @@ from aimo.agent_provider import (
     check_deadline,
     encode,
 )
+from aimo.attachments import image_context_bytes, model_text
 from aimo.db import Problem
 from aimo.google_api import GoogleAPIError, google_api_request
 from aimo.observability import event, operation
@@ -70,6 +71,12 @@ class GoogleChatProvider:
                     calls[call["id"]] = (call["function"]["name"], native.get("id"))
             else:
                 native_role, parts = "user", [{"text": message["content"]}]
+                for item in message.get("attachments", []):
+                    parts.append({"text": model_text(item)})
+                    if item.get("image_data"):
+                        parts.append(
+                            {"inlineData": {"mimeType": "image/jpeg", "data": item["image_data"]}}
+                        )
             if parts:
                 if contents and contents[-1]["role"] == native_role:
                     contents[-1]["parts"].extend(parts)
@@ -102,7 +109,8 @@ class GoogleChatProvider:
                 }
             ]
             payload["toolConfig"] = {"functionCallingConfig": {"mode": "AUTO"}}
-        if len(encode(payload).encode()) > MAX_CONTEXT_BYTES:
+        image_bytes = image_context_bytes(messages)
+        if len(encode(payload).encode()) - image_bytes > MAX_CONTEXT_BYTES or image_bytes > 6_000_000:
             raise Problem(
                 "LLM_CONTEXT_LIMIT", "Start a new conversation; the assistant context is full.", 422
             )

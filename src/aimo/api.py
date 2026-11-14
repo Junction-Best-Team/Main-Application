@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 from secrets import token_urlsafe
 from typing import Literal
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Query, Request, Response
@@ -23,6 +24,7 @@ from aimo import (
     upstream,
     voice,
 )
+from aimo.attachments import raw_file
 from aimo.chat_schemas import (
     ConversationCreate,
     ConversationList,
@@ -43,6 +45,7 @@ from aimo.memory_schemas import (
 )
 from aimo.observability import RequestLoggingMiddleware, configure_logging, event
 from aimo.order_schemas import CancellationResponse, OrdersResponse
+from aimo.request_limits import MessageBodyLimitMiddleware
 from aimo.schedule_schemas import (
     ScheduleCreateRequest,
     ScheduleDetail,
@@ -137,6 +140,7 @@ def create_app(service=None):
             response.headers["Cache-Control"] = "no-store"
         return response
 
+    app.add_middleware(MessageBodyLimitMiddleware)
     app.add_middleware(RequestLoggingMiddleware)
 
     def buyer(request: Request):
@@ -375,6 +379,21 @@ def create_app(service=None):
     @app.get("/api/conversations/{conversation_id}", response_model=ConversationResponse)
     def conversation_detail(conversation_id: UUID, identity=Depends(buyer)):
         return conversations.detail(identity, conversation_id)
+
+    @app.get("/api/conversations/{conversation_id}/attachments/{message_id}/{index}")
+    def conversation_attachment(
+        conversation_id: UUID, message_id: int, index: int, identity=Depends(buyer)
+    ):
+        item = conversations.attachment(identity, conversation_id, message_id, index)
+        disposition = "inline" if item["media_type"].startswith("image/") else "attachment"
+        return Response(
+            raw_file(item),
+            media_type=item["media_type"],
+            headers={
+                "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(item['name'], safe='')}",
+                "Cache-Control": "no-store",
+            },
+        )
 
     @app.post("/api/conversations/{conversation_id}/messages", response_model=ConversationResponse)
     def send_message(
