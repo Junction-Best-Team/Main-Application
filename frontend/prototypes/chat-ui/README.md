@@ -6,6 +6,10 @@
 [#24](https://github.com/Junction-Best-Team/Main-Application/issues/24) wayfinding map. Not shipped to
 `develop`, not built by root CI, not wired to any backend. Fake JSON only.
 
+**Not the Persons 2/3 integration path.** For the real product API (session →
+conversation/SSE → proposal → revision-bound confirm), use root `frontend/` with
+`uv run aimo serve` and follow [`docs/run-notes.md`](../../../docs/run-notes.md).
+
 ## Run it
 
 ```sh
