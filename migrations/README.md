@@ -20,6 +20,7 @@ Do not rename applied migrations or delete their ledger rows.
 | 014_policy_settings | Buyer policy managers, append-only change attribution and restricted policy save function |
 | 015_recipe_images | Optional chat illustrations, durable generation/upload recovery |
 | 021_turn_constraints | The customer's structured limits (budget, dietary toggles) stored with the chat turn that carries them (POL-008 producer, owner Q-97). One nullable `jsonb` column on `conversation_turns`; additive |
+| 023_chat_draft_cart | Display-only selected ingredients and checked unit prices; attempt-fenced, no confirmation authority |
 | 022_chat_activity | Bounded, sanitized worker activity on conversation turns; attempt-fenced updates, no purchasing authority |
 
 Before allocating another number, check remote branch tips and open PRs and update

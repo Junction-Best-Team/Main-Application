@@ -21,11 +21,16 @@ function Items({ p }: { p: Proposal }) {
             key={l.product_id}
             className="flex items-center justify-between gap-space-sm border-b border-border-subtle/50 py-1"
           >
-            <span>{l.name}</span>
-            <span className="shrink-0 font-mono font-bold text-primary">
-              {l.quantity.sales_quantity ?? "Unresolved"}{" "}
-              {l.quantity.sales_unit}
-            </span>
+            <span className="min-w-0 break-words">{l.name}</span>
+            <div className="shrink-0 text-right font-mono text-primary">
+              <span className="block font-bold">
+                {l.quantity.sales_quantity ?? "Unresolved"}{" "}
+                {l.quantity.sales_unit}
+              </span>
+              <span className="text-label-sm">
+                {currency(l.gross, p.snapshot.currency ?? "EUR")}
+              </span>
+            </div>
           </li>
         ))}
       </ul>

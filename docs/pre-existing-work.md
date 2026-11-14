@@ -224,3 +224,11 @@ fencing, authenticated conversation SSE snapshots, and Nordic UI tokens/icons.
 Added server-authored display labels and fixture-backed activity scenarios; no
 external assets, provider calls or new dependencies. The owner's screenshot
 identified the static busy line to replace.
+
+## Progressive purchasing draft — 2026-11-15
+
+Reused typed saved recipe plans, product/commercial tool evidence, output guardrails, worker
+attempt fencing, authenticated SSE and the existing confirmation UI. Added a display-only
+cart projection and authored plan/matching/quote/browser fixtures. Unit prices and orders
+in these checks remain explicitly synthetic; no live provider or supplier calls, new
+external assets or dependencies were used.

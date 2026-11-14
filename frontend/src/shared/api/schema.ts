@@ -499,6 +499,7 @@ export interface components {
              */
             busy: boolean;
             activity?: components["schemas"]["ChatActivity"] | null;
+            draft_cart?: components["schemas"]["DraftCart"] | null;
             retry_message?: components["schemas"]["RetryMessage"] | null;
         };
         /** ConversationSummary */
@@ -527,6 +528,62 @@ export interface components {
              * @enum {string}
              */
             decision: "approve" | "reject";
+        };
+        /**
+         * DraftCart
+         * @description Display-only plan projection; never accepted by confirmation or preparation.
+         */
+        DraftCart: {
+            /** Turn Id */
+            turn_id: string;
+            /** Title */
+            title: string;
+            /** Items */
+            items: components["schemas"]["DraftCartItem"][];
+            /** Proposal Id */
+            proposal_id?: string | null;
+        };
+        /** DraftCartItem */
+        DraftCartItem: {
+            /** Name */
+            name: string;
+            /** Amount */
+            amount: string | null;
+            /** Unit */
+            unit: string;
+            /** Product Id */
+            product_id?: string | null;
+            /** Product Name */
+            product_name?: string | null;
+            /**
+             * Matched
+             * @default false
+             */
+            matched: boolean;
+            price?: components["schemas"]["DraftPrice"] | null;
+        };
+        /** DraftPrice */
+        DraftPrice: {
+            /** Gross */
+            gross: string;
+            /** Currency */
+            currency: string;
+            /** Sales Unit */
+            sales_unit: string;
+            /** Mode */
+            mode: string;
+            /** Delivery Date */
+            delivery_date: string;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
         };
         /** EditablePolicy */
         EditablePolicy: {

@@ -112,3 +112,9 @@ per-portion bounds (see `internal-agent.md`); trusted constraint provenance
 (budgets and diets are inferred from customer text, so the earliest constraints
 can fall outside a long prepare-check window); and non-English/Finnish coverage
 beyond the sample.
+
+Progressive cart display (2026-11-15): under enforcement, changed plans now receive the
+same output review before their selected ingredient fields can enter the draft stream.
+The verdict is reused while the plan is unchanged; final prose is reviewed again. A
+refused final review clears the current draft. Normalized checked prices are displayed
+per sales unit, with source/time/date, and confer no purchasing authority.

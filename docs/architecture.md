@@ -344,3 +344,24 @@ constraints prevent duplicate acceptance; persisted conversations and receipts s
 | Image release and migration gate | [deploy.yml](../.github/workflows/deploy.yml), [migrate-release.py](../infra/scripts/migrate-release.py) |
 
 Buyer policy managers can edit purchasing rules through the authenticated [Settings page](policy-settings.md). This is a browser-only capability, separate from the agent tool allowlist.
+
+## Progressive draft cart
+
+The assistant helps with ideas and recipes, then advances selected items through matching,
+commercial checks and preparation when the customer is ready to buy. Cooking advice does not
+require checkout details. Tool calls, rather than model claims, update the cart.
+
+Migration `023_chat_draft_cart.sql` stores a separate, display-only projection on the worker
+turn. Changed plans pass the existing output review before draft fields are streamed under
+guardrail enforcement; unchanged plans reuse that verdict, and final prose is reviewed again.
+This adds a review per changed plan (batch matching avoids a review per ingredient). Failed or
+expired worker attempts cannot publish a draft, and explicit retries reset it. A completed
+draft survives conversational followups; a newer prepared proposal supersedes older drafts.
+
+The existing authenticated detail/SSE snapshots expose selected ingredients, unresolved rows,
+and only normalized checked prices with sales unit, delivery date, fixture/live source and
+observation/expiry times. Search candidates, raw supplier payloads, notes and reasoning are
+excluded. Expired prices disappear. Unit prices are not multiplied by ingredient quantities:
+pack rounding, full payable totals, policy and availability are verified by preparation.
+The frontend then switches to the existing exact-revision confirmation and mock receipt flow.
+No draft is accepted by any purchasing endpoint and no supplier checkout was added.

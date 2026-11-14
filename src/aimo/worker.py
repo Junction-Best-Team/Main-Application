@@ -33,7 +33,7 @@ def check_readiness():
             "SELECT g.model_key,g.embedding_dimensions FROM active_catalog a "
             "JOIN catalog_generations g ON g.id=a.generation"
         ).fetchone()
-        c.execute("SELECT requested_by,progress FROM conversation_turns LIMIT 0")
+        c.execute("SELECT requested_by,progress,draft_cart FROM conversation_turns LIMIT 0")
     if (
         not active
         or active["model_key"] != model_key()

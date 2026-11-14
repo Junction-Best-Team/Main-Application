@@ -1310,3 +1310,136 @@ test("Overview rejection retains the server decision without placing an order", 
   ).toHaveCount(0);
   expect(confirmations).toBe(0);
 });
+
+for (const width of [1440, 390, 320]) {
+  test(`draft cart streams matches and checked prices before basket review at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await mockSession(page);
+    const turnId = "aa0d5e73-f5a5-4594-a1c5-e4c1a24eebae";
+    let snapshot: Conversation = {
+      ...blankConversation,
+      busy: true,
+      activity: { turn_id: turnId, state: "running", events: [] },
+    };
+    await page.route(`**/api/conversations/${conversationId}`, (route) =>
+      route.fulfill({ json: snapshot }),
+    );
+    let publish: () => void = () => {};
+    const ready = new Promise<void>((resolve) => {
+      publish = resolve;
+    });
+    await page.route(
+      `**/api/conversations/${conversationId}/events`,
+      async (route) => {
+        await ready;
+        await route.fulfill({
+          contentType: "text/event-stream",
+          body: `event: conversation\ndata: ${JSON.stringify(snapshot)}\n\n`,
+        });
+      },
+    );
+    await page.goto(`/conversations/${conversationId}`);
+    await expect(
+      page.getByRole("complementary", { name: "Overview" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("complementary", { name: "Draft cart" }),
+    ).toHaveCount(0);
+    snapshot = {
+      ...snapshot,
+      draft_cart: {
+        turn_id: turnId,
+        title: "Pasta lunch",
+        items: [
+          { name: "Pasta", amount: "20", unit: "KG", matched: false },
+          { name: "Salt", amount: null, unit: "g", matched: false },
+        ],
+      },
+    };
+    publish();
+    const draft = page.getByRole("complementary", { name: "Draft cart" });
+    await expect(draft.getByRole("status")).toHaveText("0 of 2 items matched");
+    if (width < 1024)
+      await draft.getByRole("button", { name: "Expand draft cart" }).click();
+    await expect(
+      draft.getByText("Product to match", { exact: true }),
+    ).toHaveCount(2);
+    await expect(
+      draft.getByText("Price not checked", { exact: true }),
+    ).toHaveCount(2);
+    await expect(
+      draft.getByRole("button", {
+        name: /Confirm purchase|Approve & Push to Dispatch/,
+      }),
+    ).toHaveCount(0);
+    snapshot = {
+      ...snapshot,
+      draft_cart: {
+        ...snapshot.draft_cart!,
+        items: [
+          {
+            name: "Pasta",
+            amount: "20",
+            unit: "KG",
+            product_id: "pasta",
+            product_name: "Spaghetti 5 kg",
+            matched: true,
+            price: {
+              gross: "28.50",
+              currency: "EUR",
+              sales_unit: "BAG",
+              mode: "fixture",
+              delivery_date: "2026-11-16",
+              observed_at: timestamp,
+              expires_at: "2099-11-15T12:00:00Z",
+            },
+          },
+          snapshot.draft_cart!.items[1],
+        ],
+      },
+    };
+    await expect(draft.getByRole("status")).toHaveText("1 of 2 items matched", {
+      timeout: 10_000,
+    });
+    await expect(draft.getByText(/28\.50.*BAG incl. VAT/)).toBeVisible();
+    await expect(
+      draft.getByText(/Fixture price · invented demo data/),
+    ).toBeVisible();
+    await expect(
+      draft.getByText("Price not checked", { exact: true }),
+    ).toHaveCount(1);
+    await expect(
+      draft.getByText("Quantity needed", { exact: true }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: testInfo.outputPath(`draft-cart-${width}.png`),
+    });
+    await page.reload();
+    if (width < 1024)
+      await draft.getByRole("button", { name: "Expand draft cart" }).click();
+    await expect(draft.getByText(/28\.50.*BAG incl. VAT/)).toBeVisible();
+    snapshot = {
+      ...snapshot,
+      busy: false,
+      purchases: [proposal],
+      draft_cart: { ...snapshot.draft_cart!, proposal_id: proposalId },
+      activity: { turn_id: turnId, state: "complete", events: [] },
+    };
+    const overview = page.getByRole("complementary", { name: "Overview" });
+    await expect(overview).toBeVisible({ timeout: 10_000 });
+    await expect(draft).toHaveCount(0);
+    if (width < 1024)
+      await overview.getByRole("button", { name: "Expand overview" }).click();
+    await expect(
+      overview.getByRole("button", { name: "Approve & Push to Dispatch" }),
+    ).toBeEnabled();
+    await expect(overview.getByText("Total estimated")).toBeVisible();
+  });
+}

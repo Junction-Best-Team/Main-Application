@@ -136,3 +136,72 @@ def test_activity_is_scoped_and_in_the_authenticated_sse_snapshot(buyer, service
 def test_all_registered_tools_have_product_activity_labels(service):
     session = ToolSession({"_turn_id": str(uuid4())}, service)
     assert set(session.registry) == set(TOOL_LABELS)
+
+
+def test_draft_cart_persists_streams_and_is_fenced_without_purchasing_authority(buyer, service, monkeypatch):
+    from test_conversations import signed
+
+    from aimo.chat_schemas import DraftCart, DraftCartItem, DraftPrice
+
+    cid, _ = queue(buyer)
+    turn = conversations.claim_turn(cid)
+    draft = DraftCart(turn_id=str(turn["id"]), title="Lunch", items=[
+        DraftCartItem(name="Milk", amount="10", unit="L"),
+        DraftCartItem(name="Salt", amount=None, unit="g"),
+    ])
+    record_progress(turn, AgentProgress(str(turn["id"]), 1, "tool_completed", "scale_recipe",
+                                       draft=draft, draft_updated=True))
+    first = conversations.detail(buyer, cid)
+    assert len(first["draft_cart"]["items"]) == 2 and first["purchases"] == []
+    draft.items[0].matched = True
+    draft.items[0].product_id = "464306"
+    draft.items[0].price = DraftPrice(
+        gross="1.14", currency="EUR", sales_unit="L", mode="fixture", delivery_date="2026-11-17",
+        observed_at=now(), expires_at=now() + timedelta(minutes=10),
+    )
+    record_progress(turn, AgentProgress(str(turn["id"]), 2, "tool_completed", "check_price_and_availability",
+                                       draft=draft, draft_updated=True))
+    close_pools()
+    loaded = conversations.detail(buyer, cid)
+    assert loaded["draft_cart"]["items"][0]["price"]["gross"] == "1.14"
+    # No quote or draft has created a proposal/order, and another buyer cannot read it.
+    assert loaded["purchases"] == []
+    other = add_second_buyer()["approver"]
+    with pytest.raises(Problem):
+        conversations.detail(other, cid)
+    with connection() as c:
+        assert c.execute("SELECT count(*) AS n FROM orders").fetchone()["n"] == 0
+    count = 0
+
+    async def disconnected(request):
+        nonlocal count
+        count += 1
+        return count > 1
+
+    monkeypatch.setattr(Request, "is_disconnected", disconnected)
+    with TestClient(create_app(service)) as client:
+        signed(client)
+        response = client.get(f"/api/conversations/{cid}/events")
+    data = json.loads(response.text.split("data: ")[1].split("\n")[0])
+    assert data["draft_cart"] == loaded["draft_cart"]
+    # An older sequence cannot overwrite a newer match; expired evidence is hidden on read.
+    record_progress(turn, AgentProgress(str(turn["id"]), 1, "tool_completed", "scale_recipe",
+                                       draft=None, draft_updated=True))
+    assert conversations.detail(buyer, cid)["draft_cart"] == loaded["draft_cart"]
+    draft.items[0].price.expires_at = now() - timedelta(seconds=1)
+    record_progress(turn, AgentProgress(str(turn["id"]), 3, "tool_completed", "get_product",
+                                       draft=draft, draft_updated=True))
+    assert conversations.detail(buyer, cid)["draft_cart"]["items"][0]["price"] is None
+    with connection() as c:
+        c.execute("UPDATE conversation_turns SET lease_until=%s WHERE id=%s",
+                  (now() - timedelta(seconds=1), turn["id"]))
+    assert conversations.detail(buyer, cid)["draft_cart"] is None
+    replacement = conversations.claim_turn(cid)
+    record_progress(turn, AgentProgress(str(turn["id"]), 4, "tool_completed", "scale_recipe",
+                                       draft=draft, draft_updated=True))
+    assert conversations.detail(buyer, cid)["draft_cart"] is None
+    record_progress(replacement, AgentProgress(str(turn["id"]), 1, "tool_completed", "scale_recipe",
+                                              draft=draft, draft_updated=True))
+    conversations.execute_turn(replacement, service, lambda *args: AgentTurn(text="Continue matching."))
+    next_turn = conversations.enqueue(buyer, cid, MessageRequest(text="Can you explain it?", idempotency_key=str(uuid4())))
+    assert next_turn["draft_cart"] is not None  # The selected plan survives conversational follow-ups.

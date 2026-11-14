@@ -89,8 +89,29 @@ def detail(identity, cid):
             ORDER BY t.created_at LIMIT 1""",
             (cid,),
         ).fetchone()
+        draft = c.execute(
+            """SELECT t.draft_cart FROM conversation_turns t WHERE t.conversation_id=%s
+            AND t.draft_cart IS NOT NULL AND (t.state='complete' OR
+                (t.state='running' AND t.lease_until>%s))
+            AND NOT EXISTS (SELECT 1 FROM conversation_messages m
+                JOIN conversation_turns newer ON newer.id=m.turn_id
+                WHERE newer.conversation_id=t.conversation_id AND m.proposal_id IS NOT NULL
+                AND newer.created_at>t.created_at)
+            ORDER BY t.created_at DESC,t.id DESC LIMIT 1""",
+            (cid, now()),
+        ).fetchone()
     pids = list(dict.fromkeys(str(m["proposal_id"]) for m in messages if m["proposal_id"]))
     purchases = [workflow.get_proposal(identity, pid) for pid in pids]
+    draft_cart = draft["draft_cart"] if draft else None
+    if draft_cart:
+        # Persisted quotes may have expired since the worker checked them.
+        from aimo.chat_schemas import DraftCart
+
+        cart = DraftCart.model_validate(draft_cart)
+        for item in cart.items:
+            if item.price and item.price.expires_at <= now():
+                item.price = None
+        draft_cart = cart.model_dump(mode="json")
     return {
         "id": str(row["id"]),
         "title": row["title"],
@@ -102,6 +123,7 @@ def detail(identity, cid):
         ],
         "purchases": purchases,
         "busy": busy,
+        "draft_cart": draft_cart,
         "activity": {"turn_id": str(turn["id"]), "state": state, "events": turn["progress"]}
         if turn
         else None,
@@ -147,7 +169,8 @@ def enqueue(identity, cid, body):
                 (id,conversation_id,key,payload_hash,state,lease_until,attempt,requested_by,
                 worker_attempts,submitted_by,constraints)
                 VALUES(%s,%s,%s,%s,'queued',%s,%s,%s,0,%s,%s) ON CONFLICT(conversation_id,key)
-                DO UPDATE SET state='queued',requested_by=EXCLUDED.requested_by,worker_attempts=0,progress='[]'::jsonb""",
+                DO UPDATE SET state='queued',requested_by=EXCLUDED.requested_by,worker_attempts=0,
+                progress='[]'::jsonb,draft_cart=NULL""",
                 # A retry changes the executor (requested_by) but never the author.
                 (
                     tid,
@@ -242,7 +265,7 @@ def claim_turn(cid=None):
             return None
         return c.execute(
             """UPDATE conversation_turns SET state='running',attempt=%s,lease_until=%s,
-            worker_attempts=worker_attempts+1,progress='[]'::jsonb WHERE id=%s RETURNING *""",
+            worker_attempts=worker_attempts+1,progress='[]'::jsonb,draft_cart=NULL WHERE id=%s RETURNING *""",
             (uuid4(), now() + timedelta(seconds=240), turn["id"]),
         ).fetchone()
 

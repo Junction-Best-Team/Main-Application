@@ -42,9 +42,12 @@ def record_progress(turn, progress):
     item = ChatActivityEvent(sequence=progress.sequence, kind=progress.kind, label=label)
     with connection() as c:
         c.execute(
-            """UPDATE conversation_turns SET progress=progress || %s::jsonb
+            """UPDATE conversation_turns SET progress=progress || %s::jsonb,
+            draft_cart=CASE WHEN %s THEN %s::jsonb ELSE draft_cart END
             WHERE id=%s AND attempt=%s AND state='running' AND lease_until>%s
             AND jsonb_array_length(progress)<600
             AND COALESCE((progress->-1->>'sequence')::int,0)<%s""",
-            (js([item.model_dump()]), turn["id"], turn["attempt"], now(), item.sequence),
+            (js([item.model_dump()]), progress.draft_updated,
+             js(progress.draft.model_dump(mode="json")) if progress.draft else None,
+             turn["id"], turn["attempt"], now(), item.sequence),
         )
