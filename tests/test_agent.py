@@ -25,24 +25,15 @@ def reset_buyers():
 
 @pytest.fixture
 def identity():
-    return {
-        "id": "server-agent",
-        "role": "agent",
-        "buyer_id": "hotel",
-        "active": True,
-        "_turn_id": str(uuid4()),
-    }
+    return {"id": "server-agent", "role": "agent", "buyer_id": "hotel", "active": True,
+            "_turn_id": str(uuid4())}
 
 
 @pytest.fixture
 def cfg(monkeypatch):
-    config = SimpleNamespace(
-        llm_api_key="private-test-key",
-        llm_base_url="https://provider.test/v1",
-        llm_model="test-model",
-        llm_timeout_seconds=20,
-        llm_max_tool_rounds=6,
-    )
+    config = SimpleNamespace(llm_api_key="private-test-key", llm_base_url="https://provider.test/v1",
+                             llm_model="test-model", llm_timeout_seconds=20,
+                             llm_max_tool_rounds=6)
     monkeypatch.setattr(internal, "settings", lambda: config)
     return config
 
@@ -50,11 +41,8 @@ def cfg(monkeypatch):
 class FakeService:
     def __init__(self):
         self.calls = []
-        self.proposal = {
-            "proposal_id": str(uuid4()),
-            "policy_outcome": "approval_required",
-            "reasons": [{"message": "Outside the buyer's standing product scope."}],
-        }
+        self.proposal = {"proposal_id": str(uuid4()), "policy_outcome": "approval_required",
+                         "reasons": [{"message": "Outside the buyer's standing product scope."}]}
 
     def get_product(self, identity, product_id):
         self.calls.append(("product", identity, product_id))
@@ -80,11 +68,8 @@ class FakeService:
 
 
 def tool(name, arguments):
-    return {
-        "id": str(uuid4()),
-        "type": "function",
-        "function": {"name": name, "arguments": json.dumps(arguments)},
-    }
+    return {"id": str(uuid4()), "type": "function",
+            "function": {"name": name, "arguments": json.dumps(arguments)}}
 
 
 def reply(*calls, text=None):
@@ -104,38 +89,22 @@ def scripted(monkeypatch, replies):
 
 
 def ingredients(matched=True):
-    return [
-        {"name": name, "amount": amount, "unit": "KG", **({"product_id": name} if matched else {})}
-        for name, amount in [
-            ("pasta", "20"),
-            ("eggs", "12"),
-            ("pork", "6"),
-            ("cheese", "4"),
-            ("pepper", "0.2"),
-        ]
-    ]
+    return [{"name": name, "amount": amount, "unit": "KG",
+             **({"product_id": name} if matched else {})}
+            for name, amount in [("pasta", "20"), ("eggs", "12"), ("pork", "6"),
+                                 ("cheese", "4"), ("pepper", "0.2")]]
 
 
 def plan(matched=True):
-    return {
-        "title": "Carbonara",
-        "portions": 200,
-        "ingredients": ingredients(matched),
-        "notes": ["Recipe estimate; verify portions and dietary needs."],
-    }
+    return {"title": "Carbonara", "portions": 200, "ingredients": ingredients(matched),
+            "notes": ["Recipe estimate; verify portions and dietary needs."]}
 
 
 def purchase():
-    return {
-        "request_id": "200 portions of carbonara",
-        "destination": "hotel-helsinki",
-        "delivery_date": "2026-11-16",
-        "budget_gross": "1000",
-        "lines": [
-            {"product_id": i["product_id"], "amount": i["amount"], "unit": i["unit"]}
-            for i in ingredients()
-        ],
-    }
+    return {"request_id": "200 portions of carbonara", "destination": "hotel-helsinki",
+            "delivery_date": "2026-11-16", "budget_gross": "1000",
+            "lines": [{"product_id": i["product_id"], "amount": i["amount"], "unit": i["unit"]}
+                      for i in ingredients()]}
 
 
 def invoke(registry, name, payload):
@@ -144,43 +113,27 @@ def invoke(registry, name, payload):
 
 def test_carbonara_clarification_to_actual_products_and_verified_basket(monkeypatch, cfg, identity):
     service = FakeService()
-    first = scripted(
-        monkeypatch,
-        [
-            reply(tool("get_purchase_policy", {})),
-            reply(
-                text="What delivery date, dietary requirements and budget should I use? "
-                "May I use hotel-helsinki as the destination?"
-            ),
-        ],
-    )
+    first = scripted(monkeypatch, [reply(tool("get_purchase_policy", {})), reply(
+        text="What delivery date, dietary requirements and budget should I use? "
+             "May I use hotel-helsinki as the destination?"
+    )])
     history = [{"role": "user", "content": "I need ingredients for 200 portions of carbonara."}]
     clarification = internal.run_turn(identity, history, service)
     assert clarification.proposal_id is None
     assert "delivery date" in clarification.text
     assert len(first) == 2
     assert not any(call[0] == "prepare" for call in service.calls)
-    history += [
-        {"role": "assistant", "content": clarification.text},
-        {
-            "role": "user",
-            "content": "Nov 16, hotel-helsinki, no dietary restrictions, "
-            "1000 EUR. Use the proposed traditional recipe.",
-        },
-    ]
-    seen = scripted(
-        monkeypatch,
-        [
-            reply(
-                tool("publish_meal_plan", plan(False)),
-                *[tool("search_products", {"query": i["name"]}) for i in ingredients()],
-            ),
-            reply(*[tool("get_product", {"product_id": i["product_id"]}) for i in ingredients()]),
-            reply(tool("publish_meal_plan", plan())),
-            reply(tool("prepare_order", purchase())),
-            reply(text="Your matched recipe and basket are ready for review."),
-        ],
-    )
+    history += [{"role": "assistant", "content": clarification.text},
+                {"role": "user", "content": "Nov 16, hotel-helsinki, no dietary restrictions, "
+                                            "1000 EUR. Use the proposed traditional recipe."}]
+    seen = scripted(monkeypatch, [
+        reply(tool("publish_meal_plan", plan(False)),
+              *[tool("search_products", {"query": i["name"]}) for i in ingredients()]),
+        reply(*[tool("get_product", {"product_id": i["product_id"]}) for i in ingredients()]),
+        reply(tool("publish_meal_plan", plan())),
+        reply(tool("prepare_order", purchase())),
+        reply(text="Your matched recipe and basket are ready for review."),
+    ])
     result = internal.run_turn(identity, history, service)
     assert result.meal_plan.portions == 200
     assert len(result.meal_plan.ingredients) == 5
@@ -196,15 +149,12 @@ def test_carbonara_clarification_to_actual_products_and_verified_basket(monkeypa
     assert "commit_order" not in {t["function"]["name"] for t in seen[0]["tools"]}
 
 
-@pytest.mark.parametrize(
-    "name,payload",
-    [
-        ("get_purchase_policy", {"identity": {"buyer_id": "victim"}}),
-        ("get_product", {"product_id": "pasta", "buyer_id": "victim"}),
-        ("prepare_order", purchase() | {"authority": {"autonomous_limit": "999999"}}),
-        ("prepare_order", purchase() | {"idempotency_key": "model-controlled"}),
-    ],
-)
+@pytest.mark.parametrize("name,payload", [
+    ("get_purchase_policy", {"identity": {"buyer_id": "victim"}}),
+    ("get_product", {"product_id": "pasta", "buyer_id": "victim"}),
+    ("prepare_order", purchase() | {"authority": {"autonomous_limit": "999999"}}),
+    ("prepare_order", purchase() | {"idempotency_key": "model-controlled"}),
+])
 def test_model_cannot_choose_identity_permissions_or_retry_key(identity, name, payload):
     service = FakeService()
     registry = internal.Tools(identity, [], service)
@@ -214,9 +164,7 @@ def test_model_cannot_choose_identity_permissions_or_retry_key(identity, name, p
     assert service.calls == []
 
 
-@pytest.mark.parametrize(
-    "name", ["commit_order", "confirm_purchase", "approve", "set_product_scope"]
-)
+@pytest.mark.parametrize("name", ["commit_order", "confirm_purchase", "approve", "set_product_scope"])
 def test_model_cannot_authorize_purchase(identity, name):
     registry = internal.Tools(identity, [], FakeService())
     with pytest.raises(Problem) as error:
@@ -240,9 +188,7 @@ def test_incomplete_or_fabricated_plan_cannot_prepare(identity):
     assert not any(c[0] == "prepare" for c in service.calls)
 
 
-@pytest.mark.parametrize(
-    "amount", ["NaN", "Infinity", "-1", "0", "a lot", "1e999999999999", "0.000001"]
-)
+@pytest.mark.parametrize("amount", ["NaN", "Infinity", "-1", "0", "a lot", "1e999999999999", "0.000001"])
 def test_meal_amounts_are_finite_positive(identity, amount):
     registry = internal.Tools(identity, [], FakeService())
     draft = plan(False)
@@ -255,10 +201,8 @@ def test_meal_amounts_are_finite_positive(identity, amount):
 def test_prepare_matches_complete_plan_and_has_stable_server_retry_key(identity):
     service = FakeService()
     keys = []
-    for history in (
-        [{"role": "user", "content": "carbonara"}],
-        [{"role": "user", "content": "retry persisted turn"}],
-    ):
+    for history in ([{"role": "user", "content": "carbonara"}],
+                    [{"role": "user", "content": "retry persisted turn"}]):
         registry = internal.Tools(identity, history, service)
         for ingredient in ingredients():
             invoke(registry, "get_product", {"product_id": ingredient["product_id"]})
@@ -281,13 +225,8 @@ def test_assistant_text_cannot_create_a_proposal(monkeypatch, cfg, identity):
 
 
 def test_failed_tool_is_actionable_and_never_becomes_a_basket(monkeypatch, cfg, identity):
-    seen = scripted(
-        monkeypatch,
-        [
-            reply(tool("get_proposal", {"proposal_id": str(uuid4())})),
-            reply(text="That basket was not found. Open purchase history."),
-        ],
-    )
+    seen = scripted(monkeypatch, [reply(tool("get_proposal", {"proposal_id": str(uuid4())})),
+                                  reply(text="That basket was not found. Open purchase history.")])
     result = internal.run_turn(identity, [{"role": "user", "content": "resume"}], FakeService())
     assert result.proposal_id is None
     assert json.loads(seen[1]["messages"][-1]["content"])["error"]["code"] == "NOT_FOUND"
@@ -295,13 +234,8 @@ def test_failed_tool_is_actionable_and_never_becomes_a_basket(monkeypatch, cfg, 
 
 def test_valid_persisted_proposal_can_resume_without_commit(monkeypatch, cfg, identity):
     service = FakeService()
-    scripted(
-        monkeypatch,
-        [
-            reply(tool("get_proposal", {"proposal_id": service.proposal["proposal_id"]})),
-            reply(text="Review your saved basket."),
-        ],
-    )
+    scripted(monkeypatch, [reply(tool("get_proposal", {
+        "proposal_id": service.proposal["proposal_id"]})), reply(text="Review your saved basket.")])
     result = internal.run_turn(identity, [{"role": "user", "content": "resume"}], service)
     assert result.proposal_id == service.proposal["proposal_id"]
     assert [c[0] for c in service.calls] == ["proposal"]
@@ -321,11 +255,9 @@ def test_repeated_tool_errors_and_rounds_are_bounded(monkeypatch, cfg, identity)
 
 def install_provider(monkeypatch, handler):
     real_client = httpx.Client
-    monkeypatch.setattr(
-        internal.httpx,
-        "Client",
-        lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs),
-    )
+    monkeypatch.setattr(internal.httpx, "Client", lambda **kwargs: real_client(
+        transport=httpx.MockTransport(handler), **kwargs
+    ))
 
 
 def test_missing_provider_configuration_is_actionable(cfg, identity):
@@ -371,15 +303,8 @@ def test_provider_rate_limit_respects_retry_after(monkeypatch, cfg, identity):
     assert error.value.code == "LLM_RATE_LIMITED"
 
 
-@pytest.mark.parametrize(
-    "body",
-    [
-        None,
-        {},
-        {"choices": []},
-        {"choices": [{"message": {"tool_calls": [{"id": "x", "type": "custom"}]}}]},
-    ],
-)
+@pytest.mark.parametrize("body", [None, {}, {"choices": []}, {"choices": [{"message": {
+    "tool_calls": [{"id": "x", "type": "custom"}]}}]}])
 def test_malformed_provider_output_is_actionable(monkeypatch, cfg, identity, body):
     install_provider(monkeypatch, lambda request: httpx.Response(200, json=body))
     with pytest.raises(Problem) as error:
@@ -414,9 +339,8 @@ def test_provider_failure_after_preparation_retains_verified_basket(monkeypatch,
         nonlocal count
         count += 1
         if count == 1:
-            return reply(
-                *[tool("get_product", {"product_id": i["product_id"]}) for i in ingredients()]
-            )
+            return reply(*[tool("get_product", {"product_id": i["product_id"]})
+                           for i in ingredients()])
         if count == 2:
             return reply(tool("publish_meal_plan", plan()), tool("prepare_order", purchase()))
         raise Problem("LLM_UNAVAILABLE", "Provider unavailable", 503)

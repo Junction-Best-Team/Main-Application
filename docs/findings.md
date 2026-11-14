@@ -1,6 +1,6 @@
 # Findings
 
-Non-obvious facts, traps, decisions and known issues, each with evidence. Append to the relevant section. Do not delete a finding; change its status and say why. The `Track:` field on older entries refers to the four-track split that was dropped (D-006); ignore it.
+Non-obvious facts, traps, decisions and known issues, each with evidence. Append to your track's section. Do not delete another track's finding; change its status and say why.
 
 Entry format:
 
@@ -33,32 +33,22 @@ Owner decisions use `D-<nnn>` and quote the owner's words verbatim.
 ### D-001: Build the Valio Aimo side, not the buyer's agent
 - Date: 2026-11-13   Track: all   Status: verified
 - Decision: "Can you get rid of the buyer agent interface, and stick with what the brief wanted."
-- Impact: Scope is the interface and operating model (lookup, quote and order, mandates and approvals, audit). A thin reference client exists only for demo and testing. The Type1 draft that elaborated this was removed (D-006).
+- Impact: Scope is the interface and operating model (lookup, quote and order, mandates and approvals, audit). A thin reference client exists only for demo and testing. See `Plan/post-mvp-plan.md`.
 
 ### D-003: The agent contract is fixed in source code
-- Date: 2026-11-14   Track: 3 (affects 2, 4)   Status: verified (decision); the draft design in `Plan/post-mvp-plan.md` was removed (D-006); the MVP instead uses database-seeded, versioned, read-only policy (F-MVP-001)
+- Date: 2026-11-14   Track: 3 (affects 2, 4)   Status: verified (decision); applies to the MVP, extended for the full product by D-004; design is a draft in `Plan/post-mvp-plan.md`
 - Decision: "For the mandate, I would like this to behave as a contract, which is the behavior of how the MCP will behave with the agent. I want it to be fixed in the code, and be unchangable without source code changes."
 - Impact: What the agent may do alone is a frozen constant in source, with no endpoint, tool or setting that changes it. Every policy decision and audit event records the contract hash. The human realm only approves or rejects held orders; it cannot edit limits. Production path: replace the constant with a buyer-signed mandate.
 
 ### D-004: Two-part contract; client-editable in the full product
-- Date: 2026-11-14   Track: 3 (affects 2, 4)   Status: verified (decision) as a full-product idea; its draft design was removed (D-006) and is not in the MVP
+- Date: 2026-11-14   Track: 3 (affects 2, 4)   Status: verified (decision); design is a draft in `Plan/post-mvp-plan.md` section 6
 - Decision: "In the full feature list, I would like for the contract to be editable by the client only, as part of some sort of settings, but only specific elements. there would be a distribution part of the contract, and a client part of the contract"
 - Impact: The contract has a distribution part (Aimo-owned, changed by code release) and a client part (customer-owned). The client part may contain only fields the distribution part lists as client-editable, inside its bounds. The effective contract is the stricter of the two. In the MVP both parts are still frozen constants (D-003).
 
 ### D-005: MVP and full design as two parts; customer and agent are separate entities
-- Date: 2026-11-14   Track: all   Status: verified (decision); the Type1 draft it refers to was removed (D-006), the customer/agent separation is kept in the MVP (separate buyer login and agent token)
+- Date: 2026-11-14   Track: all   Status: verified (decision)
 - Decision: "They are technically one device, but two seperate entities. Also, in the architecture for type1, can you write out the elements/contracts as two seperate elements. Requiremnts for MVP, and requiremnets that would make a great product. So we aren't over commiting, but at the same time, we make sure we build a good first product."
 - Impact: The Type1 draft has Part A (MVP) and Part B (full product), with seams so the MVP grows into the full design. The approval request goes to the customer through a channel that does not pass through the agent, and the agent's output contains no approval secret.
-
-### D-006: Drop the four tracks, C1 to C5 and the Type1 draft
-- Date: 2026-11-14   Track: all   Status: verified
-- Decision: "For the conflicts, lets drop the four tracks, and the c1-5. lets also drop the type1 draft.  the plan/post-mvp findings should now be based on the main, maybe we rebase locally to the main, then adopt the pr to work locally on it."
-- Impact: PR #4 (`codex/valio-aimo-mvp`) is the base. `docs/architecture.md`, the contract numbering and `docs/drafts/type1-architecture.md` (on the `Init` branch) are not carried forward, and `Plan/post-mvp-plan.md` is deleted on the working branch. PR #3 was already merged into main (`76296c1`), so the findings branch needed no rebase. Old entries keep their `Track:` field for history only.
-
-### D-007: API key fallback and future key provisioning
-- Date: 2026-11-14   Track: all   Status: verified
-- Decision: "Add the no api key as a fall back, but add notes that it does exist and members of the team will have it. Also lets note in the future build that the api key method needs to be added, either via a UI that the distributor can add, or it is hard coded, but we need to resolve this."
-- Impact: `UPSTREAM_MODE=auto` (default) uses the live API when `VALIO_AIMO_API_KEY` is set and labelled fixtures otherwise. The key's provisioning method for the full product is an open decision (admin UI versus deployment configuration), recorded in `docs/brief.md` section 12.
 
 ## Data (static files in `data/`)
 
@@ -260,6 +250,18 @@ Owner decisions use `D-<nnn>` and quote the owner's words verbatim.
 - Evidence: `local/project-brief.raw.txt` (gitignored).
 - Impact: Confirm the official deadline on the event platform before planning scope.
 
+## Track sections
+
+Add new findings below, under your track heading.
+
+### Track 1: Catalog and Discovery
+
+### Track 2: Quote and Order
+
+### Track 3: Mandates, Policy and Approvals
+
+### Track 4: Interface, Audit and Demo
+
 ## MVP implementation verification
 
 ### F-MVP-001: Explicit implementation handoff resolves the draft seams
@@ -305,20 +307,3 @@ Owner decisions use `D-<nnn>` and quote the owner's words verbatim.
 - Finding: The existing React/FastAPI image now owns customer chat, typed direct Service tools, persisted conversation recovery and exact-revision browser confirmation. Migration 003 is additive and starts internal agents at zero autonomous authority without changing the buyer product scope. MCP/external-agent routes and dependency are removed; historical identity/proposal/approval/order references remain.
 - Evidence: `tests/test_agent_integration.py`, `tests/test_conversations.py`, `frontend/e2e`, generated browser contracts, and `docs/chat-purchasing.md` contain the current checks and limits. The carbonara fixture exercises five catalog matches and the actual quantity/policy/order modules; a local production-image restart retains session/messages/decision/receipt. Local Traefik streams the snapshot/heartbeat and observes logout revocation.
 - Impact: The backend, frontend and agent workstreams are integrated for review. Recipe agreement/model text cannot authorize purchasing. Changed terms require a new customer click. Apply neither Terraform nor release/deployment steps as part of this task. Live LLM and selected-cluster ingress still need operator acceptance after configuration/deployment.
-### F-MVP-007: Live Valio API check with the real key
-- Date: 2026-11-14   Track: all   Status: verified
-- Finding: With the real key the connector returns valid price and availability for the shortlist (HTTP 200 from `/api/price` and `/api/availability`). Live stock for `463380` is 698 sales units and the full purchase flow works on it: `ready_to_commit`, mock commit, identical receipt on retry. Live stock for `464306` (the fixture demo milk) is the unknown-quantity sentinel `9999999999`, so the app correctly returns `needs_resolution` / `UNVERIFIED_STOCK` and nothing can be committed. The substitute `464398` is also `UNVERIFIED_STOCK`, so the split-purchase approval path cannot be shown live with these two products.
-- Evidence (the sweep behind these numbers drove the agent API removed by PR #15; the live-stock facts stand, the sweep has since been rewritten): `tests/ci.sh --live` (12 passed / 3 skipped / 0 failed with the default product) and `SWEEP_ARGS="--product 463380" tests/ci.sh --live` (14 passed / 1 skipped / 0 failed), 2026-11-14, pytest 51 passed. Earlier bounded call for `463380` and `464306`, delivery date 2026-11-16, customer `123`. The sweep prints the mode used; no key or raw responses are stored.
-- Impact: The live demo needs a product with finite stock (`463380` works). The approval-path demo needs a finite-stock substitute pair or the labelled fixtures; do not present fixture stock as live. Updates F-MVP-004: the commercial connector is now exercised live; F-API-002 to F-API-010 are still individually unrepeated.
-
-### F-MVP-008: Python coverage measured and gated; frontend coverage not implemented
-- Date: 2026-11-14   Track: all   Status: verified (local run, fixtures); the GitHub workflow has not been run
-- Finding: Line plus branch coverage of `src/aimo` with 57 pytest tests alone is 84.5%. The sweep-driven server (uvicorn under `coverage run`, plus the migrate/seed/fixture-catalog CLI steps) alone is about 73%, and the two combined are about 87% (87.5% and 87.1% in two runs). The sweep reaches 43 lines pytest does not, mostly `cli.py` (26) and `api.py` (11). Weakest files: `ingest.py` 51% (file download/ingest), `cli.py` 69%, `upstream.py` 81% (live HTTP branches), `purchases.py` 83%, `catalog.py` 86%. Gate is `fail_under = 84` on the combined total (about 3 points of slack). Traps: pytest-cov enforces `fail_under` on pytest-only data (84.5%, borderline), so `tests/ci.sh` passes `--cov-fail-under=0`; `uv run` in CI would sync torch unless `UV_NO_SYNC=1`; the server's coverage data is written only when uvicorn exits, so `tests/ci.sh` waits for it. `pytest-cov` and `coverage` were added to the dev group; the locked, pruned, hash-pinned install in `ci.yml` still resolves them (checked with `uv export --locked --prune torch --prune sentence-transformers` and `uv pip sync --require-hashes`). Frontend: no coverage, because the browser specs read a `.env` for credentials and are being reworked for `tests/ci.sh --browser`, and any approach needs a coverage fixture wrapping `test` in the specs. Options: (a) `vite-plugin-istanbul` (supports vite >=7) in a coverage-only build, collecting `window.__coverage__` in a Playwright fixture, then `nyc report`; (b) Playwright `page.coverage` V8 JS coverage plus a sourcemap and `v8-to-istanbul`. Both measure only `frontend/src/main.tsx` (704 lines; `api-types.ts` is generated).
-- Evidence: `CI_COVERAGE=1 tests/ci.sh` (ruff passed, pytest 57 passed, sweep 15 passed, 0 failed) and `tests/coverage_report.py`, own databases `aimo_cov_test` and `aimo_cov_ci`; gate failure path checked by temporarily setting `fail_under = 99` (exit 1). `tests/ci.sh` without `CI_COVERAGE` run again: pytest 57 passed, sweep 15 passed, no leftover server, no `.coverage/`.
-- Impact: Re-measure and adjust `fail_under` when tests or code change substantially. Treat the sweep-only number as the sweep plus CLI setup. Frontend coverage should wait until the `--browser` pipeline has landed.
-
-### F-MVP-009: Combined Python coverage 96.5%, gated at 95% in CI
-- Date: 2026-11-14   Track: all   Status: verified
-- Finding: After 173 new tests, line and branch coverage of `src/aimo` was 99.8% on the PR #4 head `ea8e9aa`. Re-measured after merging `develop` (Otto's hardening `dfb8871`: 99.4%, 282 tests; then the chat cutover PR #15 `f13b75b`: 96.5%, 317 tests, because `agent.py` and the streaming part of `api.py` are only 84% covered); 41 of the new tests had to be updated to the hardened behavior (typed `PrepareRequest` with a required `idempotency_key`, approved-product scope, jittered backoff and specific upstream error codes, withdrawn products retained, `forwarded_allow_ips`). `fail_under = 95` in `pyproject.toml` is enforced by the CI job "Coverage (95% minimum)", which the `CI gate` waits for. Not reached: the unreachable final `raise` in `ValioClient.post` and one impossible `main()` branch. Mutation spot-check: breaking the 429 retry, the spending-limit comparison (`>` to `>=`) and the idempotency payload check each made the suite fail. The earlier oddity that `ValioClient.post` retried 401/403 is gone: `develop` now rejects permanent 4xx at once (`UPSTREAM_REJECTED`).
-- Evidence: `CI_COVERAGE=1 SWEEP_ARGS=--strict tests/ci.sh --browser` (first run on `ea8e9aa`: 230 pytest passed, sweep 17/17, browser 6/6; gate PASS at 95, FAIL at 100). Again on the merge with PR #15: 317 pytest passed, rewritten sweep 11/11, browser 9 passed, combined 96.47%, gate PASS with only 1.5 points of margin. The GitHub workflow itself has not run.
-- Impact: 95% measures Python only; `frontend/src/main.tsx` is not measured (F-MVP-008). Coverage is not correctness: weak assertions listed in `tests/TEST-GUIDE.md` section 8 still exist.

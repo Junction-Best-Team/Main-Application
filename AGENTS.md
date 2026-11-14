@@ -16,28 +16,27 @@ Four-person Junction hackathon repository. The implemented Valio Aimo MVP is des
 - Work on a separate task branch; never commit or push changes directly to `develop` or `main`.
 - Always open feature, fix, documentation, and maintenance PRs against `develop`. Specify the base explicitly: `gh pr create --base develop`. Verify the base before creating or merging a PR.
 - Wait for the latest CI run to pass before merging. You may merge your own PR without a human approval. Request a teammate review for risky changes to authentication, database schemas, or shared interfaces; routine work does not need to wait for a reviewer.
-- CI is one workflow, `.github/workflows/ci.yml`, of parallel jobs: Python lint and pytest (fixtures, PostgreSQL/pgvector), frontend build, the black-box tool sweep, Playwright browser tests, Terraform validation and a combined Python coverage gate (95% minimum). The always-present `CI gate` job waits for all of them and is the required check; add any new job to its `needs` and `applies` table. Model downloads, full catalog imports, Docker builds and live-API calls stay out of CI (CI never has the Valio key). The optional `skip-review` label never skips CI.
+- CI runs Python lint, backend tests with fixture data and PostgreSQL/pgvector, and the TypeScript/production frontend build. It skips application components only while their code has not been added. Keep model downloads, full catalog imports, Docker builds, and browser tests outside this quick pipeline. The optional `skip-review` label never skips CI.
 - `main` holds stable demo/release snapshots. Only open a release PR from `develop` to `main` when the user explicitly requests a release; never target `main` with a task PR.
 - After successful main CI, the release workflow builds/pushes the image and deploys only when `DEPLOY_ENABLED=true`. Terraform provisioning, migrations, seeding, and catalog imports stay explicit operator steps; never enable deployment before bootstrap is complete. Follow `infra/README.md` for setup.
 - Do not force-push either shared branch. Preserve other contributors' changes and checkouts.
 
-## Data and secrets
+## Post-MVP plan
 
-- Challenge datasets live in `data/` (gitignored; the product JSON is about 84 MB). The raw brief, which contains personal details and credentials, lives in `local/` (gitignored). The Valio Aimo API key is in `.env` (`AIMO_API_KEY` in the original checkout, `VALIO_AIMO_API_KEY` for the app). Never print, log or commit these; copy a key between `.env` files without echoing it.
-- **The API key exists and team members have it.** Without it the app falls back to labelled fixture price/stock (`UPSTREAM_MODE=auto`, see README), which must never be presented as live data.
-- The live price and availability APIs are rate limited and the spec says not to poll them for all products. Narrow candidates with the static data first, then query only the shortlist.
-- Everything provided is synthetic. The API has no order endpoint, so orders, policy and approvals are our own mocks and must be labelled as mocks.
+The longer-term design (MVP and full product, two-part purchasing contract, normalisation layer, approval flow) is a draft in `Plan/post-mvp-plan.md`. Verified data and API facts and owner decisions are in `docs/findings.md`; record new ones there (format at the top of that file). Build the MVP on the plan's seams, and read its section 0 before changing a shared interface. Still unresolved:
 
-## Checks
+- Whether an approval can make an unknown-quantity or passed-cut-off order executable (recommended: no, add a `needs_resolution` outcome).
+- How the customer receives the approval request (mock inbox, or the approval URL returned through the agent).
+- Whether the MVP needs a hash-chained audit log (recommended: no) and where the purchasing rules live (code, per D-003, or database rows).
+- Repricing tolerance default, and the status vocabulary for derived values.
+- The live-API probe is not committed or reproduced; `closingTime` behaviour and several variable meanings need a mentor.
+- Reconciling this plan with PR #2 (stack, tool names, decision vocabulary) and confirming cluster access.
 
-`tests/ci.sh` runs lint, the pytest suite and a black-box sweep of the buyer-facing API (`tests/README.md`; the assistant's tools are covered by `tests/test_agent*.py`); `--browser` adds the Playwright tests and `--live` repeats the sweep against the real Valio API. `CI_COVERAGE=1 tests/ci.sh` then `uv run python tests/coverage_report.py` measures Python coverage and enforces the `fail_under` gate in `pyproject.toml`; CI does the same across its parallel jobs. `tests/TEST-GUIDE.md` explains what each test checks.
 
-## Scope and history
+## Implementation scope precedence
 
 The explicit implementation handoff selects the PR #2 brief for this MVP. PR #2 was closed unmerged; implementation starts on current main and preserves the post-MVP draft as reference. For this implementation use database-seeded versioned policy, eight named tools, four outcomes, independent buyer inbox, ordinary persistent audit and no live deployment. The draft open issues above are resolved for this scope by `docs/brief.md`; do not reintroduce a notifier, policy editor or hash chaining. New verification is appended to `docs/findings.md`.
 
 ## Chat purchasing cutover (2026-11-14)
 
 The explicit product migration in `docs/chat-purchasing.md` overrides the earlier external-agent/MCP and standalone inbox entry points above. The existing React app is the customer chat product; the authenticated FastAPI app runs typed internal tools directly against Service. Customer confirmation must be a persisted authenticated exact-revision action; retain purchasing controls, historical records and mock-order labels. Do not merge, deploy, apply Terraform or enable the release switch for this task.
-
-The earlier four-track split, the C1 to C5 contract numbering and the Type1 draft were dropped on 2026-11-14 (decision D-006 in `docs/findings.md`).

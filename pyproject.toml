@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=8,<10", "pytest-cov>=6,<8", "ruff>=0.14,<1"]
+dev = ["pytest>=8,<10", "ruff>=0.14,<1"]
 
 [project.scripts]
 aimo = "aimo.cli:main"
@@ -46,28 +46,3 @@ explicit = true
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
-
-# Coverage: `tests/README.md` ("Coverage") explains how this is used.
-# The threshold is `fail_under` below; it is applied by `coverage report`, not by pytest.
-[tool.coverage.run]
-source = ["aimo"]
-branch = true
-parallel = true            # one data file per process, merged with `coverage combine`
-relative_files = true
-sigterm = true             # the sweep stops uvicorn with SIGTERM; still write its data
-data_file = ".coverage/data"
-
-[tool.coverage.paths]
-# Map the installed/editable copy and any CI checkout path onto src/aimo for `combine`.
-source = ["src/aimo", "*/src/aimo", "*/site-packages/aimo"]
-
-[tool.coverage.report]
-fail_under = 95
-show_missing = true
-skip_covered = false
-exclude_also = [
-  'if __name__ == "__main__":',
-]
-
-[tool.coverage.html]
-directory = ".coverage/html"

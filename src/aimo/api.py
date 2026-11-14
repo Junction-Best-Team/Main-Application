@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Streamin
 from fastapi.staticfiles import StaticFiles
 
 from aimo import approval_workflow as workflow
-from aimo import auth, conversations, upstream
+from aimo import auth, conversations
 from aimo.chat_schemas import (
     ConversationCreate,
     ConversationList,
@@ -117,7 +117,7 @@ def create_app(service=None):
         return {
             "status": "ready",
             "model": active["model_key"],
-            "upstream_mode": upstream.effective_mode(),
+            "upstream_mode": settings().upstream_mode,
         }
 
     @app.post("/api/login", response_model=SessionResponse)

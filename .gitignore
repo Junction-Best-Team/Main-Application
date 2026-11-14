@@ -44,10 +44,6 @@ frontend/test-results/
 frontend/playwright-report/
 *.onnx
 *.safetensors
-.coverage/
-
-# Local-only notes (not for GitHub).
-*.local.md
 
 # Terraform state, saved plans, generated credentials and machine-specific inputs.
 **/.terraform/

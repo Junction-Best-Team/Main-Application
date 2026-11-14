@@ -8,8 +8,7 @@ test.skip(
   process.env.AIMO_INTEGRATION !== "1",
   "Set AIMO_INTEGRATION=1 for live app/database browser checks.",
 );
-// Environment first (CI), then the ignored ../.env (local).
-const fileEnv = fs.existsSync("../.env")
+const env = fs.existsSync("../.env")
   ? Object.fromEntries(
       fs
         .readFileSync("../.env", "utf8")
@@ -20,8 +19,7 @@ const fileEnv = fs.existsSync("../.env")
           return [l.slice(0, i), l.slice(i + 1)];
         }),
     )
-  : {};
-const env = { ...fileEnv, ...process.env };
+  : process.env;
 
 test("historical approval stays superseded and links to committed terms", async ({
   page,
