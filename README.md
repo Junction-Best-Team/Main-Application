@@ -176,6 +176,10 @@ schema/grant Job, its one-time Secret provisioning, and image rollback limitatio
 
 ### Recipe planning
 
+The optional [shared Google API helper](docs/google-api.md) provides native chat,
+image, embedding and decision calls with a server-side `GEMINI_API_KEY`. It does
+not change the app's active providers.
+
 See [recipe planning](docs/recipes.md) for versioned UniTools ingestion, independent
 recipe embeddings/search, server-scaled saved plans, reviewed product matching and
 complete-basket checks. Recipe tools are always available to the chat agent; import
