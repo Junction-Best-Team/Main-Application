@@ -306,7 +306,7 @@ function Sidebar({ conversations }: { conversations: ConversationNav }) {
 
 function DesktopHeader() {
   return (
-    <header className="sticky top-0 z-40 hidden h-16 items-center justify-end gap-space-md border-b border-border-subtle bg-surface/80 px-margin backdrop-blur-xl md:flex">
+    <header className="sticky top-0 z-40 hidden h-16 shrink-0 items-center justify-end gap-space-md border-b border-border-subtle bg-surface/80 px-margin backdrop-blur-xl md:flex">
       <div className="flex items-center gap-space-md">
         <div className="flex items-center">
           <NotificationsButton />
@@ -335,7 +335,7 @@ function MobileTopBar({
   onOpenMenu: () => void;
 }) {
   return (
-    <header className="sticky top-0 z-40 flex h-16 items-center justify-between gap-space-sm border-b border-border-subtle bg-surface/85 px-margin-sm backdrop-blur-xl md:hidden">
+    <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center justify-between gap-space-sm border-b border-border-subtle bg-surface/85 px-margin-sm backdrop-blur-xl md:hidden">
       <div className="flex items-center gap-space-sm">
         <button
           type="button"
@@ -446,6 +446,8 @@ export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const { pathname } = useLocation();
+  const isChat =
+    pathname === "/request" || pathname.startsWith("/conversations/");
   useEffect(() => setMenuOpen(false), [pathname]);
   const [expanded, setExpanded] = useState(true);
   const navigation = useConversationNavigation(pathname);
@@ -461,7 +463,9 @@ export function AppShell() {
   return (
     <div className="min-h-screen bg-canvas font-body text-on-surface">
       <Sidebar conversations={conversations} />
-      <div className="flex min-w-0 flex-col md:pl-72">
+      <div
+        className={`flex min-w-0 flex-col md:pl-72 ${isChat ? "h-dvh overflow-hidden" : ""}`}
+      >
         <NoticeBar />
         <DesktopHeader />
         <MobileTopBar

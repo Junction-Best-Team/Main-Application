@@ -1,4 +1,3 @@
-import type { Ref } from "react";
 import type { Conversation } from "../../../shared/api/types";
 import { Icon } from "../../../shared/components/DesignPrimitives";
 import { dateTime } from "../../../shared/lib/format";
@@ -8,11 +7,9 @@ import { SkuCards } from "./SkuCards";
 export function ConversationTranscript({
   conversation,
   busy,
-  transcript,
 }: {
   conversation: Conversation | null;
   busy: boolean;
-  transcript: Ref<HTMLDivElement>;
 }) {
   return (
     <div
@@ -76,7 +73,6 @@ export function ConversationTranscript({
           Aimo is checking your request… You can return to this conversation.
         </p>
       )}
-      <div ref={transcript} />
     </div>
   );
 }

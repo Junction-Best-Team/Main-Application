@@ -862,3 +862,8 @@ Add new findings below, under your track heading.
 
 - Date: 2026-11-14. Removed the disabled wholesale SKU/product/EAN search field from the shared desktop header and its unused placeholder text. Header actions remain aligned to the right.
 - Verification: `npm run check --prefix frontend` passed; `CI=1 npm test --prefix frontend` passed 38 fixture-backed browser tests, with two optional backend integration tests skipped. Desktop (1440px) and mobile (390px) screenshots were visually inspected. No backend, API, dependency or deployment changes.
+
+### F-FE-CHAT-SCROLL-001: Keep chat scrolling inside the message panel
+
+- Date: 2026-11-14. Request and conversation routes fill the available viewport; message history scrolls independently while the composer and conversation header stay in place. Automatic scrolling targets message history instead of the document. Desktop Overview is bounded to the available height; mobile spacing and the composer are compact, and the secondary chat heading is hidden on short screens. Mock-order and exact-confirmation wording remain.
+- Verification: `npm run check --prefix frontend` passed. The fixture-backed browser suite passed 43 tests, with two optional backend integration checks skipped. Five new cases cover long-history scrolling, stable composer position, a new reply and no document overflow at 1440×900, 1024×768, 390×844, 320×740 and 390×568. Desktop, narrow-phone and short-phone screenshots were visually inspected. No backend, API, dependency or deployment changes.

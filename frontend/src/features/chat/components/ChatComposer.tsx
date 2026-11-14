@@ -20,7 +20,7 @@ export function ChatComposer({
   return (
     <form
       onSubmit={onSubmit}
-      className="m-space-md mt-0 rounded-xl bg-surface-container-low p-space-sm shadow-sm"
+      className="m-space-md mt-0 shrink-0 rounded-xl bg-surface-container-low p-space-sm shadow-sm"
     >
       <label htmlFor="purchase-message" className="sr-only">
         {conversationId
@@ -41,18 +41,21 @@ export function ChatComposer({
         maxLength={4000}
         placeholder={MOCK.request.composerPlaceholder}
         disabled={Boolean(busy)}
-        className="w-full resize-none font-body rounded-lg bg-transparent p-space-sm text-body-md text-on-surface placeholder:text-outline focus-visible:outline-2 focus-visible:outline-primary-container"
+        className="h-16 w-full resize-none font-body rounded-lg bg-transparent p-space-sm text-body-md text-on-surface placeholder:text-outline focus-visible:outline-2 focus-visible:outline-primary-container md:h-auto"
       />
       <div className="flex flex-wrap items-center justify-between gap-space-sm">
-        <div className="flex items-center gap-space-sm text-on-surface-variant">
+        <div className="flex items-center gap-space-xs text-on-surface-variant md:gap-space-sm">
           <InertButton label="Attach file" className="flex">
-            <Icon name="attach_file" />
+            <Icon name="attach_file" className="text-[20px] md:text-[24px]" />
           </InertButton>
           <InertButton label="Voice input" className="flex">
-            <Icon name="mic" />
+            <Icon name="mic" className="text-[20px] md:text-[24px]" />
           </InertButton>
           <InertButton label="Scan barcode" className="flex">
-            <Icon name="barcode_scanner" />
+            <Icon
+              name="barcode_scanner"
+              className="text-[20px] md:text-[24px]"
+            />
           </InertButton>
           <span className="hidden font-label text-label-sm text-secondary md:inline">
             {MOCK.request.composerHint}
@@ -60,7 +63,7 @@ export function ChatComposer({
         </div>
         <button
           disabled={Boolean(busy) || !text.trim()}
-          className="flex items-center gap-space-xs rounded-lg bg-primary-container px-space-md py-space-sm font-label text-label-lg text-on-primary disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex items-center gap-space-xs rounded-lg bg-primary-container px-space-sm py-space-sm font-label text-label-md text-on-primary disabled:cursor-not-allowed disabled:opacity-50 md:px-space-md md:text-label-lg"
         >
           {busy
             ? "Working…"
