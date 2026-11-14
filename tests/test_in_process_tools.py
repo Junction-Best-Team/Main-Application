@@ -162,7 +162,7 @@ def test_agent_runner_http_client_never_reaches_the_tools():
     assert tool_calls, "expected run_turn to build a ToolSession and call session.invoke"
     assert all("client" not in "".join(args) for _, args in tool_calls), tool_calls
     # The HTTP client goes to exactly the provider and the guardrail classifier.
-    assert sorted(clients) == ["ChatProvider", "Guardrails"]
+    assert sorted(clients) == ["Guardrails", "chat_provider"]
     # Tool execution is session.invoke(name, arguments): a local method, no URL or client.
     invokes = [
         ast.unparse(n)

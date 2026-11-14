@@ -3,8 +3,8 @@
 Deterministic controls remain the final authority: authenticated buyer scope, the
 typed tool allowlist, Service policy/commercial validation and the authenticated
 exact-revision confirmation API. This module adds probabilistic checks with
-TypeSafe Jev through OpenRouter's Decisions API (`POST /api/alpha/decisions`,
-`noul` questions). A positive verdict never grants permission; it only means
+Gemini Decision 1 through Google's native Decisions API (`noul` questions).
+An explicit legacy OpenRouter adapter remains available. A positive verdict never grants permission; it only means
 that no objection was found.
 
 Modes: ``off`` makes no calls; ``shadow`` records verdicts and changes nothing;
@@ -28,12 +28,14 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from aimo.config import settings
 from aimo.db import Problem, fingerprint
+from aimo.google_api import GoogleAPIError, google_api_request
 from aimo.observability import event, operation
 
 POLICY_VERSION = "guard-2026-11-14.3"
 # Fixed OpenRouter Decisions endpoint and Jev model; the key is the chat LLM_API_KEY.
 DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions"
 MODEL = "typesafe/jev-1.14"
+GOOGLE_MODEL = "gemini-decision-1"
 TIMEOUT_SECONDS = 5
 MAX_CALLS_PER_TURN = 16
 # TypeSafe runs requests above about 32,000 bytes of text in a slower long-context mode.
@@ -551,7 +553,9 @@ def _host(url):
 
 
 def api_key(cfg):
-    """Jev uses the chat model's OpenRouter key; it is never sent to another host."""
+    """Select the configured provider's own credential, never cross-send keys."""
+    if getattr(cfg, "guardrail_provider", "openrouter") == "google":
+        return cfg.gemini_api_key
     return cfg.llm_api_key if _host(cfg.llm_base_url) == "openrouter.ai" else ""
 
 
@@ -580,7 +584,8 @@ class DecisionsClient:
     def __init__(self, cfg, client):
         self.client = client
         self.key = api_key(cfg)
-        self.model = MODEL
+        self.google = getattr(cfg, "guardrail_provider", "openrouter") == "google"
+        self.model = GOOGLE_MODEL if self.google else MODEL
         self.timeout = TIMEOUT_SECONDS
         self.url = DECISIONS_URL
         if not self.key:
@@ -590,6 +595,44 @@ class DecisionsClient:
     def decide(self, state, questions, deadline):
         if len(encode(state).encode()) > MAX_STATE_BYTES:
             raise GuardError("too_large")
+        if self.google:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise GuardError("deadline")
+            try:
+                result = google_api_request(
+                    "decide",
+                    model=self.model,
+                    api_key=self.key,
+                    client=self.client,
+                    payload={
+                        "input": encode(state),
+                        "questions": {
+                            name: {
+                                **question,
+                                "criteria": {
+                                    "true_description": question["criteria"]["true"],
+                                    "false_description": question["criteria"]["false"],
+                                },
+                            }
+                            for name, question in questions.items()
+                        },
+                    },
+                    timeout=min(self.timeout, remaining),
+                    max_response_bytes=MAX_RESPONSE_BYTES,
+                )
+            except GoogleAPIError as exc:
+                category = {
+                    "AUTH_REJECTED": "auth",
+                    "RATE_LIMITED": "rate_limited",
+                    "TIMEOUT": "timeout",
+                }.get(exc.code, "unavailable")
+                raise GuardError(category) from None
+            if time.monotonic() >= deadline:
+                raise GuardError("deadline")
+            # Google does not echo the model. It is fixed in the request to the
+            # fixed native endpoint; never replace it with response-supplied data.
+            return self.parse(encode({**result, "model": self.model}), questions)
         # A fixed model with provider fallbacks disabled; never a silent unrelated model.
         payload = {
             "model": self.model,

@@ -16,6 +16,7 @@ Do not rename applied migrations or delete their ledger rows.
 | 012_catalog_import_profile | Catalog sync: `catalog_generations.import_profile` (additive, nullable) |
 | 013_catalog_sync_withdrawals | Release integration: source snapshot count and product-ID-only cleanup protection view |
 | 014_policy_settings | Buyer policy managers, append-only change attribution and restricted policy save function |
+| 015_recipe_images | Optional chat illustrations, durable generation/upload recovery |
 
 Before allocating another number, check remote branch tips and open PRs and update
 this table with the agreed allocation. Reservations do not create migration files.

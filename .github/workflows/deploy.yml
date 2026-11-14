@@ -11,6 +11,10 @@ on:
         required: false
       LLM_API_KEY:
         required: false
+      GEMINI_API_KEY:
+        required: false
+      CLOUDINARY_URL:
+        required: false
   workflow_dispatch:
     inputs:
       deploy:
@@ -89,6 +93,8 @@ jobs:
       DIGITALOCEAN_CLUSTER_ID: ${{ vars.DIGITALOCEAN_CLUSTER_ID }}
       NAMESPACE: ${{ vars.DEPLOY_NAMESPACE || 'junction' }}
       LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
       LLM_BASE_URL: ${{ vars.LLM_BASE_URL || 'https://openrouter.ai/api/v1' }}
       LLM_MODEL: ${{ vars.LLM_MODEL || 'openai/gpt-4.1-mini' }}
     steps:
@@ -119,7 +125,7 @@ jobs:
           version: v1.35.10
       - name: Temporarily allow this runner and get short-lived cluster credentials
         run: python3 infra/scripts/ci-cluster-access.py open
-      - name: Configure the server-side conversational provider
+      - name: Configure server-side chat and image providers
         id: llm
         run: python3 infra/scripts/sync-llm-secret.py
       - name: Migrate database, then update images and wait for readiness
