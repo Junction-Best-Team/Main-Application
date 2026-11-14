@@ -61,6 +61,8 @@ uv run aimo ingest --download --file data/valio_aimo_junction26_product_data.jso
 uv run aimo serve
 ```
 
+For hosted Qwen3 Embedding 8B and shortlist reranking through OpenRouter, follow the [hosted search migration and cutover](docs/hosted-search.md). Existing deployments keep the local model until explicitly migrated and reindexed.
+
 The first import downloads the pinned `intfloat/multilingual-e5-small` model and embeds the catalog on CPU. Subsequent imports reuse unchanged text embeddings. Publication is atomic: failures leave the old generation active. Updated snapshots require an explicitly verified `--expected-count` and `--expected-sha256`. There is no import on requests or startup. Imports retain withdrawal markers for explicit purchase denial while excluding withdrawn products from discovery. Publication retains the active and previous generation's product/vector rows by default (`CATALOG_GENERATIONS_TO_KEEP=2`). Generation metadata, reusable embedding cache and immutable purchase snapshots remain. Semantic retrieval ranks the filtered active generation exactly, avoiding filtered approximate-index recall loss at this MVP catalog size.
 
 For a quick authored-fixture catalog, use `uv run aimo fixture-catalog` instead of `ingest`. Set `EMBEDDING_BACKEND=fixture` in `.env` only when you also want deterministic fake embeddings; ingestion and serving must use the same setting. The default uses the real model, including for a small fixture catalog. `UPSTREAM_MODE=fixture` is independent: commercial prices/stock remain invented unless explicitly switched to `live` with private credentials. There is no silent live-to-fixture fallback.

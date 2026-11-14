@@ -102,18 +102,26 @@ def create_app(service=None):
 
     @app.get("/health/ready")
     def ready():
-        from aimo.search import model, model_key
+        from aimo.search import dimensions, model, model_key
 
         with connection() as c:
             active = c.execute(
-                "SELECT g.model_key FROM active_catalog a JOIN catalog_generations g ON g.id=a.generation"
+                "SELECT g.model_key,g.embedding_dimensions FROM active_catalog a JOIN catalog_generations g ON g.id=a.generation"
             ).fetchone()
-        if not active or active["model_key"] != model_key():
+        if (
+            not active
+            or active["model_key"] != model_key()
+            or active["embedding_dimensions"] != dimensions()
+        ):
             raise Problem(
                 "INDEX_NOT_READY", "Ingest with the configured model before serving.", 503
             )
         if settings().embedding_backend == "sentence_transformers":
             model()
+        elif settings().embedding_backend == "openrouter":
+            from aimo.search_provider import require_credentials
+
+            require_credentials()  # Probes never spend tokens or depend on provider uptime.
         return {
             "status": "ready",
             "model": active["model_key"],
