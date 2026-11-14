@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 import { formatDateTime, formatMoney } from "../src/format";
 
 test("formats money with the default locale setting", () => {

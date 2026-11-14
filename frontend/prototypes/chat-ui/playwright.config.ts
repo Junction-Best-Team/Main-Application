@@ -7,6 +7,8 @@ const baseURL = `http://127.0.0.1:${port}`;
 
 export default defineConfig({
   testDir: "./e2e",
+  // Warms the dev server and the Google Fonts cache before the first test.
+  globalSetup: "./e2e/global-setup.ts",
   workers: 1,
   reporter: "list",
   outputDir: "test-results",

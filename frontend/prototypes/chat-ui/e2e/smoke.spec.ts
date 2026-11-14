@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 
 test("signs in and screenshots each existing screen", async ({ page }, info) => {
   const shot = (name: string) =>
