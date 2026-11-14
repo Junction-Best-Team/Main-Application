@@ -208,3 +208,11 @@ The owner clarified the product scope and refusal style: accept food, products a
 nearby topics; decline clearly unrelated requests in simple language. Extended the
 same synthetic evaluation with workout, food-before-exercise, storage, kitchen-supply
 and community-serving cases. No new external material was used.
+
+## Simplified memory screen — 2026-11-14
+
+Adapted the owner-approved in-chat Memory mockup into the existing preferences
+feature on develop. Reused Nordic theme tokens, typed memory forms, authenticated
+API hooks and revision/idempotency handling. Example memories remain confined to
+the mockup and authored browser fixtures; no example content is seeded into the app.
+No new dependency, asset, API or schema change.

@@ -1,7 +1,7 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import type { MemoryItem, MemoryMutation } from "../src/shared/api/types";
 
-// Assistant preferences (saved memory) against authored responses shaped like
+// Memory settings against authored responses shaped like
 // the generated MemoryList / MemoryMutationResponse contract. These prove UI
 // behavior only; agent retrieval and the real database are not exercised here.
 
@@ -217,37 +217,29 @@ test("direct route shows personal and buyer scopes separately with safe text", a
   await page.goto("/settings/preferences");
 
   await expect(
-    page.getByRole("heading", { level: 1, name: "Assistant preferences" }),
+    page.getByRole("heading", { level: 1, name: "Memory" }),
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Preferences guide suggestions. Purchasing rules and purchase confirmation still apply.",
+      "Memories guide suggestions. Purchase rules and confirmation still apply.",
     ),
   ).toBeVisible();
-  const mine = page.getByRole("tab", { name: "My preferences" });
+  const mine = page.getByRole("tab", { name: "Personal" });
   await expect(mine).toHaveAttribute("aria-selected", "true");
   const panel = page.getByRole("tabpanel");
   await expect(
     panel.getByRole("heading", { name: "Reply style" }),
   ).toBeVisible();
   await expect(panel.getByText("Short replies · Finnish")).toBeVisible();
-  await expect(panel.getByRole("article")).toContainText("Personal");
+  await expect(panel.getByRole("article")).toHaveCount(1);
   await expect(panel.getByText("Usual portions")).toHaveCount(0);
 
-  await page.getByRole("tab", { name: "Buyer preferences" }).click();
+  await page.getByRole("tab", { name: "Shared with buyer" }).click();
   await expect(page).toHaveURL(/scope=buyer/);
   await expect(
     panel.getByText(
-      "Buyer preferences apply to everyone using this buyer account",
+      "Used by everyone in demo-hotel. Any buyer approver can manage these memories.",
     ),
-  ).toBeVisible();
-  await expect(panel.getByText("demo-hotel")).toBeVisible();
-  await expect(panel.getByRole("heading", { name: "Defaults" })).toBeVisible();
-  await expect(
-    panel.getByRole("heading", { name: "Purchasing preferences" }),
-  ).toBeVisible();
-  await expect(
-    panel.getByRole("heading", { name: "How the assistant responds" }),
   ).toBeVisible();
   await expect(panel.getByText("200 portions")).toBeVisible();
   await expect(panel.getByText("Cream: 1 L")).toBeVisible();
@@ -255,6 +247,16 @@ test("direct route shows personal and buyer scopes separately with safe text", a
   await expect(panel.locator("img")).toHaveCount(0);
   expect(await page.evaluate(() => "__pwned" in window)).toBe(false);
   await expect(panel.getByText("Reply style")).toHaveCount(0);
+  const packDetails = panel.getByRole("article", {
+    name: "Preferred pack size",
+  });
+  await expect(
+    packDetails.getByRole("link", { name: "From a conversation" }),
+  ).toBeHidden();
+  await packDetails.locator("summary").click();
+  await expect(
+    packDetails.getByText("Updated", { exact: false }),
+  ).toBeVisible();
   await expect(
     panel.getByRole("link", { name: "From a conversation" }),
   ).toHaveAttribute("href", `/conversations/${conversationId}`);
@@ -268,7 +270,7 @@ test("direct route shows personal and buyer scopes separately with safe text", a
   // The scope is preserved on reload of a direct link.
   await page.reload();
   await expect(
-    page.getByRole("tab", { name: "Buyer preferences" }),
+    page.getByRole("tab", { name: "Shared with buyer" }),
   ).toHaveAttribute("aria-selected", "true");
 });
 
@@ -277,15 +279,11 @@ test("loading, empty and failed-load states with retry", async ({ page }) => {
   api.listDelay.ms = 600;
   api.listFailures.remaining = 0;
   await page.goto("/settings/preferences");
-  await expect(page.getByText("Loading preferences…")).toBeVisible();
+  await expect(page.getByText("Loading memories…")).toBeVisible();
+  await expect(page.getByText("No memories yet")).toBeVisible();
+  await page.getByRole("tab", { name: "Shared with buyer" }).click();
   await expect(
-    page.getByText(
-      "No saved preferences yet. Add one here, or ask the assistant to remember something.",
-    ),
-  ).toBeVisible();
-  await page.getByRole("tab", { name: "Buyer preferences" }).click();
-  await expect(
-    page.getByText("No saved preferences yet.", { exact: false }),
+    page.getByText("No memories yet", { exact: false }),
   ).toBeVisible();
 
   api.listDelay.ms = 0;
@@ -307,12 +305,12 @@ test("adding a preference validates input and succeeds only after the server con
 }) => {
   const api = await mockApi(page);
   await page.goto("/settings/preferences");
-  await page.getByRole("button", { name: "Add preference" }).click();
+  await page.getByRole("button", { name: "Add memory" }).click();
   await expect(page.getByLabel("What is it about?")).toBeFocused();
 
-  await page.getByRole("button", { name: "Save preference" }).click();
+  await page.getByRole("button", { name: "Save memory" }).click();
   await expect(
-    page.getByText("Choose what the preference is about."),
+    page.getByText("Choose what the memory is about."),
   ).toBeVisible();
 
   await page
@@ -320,7 +318,7 @@ test("adding a preference validates input and succeeds only after the server con
     .selectOption({ label: "Usual portions" });
   await page.getByLabel("Everyone using the demo-hotel buyer account").check();
   await page.getByRole("textbox", { name: "Portions" }).fill("0");
-  await page.getByRole("button", { name: "Save preference" }).click();
+  await page.getByRole("button", { name: "Save memory" }).click();
   await expect(
     page.getByText("Enter a whole number from 1 to 10,000."),
   ).toBeVisible();
@@ -337,7 +335,7 @@ test("adding a preference validates input and succeeds only after the server con
     code: "UNAVAILABLE",
     message: "Service unavailable.",
   };
-  await page.getByRole("button", { name: "Save preference" }).click();
+  await page.getByRole("button", { name: "Save memory" }).click();
   await expect(
     page.getByRole("alert").filter({ hasText: "Service unavailable." }),
   ).toBeVisible();
@@ -349,15 +347,13 @@ test("adding a preference validates input and succeeds only after the server con
     "150",
   );
 
-  await page.getByRole("button", { name: "Save preference" }).click();
+  await page.getByRole("button", { name: "Save memory" }).click();
   await expect(page.getByRole("status")).toHaveText(
-    "Usual portions saved to Buyer preferences.",
+    "Usual portions saved to Shared with buyer.",
   );
   await expect(page).toHaveURL(/scope=buyer/);
   await expect(page.getByText("150 portions")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Add preference" }),
-  ).toBeFocused();
+  await expect(page.getByRole("button", { name: "Add memory" })).toBeFocused();
 
   expect(api.writes).toHaveLength(2);
   const [failed, saved] = api.writes;
@@ -374,7 +370,7 @@ test("adding a preference validates input and succeeds only after the server con
   );
 
   // A fixed key that already exists here can't be added twice.
-  await page.getByRole("button", { name: "Add preference" }).click();
+  await page.getByRole("button", { name: "Add memory" }).click();
   await page.getByLabel("Everyone using the demo-hotel buyer account").check();
   await expect(
     page.getByRole("option", { name: "Usual portions (already saved)" }),
@@ -386,7 +382,7 @@ test("a pack-size preference maps to a supported key and typed value", async ({
 }) => {
   const api = await mockApi(page);
   await page.goto("/settings/preferences");
-  await page.getByRole("button", { name: "Add preference" }).click();
+  await page.getByRole("button", { name: "Add memory" }).click();
   await page
     .getByLabel("What is it about?")
     .selectOption({ label: "Preferred pack size" });
@@ -394,7 +390,7 @@ test("a pack-size preference maps to a supported key and typed value", async ({
   await page.getByLabel("Pack amount").fill("1,5");
   await page.getByLabel("Unit").fill("L");
   await page.getByLabel("Description (optional)").fill("Weekday lunch");
-  await page.getByRole("button", { name: "Save preference" }).click();
+  await page.getByRole("button", { name: "Save memory" }).click();
   await expect(page.getByText("Kerma (vispi): 1,5 L")).toBeVisible();
   expect(api.writes[0].body).toMatchObject({
     scope: "self",
@@ -477,19 +473,19 @@ test("forgetting removes the item only after the server confirms", async ({
     code: "UNAVAILABLE",
     message: "Service unavailable.",
   };
-  await page.getByRole("button", { name: "Forget preference" }).click();
+  await page.getByRole("button", { name: "Forget memory" }).click();
   await expect(
     page.getByRole("alert").filter({ hasText: "Service unavailable." }),
   ).toBeVisible();
   await expect(page.getByText("Keep replies short.")).toBeVisible();
 
-  await page.getByRole("button", { name: "Forget preference" }).click();
+  await page.getByRole("button", { name: "Forget memory" }).click();
   await expect(page.getByRole("status")).toHaveText(
     "Assistant instruction forgotten.",
   );
   await expect(page.getByText("Keep replies short.")).toHaveCount(0);
   await expect(
-    page.getByText("No saved preferences yet.", { exact: false }),
+    page.getByText("No memories yet", { exact: false }),
   ).toBeVisible();
   expect(api.writes.at(-1)).toMatchObject({
     url: `/api/memories/${note.id}/delete`,
@@ -544,18 +540,15 @@ test("preferences are reachable from the sidebar and chat, beside Account Settin
   await page.goto("/");
   await page
     .getByRole("complementary", { name: "Sidebar" })
-    .getByRole("link", { name: "Assistant preferences" })
+    .getByRole("link", { name: "Memory" })
     .click();
   await expect(page).toHaveURL(/\/settings\/preferences$/);
   await expect(
-    page.getByRole("heading", { level: 1, name: "Assistant preferences" }),
+    page.getByRole("heading", { level: 1, name: "Memory" }),
   ).toBeVisible();
 
   await page.goto("/request");
-  await page
-    .getByRole("main")
-    .getByRole("link", { name: "Assistant preferences" })
-    .click();
+  await page.getByRole("main").getByRole("link", { name: "Memory" }).click();
   await expect(page).toHaveURL(/\/settings\/preferences$/);
 
   // Purchasing policy settings stay a separate screen and link.
@@ -563,9 +556,10 @@ test("preferences are reachable from the sidebar and chat, beside Account Settin
   await expect(
     sidebar.getByRole("link", { name: "Account Settings" }),
   ).toHaveAttribute("href", "/settings");
-  await expect(
-    sidebar.getByRole("link", { name: "Assistant preferences" }),
-  ).toHaveAttribute("aria-current", "page");
+  await expect(sidebar.getByRole("link", { name: "Memory" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   await expect(
     sidebar.getByRole("link", { name: "Account Settings" }),
   ).not.toHaveAttribute("aria-current", "page");
@@ -596,9 +590,9 @@ test("mobile layout fits the viewport and tabs work from the keyboard", async ({
   }));
   expect(width.scroll).toBeLessThanOrEqual(width.client);
 
-  await page.getByRole("tab", { name: "My preferences" }).focus();
+  await page.getByRole("tab", { name: "Personal" }).focus();
   await page.keyboard.press("ArrowRight");
-  const buyerTab = page.getByRole("tab", { name: "Buyer preferences" });
+  const buyerTab = page.getByRole("tab", { name: "Shared with buyer" });
   await expect(buyerTab).toBeFocused();
   await expect(buyerTab).toHaveAttribute("aria-selected", "true");
   await expect(
@@ -609,7 +603,7 @@ test("mobile layout fits the viewport and tabs work from the keyboard", async ({
   await page.getByRole("button", { name: "Open menu" }).click();
   await page
     .getByRole("dialog", { name: "Menu" })
-    .getByRole("link", { name: "Assistant preferences" })
+    .getByRole("link", { name: "Memory" })
     .click();
   await expect(page.getByRole("dialog", { name: "Menu" })).toHaveCount(0);
 });
