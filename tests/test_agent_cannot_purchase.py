@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from aimo.agent_tools import ToolSession
-from aimo.config import settings
 from aimo.db import Problem
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "aimo"
@@ -21,8 +20,14 @@ READ_AND_PREPARE = {
     "get_proposal",
     "get_order",
 }
-# Behind RECIPE_PLANNING_ENABLED (PR #38): recipe discovery and deterministic scaling, no purchasing.
-RECIPE_TOOLS = {"search_recipes", "get_recipe", "scale_recipe", "get_recipe_plan", "match_ingredient"}
+# Recipe discovery and deterministic scaling (PR #38, always registered since PR #103): no purchasing.
+RECIPE_TOOLS = {
+    "search_recipes",
+    "get_recipe",
+    "scale_recipe",
+    "get_recipe_plan",
+    "match_ingredient",
+}
 PURCHASING = {
     "commit_order",
     "record_human_decision",
@@ -50,23 +55,14 @@ class Recorder:
         return record
 
 
-@pytest.fixture(params=[False, True], ids=["recipes-off", "recipes-on"])
-def recipe_mode(request, monkeypatch):
-    monkeypatch.setenv("RECIPE_PLANNING_ENABLED", str(request.param).lower())
-    settings.cache_clear()
-    yield request.param
-    monkeypatch.undo()
-    settings.cache_clear()
-
-
 def session():
     identity = {"id": "internal:x", "buyer_id": "demo-hotel", "role": "agent", "_turn_id": "t-1"}
     return ToolSession(identity, Recorder())
 
 
-def test_registry_exposes_only_read_and_prepare_operations(recipe_mode):
+def test_registry_exposes_only_read_and_prepare_operations():
     names = set(session().registry)
-    extra = RECIPE_TOOLS if recipe_mode else set()
+    extra = RECIPE_TOOLS
     assert names - {"publish_meal_plan"} == READ_AND_PREPARE | extra
     assert not [
         n for n in names if any(word in n for word in ("confirm", "approve", "commit", "decide"))
@@ -89,7 +85,7 @@ def test_registry_exposes_only_read_and_prepare_operations(recipe_mode):
         "withdraw_meal_authorization",
     ],
 )
-def test_purchasing_operations_cannot_be_invoked_by_name(name, recipe_mode):
+def test_purchasing_operations_cannot_be_invoked_by_name(name):
     tools = session()
     with pytest.raises(Problem) as error:
         tools.invoke(name, "{}")

@@ -100,7 +100,7 @@ def test_first_party_modules_used_by_agent_tools_do_no_networking():
         for name in imported_names(parse("agent_tools.py"))
         if name.startswith("aimo.")
     }
-    assert first_party >= {"config.py", "db.py", "schemas.py"}
+    assert first_party >= {"db.py", "schemas.py", "recipe_schemas.py"}  # config.py left with the flag (PR #103)
     offenders = {m: imported_roots(parse(m)) & HTTP_LIBRARIES for m in first_party}
     assert {m: libs for m, libs in offenders.items() if libs} == {}
 
@@ -265,18 +265,11 @@ def test_tool_invocation_is_a_direct_service_call_with_the_network_blocked(no_ne
 
 def test_every_registered_tool_is_a_bound_session_method_not_a_remote_call(monkeypatch):
     """Registry handlers are methods or lambdas defined in agent_tools.py, nothing remote."""
-    for flag in ("false", "true"):
-        monkeypatch.setenv("RECIPE_PLANNING_ENABLED", flag)
-        from aimo.config import settings
-
-        settings.cache_clear()
-        session = tool_session(StubService())
-        for name, spec in session.registry.items():
-            handler = spec.handler
-            assert handler.__module__ == "aimo.agent_tools", name
-            assert getattr(handler, "__self__", session) is session, name
-    monkeypatch.undo()
-    settings.cache_clear()
+    session = tool_session(StubService())
+    for name, spec in session.registry.items():
+        handler = spec.handler
+        assert handler.__module__ == "aimo.agent_tools", name
+        assert getattr(handler, "__self__", session) is session, name
 
 
 def test_real_service_tool_call_works_with_the_network_blocked(agent, service, no_network):

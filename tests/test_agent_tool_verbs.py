@@ -19,7 +19,6 @@ from wsc_support import counts
 
 from aimo import approval_workflow
 from aimo.agent_tools import ToolSession
-from aimo.config import settings
 from aimo.db import Problem, connection
 from aimo.service import Service
 
@@ -83,15 +82,6 @@ class Recorder:
         return record
 
 
-@pytest.fixture(params=[False, True], ids=["recipes-off", "recipes-on"])
-def recipe_mode(request, monkeypatch):
-    monkeypatch.setenv("RECIPE_PLANNING_ENABLED", str(request.param).lower())
-    settings.cache_clear()
-    yield request.param
-    monkeypatch.undo()
-    settings.cache_clear()
-
-
 def session(service=None):
     identity = {"id": "internal:x", "buyer_id": "demo-hotel", "role": "agent", "_turn_id": "t-1"}
     return ToolSession(identity, service or Recorder())
@@ -118,7 +108,7 @@ def property_names(schema):
 # ---- what the model is actually sent -----------------------------------------------------
 
 
-def test_provider_facing_schemas_expose_no_decision_identity_or_policy_field(recipe_mode):
+def test_provider_facing_schemas_expose_no_decision_identity_or_policy_field():
     definitions = session().definitions
     assert definitions
     leaked = {
@@ -128,12 +118,12 @@ def test_provider_facing_schemas_expose_no_decision_identity_or_policy_field(rec
     assert {name: fields for name, fields in leaked.items() if fields} == {}
 
 
-def test_provider_facing_tool_names_contain_no_decision_verb(recipe_mode):
+def test_provider_facing_tool_names_contain_no_decision_verb():
     names = [d["function"]["name"] for d in session().definitions]
     assert [n for n in names if any(v in n for v in VERBS)] == []
 
 
-def test_descriptions_that_mention_authority_only_deny_it(recipe_mode):
+def test_descriptions_that_mention_authority_only_deny_it():
     for definition in session().definitions:
         text = definition["function"]["description"].lower()
         for word in ("approve", "confirm", "commit", "authorize"):
@@ -143,7 +133,7 @@ def test_descriptions_that_mention_authority_only_deny_it(recipe_mode):
     assert "Does not authorize or commit a purchase" in prepare["function"]["description"]
 
 
-def test_every_request_model_forbids_extra_fields(recipe_mode):
+def test_every_request_model_forbids_extra_fields():
     for name, spec in session().registry.items():
         assert spec.request.model_config.get("extra") == "forbid", name
 
@@ -173,7 +163,7 @@ def test_the_runner_sends_session_definitions_and_the_provider_has_no_tool_list_
 # ---- no hidden path from a ToolSession to the Service ------------------------------------
 
 
-def test_only_registered_handlers_reach_the_service(recipe_mode):
+def test_only_registered_handlers_reach_the_service():
     """Any ToolSession method that calls self.service.* is a registered handler (or __init__
     for the two recipe lambdas), so there is no unregistered route to Service."""
     tree = ast.parse((SRC / "agent_tools.py").read_text())
@@ -191,12 +181,10 @@ def test_only_registered_handlers_reach_the_service(recipe_mode):
         if used:
             users[method.name] = used
     handlers = {spec.handler.__name__ for spec in session().registry.values()}
-    # With RECIPE_PLANNING_ENABLED off, the three recipe methods exist but are not registered:
-    # they are dead code, reachable by no tool name. With it on, nothing is unregistered.
+    # Since PR #103 the recipe tools are always registered: no method reaches the Service
+    # without being a registered handler.
     unregistered = set(users) - {"__init__"} - handlers
-    assert unregistered <= {"scale_recipe", "get_recipe_plan", "match_ingredient"}, unregistered
-    if recipe_mode:
-        assert unregistered == set()
+    assert unregistered == set(), unregistered
     assert set().union(*users.values()) <= ALLOWED_SERVICE
 
 
@@ -217,7 +205,7 @@ def public_callables(obj):
     }
 
 
-def test_every_other_service_and_workflow_operation_is_refused_by_name(recipe_mode):
+def test_every_other_service_and_workflow_operation_is_refused_by_name():
     """Derived from the code, so a Service method added later is covered automatically."""
     other_service = public_callables(Service) - ALLOWED_SERVICE
     workflow = {
@@ -267,7 +255,7 @@ def test_every_other_service_and_workflow_operation_is_refused_by_name(recipe_mo
         "service",
     ],
 )
-def test_name_variants_cannot_reach_a_purchasing_operation(name, recipe_mode):
+def test_name_variants_cannot_reach_a_purchasing_operation(name):
     tools = session()
     with pytest.raises(Problem) as error:
         tools.invoke(name, "{}")
@@ -322,7 +310,7 @@ def test_a_smuggled_decision_argument_is_rejected_before_any_service_call(tool, 
 
 
 def test_a_real_prepare_order_creates_a_proposal_but_no_order_confirmation_or_policy_change(
-    agent, service, recipe_mode
+    agent, service
 ):
     """The agent identity here has real autonomous authority (demo-agent); prepare still
     only saves a proposal. Orders and customer confirmations stay at zero."""
