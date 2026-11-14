@@ -265,6 +265,12 @@ class ToolSession:
                 )
         elif self.receipt:
             notice = "Accepted by demo order service. No supplier order or inventory reservation."
+        if self.plan:
+            recipe_notice = "Recipe quantities are estimates for customer review."
+            unresolved = [item.name for item in self.plan.ingredients if not item.product_id]
+            if unresolved:
+                recipe_notice += " Unresolved ingredients: " + ", ".join(unresolved) + "."
+            notice = "\n\n".join(part for part in (recipe_notice, notice) if part)
         if notice:
             # Preserve the authoritative state notice even with a long model narrative.
             narrative = narrative[: max(0, 20_000 - len(notice) - 2)].strip()

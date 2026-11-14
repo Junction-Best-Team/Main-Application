@@ -109,3 +109,13 @@ Broad English milk queries can rank flavored drinks, coffee products or sweets t
 - Demo identity/password/bearer auth is implemented, not identity federation or MCP OAuth discovery. Seed runs are privileged and preserve existing settings. No policy-editing endpoint or autonomous approval tool exists.
 - Kubernetes resources are templates for an existing environment; cluster, registry, ingress/TLS and deployment resource adequacy have not been verified. No paid infrastructure or live deployment was created.
 - Existing policies/revisions/audit records are immutable by database trigger. Product/vector generation retention is now bounded at publication; generation metadata, reusable embeddings and audit/history retention remain operator concerns.
+
+
+Person 2 review follow-up (2026-11-14): Ruff, 79 agent/provider cases and the full
+188-test backend suite passed against `aimo_person_two_rebuild_test` (one existing
+Starlette/httpx deprecation warning). New regressions cover remote HTTP rejection,
+loopback development, unexpected Service/provider failures before/after preparation,
+safe progress/errors, and server-authored estimate/unresolved notices. Provider and
+supplier facts in these tests remain authored fixtures. Shared recipe/provenance
+acceptance gaps are explicit in `internal-agent.md`; no new live-provider run,
+cluster modification, merge or deployment was performed in this follow-up.

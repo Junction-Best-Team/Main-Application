@@ -722,3 +722,12 @@ def test_unexpected_provider_failure_is_safe_and_preserves_saved_basket(
         assert "private-provider-key" not in error.value.message
     assert any(e.kind == "error" and e.error_code == "AGENT_FAILED" for e in events)
     assert "private-provider-key" not in caplog.text + str(events)
+
+
+def test_final_recipe_labels_estimates_and_lists_unresolved_ingredients(identity):
+    session = ToolSession(identity, FakeService(identity))
+    invoke(session, "publish_meal_plan", meal(matched=False))
+    result = session.result("All ready.")
+    assert "Recipe quantities are estimates for customer review." in result.text
+    assert "Unresolved ingredients: pasta, eggs, pork, cheese, pepper." in result.text
+    assert result.proposal_id is None

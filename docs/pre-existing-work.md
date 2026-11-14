@@ -75,3 +75,10 @@ The submission team still owns the final event disclosure and repository licence
 ## Chat purchasing migration — 2026-11-14
 
 Reused the existing application, purchasing/approval controls and frontend review components from latest develop `19bfda4`. Added internal typed LLM tools over existing HTTPX, persisted conversations and exact customer confirmation, converted the existing React entry point, and removed external HTTP/MCP adapters and the MCP dependency. No supplier checkout was added. Historical validation above refers to the prior gateway implementation; current verification is in `chat-purchasing.md`.
+
+
+Person 2 review follow-up: preserved shared develop changes, added failure/HTTPS
+regressions and server-authored recipe notices, and split the previously prepared
+OpenRouter release code into PR #32 for runtime-owner review. The acceptance
+handoff in `internal-agent.md` records unresolved shared work; it is not a claim
+that recipe templates, deterministic scaling or trusted constraints were built.
