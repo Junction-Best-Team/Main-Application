@@ -7,13 +7,13 @@ Written by reading the test code, not the test names. Branch `tests-ci-coverage`
 ## 1. How to read this
 
 1. **Lint** (`ruff check src tests scripts`): style and obvious code errors. It checks no behaviour.
-2. **pytest** (`tests/test_*.py`, 317 cases): calls the Python code directly against a real PostgreSQL test database, with invented ("fixture") prices, stock and search vectors. Fast, precise, no browser.
+2. **pytest** (`tests/test_*.py`, 327 cases): calls the Python code directly against a real PostgreSQL test database, with invented ("fixture") prices, stock and search vectors. Fast, precise, no browser.
 3. **Frontend build** (`npm run build`): TypeScript type check and bundle. Proves the UI compiles, nothing more.
 4. **Sweep** (`tests/sweep/run_sweep.py`, 10 checks): talks to a running server over HTTP like the browser does (sign-in, CSRF/Origin, conversations, purchases, approvals). Proves the server, database and buyer-facing endpoints work together. It needs no LLM.
-5. **Browser tests** (`frontend/e2e/chat.spec.ts`, 7 tests with mocked routes; `approval.spec.ts`, 2 tests against the real server when `AIMO_INTEGRATION=1`): real Chromium on the chat product and the legacy approval pages.
+5. **Frontend component tests** (`frontend/tests/chat.test.tsx`, 8 tests): the real React app rendered in a fake browser (jsdom) with every API call answered from `frontend/tests/fixtures/api.json`. About a second, no server, no database, no Chromium.
 6. **Local-only scripts** (`scripts/*.py`): need a running server, Docker, the full catalog or the real API key. Not run by CI. See section 6.
-7. `tests/ci.sh` is only the runner. It starts the database and server, then runs lint, pytest, sweep, browser tests. CI sets `SWEEP_ARGS=--strict`, so a skipped sweep check fails the build there (`.github/workflows/ci.yml`, jobs "Tool sweep" and "Browser tests").
-8. All pytest, sweep and browser tests use **fixture** commerce: invented price and stock from `src/aimo/upstream.py::FixtureClient` and a 10-product catalog from `src/aimo/fixtures.py`. A pass says nothing about Valio's real data.
+7. `tests/ci.sh` is only the runner. It starts the database and server, then runs lint, pytest and the sweep. The frontend tests run in their own CI job (`npm run test:coverage`). CI sets `SWEEP_ARGS=--strict`, so a skipped sweep check fails the build there (`.github/workflows/ci.yml`, jobs "Tool sweep" and "Browser tests").
+8. All pytest and sweep tests use **fixture** commerce: invented price and stock from `src/aimo/upstream.py::FixtureClient` and a 10-product catalog from `src/aimo/fixtures.py`. A pass says nothing about Valio's real data.
 9. Fixture facts worth knowing: product `464306` costs 1.70 EUR gross per litre, has 600 in stock; `464398` has 400; `463380` has 698; everything else has 5000. The autonomous limit is 1500 EUR.
 10. Search "vectors" are fake in tests (`EMBEDDING_BACKEND=fixture`), so meaning-based search quality is never measured by CI.
 
@@ -117,7 +117,7 @@ These use FastAPI's in-process `TestClient` (no real socket).
 | `test_hardening.py` | Product scope cannot be bypassed; missing scope fails closed; exact pack rounding; atomic, restart-safe and per-agent prepare retries; cached identity cannot bypass current authority; bounded inbox queries; login-limit behaviour and trusted-proxy handling; connection pool rollback; withdrawals stay denials; ingestion keeps withdrawal markers; search survives concurrent catalog pruning |
 | `test_retries.py` | Supplier retry rules: permanent failures are not retried, transient ones back off, Retry-After is respected or returned to the caller, invalid JSON is not retried |
 
-My own `test_upstream_client.py` repeats part of `test_retries.py` for the live client (headers, key never leaked, redirects not followed, transport errors); the overlap is deliberate but wasteful.
+`test_frontend_fixtures.py` validates the frontend's canned API responses (session, proposal, conversations, history, both commit results) against the server's response models, and proves its own check can fail. My own `test_upstream_client.py` repeats part of `test_retries.py` for the live client (headers, key never leaked, redirects not followed, transport errors); the overlap is deliberate but wasteful.
 
 ## 3. Sweep (`tests/sweep/run_sweep.py`)
 
@@ -136,22 +136,27 @@ Runs against a live server process with the fixture catalog and no LLM provider 
 | `confirm and decide controls` | Confirm and decide an unknown proposal without CSRF, then with it | 403; then 404 | Confirming or deciding without CSRF; accepting an unknown proposal |
 | `logout` | Log out, then call a protected endpoint with the old cookie | 204; then 401 | A session surviving logout |
 
-## 4. Browser tests (`frontend/e2e/`)
+## 4. Frontend component tests (`frontend/tests/chat.test.tsx`)
 
-Real Chromium, built UI. `chat.spec.ts` mocks the API routes and needs no credentials. `approval.spec.ts` talks to the real fixture-mode server and runs only with `AIMO_INTEGRATION=1` (`tests/ci.sh --browser` sets it). Credentials come from the environment, then the ignored `.env`.
+Replaced the Playwright browser tests. Vitest + React Testing Library + jsdom render the real `App`; `fetch` is stubbed with a route table (`tests/helpers.tsx`), and a request with no matching route fails the test. Fixtures are in `frontend/tests/fixtures/api.json`; `tests/test_frontend_fixtures.py` (pytest) validates them against the server's own response models so they cannot drift silently. I read these tests in full and mutation-checked them (see `tests/README.md`).
 
-| Test | Scenario | Asserts |
-| --- | --- | --- |
-| `approval.spec.ts` historical approval stays superseded and links to committed terms | `tests/browser_revision_fixture.py` builds a purchase approved at revision 1, repriced to revision 2 and committed; the browser opens the old approval and signs in | Old page shows 1,700.00 and "Superseded" with no receipt text and no Approve button; the link goes to revision 2 (1,870.00 with the mock receipt); survives reload and a sign-out/sign-in |
-| `approval.spec.ts` removed external interfaces return API errors | GET `/mcp`, `/mcp/`, `/api/agent/commit_order`, `/api/not-a-route` | 404 with a JSON content type each (not the frontend HTML) |
-| `chat.spec.ts` (7 tests) | Mocked responses: the root starts a meal conversation and keeps messages through refresh; a lost message response reuses its idempotency key; purchase deep links survive sign-in and confirmation needs an explicit click; changed terms need a second confirmation; legacy approval links keep the original revision and closed states have no confirmation; history reports a refresh error; unfinished turns restore on another browser | Not read in detail (teammate's file); described from test names |
+| Test | Scenario | Asserts | Catches |
+| --- | --- | --- | --- |
+| starts a meal conversation from the root and keeps it across a remount | Click the example prompt, Send; then unmount and mount again at the same URL | URL becomes `/conversations/<id>`; plan heading, basket link and the "Messages never authorize a purchase." text show; the CSRF header was sent; input cleared; after remount the plan is still there and no second message was sent | A conversation not opening, losing its content, or double-sending |
+| reuses the idempotency key when a message response was lost | Send gets a 503; remount; Send again | The alert says "Retry this request"; the typed text is restored; both requests carry the same idempotency key | A retry creating a duplicate turn |
+| restores an unfinished server turn with its persisted request and key | The conversation carries a `retry_message` | Input shows that text; Send posts exactly that text and key | A second browser resuming with a new key |
+| survives sign-in and needs an explicit click to confirm | Open a purchase URL signed out, sign in | Back on the same URL; the button is shown; nothing sent until it is clicked; then one request with proposal, revision 1, CSRF token and a `customer-confirm-…` key; the order reference shows; the button disappears | Auto-confirmation; losing the deep link; a wrong request body |
+| asks for a second explicit confirmation when the terms changed | The confirm answer is "revised" (revision 2) | "Terms changed" and "Revision 2 / v1" show; the next confirm sends revision 2 | Confirming new terms without a new click |
+| keeps the original revision on legacy approval links and offers no confirmation in closed states | A superseded approval link, then rejected and expired purchases | Revision 1 and "Superseded" show with a link to revision 2; no confirm button in any of the three | Offering confirmation for a closed purchase |
+| offers no confirmation for a revision that is no longer current | Revision 1 while revision 2 is current, still decidable | No confirm button | Confirming a stale revision (added because a mutation first survived) |
+| lists completed purchases and reports an actionable refresh error | `/approvals` redirects; refresh then fails with a 503 | Redirect to `/purchases`; "Accepted mock" row; the alert says "Refresh to retry" | A silent failed refresh |
 
-The earlier approval-inbox browser tests (competing tabs, polling pause, inbox error state, the agent-resume flow) were replaced by PR #15 and no longer exist.
+Not checked any more: real layout (the 390 px no-sideways-scroll assertion was dropped on request), real cookies, real routing and the Content-Security-Policy in a browser (pytest checks the CSP headers). The two old real-server browser tests were removed because pytest already covers them (`test_http.py` for the removed `/mcp` and `/api/agent/*` routes and for the historical-approval links).
 
 ## 5. Lint and build
 
 - `ruff check src tests scripts`: Python style and common bug patterns. No behaviour.
-- `npm run build` (`tsc -b && vite build`): TypeScript type errors and a failing production build. This is the only automated check of frontend code outside the browser tests (README: "no frontend unit tests").
+- `npm run build` (`tsc -b && vite build`): TypeScript type errors and a failing production build. The frontend component tests (section 4) are the other automated check.
 
 ## 6. Local-only scripts
 
@@ -202,7 +207,7 @@ Each item is traced to code I read.
 - Real-catalog unit conversions (the 17,546 products) are checked for 7 products by a local script only.
 
 **Frontend**
-- No unit tests, and `frontend/src/main.tsx` is not measured for coverage (F-MVP-008). The browser tests are the mocked-route chat flows plus two real-server checks.
+- `frontend/src/main.tsx` reaches 82.6% of lines (78.5% statements, 71.8% branches) in the component tests, enforced only as a floor, well under the 95% Python gate. Uncovered: error and edge branches in the chat, history and detail pages (see the `Uncovered Line #s` column of `npm run test:coverage`). No test uses a real browser, so layout, real cookies and real routing are unchecked.
 - The chat assistant's wording and the real LLM provider are never tested: the provider is always scripted.
 
 **Mock ordering**
@@ -215,11 +220,11 @@ Each item is traced to code I read.
 
 | Test | Why |
 | --- | --- |
-| `test_http.py::test_input_validation_and_api_errors` (404 JSON check, `/health/live`) | Repeated by browser test 4 (`/api/not-a-route`) and by `tests/ci.sh`, which polls `/health/live` before running anything |
+| `test_http.py::test_input_validation_and_api_errors` (`/health/live`) | Repeated by `tests/ci.sh`, which polls `/health/live` before running anything |
 | Sweep `message without provider` | SKIPs when a provider is configured, so on such a server it checks nothing; CI never configures one |
 | `test_workflow.py::test_stock_change_blocks_old_revision` | Asserts only the new revision's outcome and no approval id. Does not check the old approval or that commit is blocked |
 | `test_workflow.py::test_competing_decisions_and_commit` | Result depends on thread timing. Assertions allow several valid orderings; it would catch only a flagrant contradiction |
 | `test_upstream_mode.py::test_auto_with_key_uses_live_client`, `test_explicit_fixture_ignores_a_configured_key` | Check only class type; no behaviour |
-| `test_http.py::test_historical_approval_links_current_autonomous_revision` | Repeats most of `test_workflow.py::test_changed_price_creates_revision_and_invalidates_approval` and browser test 1; the new part is the "no approval needed at revision 2" case |
+| `test_http.py::test_historical_approval_links_current_autonomous_revision` | Repeats most of `test_workflow.py::test_changed_price_creates_revision_and_invalidates_approval`; the new part is the "no approval needed at revision 2" case |
 | `tests/test_evidence.py::test_gross_boundary` | Fine as a boundary test, but the same rows are all `spend`; nothing else about the limit rule is varied |
 | Commit and retry flow | Checked in `test_autonomous_and_idempotent_after_restart`, `test_shared_purchasing_operations_and_both_commit_outcomes`, `test_conversations.py` and `test_agent_integration.py`. Overlap is deliberate (different layers), but a failure will show in many places |

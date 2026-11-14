@@ -21,11 +21,10 @@ One workflow, `.github/workflows/ci.yml`, runs on PRs into `develop` and `main` 
 | --- | --- |
 | Detect application components | Decides which jobs apply (backend, frontend, Terraform) |
 | Python lint and tests | `ruff check`, then `pytest` against temporary PostgreSQL/pgvector with fixture embeddings and supplier responses; saves coverage data |
-| Frontend types and build | `npm ci`, TypeScript check, production build |
+| Frontend types and build | `npm ci`, TypeScript check, production build, then the Vitest component tests with a coverage floor (jsdom; no browser, about a second) |
 | API sweep | Starts the real server and drives the buyer-facing API: sign-in, CSRF and Origin checks, conversations, purchases and approvals, and that a chat turn without an LLM provider fails honestly (`tests/sweep/run_sweep.py`) |
-| Browser tests | Playwright in real Chromium against the built UI: mocked-route chat flows, plus real-server checks with `AIMO_INTEGRATION=1` |
 | Terraform | Format, validate, mocked-provider plan tests and Helm render for `infra/` (only when it or the workflows changed) |
-| Coverage (95% minimum) | Combines the pytest, sweep and browser coverage data and fails below `fail_under` in `pyproject.toml` |
+| Coverage (95% minimum) | Combines the pytest and sweep coverage data and fails below `fail_under` in `pyproject.toml` |
 | **CI gate** | Waits for every job above; the required status check |
 
 Dependencies come from the lockfiles with the unused ML stack pruned, downloads are cached and a new commit cancels outdated PR runs (main releases are serialized). Everything runs on fixtures: CI never has the Valio API key, and no model weights, full catalog imports, Docker builds or deployments are needed. The live check is the local `tests/ci.sh --live`. What every check verifies is in [tests/README.md](tests/README.md) and [tests/TEST-GUIDE.md](tests/TEST-GUIDE.md).
@@ -134,15 +133,15 @@ uv run ruff check src tests scripts
 uv run pytest -q                         # real pgvector/PostgreSQL, isolated aimo_test DB
 npm ci --prefix frontend
 npm run build --prefix frontend
-npm exec --prefix frontend -- playwright install chromium
-npm run test --prefix frontend           # running frontend/server; default UI route fixtures
+npm run test --prefix frontend           # Vitest component tests (jsdom, no browser, no server)
+npm run test:coverage --prefix frontend  # same, with the coverage floor
 # Explicit mock-confirmation/process-restart check in a dedicated verification container:
 uv run python scripts/restart_smoke.py --container aimo-mvp-verify --base-url http://localhost:8001 --conversation <uuid> --proposal <uuid>
 uv run python scripts/verify_catalog.py /absolute/path/valio_aimo_junction26_product_data.json
 uv run python scripts/evaluate_search.py  # full catalog, real embeddings; writes compact results
 ```
 
-Tests require a PostgreSQL role permitted to create `aimo_test`, or an existing database named with `_test` and `TEST_DATABASE_URL` configured. Tests refuse to clear a database without that suffix. Browser tests create mock purchases in the demo database and require fixture commerce. The historical-revision test uses `uv` and `tests/browser_revision_fixture.py` to seed its own repriced purchase; its `DATABASE_URL` must point to the same database as the running server. `/docs` testing needs access to jsDelivr. `BASE_URL` selects a browser-test origin; `DEMO_BASE_URL` selects the chat demo. `AIMO_INTEGRATION=1` enables real-server browser checks; default UI regressions mock route responses. [Current migration verification](docs/chat-purchasing.md#verification-record) records the chat cutover. [Historical gateway validation](docs/validation.md) retains the earlier outcomes and limited 30-case retrieval evaluation.
+Tests require a PostgreSQL role permitted to create `aimo_test`, or an existing database named with `_test` and `TEST_DATABASE_URL` configured. Tests refuse to clear a database without that suffix. The frontend tests need no database or server: they answer every request from `frontend/tests/fixtures/api.json`, and `tests/test_frontend_fixtures.py` checks that file against the server's own response models. `/docs` testing needs access to jsDelivr. [Current migration verification](docs/chat-purchasing.md#verification-record) records the chat cutover. [Historical gateway validation](docs/validation.md) retains the earlier outcomes and limited 30-case retrieval evaluation.
 
 ## One production image, existing cluster
 

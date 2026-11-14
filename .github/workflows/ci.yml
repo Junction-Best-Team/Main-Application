@@ -2,7 +2,7 @@ name: CI
 
 # One workflow, organised as parallel jobs. Required status checks (branch protection) are
 # "Detect application components", "Python lint and tests", "Frontend types and build" and
-# "CI gate". The gate waits for EVERY job below (tests, sweep, browser, coverage, terraform), so a
+# "CI gate". The gate waits for EVERY job below (tests, sweep, coverage, terraform), so a
 # new job only needs adding to the gate's `needs` and `applies` table to become required.
 #
 # TODO (local note, see TODO.local.md): any build/deploy workflow must start only after this
@@ -156,6 +156,8 @@ jobs:
         run: npm ci
       - name: Check TypeScript and build production assets
         run: npm run build
+      - name: Component tests with coverage (Vitest, jsdom; no browser)
+        run: npm run test:coverage
 
   sweep:
     name: API sweep
@@ -197,67 +199,14 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  browser:
-    name: Browser tests
-    needs: components
-    if: needs.components.outputs.backend == 'true' && needs.components.outputs.frontend == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_USER: aimo
-          POSTGRES_PASSWORD: aimo
-          POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U aimo -d postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      CI_DATABASE_URL: postgresql://aimo:aimo@localhost:5432/aimo_ci
-      UV_NO_SYNC: '1'
-      CI_COVERAGE: '1'
-      PLAYWRIGHT_DEPS: '1'
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/python-env
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: '24.6.0'
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - name: Playwright browser tests against the built UI (real Chromium)
-        run: tests/ci.sh --skip-unit --no-sweep --browser
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: coverage-browser
-          path: .coverage/sweep.*
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 7
-      - name: Keep browser traces on failure
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: playwright-results
-          path: frontend/test-results
-          if-no-files-found: ignore
-
   coverage:
     name: Coverage (95% minimum)
-    needs: [components, backend, sweep, browser]
+    needs: [components, backend, sweep]
     if: >-
       ${{ always()
       && needs.components.outputs.backend == 'true'
       && needs.backend.result == 'success'
-      && needs.sweep.result == 'success'
-      && (needs.browser.result == 'success' || needs.browser.result == 'skipped') }}
+      && needs.sweep.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -270,7 +219,7 @@ jobs:
           pattern: coverage-*
           path: .coverage
           merge-multiple: true
-      - name: Combine pytest, sweep and browser coverage and enforce fail_under (pyproject.toml)
+      - name: Combine pytest and sweep coverage and enforce fail_under (pyproject.toml)
         run: .venv/bin/python tests/coverage_report.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
@@ -285,7 +234,7 @@ jobs:
 
   gate:
     name: CI gate
-    needs: [components, backend, frontend, terraform, sweep, browser, coverage]
+    needs: [components, backend, frontend, terraform, sweep, coverage]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -309,7 +258,6 @@ jobs:
               "frontend": ["frontend"],
               "terraform": ["terraform"],
               "sweep": ["backend"],
-              "browser": ["backend", "frontend"],
               "coverage": ["backend"],
           }
           outputs = needs["components"]["outputs"]
