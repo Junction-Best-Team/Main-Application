@@ -184,7 +184,13 @@ def create_app(service=None):
         _, data = auth.browser_identity(request.cookies.get("aimo_session"))
         with connection() as c:
             c.execute("DELETE FROM sessions WHERE token_hash=%s", (auth.digest(data["token"]),))
-        response.delete_cookie("aimo_session", path="/")
+        response.delete_cookie(
+            "aimo_session",
+            path="/",
+            httponly=True,
+            secure=settings().secure_cookies,
+            samesite="strict",
+        )
 
     @app.get("/api/approvals", response_model=InboxResponse)
     def inbox(

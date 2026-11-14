@@ -87,3 +87,20 @@ def test_application_errors_and_the_openapi_422_schema_are_unchanged(service):
     live = app.openapi()["components"]["schemas"]
     for name in ("HTTPValidationError", "ValidationError"):
         assert live[name] == stored[name]
+
+
+def test_logout_clears_the_cookie_with_the_same_attributes_as_login(service):
+    with TestClient(create_app(service)) as client:
+        login = post(
+            client,
+            "/api/login",
+            {"username": "buyer", "password": os.environ["DEMO_BUYER_PASSWORD"]},
+        )
+        issued = login.headers["set-cookie"].lower()
+        assert "httponly" in issued and "samesite=strict" in issued
+        headers = ORIGIN | {"X-CSRF-Token": login.json()["csrf_token"]}
+        out = client.post("/api/logout", headers=headers)
+        assert out.status_code == 204
+        cleared = out.headers["set-cookie"].lower()
+        assert "aimo_session=" in cleared and "max-age=0" in cleared
+        assert "httponly" in cleared and "samesite=strict" in cleared and "path=/" in cleared
