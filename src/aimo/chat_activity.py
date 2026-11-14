@@ -8,6 +8,7 @@ TOOL_LABELS = {
     "search_recipes": "Searching recipes",
     "get_recipe": "Checking a recipe",
     "scale_recipe": "Scaling recipe portions",
+    "draft_recipe": "Calculating recipe quantities",
     "get_recipe_plan": "Checking the saved recipe plan",
     "match_ingredient": "Matching an ingredient to products",
     "match_ingredients": "Matching ingredients to products",
