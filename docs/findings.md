@@ -1044,3 +1044,5 @@ Add new findings below, under your track heading.
 - Homepage polish follow-up (2026-11-15): disabled manual textarea resizing to remove the diagonal native resize handle identified by the owner. Frontend `npm run check` and both desktop/320px home submission checks passed; the mobile screenshot was inspected.
 
 - Attachment spacing follow-up (2026-11-15): the homepage composer now uses a vertical flex layout with a 16px gap, separating attachment previews and feedback from the text field. Frontend `npm run check` and both desktop/320px home submission checks passed; attachment-state screenshots were inspected.
+
+- Both-input follow-up (2026-11-15): matched chat's attachment-to-input gap to Home's 16px spacing. Frontend `npm run check` and four desktop/320px attachment submission checks passed across both inputs; chat attachment screenshots inspected.

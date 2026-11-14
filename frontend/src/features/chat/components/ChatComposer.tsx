@@ -109,7 +109,7 @@ export function ChatComposer({
         }
       }}
       aria-label="Chat message"
-      className={`${home ? "home-composer" : "m-space-md mt-0 flex shrink-0 flex-col gap-space-sm rounded-xl bg-surface-container-low p-space-sm shadow-sm"} ${dragging ? "outline-2 outline-primary-container" : ""}`}
+      className={`${home ? "home-composer" : "m-space-md mt-0 flex shrink-0 flex-col gap-space-md rounded-xl bg-surface-container-low p-space-sm shadow-sm"} ${dragging ? "outline-2 outline-primary-container" : ""}`}
     >
       <AttachmentCards
         files={attachments.map((file) => ({
