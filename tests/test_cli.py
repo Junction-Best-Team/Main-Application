@@ -156,10 +156,97 @@ def test_main_dispatches_simple_commands(monkeypatch, command):
 
 def test_main_migrate_passes_the_optional_runtime_role(monkeypatch):
     calls = []
-    monkeypatch.setattr(cli, "migrate", lambda runtime_role=None: calls.append(runtime_role))
+    monkeypatch.delenv("CATALOG_SYNC_DATABASE_USER", raising=False)
+    monkeypatch.setattr(
+        cli,
+        "migrate",
+        lambda runtime_role=None, catalog_role=None: calls.append((runtime_role, catalog_role)),
+    )
     run_main(monkeypatch, "migrate")
     run_main(monkeypatch, "migrate", "--runtime-role", "aimo_runtime")
-    assert calls == [None, "aimo_runtime"]
+    run_main(monkeypatch, "migrate", "--catalog-role", "aimo_catalog_sync")
+    assert calls == [(None, None), ("aimo_runtime", None), (None, "aimo_catalog_sync")]
+
+
+def test_main_migrate_reads_the_catalog_role_from_the_release_secret_env(monkeypatch):
+    calls = []
+    monkeypatch.setenv("CATALOG_SYNC_DATABASE_USER", "aimo_catalog_sync")
+    monkeypatch.setattr(cli, "migrate", lambda **kw: calls.append(kw))
+    run_main(monkeypatch, "migrate", "--runtime-role", "aimo_runtime")
+    assert calls == [{"runtime_role": "aimo_runtime", "catalog_role": "aimo_catalog_sync"}]
+    # An optional, absent Secret key arrives as an empty value: no catalog grants.
+    monkeypatch.setenv("CATALOG_SYNC_DATABASE_USER", "")
+    run_main(monkeypatch, "migrate", "--runtime-role", "aimo_runtime")
+    assert calls[-1]["catalog_role"] is None
+
+
+def test_setup_job_grants_roles_and_seeds_but_never_imports_the_catalog(monkeypatch, capsys):
+    import importlib.util
+
+    import aimo.ingest as ingestion
+    from aimo.config import settings
+
+    spec = importlib.util.spec_from_file_location(
+        "bootstrap_job", ROOT / "infra/kubernetes/bootstrap.py"
+    )
+    bootstrap = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bootstrap)
+    calls = []
+    monkeypatch.setattr(bootstrap, "migrate", lambda **kw: calls.append(("migrate", kw)))
+    monkeypatch.setattr(bootstrap, "seed", lambda: calls.append(("seed", None)))
+    for name in ("download", "ingest_file", "sync_catalog", "publish"):
+        monkeypatch.setattr(ingestion, name, lambda *a, **k: pytest.fail("setup must not import"))
+    original = settings().database_url
+    monkeypatch.setenv("BOOTSTRAP_DATABASE_URL", original)
+    monkeypatch.setenv("RUNTIME_DATABASE_USER", "aimo_runtime")
+    monkeypatch.setenv("CATALOG_SYNC_DATABASE_USER", "")
+    try:
+        bootstrap.main()
+        monkeypatch.setenv("BOOTSTRAP_DATABASE_URL", original)
+        monkeypatch.setenv("CATALOG_SYNC_DATABASE_USER", "aimo_catalog_sync")
+        bootstrap.main()
+    finally:
+        settings.cache_clear()
+    assert calls == [
+        ("migrate", {"runtime_role": "aimo_runtime", "catalog_role": None}),
+        ("seed", None),
+        ("migrate", {"runtime_role": "aimo_runtime", "catalog_role": "aimo_catalog_sync"}),
+        ("seed", None),
+    ]
+    assert "aimo-catalog-sync Job" in capsys.readouterr().out
+
+
+def test_migrate_refuses_to_give_catalog_grants_to_the_runtime_role():
+    with pytest.raises(ValueError, match="must differ"):
+        cli.migrate(runtime_role="aimo_runtime", catalog_role="aimo_runtime")
+
+
+def test_main_sync_catalog_prints_one_json_result_and_exits_by_outcome(monkeypatch, capsys):
+    import aimo.ingest as ingestion
+
+    seen = []
+
+    def fake(**kw):
+        seen.append(kw)
+        return {"event": "catalog_sync", "outcome": "unchanged"}, 0
+
+    monkeypatch.setattr(ingestion, "run_sync", fake)
+    run_main(monkeypatch, "sync-catalog")
+    assert seen == [
+        {
+            "file": None,
+            "expected_sha": ingestion.CATALOG_SHA256,
+            "expected_count": ingestion.CATALOG_PRODUCT_COUNT,
+        }
+    ]
+    assert json.loads(capsys.readouterr().out)["outcome"] == "unchanged"
+    monkeypatch.setattr(
+        ingestion, "run_sync", lambda **kw: ({"outcome": "failed", "error_code": "X"}, 1)
+    )
+    with pytest.raises(SystemExit) as stop:
+        run_main(monkeypatch, "sync-catalog", "--file", "s.json", "--expected-count", "3")
+    assert stop.value.code == 1
+    assert json.loads(capsys.readouterr().out)["error_code"] == "X"
 
 
 def test_main_requires_a_command(monkeypatch, capsys):

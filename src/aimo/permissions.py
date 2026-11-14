@@ -49,3 +49,27 @@ def configure_runtime_role(conn, role_name):
             ).format(table, sql.Literal(role_name))
         )
         conn.execute(sql.SQL("GRANT UPDATE (id) ON {} TO {}").format(table, role))
+
+
+# Catalog sync touches only these tables. Everything else (identities, sessions, policies,
+# purchases, conversations, migration ledger) stays invisible to the ingestion credential.
+CATALOG_SYNC_GRANTS = {
+    "catalog_generations": "SELECT, INSERT",
+    "active_catalog": "SELECT, INSERT, UPDATE",
+    "products": "SELECT, INSERT, DELETE",
+    "embedding_cache": "SELECT, INSERT, UPDATE",
+}
+
+
+def configure_catalog_sync_role(conn, role_name):
+    """Least-privilege grants for the dedicated catalog-ingestion database role."""
+    role = sql.Identifier(role_name)
+    conn.execute("REVOKE CREATE ON SCHEMA public FROM PUBLIC")
+    conn.execute(sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(role))
+    # Reset first so a role that once had broader grants converges to exactly these.
+    conn.execute(sql.SQL("REVOKE ALL ON ALL TABLES IN SCHEMA public FROM {}").format(role))
+    conn.execute(sql.SQL("REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM {}").format(role))
+    for table, privileges in CATALOG_SYNC_GRANTS.items():
+        conn.execute(
+            sql.SQL("GRANT {} ON {} TO {}").format(sql.SQL(privileges), sql.Identifier(table), role)
+        )

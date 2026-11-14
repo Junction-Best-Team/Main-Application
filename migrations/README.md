@@ -12,7 +12,8 @@ Do not rename applied migrations or delete their ledger rows.
 | 006–007 | PR #38 recipe/proposal link and refresh retry keys |
 | **008–010** | **Reserved for Person 3**: policy edit history, per-meal authorization/revocation, spare |
 | **011** | **PR #38** proposal revision ordering |
-| **012** | Buyer and user memory (`docs/memory.md`) |
+| 012_buyer_user_memory | Buyer and user memory (`docs/memory.md`) |
+| 012_catalog_import_profile | Catalog sync: `catalog_generations.import_profile` (additive, nullable) |
 
 Before allocating another number, check remote branch tips and open PRs and update
 this table with the agreed allocation. Reservations do not create migration files.
@@ -23,7 +24,9 @@ It is replaced by `011_proposal_revision_ordering.sql` to release 008 to Person 
 and the old ledger row are preserved. Person 3 must use a distinct descriptive
 filename for their 008. No operator should rename ledger rows or undo existing DDL.
 
-Both 005 files are intentional compatibility names. Tests cover full-filename
+Both 005 files and both 012 files retain their original names because prior
+application is unknown. The two 012 migrations are independent and use distinct
+full-filename ledger entries. Tests cover full-filename
 ordering, repeated/concurrent migration runs, populated pre-recipe and pre-link
 upgrades, and the old-008-to-011 transition. All pending DDL and ledger inserts
 commit together; a failure rolls the transaction back.

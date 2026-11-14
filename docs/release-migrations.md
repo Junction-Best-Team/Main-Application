@@ -35,8 +35,9 @@ infrastructure wiring in this change. This task does not perform that apply.
 - Keep `migration_credentials` after initial bootstrap. Removing
   `bootstrap_generation`/`bootstrap_credentials` still removes the temporary
   seed/admin bootstrap Secret and Job; it does not remove the release Secret.
-  The initial bootstrap remains an explicit operator action and still seeds and
-  imports. Routine releases never invoke it.
+  The initial bootstrap remains an explicit operator action that migrates, seeds
+  and grants. The catalog is populated by the `aimo-catalog-sync` Job
+  ([catalog sync](catalog-sync.md)). Routine releases never invoke bootstrap.
 
 Review the Terraform plan with protected state access, then apply it as a separate
 operator action. State, saved plans, old backups and private inputs contain secret
@@ -47,6 +48,15 @@ and namespace/registry/CA wiring matches before enabling releases. CI's cluster
 principal needs create/get/delete Jobs, get deployments/pods and pod-log access;
 app service accounts have no mounted API token. A missing or invalid Secret fails
 the migration gate and leaves application images unchanged.
+
+### Catalog-sync role (optional key)
+
+When `migration_credentials.catalog_sync_database_user` is set, `aimo-migration`
+also contains `CATALOG_SYNC_DATABASE_USER`. The Job passes it through an optional
+Secret reference, and `aimo migrate` then also resets that role to catalog-table-only
+grants in the same transaction. The role must differ from the runtime role.
+Without the key, releases behave exactly as before. See
+[catalog sync](catalog-sync.md#permissions-and-secrets).
 
 ## Normal release
 
