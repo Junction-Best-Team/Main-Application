@@ -33,6 +33,7 @@ from aimo.schemas import (
     DecisionRequest,
     InboxResponse,
     LoginRequest,
+    OrderResponse,
     ProposalResponse,
     SessionResponse,
 )
@@ -214,6 +215,11 @@ def create_app(service=None):
             identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
         )
         return conversations.confirm(identity, proposal_id, body, service)
+
+    @app.get("/api/purchases/{proposal_id}/receipt", response_model=OrderResponse)
+    def purchase_receipt(proposal_id: UUID, identity=Depends(buyer)):
+        # The stored mock receipt of this buyer's own proposal; 404 NO_RECEIPT until it is ordered.
+        return workflow.get_receipt(identity, proposal_id)
 
     @app.get("/api/memories", response_model=MemoryList)
     def memory_list(

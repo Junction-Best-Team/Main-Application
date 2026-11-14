@@ -618,6 +618,16 @@ def commit_order(identity, request: CommitRequest, connector):
         return receipt
 
 
+def get_receipt(identity, proposal_id):
+    """The stored receipt of a proposal the identity may see (the buyer's own), via get_order."""
+    with connection() as c:
+        context(c, identity)
+        p, _, _ = proposal(c, proposal_id, identity)
+    if not p["order_id"]:
+        raise Problem("NO_RECEIPT", "This purchase has no order yet, so there is no receipt.", 404)
+    return get_order(identity, p["order_id"])
+
+
 def get_order(identity, oid):
     with connection() as c:
         context(c, identity)
