@@ -292,6 +292,12 @@ def csrf_headers(login):
         ("get", "/api/memories"),
         ("post", "/api/memories"),
         ("get", "/api/purchases/00000000-0000-0000-0000-000000000000/receipt"),
+        ("get", "/api/schedules"),
+        ("post", "/api/schedules"),
+        ("post", "/api/schedules/preview"),
+        ("get", "/api/schedules/00000000-0000-0000-0000-000000000000"),
+        ("post", "/api/schedules/00000000-0000-0000-0000-000000000000/run-now"),
+        ("get", "/api/orders"),
     ],
 )
 def test_newer_routes_refuse_an_anonymous_caller_in_the_envelope(client, method, path):
@@ -316,3 +322,23 @@ def test_the_memory_routes_report_validation_and_unknown_ids_in_the_envelope(cli
     )
     assert response.status_code >= 400
     envelope(response, response.status_code)
+
+
+def test_the_schedule_routes_report_validation_and_their_own_refusals_in_the_envelope(client):
+    login = client.post(
+        "/api/login",
+        headers=ORIGIN,
+        json={"username": "buyer", "password": os.environ["DEMO_BUYER_PASSWORD"]},
+    )
+    headers = csrf_headers(login)
+    bad = client.post("/api/schedules", headers=headers, json={"order_id": "nope"})
+    assert bad.status_code == 422
+    assert envelope(bad, 422)["code"] == "VALIDATION_ERROR"
+    unknown = client.get("/api/schedules/00000000-0000-0000-0000-000000000000")
+    assert envelope(unknown, 404)["code"] == "NOT_FOUND"
+    status = client.get("/api/schedules?status=nope")
+    assert envelope(status, 422)["code"] == "INVALID_SCHEDULE_STATUS"
+    demo = client.post(
+        "/api/schedules/00000000-0000-0000-0000-000000000000/run-now", headers=headers
+    )
+    assert envelope(demo, 403)["code"] == "SCHEDULE_DEMO_DISABLED"

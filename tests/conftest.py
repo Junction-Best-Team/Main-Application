@@ -1,5 +1,5 @@
 import os
-from datetime import date, timedelta
+from datetime import timedelta
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
@@ -30,6 +30,7 @@ from aimo.config import settings
 from aimo.db import connection, fingerprint
 from aimo.fixtures import fixture_facts
 from aimo.ingest import publish
+from aimo.scheduler import helsinki_today
 from aimo.schemas import PrepareRequest
 from aimo.service import Service
 from aimo.upstream import FixtureClient
@@ -124,7 +125,7 @@ def request_data():
         "request_id": "Hotel breakfast",
         "idempotency_key": str(uuid4()),
         "destination": "hotel-helsinki",
-        "delivery_date": str(date.today() + timedelta(days=2)),
+        "delivery_date": str(helsinki_today() + timedelta(days=2)),
         "requirements": {"lactose_free": True},
         "lines": [{"product_id": "464306", "amount": "10", "unit": "L"}],
     }
@@ -137,3 +138,25 @@ def mission(request_data):
         {"product_id": "464398", "amount": "400", "unit": "L", "substitutes_for": "464306"},
     ]
     return PrepareRequest.model_validate(request_data)
+
+
+@pytest.fixture
+def placed_order(service, buyer, request_data):
+    """A placed mock order of the demo buyer (milk, 10 L): the source of a standing order."""
+    from aimo import auth, conversations
+    from aimo.schemas import CommitRequest
+
+    p = service.prepare_order(
+        auth.internal_agent(buyer), PrepareRequest.model_validate(request_data)
+    )
+    body = CommitRequest(proposal_id=p["proposal_id"], revision=1, idempotency_key=str(uuid4()))
+    receipt = conversations.confirm(buyer, p["proposal_id"], body, service)
+    return {"order_id": receipt["order_id"], "proposal_id": p["proposal_id"]}
+
+
+@pytest.fixture
+def demo_mode(monkeypatch):
+    """Scheduler demo mode (CNF-038): a first run date of today is allowed."""
+    from aimo.config import settings
+
+    monkeypatch.setattr(settings(), "scheduler_demo_mode", True)

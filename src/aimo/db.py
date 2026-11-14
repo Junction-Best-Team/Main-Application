@@ -95,9 +95,18 @@ def connection():
 
 
 class Problem(Exception):
-    def __init__(self, code: str, message: str, status: int = 409, retry_after: int | None = None):
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        status: int = 409,
+        retry_after: int | None = None,
+        details=None,
+    ):
         self.code, self.message, self.status = code, message, status
         self.retry_after = retry_after
+        if details is not None:
+            self.details = details  # JSON-ready, client-safe (the browser sees error.details)
         super().__init__(message)
 
     details = None  # structured, client-safe extra fields; a subclass may set an instance value
