@@ -34,13 +34,21 @@ function ApprovalRedirect() {
 
 // Routes: Home "/", Request "/request" and "/conversations/:id", Past Orders
 // "/purchases" and "/purchases/:id". Every signed-in screen renders inside
-// AppShell (sidebar / mobile top bar); Login stays outside it.
+// AppShell (sidebar / mobile top bar), which places the notice bar in its
+// content column; Login and Not found render the notice bar themselves.
 function Shell() {
   return (
     <>
-      <NoticeBar />
       <Routes>
-        <Route path="/login" element={<Login />} />
+        <Route
+          path="/login"
+          element={
+            <>
+              <NoticeBar />
+              <Login />
+            </>
+          }
+        />
         <Route path="/approvals" element={<Navigate to="/purchases" replace />} />
         <Route
           element={
@@ -59,10 +67,13 @@ function Shell() {
         <Route
           path="*"
           element={
-            <main className="workspace">
-              <h1>Page not found</h1>
-              <Link to="/">Go to Home</Link>
-            </main>
+            <>
+              <NoticeBar />
+              <main className="workspace">
+                <h1>Page not found</h1>
+                <Link to="/">Go to Home</Link>
+              </main>
+            </>
           }
         />
       </Routes>

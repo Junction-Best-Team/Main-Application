@@ -104,7 +104,7 @@ function AccountBlock() {
     navigate("/login", { replace: true });
   }
   return (
-    <div className="flex flex-col gap-space-xs bg-surface-container-low p-space-sm">
+    <div className="flex shrink-0 flex-col gap-space-xs bg-surface-container-low p-space-sm">
       <InertButton
         label="Switch account"
         className="flex w-full items-center justify-between rounded-lg bg-surface-pure p-space-sm text-left"
@@ -149,13 +149,15 @@ function NotificationsButton() {
 }
 
 function Sidebar() {
-  // pb-16 keeps the account block clear of the fixed prototype DemoBar.
+  // Fixed to the viewport, top to bottom, so it never scrolls with the page;
+  // its nav scrolls internally if it outgrows the screen. pb-20 keeps the
+  // account block clear of the fixed prototype DemoBar.
   return (
     <aside
       aria-label="Sidebar"
-      className="sticky top-0 hidden h-screen w-72 shrink-0 flex-col justify-between border-r border-border-subtle bg-surface-pure pb-20 md:flex"
+      className="fixed inset-y-0 left-0 z-50 hidden h-dvh w-72 flex-col border-r border-border-subtle bg-surface-pure pb-20 md:flex"
     >
-      <div className="flex flex-col">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <Link to="/" aria-label="aimo. home" className="flex h-16 items-center px-space-lg no-underline hover:no-underline">
           <Wordmark className="text-[2.25rem]" />
         </Link>
@@ -263,9 +265,10 @@ export function AppShell() {
   const { pathname } = useLocation();
   useEffect(() => setMenuOpen(false), [pathname]);
   return (
-    <div className="min-h-screen bg-canvas font-body text-on-surface md:flex">
+    <div className="min-h-screen bg-canvas font-body text-on-surface">
       <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-col md:pl-72">
+        <NoticeBar />
         <DesktopHeader />
         <MobileTopBar menuOpen={menuOpen} onOpenMenu={() => setMenuOpen(true)} />
         <Outlet />
