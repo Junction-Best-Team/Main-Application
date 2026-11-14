@@ -17,60 +17,63 @@ export function ChatComposer({
   busy,
   onSubmit,
 }: Props) {
+  const sendLabel = busy
+    ? "Working…"
+    : error && text
+      ? "Retry request"
+      : "Send Order Request";
   return (
     <form
       onSubmit={onSubmit}
-      className="m-space-md mt-0 shrink-0 rounded-xl bg-surface-container-low p-space-sm shadow-sm"
+      className="m-space-md mt-0 flex shrink-0 items-center gap-space-sm rounded-xl bg-surface-container-low p-space-sm shadow-sm"
     >
       <label htmlFor="purchase-message" className="sr-only">
         {conversationId
           ? "Continue the conversation"
           : "Your meal or purchasing request"}
       </label>
-      <textarea
+      <input
         id="purchase-message"
+        type="text"
         value={text}
         onChange={(event) => onTextChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
-            event.currentTarget.form?.requestSubmit();
-          }
-        }}
-        rows={3}
         maxLength={4000}
         placeholder={MOCK.request.composerPlaceholder}
         disabled={Boolean(busy)}
-        className="h-16 w-full resize-none font-body rounded-lg bg-transparent p-space-sm text-body-md text-on-surface placeholder:text-outline focus-visible:outline-2 focus-visible:outline-primary-container md:h-auto"
+        className="h-11 min-w-0 flex-1 rounded-lg bg-transparent p-space-sm font-body text-body-md text-on-surface placeholder:text-outline focus-visible:outline-2 focus-visible:outline-primary-container"
       />
-      <div className="flex flex-wrap items-center justify-between gap-space-sm">
-        <div className="flex items-center gap-space-xs text-on-surface-variant md:gap-space-sm">
-          <InertButton label="Attach file" className="flex">
+      <div className="flex shrink-0 items-center gap-space-xs">
+        <div className="flex items-center text-on-surface-variant md:gap-space-xs">
+          <InertButton
+            label="Attach file"
+            className="flex h-11 w-7 items-center justify-center md:w-8"
+          >
             <Icon name="attach_file" className="text-[20px] md:text-[24px]" />
           </InertButton>
-          <InertButton label="Voice input" className="flex">
+          <InertButton
+            label="Voice input"
+            className="flex h-11 w-7 items-center justify-center md:w-8"
+          >
             <Icon name="mic" className="text-[20px] md:text-[24px]" />
           </InertButton>
-          <InertButton label="Scan barcode" className="flex">
+          <InertButton
+            label="Scan barcode"
+            className="flex h-11 w-7 items-center justify-center md:w-8"
+          >
             <Icon
               name="barcode_scanner"
               className="text-[20px] md:text-[24px]"
             />
           </InertButton>
-          <span className="hidden font-label text-label-sm text-secondary md:inline">
-            {MOCK.request.composerHint}
-          </span>
         </div>
         <button
+          type="submit"
+          aria-label={sendLabel}
+          title={sendLabel}
           disabled={Boolean(busy) || !text.trim()}
-          className="flex items-center gap-space-xs rounded-lg bg-primary-container px-space-sm py-space-sm font-label text-label-md text-on-primary disabled:cursor-not-allowed disabled:opacity-50 md:px-space-md md:text-label-lg"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary-container text-on-primary disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {busy
-            ? "Working…"
-            : error && text
-              ? "Retry request"
-              : "Send Order Request"}
-          <Icon name="arrow_upward" className="text-[18px]" />
+          <Icon name="arrow_forward" className="text-[22px]" />
         </button>
       </div>
     </form>

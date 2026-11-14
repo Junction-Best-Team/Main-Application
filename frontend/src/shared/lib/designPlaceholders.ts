@@ -12,7 +12,6 @@ export const DESIGN_PLACEHOLDERS = {
       "Meal planning, recipe parsing & ingredient restocking for Valio Aimo Wholesale",
     context: "Demo restaurant • Service Context: Tasting Menu Weekend Prep",
     quota: "Account Quota Active (Tier A)",
-    composerHint: "Press Shift+Enter for new line",
     composerPlaceholder:
       "Ask Aimo Assistant or paste recipe ingredients, EAN codes, or meal counts...",
   },

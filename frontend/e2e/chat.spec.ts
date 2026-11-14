@@ -245,6 +245,26 @@ for (const [width, height] of [
       .poll(() => history.evaluate((node) => node.scrollTop))
       .toBeGreaterThan(0);
     const composerBounds = await composer.boundingBox();
+    expect(composerBounds!.height).toBeLessThanOrEqual(48);
+    for (const name of [
+      "Attach file",
+      "Voice input",
+      "Scan barcode",
+      "Send Order Request",
+    ]) {
+      const button = page.getByRole("button", { name, exact: true });
+      const bounds = await button.boundingBox();
+      expect(bounds!.y + bounds!.height / 2).toBeCloseTo(
+        composerBounds!.y + composerBounds!.height / 2,
+        0,
+      );
+      expect(bounds!.x).toBeGreaterThanOrEqual(
+        composerBounds!.x + composerBounds!.width,
+      );
+    }
+    await expect(
+      page.getByText("Send Order Request", { exact: true }),
+    ).toHaveCount(0);
     await history.hover();
     await page.mouse.wheel(0, -100000);
     await expect.poll(() => history.evaluate((node) => node.scrollTop)).toBe(0);
@@ -360,7 +380,7 @@ test("request starts a meal conversation and keeps messages through refresh", as
       name: "I need ingredients for 200 portions of carbonara.",
     })
     .click();
-  await page.getByRole("button", { name: "Send Order Request" }).click();
+  await page.getByLabel("Your meal or purchasing request").press("Enter");
   await expect(page).toHaveURL(new RegExp(`/conversations/${conversationId}$`));
   await expect(
     page.getByRole("heading", { name: "Carbonara", exact: true }),

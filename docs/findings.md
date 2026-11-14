@@ -880,3 +880,8 @@ Add new findings below, under your track heading.
 
 - Date: 2026-11-14. Removed the top demo-ordering banner from the app shell, login and not-found screens, and deleted its unused component. Existing mock-order labels and confirmation controls remain within purchasing screens.
 - Verification: `npm run check --prefix frontend` passed; the complete fixture-backed browser suite passed 43 tests, with two optional backend integration checks skipped. Desktop and short-phone chat screenshots were visually inspected. The initial check caught remaining login/not-found imports during removal; those were removed before the successful rerun.
+
+### F-FE-COMPOSER-001: Single-row chat input and controls
+
+- Date: 2026-11-14. Replaced the multiline composer with a single-line input. Attachment, microphone, barcode and arrow-only send controls stay on the same row; removed the visible send text and newline hint. Accessible send/retry/busy labels, Enter submission and retry recovery remain.
+- Verification: `npm run check --prefix frontend` passed; all 43 fixture-backed browser tests passed, with two optional backend integration checks skipped. Existing scrolling cases now check single-row control alignment at five desktop/mobile sizes; the conversation-creation flow submits with Enter. Desktop and 320px-phone screenshots were visually inspected.
