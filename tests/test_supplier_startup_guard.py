@@ -120,7 +120,8 @@ def test_terraform_deployment_passes_the_mode_and_the_key_to_the_api_and_the_wor
     api_secret = re.search(r'resource "kubernetes_secret_v1" "runtime".*?\n}\n', main, re.S).group(
         0
     )
-    assert '["LLM_API_KEY", "SEARCH_API_KEY"]' in api_secret
+    excluded = re.search(r"!contains\((\[.*?\]), key\)", api_secret, re.S).group(1)
+    assert "VALIO_AIMO_API_KEY" not in excluded  # the API secret carries the supplier key
     worker_secret = re.search(r'resource "kubernetes_secret_v1" "worker".*?\n}\n', main, re.S)
     assert '"VALIO_AIMO_API_KEY"' in worker_secret.group(0)
 
