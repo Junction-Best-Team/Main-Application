@@ -20,7 +20,6 @@ import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from enum import StrEnum
-from ipaddress import ip_address
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
@@ -33,6 +32,11 @@ from aimo.db import Problem, fingerprint
 log = logging.getLogger(__name__)
 
 POLICY_VERSION = "guard-2026-11-14.2"
+# Fixed OpenRouter Decisions endpoint and Jev model; the key is the chat LLM_API_KEY.
+DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions"
+MODEL = "typesafe/jev-1.14"
+TIMEOUT_SECONDS = 5
+MAX_CALLS_PER_TURN = 16
 # TypeSafe runs requests above about 32,000 bytes of text in a slower long-context mode.
 MAX_STATE_BYTES = 28_000
 MAX_RESPONSE_BYTES = 200_000
@@ -495,15 +499,8 @@ def _host(url):
 
 
 def api_key(cfg):
-    """Use GUARDRAIL_API_KEY; reuse LLM_API_KEY only when both endpoints are OpenRouter."""
-    if cfg.guardrail_api_key:
-        return cfg.guardrail_api_key
-    if (
-        _host(cfg.llm_base_url) == "openrouter.ai"
-        and _host(cfg.guardrail_base_url) == "openrouter.ai"
-    ):
-        return cfg.llm_api_key
-    return ""
+    """Jev uses the chat model's OpenRouter key; it is never sent to another host."""
+    return cfg.llm_api_key if _host(cfg.llm_base_url) == "openrouter.ai" else ""
 
 
 class _Noul(BaseModel):
@@ -531,29 +528,11 @@ class DecisionsClient:
     def __init__(self, cfg, client):
         self.client = client
         self.key = api_key(cfg)
-        self.model = cfg.guardrail_model.strip()
-        self.timeout = cfg.guardrail_timeout_seconds
+        self.model = MODEL
+        self.timeout = TIMEOUT_SECONDS
+        self.url = DECISIONS_URL
         if not self.key:
             raise GuardError("not_configured")
-        try:
-            base = urlsplit(cfg.guardrail_base_url)
-            host = base.hostname
-            try:
-                loopback = host == "localhost" or ip_address(host).is_loopback
-            except ValueError:
-                loopback = False
-            valid = (
-                (base.scheme == "https" or (base.scheme == "http" and loopback))
-                and bool(host)
-                and not (base.username or base.password or base.query or base.fragment)
-                and bool(self.model)
-            )
-            _ = base.port
-        except (ValueError, TypeError):
-            valid = False
-        if not valid:
-            raise GuardError("configuration")
-        self.url = cfg.guardrail_base_url.rstrip("/") + "/decisions"
 
     def decide(self, state, questions, deadline):
         if len(encode(state).encode()) > MAX_STATE_BYTES:
@@ -778,7 +757,7 @@ class Guardrails:
         self.turn_id = turn_id
         self.messages = messages
         self.deadline = deadline
-        self.max_calls = cfg.guardrail_max_calls_per_turn
+        self.max_calls = MAX_CALLS_PER_TURN
         self.calls = 0
         self.records: list[GuardResult] = []
         self.product_status: dict[str, str] = {}

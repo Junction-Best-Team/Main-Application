@@ -29,7 +29,7 @@ provider responses produce safe errors. Protocol references:
 
 ## Behavior and controls
 
-Semantic guardrails (TypeSafe Jev, shadow/enforce, off by default) wrap the runner at
+Semantic guardrails (TypeSafe Jev, enforced by default; shadow/off available) wrap the runner at
 four boundaries; deterministic controls below remain authoritative. See
 [guardrails](guardrails.md).
 
