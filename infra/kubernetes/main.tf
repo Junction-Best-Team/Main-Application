@@ -59,15 +59,17 @@ resource "kubernetes_config_map_v1" "runtime" {
     namespace = kubernetes_namespace_v1.aimo.metadata[0].name
   }
   data = {
-    LLM_BASE_URL        = var.llm_base_url
-    LLM_MODEL           = var.llm_model
-    LLM_TIMEOUT_SECONDS = "20"
-    LLM_MAX_TOOL_ROUNDS = "20"
-    PUBLIC_BASE_URL     = "https://${var.hostname}"
-    SECURE_COOKIES      = "true"
-    UPSTREAM_MODE       = var.upstream_mode
-    VALIO_AIMO_BASE_URL = "https://junction26.valioaimo.fi"
-    EMBEDDING_BACKEND   = "sentence_transformers"
+    LLM_BASE_URL              = var.llm_base_url
+    LLM_MODEL                 = var.llm_model
+    LLM_TIMEOUT_SECONDS       = "45"
+    LLM_REASONING_EFFORT      = "low"
+    LLM_MAX_COMPLETION_TOKENS = "8192"
+    LLM_MAX_TOOL_ROUNDS       = "20"
+    PUBLIC_BASE_URL           = "https://${var.hostname}"
+    SECURE_COOKIES            = "true"
+    UPSTREAM_MODE             = var.upstream_mode
+    VALIO_AIMO_BASE_URL       = "https://junction26.valioaimo.fi"
+    EMBEDDING_BACKEND         = "sentence_transformers"
     # Model name/revision use the application's shared image/runtime pin.
     HF_HUB_OFFLINE         = "1"
     TOKENIZERS_PARALLELISM = "false"

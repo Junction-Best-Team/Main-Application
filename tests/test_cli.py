@@ -276,6 +276,7 @@ def test_main_serve_runs_uvicorn_on_all_interfaces(monkeypatch):
         "host": "0.0.0.0",
         "port": 8000,
         "forwarded_allow_ips": settings().forwarded_allow_ips,
+        "access_log": False,
     }
 
 

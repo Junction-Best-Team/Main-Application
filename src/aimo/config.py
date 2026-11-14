@@ -44,8 +44,10 @@ class Settings(BaseSettings):
     # Conversational provider configuration is independent of local embeddings.
     llm_api_key: str = ""
     llm_base_url: str = "https://openrouter.ai/api/v1"
-    llm_model: str = "openai/gpt-4.1-mini"
-    llm_timeout_seconds: float = Field(default=20, gt=0, le=30)
+    llm_model: str = "anthropic/claude-sonnet-5.5"
+    llm_timeout_seconds: float = Field(default=45, gt=0, le=60)
+    llm_reasoning_effort: Literal["", "low", "medium", "high"] = "low"
+    llm_max_completion_tokens: int = Field(default=8192, ge=1024, le=32768)
     llm_max_tool_rounds: int = Field(default=20, ge=1, le=24)
     # Semantic guardrails (TypeSafe Jev through OpenRouter, using LLM_API_KEY): enforce, shadow
     # (record only) or off. Deterministic purchasing controls always apply. See docs/guardrails.md.
