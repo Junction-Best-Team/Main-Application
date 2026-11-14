@@ -1,6 +1,6 @@
 /* THROWAWAY prototype stylesheet. Base rules below are copied verbatim from
    frontend/src/style.css (the real app) for visual parity. Prototype-only
-   additions (variant switcher, modal, sticky bar, inline card) are appended
+   additions (demo controls, modal, sticky bar, inline card) are appended
    at the bottom under PROTOTYPE ADDITIONS. See README.md. */
 :root {
   font-family: "Trebuchet MS", Arial, sans-serif;
@@ -1014,9 +1014,8 @@ textarea:focus-visible {
 
 /* ===================== PROTOTYPE ADDITIONS =====================
    Everything below exists only for this throwaway prototype suite:
-   the always-visible flag, the floating variant switcher, and the
-   three confirmation chrome treatments (sticky bar / modal / inline
-   card). None of this ships to the real app. */
+   the always-visible flag, the floating demo controls, and the sticky
+   confirmation bar. None of this ships to the real app. */
 
 body {
   /* Room for the fixed variant bar (and, on basket pages, the sticky
@@ -1034,7 +1033,7 @@ body {
   padding: 6px 12px;
 }
 
-.variant-bar {
+.demo-bar {
   position: fixed;
   left: 0;
   right: 0;
@@ -1049,43 +1048,23 @@ body {
   padding: 10px 24px;
   box-shadow: 0 -4px 14px rgba(0, 0, 0, 0.18);
 }
-.variant-bar-group {
+.demo-bar-group {
   display: flex;
   align-items: center;
   gap: 10px;
 }
-.variant-bar-label {
+.demo-bar-label {
   font-size: 0.75rem;
   color: #cde4ed;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
-.variant-bar-buttons {
-  display: flex;
-  gap: 6px;
-}
-.variant-pill {
-  background: transparent;
-  color: #fff;
-  border: 1px solid #47768d;
-  border-radius: 20px;
-  padding: 6px 14px;
-  font-size: 0.82rem;
-  font-weight: 700;
-}
-.variant-pill:hover:enabled {
-  background: #0b4f6c;
-}
-.variant-pill.active {
-  background: #00a1a6;
-  border-color: #00a1a6;
-}
-.variant-bar select {
+.demo-bar select {
   border-radius: 6px;
   padding: 6px 10px;
   font-size: 0.82rem;
 }
-.variant-bar-reset {
+.demo-bar-reset {
   margin-left: auto;
   background: transparent;
   color: #cde4ed;
@@ -1093,7 +1072,7 @@ body {
   font-size: 0.8rem;
 }
 
-/* Variant A — sticky confirmation bar on the basket page. */
+/* Sticky confirmation bar on the basket page. */
 .sticky-bar-placeholder {
   margin-bottom: 0;
 }
@@ -1138,106 +1117,12 @@ body {
   margin: 0;
 }
 
-/* Variant B — modal that restates exact terms before confirm. */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(8, 28, 38, 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  z-index: 70;
-}
-.modal-dialog {
-  background: #fff;
-  border-radius: 12px;
-  padding: 32px;
-  max-width: 480px;
-  width: 100%;
-  max-height: 85vh;
-  overflow: auto;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
-}
-.modal-terms {
-  margin: 20px 0;
-}
-.modal-terms > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 8px 0;
-  border-bottom: 1px solid #e7edf1;
-  font-size: 0.9rem;
-}
-.modal-terms dt {
-  color: #526b78;
-}
-.modal-terms dd {
-  margin: 0;
-  text-align: right;
-}
-.modal-total {
-  font-size: 1.4rem;
-  font-weight: 700;
-  color: #12384b;
-}
-.modal-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 20px;
-}
-.modal-actions button.full {
-  margin-top: 0;
-}
-
-/* Variant C — confirmation inline on the proposal card in the thread. */
-.inline-proposal-card {
-  background: #fff;
-  border: 1px solid #d1dfe6;
-  border-left: 4px solid #005b79;
-  padding: 20px;
-  margin-top: 16px;
-  max-width: 620px;
-}
-.inline-proposal-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 6px;
-}
-.inline-proposal-head strong {
-  font-size: 1.4rem;
-}
-.inline-proposal-actions {
-  display: flex;
-  gap: 12px;
-  margin-top: 14px;
-}
-.basket-link.secondary {
-  display: inline-block;
-  margin-top: 14px;
-  padding: 8px 12px;
-  background: transparent;
-  border: 1px solid #8aa4b1;
-  color: #00647e;
-  font-weight: 700;
-  font-size: 0.82rem;
-}
 button.text-button.inline {
   display: inline;
   margin: 0;
   padding: 0;
   font-weight: inherit;
   text-decoration: underline;
-}
-.inline-variant-note {
-  font-size: 0.88rem;
-  color: #526b78;
-  padding-bottom: 14px;
-  border-bottom: 1px solid #d1dfe6;
 }
 @media (max-width: 650px) {
   .sticky-confirm-bar {
@@ -1248,10 +1133,10 @@ button.text-button.inline {
     width: 100%;
     margin-left: 0;
   }
-  .variant-bar {
+  .demo-bar {
     padding: 8px 14px;
   }
-  .variant-bar-reset {
+  .demo-bar-reset {
     margin-left: 0;
   }
   body {

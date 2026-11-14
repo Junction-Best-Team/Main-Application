@@ -1,4 +1,4 @@
-# [PROTOTYPE] Chat purchasing confirmation UI variants
+# [PROTOTYPE] Chat purchasing UI
 
 **Throwaway.** Built for [#26](https://github.com/Junction-Best-Team/Main-Application/issues/26),
 [#27](https://github.com/Junction-Best-Team/Main-Application/issues/27) and
@@ -17,38 +17,16 @@ npm run dev
 Open the printed local URL (default `http://127.0.0.1:5183`). Sign in with any username/password
 (try `baduser` to see the error state). Use the floating bar pinned to the bottom of every page to:
 
-- Switch the **confirmation variant** — `sticky`, `modal`, `inline` — also settable directly via
-  `?variant=sticky|modal|inline` in the URL. The variant persists across navigation.
 - Switch the **scenario** to play the error/empty/loading/reconnect states without touching code:
   default, SSE reconnecting, next send fails (one-shot, then retries), empty purchase list, slow
   network.
 - **Reset demo data** back to the initial fixtures.
 
-## What's the same in all three variants
+## Confirmation
 
-Everything except the confirmation UI, per the [#25 parity inventory](https://github.com/Junction-Best-Team/Main-Application/issues/25):
-
-1. Login + session chrome
-2. Conversation list + new/resume chat
-3. Transcript (text + meal plan + basket link) + busy + send/retry
-4. Reconnect messaging (faked via the scenario switch, no real SSE)
-5. Purchase list
-6. Basket detail with exact terms + confirm/reject + terms-changed recovery
-7. Legacy `/approvals/:id` still opens historical detail (try the "superseded" purchase in the list)
-8. Error / empty / loading states
-
-## What differs — the one intentional difference
-
-- **`sticky`** (#26): the basket page's decision panel is replaced by a bar fixed to the bottom of
-  the viewport, restating the total and Confirm/Reject while you scroll the purchase sheet.
-- **`modal`** (#27): the basket page shows a plain summary; a **Review & confirm…** button opens a
-  modal dialog that restates the exact terms (destination, delivery date, revision, total) before
-  Confirm/Reject.
-- **`inline`** (#28): the proposal card inside the chat **thread** itself carries Confirm/Reject.
-  Basket detail still has the same action for parity with the checklist above, labelled as the
-  secondary path, with a link back to the conversation.
-
-In every variant, confirm/reject is the same authenticated, revision-bound action
+There is a single confirmation path: the sticky decision panel on the basket page (`/purchases/:id`),
+pinned to the bottom of the viewport while you scroll, restating the total with Confirm/Reject. The chat
+thread only links to the basket. Confirm/reject is an authenticated, revision-bound action
 (`store.confirm(proposalId, revision)` / `store.reject(...)`) — chat text never triggers it. See
 `src/confirmFlow.ts`.
 
@@ -56,8 +34,7 @@ In every variant, confirm/reject is the same authenticated, revision-bound actio
 
 Open the **Weekly oat milk restock** conversation (or `/purchases/prop-conflict` directly) and
 confirm it. The fake backend simulates a race: the first confirm comes back "terms changed during
-verification", the total moves, and you must confirm again — in whichever variant's chrome you're
-currently viewing.
+verification", the total moves, and you must confirm again — in the sticky panel.
 
 ## Parity baseline and known simplifications
 
@@ -77,5 +54,13 @@ deliberate simplifications for a throwaway prototype (see `src/store.ts`):
 
 Entirely self-contained under this folder (own `package.json`/lockfile/`tsconfig.json`), so it
 can't affect the real `frontend/` build, lint, or tests. See `src/App.tsx` for routing, `src/store.ts`
-for the fake backend, `src/ConfirmPanels.tsx` + `src/InlineThreadCard.tsx` for the three confirmation
-chrome variants, and `src/fixtures.ts` for the carbonara-style meal plan + proposal fixtures.
+for the fake backend, `src/ConfirmPanels.tsx` for the sticky confirmation panel, and `src/fixtures.ts` for the carbonara-style meal plan + proposal fixtures.
+
+## E2E
+
+`e2e/sticky-confirm.spec.ts` covers the sticky confirm/reject flow. From `frontend/` (reuses its
+Playwright install; starts its own dev server on port 5283):
+
+```sh
+npx playwright test -c prototypes/chat-ui/playwright.config.ts
+```

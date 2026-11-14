@@ -2,8 +2,6 @@
 // generated frontend/src/api-types.ts, just enough to drive fake JSON.
 // Not generated, not authoritative. See README.md.
 
-export type Variant = "sticky" | "modal" | "inline";
-
 export type Session = {
   buyer_id: string;
   username: string;

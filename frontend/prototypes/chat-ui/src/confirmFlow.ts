@@ -2,12 +2,9 @@ import { useState } from "react";
 import { store } from "./store";
 import type { Proposal } from "./types";
 
-// Shared confirm/reject logic used by every variant's confirmation chrome,
-// in both places it can appear (basket detail, and — for the inline
-// variant — the proposal card inside the chat thread). Only the rendered
-// chrome differs between sticky/modal/inline; the trust boundary here does
-// not: an authenticated, revision-bound action, never something chat text
-// can trigger on its own.
+// Confirm/reject logic for the sticky decision panel. The trust boundary: an
+// authenticated, revision-bound action, never something chat text can
+// trigger on its own.
 export function useConfirmFlow(onUpdate: (p: Proposal) => void) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
