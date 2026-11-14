@@ -1,18 +1,29 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import {
-  Icon,
-  InertButton,
-  InertInput,
-} from "../../../shared/components/DesignPrimitives";
+import { Icon } from "../../../shared/components/DesignPrimitives";
 import { DESIGN_PLACEHOLDERS as MOCK } from "../../../shared/lib/designPlaceholders";
 import { useAuth } from "../../auth/useAuth";
 import { useAcceptedOrders } from "../hooks/useAcceptedOrders";
 import { usePurchaseDetail } from "../hooks/usePurchaseDetail";
 import { isAccepted } from "../model/acceptedOrders";
+import {
+  DEFAULT_PAST_ORDER_FILTERS,
+  filterAndSortPastOrders,
+  PAST_ORDER_PERIODS,
+  PAST_ORDER_SORTS,
+  PAST_ORDER_STATUSES,
+  type PastOrderFilters,
+  type PastOrderPeriod,
+  type PastOrderSort,
+  type PastOrderStatus,
+} from "../model/pastOrderFilters";
 import { PurchaseList } from "../components/PurchaseList";
 import { PurchaseReview } from "../components/PurchaseReview";
 import { ErrorMessage } from "../../../shared/components/ErrorMessage";
+
+const filterSelectClass =
+  "rounded-lg border-0 bg-surface-pure px-space-md py-3 font-label text-label-md text-on-surface shadow-level-2";
+
 export function PurchasesPage() {
   const { proposalId } = useParams();
   const { session } = useAuth();
@@ -26,13 +37,23 @@ export function PurchasesPage() {
   } = useAcceptedOrders();
   const detail = usePurchaseDetail({ proposalId });
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [filters, setFilters] = useState<PastOrderFilters>(
+    DEFAULT_PAST_ORDER_FILTERS,
+  );
   const scrolled = useRef<string | null>(null);
-  const orders =
-    detail.p &&
-    isAccepted(detail.p) &&
-    !fetched.some((p) => p.proposal_id === detail.p?.proposal_id)
-      ? [detail.p, ...fetched]
-      : fetched;
+  const orders = useMemo(
+    () =>
+      detail.p &&
+      isAccepted(detail.p) &&
+      !fetched.some((p) => p.proposal_id === detail.p?.proposal_id)
+        ? [detail.p, ...fetched]
+        : fetched,
+    [detail.p, fetched],
+  );
+  const visible = useMemo(
+    () => filterAndSortPastOrders(orders, filters),
+    [orders, filters],
+  );
   const targetAccepted = detail.p && isAccepted(detail.p);
   useEffect(() => {
     if (proposalId && targetAccepted)
@@ -47,6 +68,11 @@ export function PurchasesPage() {
       scrolled.current = proposalId;
     }
   }, [proposalId, targetAccepted, expanded]);
+  // Keep loading accepted pages while filters leave the visible list sparse.
+  useEffect(() => {
+    if (loading || nextOffset === null || visible.length >= 5) return;
+    void showMore();
+  }, [loading, nextOffset, visible.length, showMore, filters]);
   const toggle = (id: string) =>
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -68,6 +94,9 @@ export function PurchasesPage() {
       />
     );
   const m = MOCK.pastOrders;
+  const emptyLoaded = !loading && !error && orders.length === 0;
+  const emptyFiltered =
+    !loading && !error && orders.length > 0 && visible.length === 0;
   return (
     <main>
       <section className="border-b border-border-subtle bg-surface-pure px-margin-sm py-space-lg md:px-margin md:py-space-xl">
@@ -103,22 +132,78 @@ export function PurchasesPage() {
               name="search"
               className="absolute left-space-md top-1/2 -translate-y-1/2 text-secondary"
             />
-            <InertInput
-              label={m.searchLabel}
+            <input
+              type="search"
+              value={filters.query}
+              onChange={(e) =>
+                setFilters((prev) => ({ ...prev, query: e.target.value }))
+              }
+              aria-label={m.searchLabel}
               placeholder={m.searchPlaceholder}
               className="w-full rounded-lg border-0 bg-surface-pure py-3 pl-11 pr-space-md font-body text-body-md text-on-surface shadow-level-2"
             />
           </div>
           <div className="flex flex-wrap items-center gap-space-sm">
-            {[m.periodLabel, m.sortLabel, m.statusLabel].map((label) => (
-              <InertButton
-                key={label}
-                label={label}
-                className="rounded-lg !bg-surface-pure px-space-md py-3 font-label text-label-md text-on-surface shadow-level-2"
-              >
-                {label}
-              </InertButton>
-            ))}
+            <label className="sr-only" htmlFor="past-orders-period">
+              Period
+            </label>
+            <select
+              id="past-orders-period"
+              value={filters.period}
+              onChange={(e) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  period: e.target.value as PastOrderPeriod,
+                }))
+              }
+              className={filterSelectClass}
+            >
+              {PAST_ORDER_PERIODS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <label className="sr-only" htmlFor="past-orders-sort">
+              Sort
+            </label>
+            <select
+              id="past-orders-sort"
+              value={filters.sort}
+              onChange={(e) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  sort: e.target.value as PastOrderSort,
+                }))
+              }
+              className={filterSelectClass}
+            >
+              {PAST_ORDER_SORTS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <label className="sr-only" htmlFor="past-orders-status">
+              Status
+            </label>
+            <select
+              id="past-orders-status"
+              value={filters.status}
+              onChange={(e) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  status: e.target.value as PastOrderStatus,
+                }))
+              }
+              className={filterSelectClass}
+            >
+              {PAST_ORDER_STATUSES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </section>
@@ -133,7 +218,7 @@ export function PurchasesPage() {
               {error}
             </div>
           )}
-          <PurchaseList orders={orders} expanded={expanded} toggle={toggle} />
+          <PurchaseList orders={visible} expanded={expanded} toggle={toggle} />
           {loading && (
             <p
               role="status"
@@ -142,13 +227,23 @@ export function PurchasesPage() {
               Loading past orders…
             </p>
           )}
-          {!loading && !error && orders.length === 0 && (
+          {emptyLoaded && (
             <section className="rounded-xl bg-surface-pure p-space-xl text-center">
               <h2 className="m-0 font-headline text-headline-sm text-primary">
                 No past orders yet
               </h2>
               <p className="text-secondary">
                 Orders you approve in a request will appear here.
+              </p>
+            </section>
+          )}
+          {emptyFiltered && (
+            <section className="rounded-xl bg-surface-pure p-space-xl text-center">
+              <h2 className="m-0 font-headline text-headline-sm text-primary">
+                No matching past orders
+              </h2>
+              <p className="text-secondary">
+                Try a different search, period, or status filter.
               </p>
             </section>
           )}

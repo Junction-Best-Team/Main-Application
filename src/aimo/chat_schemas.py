@@ -9,6 +9,9 @@ from pydantic import Field, model_validator
 from aimo.image_schemas import RecipeImage
 from aimo.schemas import MAX_BASKET_LINES, Constraint, Model, ProposalResponse, QuantityCalculation
 
+# MEA-005: the newest refused product choices kept per ingredient (every append path trims to it).
+MAX_REJECTED = 100
+
 
 class Ingredient(Model):
     name: str = Field(min_length=1, max_length=240)
@@ -30,7 +33,7 @@ class Ingredient(Model):
     )
     product_fingerprint: str | None = None
     conversion: QuantityCalculation | None = None
-    rejected: list[dict[str, str]] = Field(default_factory=list, max_length=100)
+    rejected: list[dict[str, str]] = Field(default_factory=list, max_length=MAX_REJECTED)
 
 
 class MealPlan(Model):

@@ -17,7 +17,11 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from test_recipes import import_fixture, meal_products  # noqa: F401  (fixture re-use, person 2's)
+from test_recipes import (  # noqa: F401  (fixture re-use, person 2's)
+    clean_recipes,
+    import_fixture,
+    meal_products,
+)
 
 from aimo import agent as runner
 from aimo.agent_provider import AssistantReply, ChatProvider
@@ -142,6 +146,29 @@ def test_tct002_each_tool_declares_one_output_model(name):
     spec = registry()[name]
     declared = {f.name for f in dataclasses.fields(spec)} & {"response", "output", "result"}
     assert declared, name + " declares no output model"
+    # the field must hold a model, not its default None: ToolSession.invoke checks every result
+    # against it, so an undeclared result would pass unchecked
+    assert any(getattr(spec, field) is not None for field in declared), name + " has no result model"
+
+
+def test_tct002_the_image_tool_result_model_matches_what_the_tool_returns():
+    from pydantic import ValidationError
+
+    spec = registry()["generate_recipe_image"]
+    image = {
+        "url": "https://res.cloudinary.com/demo/image/upload/v1/spaghetti.png",
+        "width": 1024,
+        "height": 768,
+    }
+    assert spec.response.model_validate({"image": image, "illustration_only": True})
+    for bad in (
+        {"image": image, "illustration_only": False},  # an illustration is never evidence
+        {"image": image | {"url": "http://example.test/x.png"}, "illustration_only": True},
+        {"image": image},
+        {"image": image, "illustration_only": True, "prompt": "leaked prompt"},
+    ):
+        with pytest.raises(ValidationError):
+            spec.response.model_validate(bad)
 
 
 # ------------------------------------------------------------- TCT-003 (Approved): input errors
@@ -335,7 +362,10 @@ def test_tct003_out_of_range_delivery_date_is_not_reported_as_retry_later(sessio
 
 @pytest.fixture
 def recipe_data(tmp_path, meal_products, actor):  # noqa: F811
-    # Not truncated here: `meal_products` has already stored its product evidence.
+    # The recipe tables are emptied before every test by the autouse `clean_recipes` imported
+    # above (like every other recipe test module), so this test never sees recipes another test
+    # or an earlier run left behind. Not truncated here: `meal_products` has already stored its
+    # product evidence.
     *_, versions = import_fixture(tmp_path)
     return versions
 
@@ -579,7 +609,9 @@ def test_tct005_recipe_tool_results_carry_units_basis_and_attribution(actor, ser
     session = ToolSession(actor, service)
     found = call(session, "search_recipes", {"query": "carbonara"})
     assert found["note"] and found["rerank_status"]
-    recipe = found["recipes"][0]
+    assert found["recipes"], "search found no recipe although one was imported for this test"
+    imported = recipe_data[0]["recipe_id"]
+    recipe = next(r for r in found["recipes"] if r["recipe_id"] == imported)
     reference = {"recipe_id": recipe["recipe_id"], "version": recipe["version"]}
     detail = call(session, "get_recipe", reference)
     assert detail["version"] and detail["source"] and detail["attribution"] and detail["license"]

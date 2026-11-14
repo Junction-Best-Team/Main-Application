@@ -31,7 +31,7 @@ src/
     auth/                        Session provider, login, route guard
     chat/                        Conversations, messages, meal plans, SSE
     home/pages/                  Home with real recent orders and placeholder schedules
-    preferences/                 Assistant preferences (saved memory) at /settings/preferences
+    preferences/                 Memory (saved preferences) at /settings/preferences
     purchases/                   History, exact-revision review and decisions
       api/                       Typed endpoint calls
       components/                Props-driven feature UI
