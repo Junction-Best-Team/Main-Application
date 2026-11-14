@@ -307,7 +307,7 @@ def run_turn(
                             {"tool": visible_name or "unavailable", "outcome": exc.code}
                         )
                         error = {
-                            "error": {"code": exc.code, "message": exc.message},
+                            "error": exc.body(),
                             "purchase_authorized": False,
                         }
                         outputs.append((call.id, None, error))

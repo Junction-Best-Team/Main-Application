@@ -93,7 +93,7 @@ def install(app: FastAPI) -> None:
     async def problem_handler(request: Request, exc: Problem):
         event("http.problem", error_code=exc.code, status=exc.status, retry_after=exc.retry_after)
         return JSONResponse(
-            {"error": exc.body() if hasattr(exc, "body") else envelope(exc.code, exc.message)},
+            {"error": exc.body()},
             status_code=exc.status,
             headers={"Retry-After": str(exc.retry_after)} if exc.retry_after is not None else None,
         )

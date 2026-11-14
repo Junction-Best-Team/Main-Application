@@ -10,6 +10,7 @@ from uuid import UUID
 from pydantic import ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 
 from aimo import memory
+from aimo.basket_errors import mismatch_problem, required_basket
 from aimo.chat_schemas import AgentTurn, MealPlan
 from aimo.db import Problem, fingerprint
 from aimo.memory_schemas import MemoryChange, MemoryToolSearch
@@ -615,7 +616,7 @@ class ToolSession:
                 "Match every ingredient before preparing a meal basket.",
                 422,
             )
-        contributions, offered = {}, {}
+        contributions, offered, rows = {}, {}, []
         for item in self.plan.ingredients:
             if self.plan.recipe_plan_id and item.status != "matched":
                 raise Problem(
@@ -624,16 +625,23 @@ class ToolSession:
             unit = item.purchase_unit if self.plan.recipe_plan_id else item.unit
             amount = item.purchase_amount if self.plan.recipe_plan_id else item.amount
             contributions.setdefault(item.product_id, []).append((Decimal(amount), unit))
+            rows.append(
+                {"product_id": item.product_id, "amount": amount, "unit": unit, "name": item.name}
+            )
         for line in request.lines:
             offered.setdefault(line.product_id, []).append((line.amount, line.unit))
         required = combine_by_product(contributions, self.products)
-        actual = combine_by_product(offered, self.products)
+        try:
+            actual = combine_by_product(offered, self.products)
+        except Problem as exc:  # the request's own units cannot be combined: say what to send
+            if exc.code != "UNIT_CONVERSION_UNKNOWN":
+                raise
+            raise mismatch_problem(
+                required_basket(rows, self.products), request.lines, self.products
+            ) from None
         if required != actual:
-            raise Problem(
-                "MEAL_BASKET_MISMATCH",
-                "Include exactly the published ingredient totals and units. "
-                "Combine duplicate SKUs; purchasing tools perform pack rounding.",
-                422,
+            raise mismatch_problem(
+                required_basket(rows, self.products), request.lines, self.products
             )
         merged = []
         for product_id, (amount, unit) in actual.items():

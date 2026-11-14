@@ -361,7 +361,7 @@ Checks that the quantity maths is exact: purchased amounts are whole multiples o
 Strict xfail:
 - `test_variable_weight_line_is_flagged_but_does_not_block` stands for BAS-007 (owner decision: warn only). Today a variable-weight line (12 kg of product `460675`) still makes the outcome `needs_resolution`, because `purchases.py` and `recipes.py` still block it (implementation deferred, ISS-JCT-001). The flag half of the test already holds; the "must not block" half fails.
 
-#### `tests/test_basket_contract.py` (JNP3-BAS-001 to BAS-005, plus BAS-008 shortfall) - 32 passed, 2 xfailed
+#### `tests/test_basket_contract.py` (JNP3-BAS-001 to BAS-005, plus BAS-008 shortfall) - 33 passed, 1 xfailed
 
 Checks how a basket is built from needs: whole packs, one line per product, unit conversion from catalog evidence only, excess per line, and exact decimal money. It does not repeat what `test_arithmetic_contract.py` already proves.
 
@@ -376,9 +376,8 @@ Checks how a basket is built from needs: whole packs, one line per product, unit
 | Third-of-a-unit deposit | Deposit worth 1/3 of a unit at 0.165 EUR | Charged 0.06, equal to the exact fraction rounded half up | Rounding before dividing |
 | Deposit text and retry (2) | Whole-number deposits; a repeated prepare with the same key | Text matches the old calculation (it feeds the fingerprint); the retry returns the saved proposal without calling the supplier or recomputing money | Changing the fingerprint of existing proposals |
 
-Strict xfails:
+Strict xfail:
 - `test_combined_line_keeps_each_contributing_ingredient` (BAS-002): through the agent tool `prepare_order`, the snapshot line has no `contributions` (which ingredients it serves). The backend model supports them (the free-form test in `test_contributions_contract.py` passes), but `ToolSession.prepare` in `agent_tools.py` (person 2) does not attach them yet.
-- `test_one_product_in_two_units_can_be_prepared` (BAS-002): one product needed in two units (5 L plus 1 KI) can never be prepared, because the mismatch check wants a line per unit and the schema allows one line per product. Every basket shape is rejected.
 
 #### `tests/test_basket_errors.py` (Q-44 / BAS-009) - 23 passed, 0 xfailed
 
@@ -405,7 +404,7 @@ Checks that a basket line names the ingredients it serves, with each ingredient'
 Strict xfail:
 - `test_gap_meal_plan_accepts_a_rejected_selection_on_an_ingredient` (MEA-005 "selections"): the stored plan ingredient now carries `rejected`, but `chat_schemas.Ingredient` forbids extra fields, so `MealPlan.model_validate` raises `ValidationError`. It needs the field added by person 1.
 
-#### `tests/test_draft_contract.py` (MEA-011, MEA-012, MEA-013, SUP-007, BAS-008, BAS-009, PRP-006 line bug) - 8 passed, 7 xfailed
+#### `tests/test_draft_contract.py` (MEA-011, MEA-012, MEA-013, SUP-007, BAS-008, BAS-009, PRP-006 line bug) - 12 passed, 3 xfailed
 
 Requirements that are still "Draft" or newly approved. Each test asserts the wanted behaviour. Some now pass because the feature arrived (supplier batching, shortfall, line bug, 1000 lines/ids); the rest are still gaps.
 
@@ -419,12 +418,11 @@ Requirements that are still "Draft" or newly approved. Each test asserts the wan
 | No shortfall when covered | Stock is enough | No `shortfall` key | Changing old fingerprints |
 | Material cap | Constants | `MAX_BASKET_LINES == MAX_LOOKUP_IDS == MAX_MATERIALS == 1000` | Limits drifting apart |
 
-Strict xfails (7):
+Strict xfails (3):
 - `test_absurd_quantity_per_portion_is_rejected` (MEA-011): `scaled_plan` has no maximum per portion (the value is pending), so 9,999,999 kg per serving x 10,000 portions is accepted.
 - `test_scaled_quantity_is_rounded_up_to_four_decimals` (MEA-012, 3 cases): a quantity needing more than 4 decimals is left unresolved (`None`), not rounded up (3.3334, 6.6667, 0.0334 expected).
 - `test_meal_plan_accepts_one_thousand_ingredients` (MEA-013): `MealPlan.ingredients` in `chat_schemas.py` (person 1) is still capped at 30.
 - `test_recipe_with_one_thousand_ingredients_can_be_scaled` (MEA-013): `Recipe` (100) and `scaled_plan` (30) in the recipe files (person 2) are not raised.
-- `test_product_requested_in_two_units_becomes_one_line_in_the_priority_unit` (BAS-009): the same product in KG and pieces is rejected before it reaches the service instead of being combined into one KG line (the combine helper exists, see `test_unit_priority.py`, but the tool path does not use it).
 
 #### `tests/test_matching_contract.py` (MEA-014) - 14 passed, 0 xfailed
 
@@ -696,3 +694,9 @@ Every row-locking statement across a prepare, a decision, a confirmation and a c
 
 #### `tests/test_unfinished_cleanup_contract.py` (CNF-021): 1 passed, 1 strict xfail
 A guard that fails if a new table starts referencing `proposals` or `proposal_revisions` without the cleanup design covering it (and shows history deletes are rejected today). Strict xfail: the proposed `purge_unfinished_proposals`: nothing removed inside the 30-day period, afterwards unfinished proposals and approvals disappear with their rows and one `purged_proposals` row each, while an ordered proposal, its audit history and the immutable orders stay. Nothing is built yet.
+
+#### Q-44 / BAS-009 wiring (`tests/test_agent.py`, `tests/test_basket_contract.py`)
+
+- `test_q44_basket_mismatch_says_exactly_what_to_send`: the plan needs 20.5 KG of one product, the line says 20 KG; `prepare_order` returns `MEAL_BASKET_MISMATCH` whose message names "pasta 20.5 KG" and whose `details` list the required lines, the missing and unexpected ones and the wrong amount or unit; no prepare call is made.
+- `test_q44_model_sees_the_details_in_the_tool_error`: the same refusal reaches the model through `agent.run_turn` with `error.details`.
+- `test_one_product_in_two_units_can_be_prepared` (BAS-002): milk 5 L plus 1 KI is prepared as one 25 L line.

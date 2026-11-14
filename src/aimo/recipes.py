@@ -6,6 +6,7 @@ from math import ceil
 from uuid import uuid4
 
 from aimo import recipe_search
+from aimo.basket_errors import mismatch_problem, required_basket, unit_conversion_problem
 from aimo.catalog import combine_in_priority_unit, quantity
 from aimo.chat_schemas import MealPlan
 from aimo.db import Problem, connection, fingerprint, js
@@ -352,12 +353,13 @@ def combine_by_product(contributions, products):
             else {"status": "unknown", "reason": "The product facts are not loaded."}
         )
         if result["status"] != "derived":
-            raise Problem(
-                "UNIT_CONVERSION_UNKNOWN",
-                f"Product {product_id} is needed in {', '.join(sorted(units))}: "
-                f"{result['reason']} Order it in one unit.",
-                422,
-            )
+            entry = {
+                "product_id": product_id,
+                "amount": None,
+                "unit": None,
+                "reason": result["reason"],
+            }
+            raise unit_conversion_problem(product_id, entry, needed=items)
         combined[product_id] = (Decimal(result["amount"]), result["unit"])
     return combined
 
@@ -399,10 +401,18 @@ def validate_basket(c, identity, request):
             422,
         )
     products = load_products(c, [i["product_id"] for i in plan["ingredients"]])
-    contributions, offered = {}, {}
+    contributions, offered, rows = {}, {}, []
     for item in plan["ingredients"]:
         if fingerprint(products.get(item["product_id"])) != item["product_fingerprint"]:
             raise Problem("RECIPE_PRODUCT_CHANGED", "Catalog facts changed; rematch ingredients.")
+        rows.append(
+            {
+                "product_id": item["product_id"],
+                "amount": item["purchase_amount"],
+                "unit": item["purchase_unit"],
+                "name": item.get("name"),
+            }
+        )
         contributions.setdefault(item["product_id"], []).append(
             (Decimal(item["purchase_amount"]), item["purchase_unit"])
         )
@@ -411,11 +421,7 @@ def validate_basket(c, identity, request):
     required = combine_by_product(contributions, products)
     actual = combine_by_product(offered, products)
     if required != actual:
-        raise Problem(
-            "MEAL_BASKET_MISMATCH",
-            "Basket must cover exactly the saved recipe ingredient quantities.",
-            422,
-        )
+        raise mismatch_problem(required_basket(rows, products), request.lines, products)
     purchase_count_evidence(c, identity, request, products)
     return previous
 
