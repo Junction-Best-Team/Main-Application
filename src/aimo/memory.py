@@ -62,6 +62,13 @@ def browser_actor(identity):
 
 def chat_actor(agent_identity):
     """Trusted context set by conversations.execute_turn; never from tool arguments."""
+    if agent_identity.get("_memory_unavailable"):
+        raise Problem(
+            "MEMORY_AUTHOR_MISMATCH",
+            "Another user sent this message, so saved memory is not used in this retry. "
+            "The sender can retry it, or you can send your own message.",
+            403,
+        )
     fields = ("_requested_by", "_turn_id", "_attempt", "_conversation_id")
     if any(not agent_identity.get(f) for f in fields):
         raise Problem(
@@ -105,6 +112,11 @@ def _fence(c, actor):
         or turn["requested_by"] != actor.identity_id
     ):
         raise Problem("TURN_REPLACED", "This response was replaced; reload the conversation.")
+    if turn["submitted_by"] != actor.identity_id:
+        # Defence in depth: only the message's author owns what it asks to remember.
+        raise Problem(
+            "MEMORY_AUTHOR_MISMATCH", "Only the sender of this message can change memory.", 403
+        )
     message = c.execute(
         "SELECT id FROM conversation_messages WHERE turn_id=%s AND role='user'", (turn["id"],)
     ).fetchone()
@@ -304,6 +316,44 @@ def _result(status, memory_id, revision, row=None, replayed=False):
     }
 
 
+def _replayed(c, actor, key, digest):
+    """The saved result of an earlier identical write, without needing its live row.
+
+    A write whose item has since been forgotten replays as ``deleted``; it is never
+    recreated, and a forgotten write's cleared hash cannot be compared.
+    """
+    old = c.execute(
+        "SELECT * FROM memory_mutations WHERE buyer_id=%s AND actor_id=%s AND key=%s",
+        (actor.buyer_id, actor.identity_id, key),
+    ).fetchone()
+    if not old:
+        return None
+    if old["request_hash"] is not None and old["request_hash"] != digest:
+        raise Problem(
+            "IDEMPOTENCY_CONFLICT",
+            "This request key already changed memory differently"
+            + (" in this turn; ask in a new message." if actor.chat else "."),
+        )
+    row = c.execute(
+        "SELECT * FROM memories WHERE id=%s AND " + ACCESSIBLE,
+        (old["memory_id"], actor.buyer_id, actor.identity_id),
+    ).fetchone()
+    status = old["outcome"] if row is not None else "deleted"
+    return _result(status, old["memory_id"], old["result_revision"], row, True)
+
+
+def replay(actor, change: MemoryChange):
+    """For a retried chat attempt: the earlier result of this exact write, or None.
+
+    Checked before the live item is read, so a replayed delete (or a write to an item
+    forgotten since) reports its saved outcome instead of MEMORY_NOT_FOUND.
+    """
+    with connection() as c:
+        _human(c, actor)
+        _fence(c, actor)
+        return _replayed(c, actor, chat_key(actor, change), request_hash(change))
+
+
 def mutate(actor, change: MemoryChange, idempotency_key=None):
     key = chat_key(actor, change) if actor.chat else "api:" + (idempotency_key or "")
     if not actor.chat and not idempotency_key:
@@ -313,25 +363,9 @@ def mutate(actor, change: MemoryChange, idempotency_key=None):
         c.execute("SELECT id FROM buyers WHERE id=%s FOR UPDATE", (actor.buyer_id,))
         _human(c, actor)
         source = _fence(c, actor) if actor.chat else (None, None)
-        old = c.execute(
-            "SELECT * FROM memory_mutations WHERE buyer_id=%s AND actor_id=%s AND key=%s",
-            (actor.buyer_id, actor.identity_id, key),
-        ).fetchone()
-        if old:
-            if old["request_hash"] is not None and old["request_hash"] != digest:
-                raise Problem(
-                    "IDEMPOTENCY_CONFLICT",
-                    "This request key already changed memory differently"
-                    + (" in this turn; ask in a new message." if actor.chat else "."),
-                )
-            row = c.execute(
-                "SELECT * FROM memories WHERE id=%s AND " + ACCESSIBLE,
-                (old["memory_id"], actor.buyer_id, actor.identity_id),
-            ).fetchone()
-            if row is None and old["outcome"] != "deleted":
-                # Forgotten since: never recreate it from a replayed request.
-                return _result("deleted", old["memory_id"], old["result_revision"], replayed=True)
-            return _result(old["outcome"], old["memory_id"], old["result_revision"], row, True)
+        earlier = _replayed(c, actor, key, digest)
+        if earlier:
+            return earlier
         if change.action == "save":
             outcome, row = _save(c, actor, change, source)
         elif change.action == "update":

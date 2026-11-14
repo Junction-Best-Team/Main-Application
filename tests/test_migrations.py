@@ -358,6 +358,10 @@ def test_memory_migration_upgrades_populated_chat_database(migration_area, monke
     cli.migrate()
     with connection() as c:
         assert c.execute("SELECT text FROM conversation_messages").fetchone() == ("Remember 200",)
+        assert c.execute("SELECT requested_by,submitted_by FROM conversation_turns").fetchone() == (
+            "person",
+            None,
+        )
         c.execute(
             "INSERT INTO memories(id,buyer_id,scope,kind,key,value,created_by,updated_by,"
             "source_conversation_id,source_message_id) VALUES(%s,'buyer','buyer','default',"

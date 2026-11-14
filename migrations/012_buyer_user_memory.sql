@@ -6,6 +6,10 @@ ALTER TABLE identities ADD CONSTRAINT identities_id_buyer UNIQUE (id, buyer_id);
 ALTER TABLE conversations ADD CONSTRAINT conversations_id_buyer UNIQUE (id, buyer_id);
 ALTER TABLE conversation_messages
  ADD CONSTRAINT conversation_messages_id_conversation UNIQUE (id, conversation_id);
+-- requested_by is the latest executor: a colleague's retry of a failed turn replaces it.
+-- submitted_by is the message author and never changes. Existing turns stay NULL; the
+-- migration never guesses an author, and memory is unavailable for such turns.
+ALTER TABLE conversation_turns ADD COLUMN submitted_by text REFERENCES identities(id);
 
 CREATE TABLE memories (
  id uuid PRIMARY KEY,

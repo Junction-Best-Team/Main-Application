@@ -885,3 +885,136 @@ def test_schema_constraints_enforce_scope_ownership_and_unique_keys(buyer):
         created_by=other["id"],
         updated_by=other["id"],
     )
+
+
+def failed_turn(user, text, service, before_failure=None):
+    """A turn by ``user`` whose worker attempt failed, offering an explicit retry."""
+    cid = new_conversation(user)
+    body = MessageRequest(text=text, idempotency_key=str(uuid4()))
+    conversations.enqueue(user, cid, body)
+
+    def broken(actor, history, shared):
+        if before_failure is not None:
+            ToolSession(actor, shared).invoke("manage_memory", json.dumps(before_failure))
+        raise Problem("LLM_UNAVAILABLE", "Provider down", 503)
+
+    with pytest.raises(Problem):
+        conversations.execute_turn(conversations.claim_turn(), service, broken)
+    retry = conversations.detail(user, cid)["retry_message"]
+    assert retry["idempotency_key"] == body.idempotency_key
+    return cid, body
+
+
+REPLY_STYLE = {
+    "action": "save",
+    "scope": "self",
+    "key": "preference.reply_style",
+    "value": {"length": "short"},
+}
+
+
+@pytest.mark.parametrize("already_saved", [False, True])
+def test_colleague_retry_cannot_save_the_authors_request_into_their_own_memory(
+    buyer, service, already_saved
+):
+    chef = add_user("chef")
+    cid, body = failed_turn(
+        buyer,
+        "From now on keep my replies short.",
+        service,
+        REPLY_STYLE if already_saved else None,
+    )
+    conversations.enqueue(chef, cid, body)  # The shared conversation lets a colleague retry.
+    turn = conversations.claim_turn()
+    assert (turn["requested_by"], turn["submitted_by"]) == ("chef", "buyer")
+    seen = {}
+
+    def runner(actor, history, shared):
+        session = ToolSession(actor, shared)
+        seen["context"] = session.memory_context(history[-1]["content"])
+        seen["save"] = problem(
+            "MEMORY_AUTHOR_MISMATCH", session.invoke, "manage_memory", json.dumps(REPLY_STYLE)
+        )
+        problem("MEMORY_AUTHOR_MISMATCH", session.invoke, "search_memory", "{}")
+        # Even a hand-built actor for the executor is refused inside the write transaction.
+        forged = ToolSession(turn_actor(turn, chef), shared)
+        problem("MEMORY_AUTHOR_MISMATCH", forged.invoke, "manage_memory", json.dumps(REPLY_STYLE))
+        return session.result("Ask the sender to retry for their own preference.")
+
+    data = conversations.execute_turn(turn, service, runner)
+    assert seen["context"] is None and seen["save"].status == 403
+    expected = [("preference.reply_style", "buyer")] if already_saved else []
+    assert [(r["key"], r["created_by"]) for r in rows()] == expected
+    assert "Memory:" not in data["messages"][-1]["text"]
+    # The author's own retry of their own failed turn keeps memory available.
+    cid, body = failed_turn(buyer, "Remember we plan for 200 portions.", service)
+    conversations.enqueue(buyer, cid, body)
+    session = ToolSession(turn_actor(conversations.claim_turn(), buyer), service)
+    assert session.invoke("manage_memory", json.dumps(SAVE_PORTIONS))["status"] == "created"
+    assert [(r["key"], r["created_by"]) for r in rows()] == [
+        ("default.portions", "buyer"),
+        *expected,
+    ]
+
+
+def test_legacy_turn_retry_does_not_infer_a_memory_author(buyer, service):
+    cid, body = failed_turn(buyer, "Remember my short replies.", service)
+    with connection() as c:
+        c.execute(
+            "UPDATE conversation_turns SET submitted_by=NULL WHERE conversation_id=%s", (cid,)
+        )
+    conversations.enqueue(buyer, cid, body)
+    turn = conversations.claim_turn()
+    assert turn["submitted_by"] is None
+
+    def runner(actor, history, shared):
+        session = ToolSession(actor, shared)
+        assert session.memory_context(history[-1]["content"]) is None
+        problem("MEMORY_AUTHOR_MISMATCH", session.invoke, "manage_memory", json.dumps(REPLY_STYLE))
+        return session.result("Send a new message to save your preference.")
+
+    conversations.execute_turn(turn, service, runner)
+    assert rows() == []
+
+
+def test_retried_attempt_replays_delete_and_forgotten_save_without_live_rows(buyer, service):
+    existing = save(buyer, "preference.note.soup", {"text": "We like clear soups"})
+    cid = new_conversation(buyer)
+    text = "Forget our soup note and remember we plan for 200 portions."
+    conversations.enqueue(buyer, cid, MessageRequest(text=text, idempotency_key=str(uuid4())))
+    old = ToolSession(turn_actor(conversations.claim_turn(), buyer), service)
+    forget = {"action": "delete", "memory_id": str(existing["memory_id"]), "expected_revision": 1}
+    assert old.invoke("manage_memory", json.dumps(forget))["status"] == "deleted"
+    saved = old.invoke("manage_memory", json.dumps(SAVE_PORTIONS))
+    update = {
+        "action": "update",
+        "memory_id": saved["memory_id"],
+        "expected_revision": 1,
+        "value": {"portions": 150},
+    }
+    old.invoke("manage_memory", json.dumps(update))
+    # Someone forgets the new item before the crashed turn is retried.
+    change(buyer, "delete", saved["memory_id"], 2)
+    with connection() as c:
+        c.execute("UPDATE conversation_turns SET lease_until=%s", (now() - timedelta(seconds=1),))
+    retry = conversations.claim_turn()
+    problem("TURN_REPLACED", old.invoke, "manage_memory", json.dumps(forget))
+
+    def runner(actor, history, shared):
+        session = ToolSession(actor, shared)
+        replayed_delete = session.invoke("manage_memory", json.dumps(forget))
+        assert (replayed_delete["status"], replayed_delete["replayed"]) == ("deleted", True)
+        replayed_save = session.invoke("manage_memory", json.dumps(SAVE_PORTIONS))
+        assert (replayed_save["status"], replayed_save["memory"]) == ("forgotten_since", None)
+        assert replayed_save["memory_id"] == saved["memory_id"]
+        replayed_update = session.invoke("manage_memory", json.dumps(update))
+        assert (replayed_update["status"], replayed_update["memory"]) == ("forgotten_since", None)
+        return session.result("Done.")
+
+    data = conversations.execute_turn(retry, service, runner)
+    reply_text = data["messages"][-1]["text"]
+    assert f"Forgot saved memory {existing['memory_id']}." in reply_text
+    assert (
+        "Already forgotten shared buyer memory (used for everyone in this account): " in reply_text
+    )
+    assert rows() == []  # Neither replay recreated anything.

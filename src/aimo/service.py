@@ -107,6 +107,11 @@ class Service:
 
         return memory.get(actor, memory_id)
 
+    def replay_memory(self, actor, change):
+        from aimo import memory
+
+        return memory.replay(actor, change)
+
     def manage_memory(self, actor, change):
         from aimo import memory
 

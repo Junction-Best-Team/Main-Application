@@ -146,9 +146,7 @@ class ToolSession:
                 "get_recipe": ToolSpec(
                     RecipeReference,
                     "Read the exact recipe basis and instructions.",
-                    lambda r: self.checked(
-                        RecipeDetail, self.service.get_recipe(self.identity, r)
-                    ),
+                    lambda r: self.checked(RecipeDetail, self.service.get_recipe(self.identity, r)),
                 ),
                 "scale_recipe": ToolSpec(
                     ScaleRecipe,
@@ -215,24 +213,37 @@ class ToolSession:
     def manage_memory(self, change):
         actor = self.memory_actor()
         current = None
-        if change.action != "save":
-            current = self.service.get_memory(actor, change.memory_id)
-        if self.guard is not None:
-            # Semantic persistence-intent review against the persisted customer messages.
-            self.guard.check_memory(change, current)
-        result = self.service.manage_memory(actor, change)
+        # A retried attempt first replays its own earlier write from the durable ledger:
+        # the item may be gone already (a replayed delete, or forgotten since).
+        result = self.service.replay_memory(actor, change)
+        if result is None:
+            if change.action != "save":
+                current = self.service.get_memory(actor, change.memory_id)
+            if self.guard is not None:
+                # Semantic persistence-intent review against the persisted customer messages.
+                self.guard.check_memory(change, current)
+            result = self.service.manage_memory(actor, change)
         row = result["memory"] or current
+        status = result["status"]
+        if result["replayed"] and status == "deleted" and change.action != "delete":
+            status = "forgotten_since"
+        if row is not None:
+            scope, key = row["scope"], row["key"]
+        else:  # Only a save names its target; a replayed delete reports the ID.
+            scope, key = change.scope, change.key
         self.memory_changes.append(
             {
                 "action": change.action,
-                "status": result["status"],
-                "scope": "buyer" if row["scope"] == "buyer" else "personal",
-                "key": row["key"],
+                "status": status,
+                "scope": None if scope is None else "buyer" if scope == "buyer" else "personal",
+                "key": key,
+                "memory_id": str(result["memory_id"]),
                 "revision": result["revision"],
             }
         )
         return {
-            "status": result["status"],
+            "status": status,
+            "replayed": result["replayed"],
             "memory": memory.model_view(result["memory"]) if result["memory"] else None,
             "memory_id": str(result["memory_id"]),
             "revision": result["revision"],
@@ -454,17 +465,27 @@ class ToolSession:
         )
 
 
-MEMORY_VERBS = {"created": "Saved", "updated": "Updated", "deleted": "Forgot", "unchanged": "Kept"}
+MEMORY_VERBS = {
+    "created": "Saved",
+    "updated": "Updated",
+    "deleted": "Forgot",
+    "unchanged": "Kept",
+    "forgotten_since": "Already forgotten",
+}
 
 
 def memory_notice(changes):
     """Server-authored acknowledgement of successful writes; names keys, not contents."""
     lines = []
     for change in changes:
+        verb = MEMORY_VERBS[change["status"]]
+        if change["key"] is None:
+            lines.append(f"{verb} saved memory {change['memory_id']}.")
+            continue
         where = (
             "shared buyer memory (used for everyone in this account)"
             if change["scope"] == "buyer"
             else "your personal memory"
         )
-        lines.append(f"{MEMORY_VERBS[change['status']]} {where}: {change['key']}.")
+        lines.append(f"{verb} {where}: {change['key']}.")
     return "Memory: " + " ".join(lines)

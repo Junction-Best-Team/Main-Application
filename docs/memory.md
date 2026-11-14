@@ -27,6 +27,13 @@ notice are visible to colleagues in that conversation's history. The notice name
 the key, not the value, and the assistant is told not to repeat personal contents
 needlessly; personal memory is **not** private from conversation history.
 
+The message's original author is stored in `conversation_turns.submitted_by` and
+does not change on retry. If a colleague retries a failed turn, purchasing can
+resume but memory loading and tools are unavailable for that attempt. The original
+author can retry their own failed turn with memory enabled. Turns created before
+migration 012 have no recorded author and also run without memory; the migration
+does not infer an author from the latest executor.
+
 ## Supported kinds and keys
 
 Each item has a kind, a stable key and a typed JSON value. Unknown keys and extra
@@ -115,8 +122,9 @@ Writes need lasting intent in the **current** customer message ("remember",
 "from now on", "change our usual…", "forget…"). An explicit request is enough;
 there is no second approval step. Defences, in order:
 
-1. **Binding (deterministic).** The server takes the human from the persisted
-   turn's `requested_by`, rechecks they are an active approver of the buyer, and
+1. **Binding (deterministic).** The server requires the persisted turn's latest
+   executor (`requested_by`) to match its original author (`submitted_by`), rechecks
+   they are an active approver of the buyer, and
    records the turn's own user message as the source. The model cannot choose the
    source, owner or creator; a model flag like `explicit_user_request` is not a field.
 2. **Semantic check (guardrails, `memory_write` boundary).** Under `enforce` each
@@ -167,7 +175,7 @@ Response (`MemoryMutationResponse`): `status`, `memory_id`, `revision`, `memory`
 
 - Every write locks the buyer row, then (chat only) share-locks the turn row, then
   the memory row. The turn must still be `running` with the same `attempt`, an
-  unexpired lease and the same `requested_by`, so a superseded or completed worker
+  unexpired lease and matching `requested_by` and `submitted_by`, so a superseded or completed worker
   attempt fails with `TURN_REPLACED` and writes nothing. A reclaim that changes the
   attempt waits for an in-flight write to commit.
 - Updates and deletes need the expected revision; there is no last-writer-wins.
@@ -177,6 +185,11 @@ Response (`MemoryMutationResponse`): `status`, `memory_id`, `revision`, `memory`
   instead of duplicating. Reusing a key with different content is
   `IDEMPOTENCY_CONFLICT`. Expected revision is excluded from the request hash so a
   retried attempt that re-read the item still replays.
+- The chat tool resolves an earlier mutation before reading the live item or
+  repeating the semantic write check. A replayed delete succeeds even though its
+  item is gone. A replayed save/update whose item was forgotten reports
+  `forgotten_since` and an "Already forgotten" notice; it never recreates the item.
+  Replays still recheck the active author and fence the worker attempt.
 - Forget deletes the row; it disappears from loading, search and the API. Earlier
   mutation rows keep only minimal metadata (action, outcome, ID, revision, actor,
   time): their request hashes are cleared, so no copy or fingerprint of the content
@@ -185,7 +198,8 @@ Response (`MemoryMutationResponse`): `status`, `memory_id`, `revision`, `memory`
 
 ## Operations
 
-Migration `012_buyer_user_memory.sql` is additive: two tables, three composite
+Migration `012_buyer_user_memory.sql` is additive: two tables, a nullable
+`conversation_turns.submitted_by` author column, three composite
 unique constraints on existing tables (always satisfied because `id` is already the
 key) and indexes. Apply it as usual (`uv run aimo migrate`, or the release
 migration Job). The runtime grant refresh in `permissions.py` covers the new
