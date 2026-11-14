@@ -110,20 +110,34 @@ UNIT_FACTOR = {
 
 
 def oracle(quantity_, unit, base, portions):
-    """Independent expectation: exact Fraction, None when not representable in 14 digits/4 dp."""
+    """Independent expectation (MEA-012): exact value rounded UP to four decimals, None above 14 digits."""
     factor, out_unit = UNIT_FACTOR[unit]
     value = Fraction(Decimal(quantity_)) * portions / base * factor
+    rounded = Fraction(-((-value.numerator * 10_000) // value.denominator), 10_000)  # ceiling
     for places in range(5):
-        scaled = value * 10**places
+        scaled = rounded * 10**places
         if scaled.denominator == 1:
             digits = len(str(scaled.numerator))
-            return (value, out_unit) if digits <= 14 else (None, out_unit)
-    return None, out_unit
+            return (rounded, out_unit) if digits <= 14 else (None, out_unit)
+    raise AssertionError("a four-decimal value always has at most four places")
 
 
 def test_property_every_amount_equals_the_exact_fraction_or_is_unresolved():
     rng = random.Random(20261114)
-    quantities = ["1", "2", "3", "7", "0.5", "12.25", "100", "150", "333", "0.0001", "99999.9999"]
+    quantities = [
+        "1",
+        "2",
+        "3",
+        "7",
+        "0.5",
+        "12.25",
+        "100",
+        "150",
+        "333",
+        "0.0001",
+        "99999.9999",
+        "9999999999.9999",
+    ]
     checked = nulls = 0
     for _ in range(1500):
         quantity_ = rng.choice(quantities)
@@ -144,14 +158,14 @@ def test_property_every_amount_equals_the_exact_fraction_or_is_unresolved():
     assert checked == 1500 and 0 < nulls < checked  # both branches were exercised
 
 
-def test_non_terminating_results_are_unresolved_never_rounded():
-    # 100 g / 3 servings * 1 portion = 0.0333... KG: no 4-decimal representation exists.
+def test_non_terminating_results_are_rounded_up_never_down():
+    # MEA-012: 100 g / 3 servings * 1 portion = 0.0333... KG becomes 0.0334 (ceiling, not half-up).
     item = one(100, "g", 3, 1)
-    assert item.amount is None and item.unit == "KG"
-    assert item.reason == "Scaled quantity exceeds supported precision; review the recipe basis."
-    # Base 6 / 200 portions: 150 g is exact (5 KG), 200 g is 100/3 KG and is not rounded.
+    assert item.amount == "0.0334" and item.unit == "KG"
+    assert item.reason == "Match a suitable catalog product."
+    # Base 6 / 200 portions: 150 g is exact (5 KG) and untouched; 200 g is 100/3 KG, rounded up.
     assert one(150, "g", 6, 200).amount == "5"
-    assert one(200, "g", 6, 200).amount is None
+    assert one(200, "g", 6, 200).amount == "6.6667"
 
 
 def test_fifteen_digit_results_are_unresolved():
@@ -212,11 +226,13 @@ def test_missing_quantity_is_unresolved_with_a_reason():
     assert item.amount is None and "unspecified" in item.reason
 
 
-def test_thirty_ingredients_scale_and_thirty_one_are_refused():
-    ok = make_recipe([(1, "g", "linear")] * 30)
-    assert len(scaled_plan(ok, 10).ingredients) == 30
+def test_one_thousand_ingredients_scale_and_more_are_refused():
+    ok = make_recipe([(1, "g", "linear")] * 1000)
+    assert len(scaled_plan(ok, 10).ingredients) == 1000
+    # The Recipe model already refuses more than 1000; scaled_plan stays a second line of defence.
+    too_big = ok.model_copy(update={"ingredients": ok.ingredients + ok.ingredients[:1]})
     with pytest.raises(Problem) as error:
-        scaled_plan(make_recipe([(1, "g", "linear")] * 31), 10)
+        scaled_plan(too_big, 10)
     assert error.value.code == "RECIPE_TOO_LARGE"
 
 

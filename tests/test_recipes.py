@@ -551,7 +551,8 @@ def test_unknown_units_and_nonterminating_scaling_are_unresolved(tmp_path, actor
     raw["ingredients"][1]["unit"] = "slice"
     *_, versions = import_fixture(tmp_path, [raw])
     plan = scale_recipe(actor, ref(versions, portions=1))
-    assert plan["ingredients"][0]["amount"] is None
+    # MEA-012: 100 g at base 3 for one portion is 0.0333... kg and is rounded UP, never down.
+    assert plan["ingredients"][0]["amount"] == "0.0334"
     assert plan["ingredients"][1]["amount"] is None
 
 
@@ -1142,11 +1143,9 @@ def test_recipe_creation_requires_turn_known_version_and_supported_size(tmp_path
         get_plan(actor, PlanReference(plan_id=uuid4()))
     assert error.value.code == "NOT_FOUND"
     raw = source_recipe()
-    raw["ingredients"] = [raw["ingredients"][0] | {"id": "ingredient-" + str(i)} for i in range(31)]
-    *_, versions = import_fixture(tmp_path, [raw])
-    with pytest.raises(Problem) as error:
-        scale_recipe(actor, ref(versions))
-    assert error.value.code == "RECIPE_TOO_LARGE"
+    raw["ingredients"] = [raw["ingredients"][0] | {"id": f"ingredient-{i}"} for i in range(1001)]
+    with pytest.raises(ValueError, match="at most 1000"):  # MEA-013: the import refuses a larger recipe
+        import_fixture(tmp_path, [raw])
 
 
 def test_partial_recipe_reference_fails_closed(actor, service, request_data):

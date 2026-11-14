@@ -26,7 +26,7 @@ class Ingredient(Model):
 class MealPlan(Model):
     title: str = Field(min_length=1, max_length=240)
     portions: int = Field(ge=1, le=10000)
-    ingredients: list[Ingredient] = Field(min_length=1, max_length=30)
+    ingredients: list[Ingredient] = Field(min_length=1, max_length=1000)
     notes: list[str] = Field(default_factory=list, max_length=20)
     recipe_plan_id: str | None = None
     recipe_plan_revision: int | None = None

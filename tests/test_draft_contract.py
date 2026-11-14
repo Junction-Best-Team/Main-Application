@@ -79,10 +79,6 @@ def test_absurd_quantity_per_portion_is_rejected():
 # --- MEA-012: round a scaled quantity UP to four decimal places ------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="MEA-012 Draft: a quantity needing more than 4 decimals is left unresolved, not rounded up",
-)
 @pytest.mark.parametrize(
     "grams,base_servings,portions,expected",
     [
@@ -109,10 +105,6 @@ def test_exactly_terminating_scaled_quantity_stays_unchanged():
 BIG = 1000
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="MEA-013 Approved: MealPlan.ingredients (chat_schemas.py, person 1) is still capped at 30",
-)
 def test_meal_plan_accepts_one_thousand_ingredients():
     ingredients = [Ingredient(name=f"ingredient {n}", amount="1", unit="KG") for n in range(BIG)]
     assert len(MealPlan(title="Big", portions=1, ingredients=ingredients).ingredients) == BIG
@@ -123,10 +115,6 @@ def test_purchase_request_accepts_one_thousand_lines():
     assert len(PurchaseRequest.model_validate(purchase(lines)).lines) == BIG
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="MEA-013 Approved: Recipe (100) and scaled_plan (30) in person 2's recipe files are not raised",
-)
 def test_recipe_with_one_thousand_ingredients_can_be_scaled():
     plan = scaled_plan(recipe(count=BIG), 2)
     assert len(plan.ingredients) == BIG
