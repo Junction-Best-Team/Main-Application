@@ -237,15 +237,18 @@ def test_recipe_draft_scales_base_once_and_is_visible_without_delivery_or_budget
     result = invoke(tools, "draft_recipe", draft_basis())
     plan = result["meal_plan"]
     assert [(i["amount"], i["unit"]) for i in plan["ingredients"]] == [
-        ("50", "KG"), ("75", "KG"), ("125", "L")
+        ("50", "KG"),
+        ("75", "KG"),
+        ("125", "L"),
     ]
     assert plan["base_servings"] == 4 and plan["portions"] == 500
     assert not plan["recipe_plan_id"] and not plan["recipe_id"]
+    assert all(i["status"] == "proposed" and i["reason"] is None for i in plan["ingredients"])
     assert "Assistant-drafted recipe estimate" in plan["notes"][0]
     assert result["purchase_authorized"] is False
     assert tools.result().meal_plan.portions == 500
     assert tools.result().proposal_id is None
-    assert "3 ingredients still need catalog matches." in tools.result().text
+    assert "3 of 3 ingredients have no selected product yet." in tools.result().text
     assert "Unresolved ingredients:" not in tools.result().text
     assert invoke(tools, "draft_recipe", draft_basis()) == result
     assert tools.service.calls == []
@@ -254,7 +257,8 @@ def test_recipe_draft_scales_base_once_and_is_visible_without_delivery_or_budget
 @pytest.mark.parametrize("unit,expected", [("g", "0.0004"), ("ml", "0.0004"), ("piece", "0.3334")])
 def test_draft_fractional_scaling_rounds_up(unit, expected, identity):
     basis = draft_basis() | {
-        "base_servings": 3, "portions": 1,
+        "base_servings": 3,
+        "portions": 1,
         "ingredients": [{"name": "Ingredient", "amount": "1", "unit": unit}],
     }
     result = invoke(ToolSession(identity, FakeService(identity)), "draft_recipe", basis)
@@ -298,9 +302,12 @@ def test_draft_matching_retains_labels_and_prepares_exact_totals(identity):
     published = invoke(tools, "publish_meal_plan", plan)["meal_plan"]
     assert "Assistant-drafted" in published["notes"][0]
     request = purchase() | {
-        "budget_gross": None, "requirements": {"unsupported": ["vegan"]},
-        "lines": [{"product_id": i["product_id"], "amount": i["amount"], "unit": i["unit"]}
-                  for i in published["ingredients"]],
+        "budget_gross": None,
+        "requirements": {"unsupported": ["vegan"]},
+        "lines": [
+            {"product_id": i["product_id"], "amount": i["amount"], "unit": i["unit"]}
+            for i in published["ingredients"]
+        ],
     }
     invoke(tools, "prepare_order", request)
     prepared = next(c[2] for c in service.calls if c[0] == "prepare")
@@ -333,19 +340,28 @@ def test_missing_saved_recipe_falls_back_to_visible_scaled_draft(
         return {"recipes": [], "rerank_status": "disabled", "note": "No matching recipe."}
 
     service.search_recipes = search
-    scripted(monkeypatch, [
-        reply(call("search_recipes", {"query": "vegan lasagna"})),
-        reply(call("draft_recipe", draft_basis())),
-        reply(text="I've drafted an estimated recipe for 500 portions. What delivery date should I use?"),
-    ])
+    scripted(
+        monkeypatch,
+        [
+            reply(call("search_recipes", {"query": "vegan lasagna"})),
+            reply(call("draft_recipe", draft_basis())),
+            reply(
+                text="I've drafted an estimated recipe for 500 portions. What delivery date should I use?"
+            ),
+        ],
+    )
     events = []
     turn = agent.run_turn(
-        identity, [{"role": "user", "content": "Vegan lasagna for 500 people."}], service,
+        identity,
+        [{"role": "user", "content": "Vegan lasagna for 500 people."}],
+        service,
         on_progress=events.append,
     )
     draft = next(e.draft for e in events if e.kind == "tool_completed" and e.tool == "draft_recipe")
     assert [(item.amount, item.unit) for item in draft.items] == [
-        ("50", "KG"), ("75", "KG"), ("125", "L")
+        ("50", "KG"),
+        ("75", "KG"),
+        ("125", "L"),
     ]
     assert not any(item.matched or item.price for item in draft.items)
     assert draft.proposal_id is None and events[-1].draft == draft
@@ -993,13 +1009,121 @@ def test_unexpected_provider_failure_is_safe_and_preserves_saved_basket(
     assert "private-provider-key" not in caplog.text + str(events)
 
 
-def test_final_recipe_labels_estimates_and_lists_unresolved_ingredients(identity):
+def test_final_recipe_distinguishes_pending_products_from_quantity_problems(identity):
     session = ToolSession(identity, FakeService(identity))
     invoke(session, "publish_meal_plan", meal(matched=False))
     result = session.result("All ready.")
     assert "Recipe quantities are estimates for customer review." in result.text
-    assert "Unresolved ingredients: pasta, eggs, pork, cheese, pepper." in result.text
+    assert "5 of 5 ingredients have no selected product yet." in result.text
+    assert "Unresolved ingredients:" not in result.text
+    assert "Quantities still need verification:" not in result.text
     assert result.proposal_id is None
+
+
+def saved_recipe_session(identity, service):
+    plan = meal(False) | {"recipe_plan_id": str(uuid4()), "recipe_plan_revision": 1}
+    for item in plan["ingredients"]:
+        item.update(ingredient_id=item["name"], status="proposed", form="raw")
+    session = ToolSession(identity, service)
+    session.save_recipe_result(plan)
+    return session
+
+
+def test_saved_recipe_reports_quantity_and_form_blockers_without_dumping_ingredients(identity):
+    session = saved_recipe_session(identity, FakeService(identity))
+    session.plan.ingredients[0].amount = None
+    session.plan.ingredients[1].form = "unspecified"
+    text = session.result().text
+    assert "Quantities still need verification: pasta." in text
+    assert "1 ingredient needs its required form verified" in text
+    assert "cannot be purchased" in text
+    assert "Unresolved ingredients:" not in text
+    assert "pork" not in text and "cheese" not in text
+
+
+def test_saved_recipe_discovery_requires_persisted_matches_in_small_batches(identity):
+    service = FakeService(identity)
+    session = saved_recipe_session(identity, service)
+    for name in NAMES[:3]:
+        invoke(session, "get_product", {"product_id": name})
+    with pytest.raises(Problem, match="Save the inspected products") as error:
+        invoke(session, "get_product", {"product_id": NAMES[3]})
+    assert error.value.code == "RECIPE_MATCH_PROGRESS_REQUIRED"
+    assert len(service.calls) == 3  # No fourth catalog read before the checkpoint.
+
+    def persist(actor, request):
+        saved = session.plan.model_dump(mode="json")
+        for pair in request.matches:
+            item = next(i for i in saved["ingredients"] if i["ingredient_id"] == pair.ingredient_id)
+            item.update(product_id=pair.product_id, status="matched")
+        saved["recipe_plan_revision"] += 1
+        return saved
+
+    service.match_ingredients = persist
+    invoke(
+        session,
+        "match_ingredients",
+        {
+            "plan_id": session.plan.recipe_plan_id,
+            "revision": 1,
+            "matches": [{"ingredient_id": name, "product_id": name} for name in NAMES[:3]],
+        },
+    )
+    assert session.plan.recipe_plan_revision == 2
+    assert sum(i.status == "matched" for i in session.plan.ingredients) == 3
+    invoke(session, "get_product", {"product_id": NAMES[3]})
+    assert len(service.calls) == 4
+
+
+def test_saved_recipe_repeated_searches_require_inspection_before_more_search(identity):
+    service = FakeService(identity)
+    calls = []
+    service.search_products = lambda actor, request: (
+        calls.append(request.query)
+        or {
+            "products": [],
+            "generation": "fixture",
+            "model": "fixture",
+            "strategy": "keyword",
+            "note": "Authored search fixture",
+        }
+    )
+    session = saved_recipe_session(identity, service)
+    for _ in range(3):
+        invoke(session, "search_products", {"query": "pasta"})
+    with pytest.raises(Problem) as error:
+        invoke(session, "search_products", {"query": "pasta"})
+    assert error.value.code == "RECIPE_MATCH_PROGRESS_REQUIRED" and len(calls) == 3
+    invoke(session, "get_product", {"product_id": "pasta"})
+    invoke(session, "search_products", {"query": "eggs"})
+    assert len(calls) == 4
+
+
+@pytest.mark.parametrize("blocker", ["quantity", "form"])
+def test_unreviewed_recipe_stops_catalog_work_that_cannot_resolve_it(identity, blocker):
+    service = FakeService(identity)
+    session = saved_recipe_session(identity, service)
+    for item in session.plan.ingredients:
+        if blocker == "quantity":
+            item.amount = None
+        else:
+            item.form = "unspecified"
+    for tool, args in [
+        ("search_products", {"query": "pasta"}),
+        ("get_product", {"product_id": "pasta"}),
+    ]:
+        with pytest.raises(Problem) as error:
+            invoke(session, tool, args)
+        assert error.value.code == "RECIPE_REVIEW_REQUIRED"
+    assert service.calls == []
+
+
+def test_one_blocked_ingredient_does_not_prevent_matching_other_ingredients(identity):
+    service = FakeService(identity)
+    session = saved_recipe_session(identity, service)
+    session.plan.ingredients[-1].amount = None
+    invoke(session, "get_product", {"product_id": "pasta"})
+    assert "pasta" in session.products
 
 
 def test_direct_product_request_works_alongside_recipe_tools(monkeypatch, config, identity):
@@ -1091,11 +1215,13 @@ def test_q44_model_sees_the_details_in_the_tool_error(monkeypatch, config, ident
     }
 
 
-def test_selected_recipe_streams_unmatched_matched_and_checked_prices(monkeypatch, config, identity):
+def test_selected_recipe_streams_unmatched_matched_and_checked_prices(
+    monkeypatch, config, identity
+):
     service = FakeService(identity)
     saved = meal(False) | {"recipe_plan_id": str(uuid4()), "recipe_plan_revision": 1}
     for item in saved["ingredients"]:
-        item.update(ingredient_id=item["name"], status="unresolved")
+        item.update(ingredient_id=item["name"], status="proposed", form="raw")
     service.scale_recipe = lambda actor, request: deepcopy(saved)
 
     def match(actor, request):
@@ -1107,24 +1233,50 @@ def test_selected_recipe_streams_unmatched_matched_and_checked_prices(monkeypatc
     service.match_ingredient = match
     expiry = datetime.now(timezone.utc) + timedelta(minutes=10)
     evidence = {
-        "product_id": "pasta", "currency": "EUR", "net": "10", "gross": "11.4",
-        "tax_rate": "0.14", "available_sales_quantity": "100", "expires_at": expiry,
-        "reasons": [], "mode": "fixture", "observed_at": datetime.now(timezone.utc),
+        "product_id": "pasta",
+        "currency": "EUR",
+        "net": "10",
+        "gross": "11.4",
+        "tax_rate": "0.14",
+        "available_sales_quantity": "100",
+        "expires_at": expiry,
+        "reasons": [],
+        "mode": "fixture",
+        "observed_at": datetime.now(timezone.utc),
         "source": {"price": {"private_raw": "omit"}, "availability": None},
-        "sales_unit": "BOX", "base_unit": "KG", "price_basis": "per_sales_unit",
+        "sales_unit": "BOX",
+        "base_unit": "KG",
+        "price_basis": "per_sales_unit",
     }
     service.check_price_and_availability = lambda actor, request: {
-        "mode": "fixture", "products": {"pasta": evidence}
+        "mode": "fixture",
+        "products": {"pasta": evidence},
     }
-    scripted(monkeypatch, [
-        reply(call("scale_recipe", {"recipe_id": "recipe", "version": "v1", "portions": 200})),
-        reply(call("get_product", {"product_id": "pasta"})),
-        reply(call("match_ingredient", {"plan_id": saved["recipe_plan_id"], "revision": 1,
-                                       "ingredient_id": "pasta", "product_id": "pasta"})),
-        reply(call("check_price_and_availability", {"product_ids": ["pasta"],
-                                                   "delivery_date": "2026-11-17"})),
-        reply(text="Four ingredients still need matches."),
-    ])
+    scripted(
+        monkeypatch,
+        [
+            reply(call("scale_recipe", {"recipe_id": "recipe", "version": "v1", "portions": 200})),
+            reply(call("get_product", {"product_id": "pasta"})),
+            reply(
+                call(
+                    "match_ingredient",
+                    {
+                        "plan_id": saved["recipe_plan_id"],
+                        "revision": 1,
+                        "ingredient_id": "pasta",
+                        "product_id": "pasta",
+                    },
+                )
+            ),
+            reply(
+                call(
+                    "check_price_and_availability",
+                    {"product_ids": ["pasta"], "delivery_date": "2026-11-17"},
+                )
+            ),
+            reply(text="Four ingredients still need matches."),
+        ],
+    )
     events = []
     result = agent.run_turn(identity, HISTORY, service, on_progress=events.append)
     drafts = [e.draft for e in events if e.kind == "tool_completed"]
@@ -1140,12 +1292,20 @@ def test_selected_recipe_streams_unmatched_matched_and_checked_prices(monkeypatc
     from aimo.chat_draft import cart_snapshot
 
     session = matched_session(identity, service)
-    session.commercial = {"pasta": evidence | {"expires_at": datetime.now(timezone.utc) - timedelta(seconds=1)}}
+    session.commercial = {
+        "pasta": evidence | {"expires_at": datetime.now(timezone.utc) - timedelta(seconds=1)}
+    }
     session.commercial_dates = {"pasta": "2026-11-17"}
     assert cart_snapshot(session, plan_visible=True).items[0].price is None
     assert cart_snapshot(session, plan_visible=False) is None
-    session.commercial["pasta"] = evidence | {"reasons": [{
-        "code": "PRICE_OUTSIDE_VALIDITY", "severity": "unresolved",
-        "message": "Not valid for requested delivery", "product_id": "pasta",
-    }]}
+    session.commercial["pasta"] = evidence | {
+        "reasons": [
+            {
+                "code": "PRICE_OUTSIDE_VALIDITY",
+                "severity": "unresolved",
+                "message": "Not valid for requested delivery",
+                "product_id": "pasta",
+            }
+        ]
+    }
     assert cart_snapshot(session, plan_visible=True).items[0].price is None

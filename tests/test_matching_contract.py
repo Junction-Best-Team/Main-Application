@@ -298,7 +298,8 @@ def test_absent_product_is_unresolved_not_an_error(tmp_path, actor, meal_product
 def test_partial_batch_changes_only_named_ingredients(tmp_path, actor, meal_products):
     plan = new_plan(tmp_path, actor)
     result = match_ingredients(actor, batch(plan, pairs()[:1]))
-    assert [i["status"] for i in result["ingredients"]] == ["matched", "unresolved", "unresolved"]
+    assert [i["status"] for i in result["ingredients"]] == ["matched", "proposed", "proposed"]
+    assert result["ingredients"][1:] == plan["ingredients"][1:]
     assert result["recipe_plan_revision"] == 2
 
 

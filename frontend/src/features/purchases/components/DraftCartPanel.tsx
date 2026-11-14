@@ -49,14 +49,14 @@ export function DraftCartPanel({
                   {item.name}
                 </span>
                 <span className="shrink-0 font-mono text-secondary">
-                  {item.amount ?? "Quantity needed"}{" "}
+                  {item.amount ?? "Quantity needs verification"}{" "}
                   {item.amount ? item.unit : ""}
                 </span>
               </div>
               <p className="mt-1 break-words text-secondary">
                 {item.matched
                   ? (item.product_name ?? item.product_id)
-                  : "Product to match"}
+                  : "No product selected yet"}
               </p>
               {item.price ? (
                 <div className="mt-1 text-secondary">
@@ -74,15 +74,15 @@ export function DraftCartPanel({
                     Checked {dateTime(item.price.observed_at)}
                   </p>
                 </div>
-              ) : (
+              ) : item.matched ? (
                 <p className="mt-1 text-secondary">Price not checked</p>
-              )}
+              ) : null}
             </li>
           ))}
         </ul>
         <p className="m-0 rounded bg-secondary-container/40 p-2 text-body-sm text-primary">
-          Quantities are for review. Pack sizes, availability and the full total
-          are verified when the basket is prepared.
+          This is a recipe estimate. Products, pack sizes, availability and the
+          full total need verification before purchase.
         </p>
       </div>
     </aside>

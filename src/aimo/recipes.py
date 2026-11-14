@@ -126,9 +126,9 @@ def scaled_plan(recipe, portions):
         )
     ingredients = []
     for item in recipe.ingredients:
-        amount, unit, reason = None, item.unit, "Match a suitable catalog product."
+        amount, unit, reason = None, item.unit, None
         if item.quantity is None:
-            reason = "Recipe quantity is unspecified; provide a reviewed numeric quantity."
+            reason = "The saved recipe has no verified quantity for this ingredient."
         elif item.scaling != "linear":
             reason = "This ingredient needs a reviewed scaling rule for the requested portions."
         else:
@@ -160,7 +160,7 @@ def scaled_plan(recipe, portions):
                 amount=amount,
                 unit=unit,
                 form=item.form,
-                status="unresolved",
+                status="unresolved" if reason else "proposed",
                 reason=reason,
             )
         )
@@ -180,6 +180,14 @@ def scale_recipe(identity, request):
         raise Problem("TURN_CONTEXT_REQUIRED", "A persisted turn is required.", 422)
     detail = get_recipe(identity, request)
     plan = scaled_plan(Recipe.model_validate(detail["recipe"]), request.portions)
+    # Saved recipes require reviewed forms; assistant-authored estimates use scaled_plan
+    # separately and retain their existing, explicitly weaker free-form guarantees.
+    for item in plan.ingredients:
+        if item.amount is not None and item.form == "unspecified":
+            item.status = "unresolved"
+            item.reason = (
+                "The saved recipe does not specify the ingredient form needed for purchasing."
+            )
     plan.recipe_id, plan.recipe_version = request.recipe_id, request.version
     plan.attribution = detail["attribution"] + " / " + detail["license"]
     with connection() as c:

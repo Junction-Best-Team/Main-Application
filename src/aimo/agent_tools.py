@@ -294,6 +294,8 @@ class ToolSession:
         self.commercial_dates = {}
         self.memory_changes = []
         self.image = None
+        self.recipe_searches = 0
+        self.recipe_candidates = 0
         self.registry = {
             "generate_recipe_image": ToolSpec(
                 GenerateRecipeImage,
@@ -476,7 +478,9 @@ class ToolSession:
             raise Problem(
                 "PRODUCT_NOT_VERIFIED", "Read the selected product with get_product first.", 422
             )
-        return self.save_recipe_result(self.service.match_ingredient(self.identity, request))
+        result = self.save_recipe_result(self.service.match_ingredient(self.identity, request))
+        self.recipe_searches = self.recipe_candidates = 0
+        return result
 
     def match_ingredients(self, request):
         if self.prepared_digest is not None:
@@ -486,7 +490,9 @@ class ToolSession:
                 raise Problem(
                     "PRODUCT_NOT_VERIFIED", "Read the selected product with get_product first.", 422
                 )
-        return self.save_recipe_result(self.service.match_ingredients(self.identity, request))
+        result = self.save_recipe_result(self.service.match_ingredients(self.identity, request))
+        self.recipe_searches = self.recipe_candidates = 0
+        return result
 
     def memory_actor(self):
         return memory.chat_actor(self.identity)
@@ -610,16 +616,58 @@ class ToolSession:
         return result
 
     def search(self, request):
+        self.recipe_matching_checkpoint(search=True)
         return self.checked(SearchResponse, self.service.search_products(self.identity, request))
 
     def product(self, request):
+        self.recipe_matching_checkpoint(search=False)
         result = self.checked(
             ProductResponse, self.service.get_product(self.identity, request.product_id)
         )
         if result["id"] != request.product_id:
             raise Problem("TOOL_RESULT_INVALID", "The tool returned a different product ID.", 502)
         self.products[request.product_id] = result
+        self.recipe_searches = 0
         return result
+
+    def recipe_matching_checkpoint(self, *, search):
+        """Bound discovery between durable saved-recipe matching checkpoints."""
+        if not self.plan or not self.plan.recipe_plan_id or self.prepared_digest:
+            return
+        pending = [item for item in self.plan.ingredients if item.status != "matched"]
+        if not pending:
+            return
+        if not any(
+            item.amount is not None and item.form not in (None, "unspecified") for item in pending
+        ):
+            raise Problem(
+                "RECIPE_REVIEW_REQUIRED",
+                "The remaining saved-recipe ingredients lack verified quantities or forms. "
+                "Product searches cannot resolve this. Explain that this recipe cannot yet "
+                "be purchased; do not ask the customer to calculate quantities or bypass "
+                "the saved recipe with a free-form basket.",
+                422,
+            )
+        if self.recipe_candidates >= 3:
+            raise Problem(
+                "RECIPE_MATCH_PROGRESS_REQUIRED",
+                "Save the inspected products with match_ingredients or match_ingredient "
+                "before more discovery. Match a small batch using the current plan revision; "
+                "retain rejected choices and explain any missing reviewed evidence.",
+                422,
+            )
+        if search and self.recipe_searches >= 3:
+            raise Problem(
+                "RECIPE_MATCH_PROGRESS_REQUIRED",
+                "Inspect a candidate from the existing search results with get_product, then "
+                "save its ingredient match. If none fits, explain the blocker instead of "
+                "repeating searches.",
+                422,
+            )
+        if search:
+            self.recipe_searches += 1
+        else:
+            self.recipe_candidates += 1
 
     def substitution_candidates(self, request):
         if request.product_id not in self.products:
@@ -639,7 +687,9 @@ class ToolSession:
             LookupResponse, self.service.check_price_and_availability(self.identity, request)
         )
         self.commercial.update(result["products"])
-        self.commercial_dates.update({pid: str(request.delivery_date) for pid in result["products"]})
+        self.commercial_dates.update(
+            {pid: str(request.delivery_date) for pid in result["products"]}
+        )
         return result
 
     def publish(self, plan):
@@ -660,7 +710,10 @@ class ToolSession:
                 return Counter((i.name, i.amount, i.unit) for i in p.ingredients)
 
             if (plan.title, plan.portions, plan.base_servings, amounts(plan)) != (
-                basis.title, basis.portions, basis.base_servings, amounts(basis)
+                basis.title,
+                basis.portions,
+                basis.base_servings,
+                amounts(basis),
             ):
                 raise Problem(
                     "DRAFT_QUANTITY_MISMATCH",
@@ -825,7 +878,8 @@ class ToolSession:
                     if reason.get("severity") == "warning"
                 ]
                 notice = (
-                    " ".join(dict.fromkeys(warnings)) + (" " if warnings else "")
+                    " ".join(dict.fromkeys(warnings))
+                    + (" " if warnings else "")
                     + "Review the verified basket and exact revision, then use the Confirm "
                     "purchase button. No supplier order has been placed."
                 )
@@ -833,12 +887,35 @@ class ToolSession:
             notice = "Accepted by demo order service. No supplier order or inventory reservation."
         if plan:
             recipe_notice = "Recipe quantities are estimates for customer review."
-            unresolved = [item.name for item in plan.ingredients if not item.product_id]
-            if unresolved:
-                if self.draft_basis is not None:
-                    recipe_notice += f" {len(unresolved)} ingredients still need catalog matches."
-                else:
-                    recipe_notice += " Unresolved ingredients: " + ", ".join(unresolved) + "."
+            missing_quantities = [item.name for item in plan.ingredients if item.amount is None]
+            if missing_quantities:
+                names = ", ".join(missing_quantities[:3])
+                if len(missing_quantities) > 3:
+                    names += f" and {len(missing_quantities) - 3} more"
+                recipe_notice += f" Quantities still need verification: {names}."
+            missing_forms = [
+                item
+                for item in plan.ingredients
+                if plan.recipe_plan_id
+                and item.amount is not None
+                and item.form in (None, "unspecified")
+            ]
+            if missing_forms:
+                forms_notice = (
+                    "1 ingredient needs its"
+                    if len(missing_forms) == 1
+                    else f"{len(missing_forms)} ingredients need their"
+                )
+                recipe_notice += f" {forms_notice} required form verified before product selection."
+            pending = sum(not item.product_id for item in plan.ingredients)
+            if pending:
+                recipe_notice += f" {pending} of {len(plan.ingredients)} ingredients have no selected product yet."
+            if (missing_quantities or missing_forms) and plan.recipe_plan_id:
+                recipe_notice += (
+                    " This saved recipe cannot be purchased until these facts are verified."
+                )
+            elif pending:
+                recipe_notice += " Product selection and purchasing checks are not complete."
             notice = "\n\n".join(part for part in (recipe_notice, notice) if part)
         if self.memory_changes:
             notice = "\n\n".join(p for p in (memory_notice(self.memory_changes), notice) if p)

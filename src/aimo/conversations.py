@@ -151,7 +151,6 @@ def detail(identity, cid, *, internal=False):
         "activity": {"turn_id": str(turn["id"]), "state": state, "events": turn["progress"]}
         if turn
         else None,
-
         "retry_message": {
             "text": retry["text"],
             "idempotency_key": retry["key"],
@@ -400,12 +399,27 @@ def execute_turn(turn, service, runner=None):
         data = detail(identity, cid, internal=True)
         with connection() as c:
             limits = customer_constraints(c, cid, tid)
+            saved_recipe = c.execute(
+                """SELECT id,revision FROM recipe_plans
+                WHERE buyer_id=%s AND agent_id=%s AND turn_id=%s""",
+                (actor["buyer_id"], actor["id"], str(tid)),
+            ).fetchone()
         # A stored failure notice is for the customer, not the model: it is left out of the history.
         shown = [m for m in data["messages"] if not m["notice"]]
         history = [
             scheduler.provider_message(m["role"], m["text"]) | {"attachments": m["attachments"]}
             for m in shown
         ]
+        if saved_recipe:
+            history.append(
+                {
+                    "role": "assistant",
+                    "content": "This request already has persisted recipe matching progress: "
+                    f"plan_id={saved_recipe['id']}, revision={saved_recipe['revision']}. "
+                    "Reload it with get_recipe_plan and continue from its saved matches; "
+                    "do not restart discovery or replace the selected recipe.",
+                }
+            )
         # Structured persisted plans and status survive refresh, restarts and a provider context reset.
         for index, msg in enumerate(shown):
             if msg["meal_plan"]:

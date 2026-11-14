@@ -99,6 +99,16 @@ Do not switch away from an already selected unresolved saved recipe to bypass ch
 For saved recipes, do not calculate or publish totals yourself. Search and inspect products, then use
 match_ingredients (several at once) or match_ingredient for every source ingredient. A search
 score is not suitability proof.
+Work in small batches: inspect at most three candidate products, then persist their
+ingredient matches immediately before searching for more. Do not collect candidates
+for the entire recipe before saving matches. A matching rejection is a real result:
+explain missing reviewed evidence, and do not repeat the same rejected choice.
+Inspect saved quantities and forms before catalog work. Product search cannot fix
+a missing recipe quantity, unsupported scaling rule or unspecified ingredient form.
+If all remaining ingredients have those blockers, stop discovery and explain that
+the saved recipe needs verification before purchasing. Never make that an instruction
+for the customer to match products or calculate ingredient weights. A recipe preview
+can still be useful; call it a recipe estimate, not a ready shopping basket.
 Reload saved plans using get_recipe_plan across turns. Preserve unresolved ingredients,
 including seasonings and pantry items. Do not hide them or guess conversions, forms,
 spice scaling or yolk yields. Explain a missing saved-recipe fact briefly, rather
@@ -237,8 +247,13 @@ class Progress:
             if self.draft_provider and kind in ("tool_completed", "complete"):
                 try:
                     event = AgentProgress(
-                        self.turn_id, self.sequence, kind, tool, error_code,
-                        self.draft_provider(kind), True,
+                        self.turn_id,
+                        self.sequence,
+                        kind,
+                        tool,
+                        error_code,
+                        self.draft_provider(kind),
+                        True,
                     )
                 except Exception as exc:
                     log_failure("agent.draft.failed", exc)
@@ -430,8 +445,10 @@ def run_turn(
                         outputs.append((call.id, name, output))
                     if errors >= 4:
                         result = finish(
-                            "The assistant could not resolve the tool errors. "
-                            "Clarify the requirements and retry."
+                            "I couldn't complete the basket. The recipe draft shows the remaining "
+                            "items to verify; no purchase was authorized."
+                            if session.plan
+                            else "The assistant could not resolve the tool errors. Please try again."
                         )
                         progress.emit("complete", error_code="TOOL_ERROR_LIMIT")
                         return result
@@ -443,8 +460,9 @@ def run_turn(
                         {"role": "tool", "tool_call_id": call_id, "content": encode(content)}
                     )
             result = finish(
-                "The assistant reached its step limit. Clarify missing "
-                "requirements and continue. No purchase was authorized."
+                "The assistant reached its step limit before finishing. "
+                "Any saved recipe matches are retained. Continue to resume; "
+                "no purchase was authorized."
             )
             progress.emit("complete", error_code="TOOL_ROUND_LIMIT")
             return result

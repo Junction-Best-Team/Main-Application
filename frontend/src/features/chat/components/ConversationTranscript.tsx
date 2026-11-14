@@ -1,4 +1,4 @@
-import type { Conversation } from "../../../shared/api/types";
+import type { Conversation, MealPlan } from "../../../shared/api/types";
 import { Icon } from "../../../shared/components/DesignPrimitives";
 import { dateTime } from "../../../shared/lib/format";
 import { ChatActivity } from "./ChatActivity";
@@ -8,6 +8,22 @@ import { SkuCards } from "./SkuCards";
 import { MessageMarkdown } from "./MessageMarkdown";
 import { AttachmentCards } from "./AttachmentCards";
 import { SystemMessage } from "./SystemMessage";
+
+function recipeMessageText(text: string, plan?: MealPlan | null) {
+  if (!plan) return text;
+  const pending = plan.ingredients.filter(
+    (ingredient) => !ingredient.product_id,
+  );
+  if (!pending.length) return text;
+  // Rephrase only the exact old server-generated notice, using its stored plan.
+  // The saved message and any surrounding customer/assistant narrative stay intact.
+  return text.replace(
+    `Unresolved ingredients: ${pending.map((ingredient) => ingredient.name).join(", ")}.`,
+    `${pending.length} of ${plan.ingredients.length} ingredients have no selected product yet. ` +
+      "Product selection and purchasing checks are not complete.",
+  );
+}
+
 export function ConversationTranscript({
   conversation,
   busy,
@@ -55,7 +71,9 @@ export function ConversationTranscript({
             <div className="flex min-w-0 flex-1 flex-col gap-space-xs">
               <div className="rounded-xl rounded-tl-none bg-surface-container-low p-space-md shadow-sm">
                 <div className="text-body-md text-on-surface">
-                  <MessageMarkdown text={message.text} />
+                  <MessageMarkdown
+                    text={recipeMessageText(message.text, message.meal_plan)}
+                  />
                 </div>
                 {message.image && (
                   <RecipeIllustration
