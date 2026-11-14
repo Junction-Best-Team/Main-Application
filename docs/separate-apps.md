@@ -69,6 +69,10 @@ and the prior image/configuration for rollback.
 
 1. Publish the three images and record immutable digests. Add `worker_image` and
    `frontend_image` to private Kubernetes inputs; `image` now identifies the API.
+   Preserve the current provider key/base URL/model privately from `aimo-runtime`
+   into `runtime_secrets` before cutover if release sync owns the live values.
+   Terraform creates `aimo-worker-runtime` from these inputs and removes the LLM
+   key from the API Secret. Worker readiness requires a configured provider key.
 2. Stop the old `aimo` Deployment and wait for in-flight requests to finish before
    schema setup. Run `aimo migrate` with the setup database role using the worker
    image. Migration 004 adds queue state, submitter and attempt count. It retains

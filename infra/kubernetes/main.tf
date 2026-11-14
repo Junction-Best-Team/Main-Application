@@ -79,9 +79,13 @@ resource "kubernetes_secret_v1" "worker" {
     name      = "aimo-worker-runtime"
     namespace = kubernetes_namespace_v1.aimo.metadata[0].name
   }
-  data = merge({ for key, value in var.runtime_secrets : key => value if contains(["LLM_API_KEY", "VALIO_AIMO_API_KEY"], key) }, {
+  data = merge({ for key, value in var.runtime_secrets : key => value if contains(["LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL", "VALIO_AIMO_API_KEY"], key) }, {
     DATABASE_URL = var.database_url
   })
+  # Releases own only these fields; Terraform retains all other Secret settings.
+  lifecycle {
+    ignore_changes = [data["LLM_API_KEY"], data["LLM_BASE_URL"], data["LLM_MODEL"]]
+  }
 }
 
 locals {

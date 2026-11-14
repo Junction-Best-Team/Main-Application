@@ -53,6 +53,8 @@ def main():
         service = Service()
         while not stop.is_set():
             try:
+                if not settings().llm_api_key:
+                    raise RuntimeError("Worker provider credential is not configured")
                 with connection() as c:
                     active = c.execute(
                         "SELECT g.model_key FROM active_catalog a JOIN catalog_generations g ON g.id=a.generation"

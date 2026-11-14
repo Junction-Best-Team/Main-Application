@@ -30,3 +30,12 @@ Traefik routes API/SSE directly to the API Service. Keep buffering disabled and
 retain `X-Accel-Buffering: no`. SSE sends stored snapshots/heartbeats every two
 seconds and reconnects within 25 seconds. The frontend uses same-origin relative
 API URLs, so authentication/CSRF semantics remain unchanged.
+
+For releases, the optional repository secret `LLM_API_KEY` and variables
+`LLM_BASE_URL`/`LLM_MODEL` synchronize only into `aimo-worker-runtime` through
+kubectl stdin. The defaults remain OpenRouter (`https://openrouter.ai/api/v1`,
+`openai/gpt-4.1-mini`). Missing repository credentials preserve existing settings.
+Terraform ignores release-managed changes to those three worker Secret fields;
+it continues to own database/supplier configuration. Same-image provider changes
+restart only the worker. Builds/PR checks never use these credentials. Image
+rollback does not restore provider configuration; restore that separately if needed.
