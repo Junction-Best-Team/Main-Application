@@ -58,3 +58,13 @@ assistant slot: a retry of the same message (same key) removes it, a repeated fa
 and the real reply replaces it when the retry succeeds, so there is never more than one per turn.
 Guardrail, policy and programming errors store no notice. The unfinished message still appears as
 `retry_message`; a new message is refused until it is retried (`RETRY_PREVIOUS_MESSAGE`).
+
+## Confirmation line (owner Q-121)
+
+After the customer's confirm route places an order, the chat that holds the basket gets one plain line
+(`role` system, `notice` `order_confirmed`): "Order accepted by the demo order service, delivery 17 Nov. This is
+a demo order: ..." in Finnish, Swedish or English (the language of the customer's last message, English when
+unsure). It is stored with a closed turn keyed by the order, so a replay, a revised or a failed confirm adds
+nothing, no model is called and no error text is shown. The model's history leaves it out (the order state
+comes from the persisted purchasing state). A scheduled run's own commit writes none. Later fulfilment changes
+show on the order card and receipt, not in the chat. Code: `order_notice.py`, `conversations.store_confirmation_line`.
