@@ -1086,6 +1086,16 @@ Add new findings below, under your track heading.
 - Composer merge compatibility (2026-11-15): rebased onto `develop` at `7e67f7e` and retained PR #186's single voice-or-send action, attachment-only sending, removed barcode and removed input focus ring in the homepage variant. Frontend `npm run check` passed; the full browser suite passed (78 passed, two optional backend checks skipped). Three focused checks additionally covered home voice/send switching with text and attachments at desktop/320px and starting voice from Home through persisted conversation creation. Desktop/mobile screenshots inspected. This PR still changes only frontend and documentation; no database migration was added or applied.
 - Resolved the subsequent minimal-homepage overlap from `develop` at `1a81373`, retaining its new page, schedules strip, composer and navigation while keeping the requested avatar dropdown and removed sidebar account block. Restored the desktop account header and adjusted homepage height for it; frontend checks passed.
 
+### F-HOME-002: Remove the homepage paperclip
+
+- Date: 2026-11-15. Removed the homepage file-picker button at the owner's request and retained the existing voice/send switch aligned to the right. Chat's file picker and Home's existing paste/drop attachment handling remain available. Reused the shared composer without backend or schema changes.
+- Verification: frontend `npm run check` passed; 11 focused fixture-backed browser checks passed, covering desktop/mobile chat controls, attachments, homepage voice/send switching, multiline submission, retries and starting voice from Home. Desktop/320px screenshots inspected. No deployment or database migration.
+
+- Homepage polish follow-up (2026-11-15): disabled manual textarea resizing to remove the diagonal native resize handle identified by the owner. Frontend `npm run check` and both desktop/320px home submission checks passed; the mobile screenshot was inspected.
+
+- Attachment spacing follow-up (2026-11-15): the homepage composer now uses a vertical flex layout with a 16px gap, separating attachment previews and feedback from the text field. Frontend `npm run check` and both desktop/320px home submission checks passed; attachment-state screenshots were inspected.
+
+- Both-input follow-up (2026-11-15): matched chat's attachment-to-input gap to Home's 16px spacing. Frontend `npm run check` and four desktop/320px attachment submission checks passed across both inputs; chat attachment screenshots inspected.
 - Meal-planning follow-up: synced #187 with `develop` at `1a81373` and #179 at
   `5ffb29c`, keeping the minimal homepage, account dropdown, attachments, streamed
   cart and automatic ingredient scaling. Frontend checks and all 88 fixture-backed
