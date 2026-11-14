@@ -1299,6 +1299,82 @@
         }
       }
     },
+    "/api/conversations/{conversation_id}/attachments/{message_id}/{index}": {
+      "get": {
+        "summary": "Conversation Attachment",
+        "operationId": "conversation_attachment_api_conversations__conversation_id__attachments__message_id___index__get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Index"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error. Every error body is an ErrorResponse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error. Every error body is an ErrorResponse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/conversations/{conversation_id}/messages": {
       "post": {
         "summary": "Send Message",
@@ -1525,6 +1601,64 @@
         "title": "ApproverAuthority",
         "description": "A human approver's limits: the maximum gross amount and the exceptions they may approve."
       },
+      "AttachmentInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "media_type",
+          "size",
+          "url"
+        ],
+        "title": "AttachmentInfo"
+      },
+      "AttachmentInput": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 180,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "media_type": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Media Type"
+          },
+          "data": {
+            "type": "string",
+            "maxLength": 2796204,
+            "minLength": 1,
+            "title": "Data"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "media_type",
+          "data"
+        ],
+        "title": "AttachmentInput"
+      },
       "ChatMessage": {
         "properties": {
           "id": {
@@ -1578,6 +1712,13 @@
                 "type": "null"
               }
             ]
+          },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/AttachmentInfo"
+            },
+            "type": "array",
+            "title": "Attachments"
           }
         },
         "additionalProperties": false,
@@ -2711,8 +2852,8 @@
           "text": {
             "type": "string",
             "maxLength": 4000,
-            "minLength": 1,
-            "title": "Text"
+            "title": "Text",
+            "default": ""
           },
           "idempotency_key": {
             "type": "string",
@@ -2730,12 +2871,19 @@
               }
             ],
             "description": "Optional hard limits set by the customer (budget, dietary toggles). They stay in force for the rest of the conversation until a later message changes them."
+          },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/AttachmentInput"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Attachments"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "text",
           "idempotency_key"
         ],
         "title": "MessageRequest"
@@ -3716,6 +3864,13 @@
                 "type": "null"
               }
             ]
+          },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/AttachmentInput"
+            },
+            "type": "array",
+            "title": "Attachments"
           }
         },
         "additionalProperties": false,
@@ -3725,7 +3880,7 @@
           "idempotency_key"
         ],
         "title": "RetryMessage",
-        "description": "An unfinished message the client can send again with the same key and the same limits."
+        "description": "An unfinished message, including the same limits and files for an exact retry."
       },
       "RevisedProposalResponse": {
         "properties": {

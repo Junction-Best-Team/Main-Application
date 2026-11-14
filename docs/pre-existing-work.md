@@ -242,3 +242,10 @@ and [Material Symbols guide](https://fontsource.org/docs/getting-started/materia
 All three distributed packages include SIL OFL 1.1 notices, copied intact to
 `frontend/public/font-licenses/` for distribution with the bundled font assets.
 The earlier ignored preview font cache and example-memory database remain local.
+## Chat attachments — 2026-11-14
+
+Reused the existing composer, generated Python/OpenAPI contracts, authenticated conversation API,
+PostgreSQL queue, retry fencing and native Google/OpenRouter adapters. Added pypdf, openpyxl,
+defusedxml and an explicit Pillow dependency for bounded file parsing; lockfile updated. Tests use
+small authored text, Office archives, PDF pages and image bytes, with mocked model responses;
+no challenge documents, user files, credentials or remote material are committed.
