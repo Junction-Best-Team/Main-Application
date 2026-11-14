@@ -66,14 +66,35 @@ def purchase(lines):
 # --- MEA-011: a configured maximum quantity per portion --------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="MEA-011 Draft: scaled_plan has no maximum quantity per portion (value pending)",
-)
 def test_absurd_quantity_per_portion_is_rejected():
-    # 9,999,999 kg per serving x 10,000 portions = 99,999,990,000 kg is accepted today.
+    # 9,999,999 kg per serving x 10,000 portions = 99,999,990,000 kg is accepted without a bound.
     with pytest.raises(Problem):
         scaled_plan(recipe(quantity=9999999, unit="kg"), 10000)
+
+
+@pytest.mark.parametrize(
+    "quantity,unit,expected_unit",
+    [(5, "kg", "KG"), (5000, "g", "KG"), (5, "l", "L"), (5000, "ml", "L"), (50, "piece", "piece")],
+)
+def test_the_per_portion_limit_itself_is_allowed(quantity, unit, expected_unit):
+    plan = scaled_plan(recipe(quantity=quantity, unit=unit), 200)
+    assert plan.ingredients[0].unit == expected_unit and plan.ingredients[0].amount
+
+
+@pytest.mark.parametrize(
+    "quantity,unit",
+    [("5.0001", "kg"), (5001, "g"), ("5.0001", "l"), (5001, "ml"), (51, "piece")],
+)
+def test_more_than_the_per_portion_limit_is_refused_with_a_correctable_code(quantity, unit):
+    with pytest.raises(Problem) as error:
+        scaled_plan(recipe(quantity=quantity, unit=unit), 1)
+    assert error.value.code == "QUANTITY_PER_PORTION_EXCEEDED" and error.value.status == 422
+    assert "ingredient 0" in error.value.message
+
+
+def test_the_limit_applies_per_portion_not_to_the_total():
+    # 1 kg per serving x 10,000 portions = 10,000 kg is a big event, not an absurd recipe.
+    assert scaled_plan(recipe(quantity=1, unit="kg"), 10000).ingredients[0].amount == "10000"
 
 
 # --- MEA-012: round a scaled quantity UP to four decimal places ------------------------------

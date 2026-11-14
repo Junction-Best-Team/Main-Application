@@ -1301,7 +1301,8 @@
                 "type": "null"
               }
             ],
-            "title": "Purchase Amount"
+            "title": "Purchase Amount",
+            "description": "The REQUIRED amount in the unit the basket uses (a copy of amount, converted to the plan unit). It is not the pack-rounded purchase: see conversion.proposed_amount."
           },
           "purchase_unit": {
             "anyOf": [
@@ -1312,7 +1313,8 @@
                 "type": "null"
               }
             ],
-            "title": "Purchase Unit"
+            "title": "Purchase Unit",
+            "description": "Unit of purchase_amount (KG, L or piece). Not the pack or sales unit."
           },
           "product_fingerprint": {
             "anyOf": [

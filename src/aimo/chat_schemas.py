@@ -17,8 +17,15 @@ class Ingredient(Model):
     form: str | None = None
     status: Literal["proposed", "matched", "unresolved"] = "proposed"
     reason: str | None = None
-    purchase_amount: str | None = None
-    purchase_unit: str | None = None
+    purchase_amount: str | None = Field(
+        default=None,
+        description="The REQUIRED amount in the unit the basket uses (a copy of amount, converted "
+        "to the plan unit). It is not the pack-rounded purchase: see conversion.proposed_amount.",
+    )
+    purchase_unit: str | None = Field(
+        default=None,
+        description="Unit of purchase_amount (KG, L or piece). Not the pack or sales unit.",
+    )
     product_fingerprint: str | None = None
     conversion: QuantityCalculation | None = None
     rejected: list[dict[str, str]] = Field(default_factory=list, max_length=100)
