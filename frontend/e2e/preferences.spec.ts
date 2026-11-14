@@ -538,10 +538,8 @@ test("preferences are reachable from account navigation without extra chat links
 }) => {
   await mockApi(page);
   await page.goto("/");
-  await page
-    .getByRole("complementary", { name: "Sidebar" })
-    .getByRole("link", { name: "Memory" })
-    .click();
+  await page.getByRole("button", { name: "User menu" }).click();
+  await page.getByRole("link", { name: "Memory", exact: true }).click();
   await expect(page).toHaveURL(/\/settings\/preferences$/);
   await expect(
     page.getByRole("heading", { level: 1, name: "Memory" }),
@@ -557,16 +555,17 @@ test("preferences are reachable from account navigation without extra chat links
   await page.goto("/settings/preferences");
 
   // Purchasing policy settings stay a separate screen and link.
-  const sidebar = page.getByRole("complementary", { name: "Sidebar" });
+  await page.getByRole("button", { name: "User menu" }).click();
+  const account = page.getByRole("navigation", { name: "User account" });
   await expect(
-    sidebar.getByRole("link", { name: "Account Settings" }),
+    account.getByRole("link", { name: "Account Settings" }),
   ).toHaveAttribute("href", "/settings");
-  await expect(sidebar.getByRole("link", { name: "Memory" })).toHaveAttribute(
+  await expect(account.getByRole("link", { name: "Memory" })).toHaveAttribute(
     "aria-current",
     "page",
   );
   await expect(
-    sidebar.getByRole("link", { name: "Account Settings" }),
+    account.getByRole("link", { name: "Account Settings" }),
   ).not.toHaveAttribute("aria-current", "page");
 });
 
@@ -604,13 +603,11 @@ test("mobile layout fits the viewport and tabs work from the keyboard", async ({
     page.getByText("Prefer Finnish organic cream", { exact: false }),
   ).toBeVisible();
 
-  // The mobile menu links to the screen too.
-  await page.getByRole("button", { name: "Open menu" }).click();
-  await page
-    .getByRole("dialog", { name: "Menu" })
-    .getByRole("link", { name: "Memory" })
-    .click();
-  await expect(page.getByRole("dialog", { name: "Menu" })).toHaveCount(0);
+  // The mobile user dropdown links to the screen too.
+  await page.getByRole("button", { name: "User menu" }).click();
+  const account = page.getByRole("navigation", { name: "User account" });
+  await account.getByRole("link", { name: "Memory" }).click();
+  await expect(account).toHaveCount(0);
 });
 
 test("fonts and sidebar icons load without Google Fonts access", async ({

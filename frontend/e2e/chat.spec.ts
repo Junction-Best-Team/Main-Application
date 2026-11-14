@@ -568,7 +568,7 @@ test("request starts a meal conversation and keeps messages through refresh", as
   ).toBeVisible();
   await expect(
     page.getByText("Messages never authorize a purchase.", { exact: false }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(page.getByLabel("Continue the conversation")).toHaveValue("");
   await page.reload();
   await expect(

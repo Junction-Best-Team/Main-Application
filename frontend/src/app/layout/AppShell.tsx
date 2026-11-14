@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { DESIGN_PLACEHOLDERS as MOCK } from "../../shared/lib/designPlaceholders";
-import { useAuth } from "../../features/auth/useAuth";
 import { useConversationNavigation } from "../../features/chat/hooks/useConversationNavigation";
 import { Wordmark } from "../../shared/components/Wordmark";
-import { Icon, InertButton } from "../../shared/components/DesignPrimitives";
+import { Icon } from "../../shared/components/DesignPrimitives";
+import { UserMenu } from "./UserMenu";
 
 import type { ConversationList } from "../../shared/api/types";
 type ConversationListItem = ConversationList["items"][number];
@@ -206,80 +206,9 @@ function HubBadge() {
   );
 }
 
-function Avatar() {
-  return (
-    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary">
-      <Icon name="person" className="text-[18px]" />
-    </span>
-  );
-}
-
-/** Account switcher placeholder, policy settings, assistant preferences and the real Sign out action. */
-function AccountBlock({ onNavigate }: { onNavigate?: () => void }) {
-  const { pathname } = useLocation();
-  const { session, logout } = useAuth();
-  return (
-    <div className="flex shrink-0 flex-col gap-space-xs bg-surface-container-low p-space-sm">
-      <InertButton
-        label="Switch account"
-        className="flex w-full items-center justify-between rounded-lg bg-surface-pure p-space-sm text-left"
-      >
-        <span className="flex items-center gap-space-sm">
-          <Avatar />
-          <span className="flex flex-col">
-            <span className="font-label text-label-md text-on-surface">
-              {session?.buyer_id}
-            </span>
-            <span className="font-label text-label-sm text-on-surface-variant">
-              {session?.username}
-            </span>
-          </span>
-        </span>
-        <Icon
-          name="unfold_more"
-          className="text-[18px] text-on-surface-variant"
-        />
-      </InertButton>
-      <Link
-        to="/settings"
-        onClick={onNavigate}
-        aria-current={pathname === "/settings" ? "page" : undefined}
-        className={`flex items-center gap-space-sm rounded-lg px-space-md py-space-sm font-label text-label-md no-underline hover:no-underline ${pathname === "/settings" ? "bg-secondary-container text-primary" : "text-on-surface-variant hover:bg-surface-container-high"}`}
-      >
-        <Icon name="manage_accounts" className="text-[18px]" />
-        Account Settings
-      </Link>
-      <Link
-        to="/settings/preferences"
-        onClick={onNavigate}
-        aria-current={
-          pathname.startsWith("/settings/preferences") ? "page" : undefined
-        }
-        className={`flex items-center gap-space-sm rounded-lg px-space-md py-space-sm font-label text-label-md no-underline hover:no-underline ${
-          pathname.startsWith("/settings/preferences")
-            ? "bg-secondary-container text-primary"
-            : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-        }`}
-      >
-        <Icon name="tune" className="text-[18px]" />
-        Memory
-      </Link>
-      <button
-        type="button"
-        onClick={logout}
-        className="flex cursor-pointer items-center gap-space-sm rounded-lg border-0 bg-transparent px-space-md py-space-sm font-label text-label-md text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-      >
-        <Icon name="logout" className="text-[18px]" />
-        Sign out
-      </button>
-    </div>
-  );
-}
-
 function Sidebar({ conversations }: { conversations: ConversationNav }) {
   // Fixed to the viewport, top to bottom, so it never scrolls with the page;
-  // its nav scrolls internally if it outgrows the screen. pb-20 keeps the
-  // account block clear of the fixed prototype DemoBar.
+  // its nav scrolls internally if it outgrows the screen.
   return (
     <aside
       aria-label="Sidebar"
@@ -296,7 +225,6 @@ function Sidebar({ conversations }: { conversations: ConversationNav }) {
         <HubBadge />
         <NavLinks conversations={conversations} />
       </div>
-      <AccountBlock />
     </aside>
   );
 }
@@ -304,7 +232,7 @@ function Sidebar({ conversations }: { conversations: ConversationNav }) {
 function DesktopHeader() {
   return (
     <header className="sticky top-0 z-40 hidden h-16 shrink-0 items-center justify-end gap-space-md border-b border-border-subtle bg-surface/80 px-margin backdrop-blur-xl md:flex">
-      <Avatar />
+      <UserMenu />
     </header>
   );
 }
@@ -340,7 +268,7 @@ function MobileTopBar({
           </span>
         </Link>
       </div>
-      <Avatar />
+      <UserMenu />
     </header>
   );
 }
@@ -414,7 +342,6 @@ function MobileMenu({
           <HubBadge />
           <NavLinks conversations={conversations} onNavigate={onClose} />
         </div>
-        <AccountBlock onNavigate={onClose} />
       </div>
     </div>
   );

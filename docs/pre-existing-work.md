@@ -251,3 +251,11 @@ and [Material Symbols guide](https://fontsource.org/docs/getting-started/materia
 All three distributed packages include SIL OFL 1.1 notices, copied intact to
 `frontend/public/font-licenses/` for distribution with the bundled font assets.
 The earlier ignored preview font cache and example-memory database remain local.
+
+## Header user dropdown — 2026-11-14
+
+Reused the existing account settings/preferences routes, session logout action,
+Material Symbols and Nordic UI tokens. Adapted the sidebar actions into a shared
+desktop/mobile header dropdown using the owner's screenshot as layout context.
+Browser verification uses the existing authored API fixtures. No new external
+assets or dependencies were introduced.

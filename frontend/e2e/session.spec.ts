@@ -117,6 +117,7 @@ test("sign-in succeeds and yields a usable session", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Welcome, demo-hotel" }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "User menu" }).click();
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
   expect(loginBodies).toEqual([
     { username: "buyer", password: "correct-password" },
@@ -129,12 +130,14 @@ test("a valid session restores automatically on reload", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Welcome, demo-hotel" }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "User menu" }).click();
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
   await page.reload();
   await expect(page).toHaveURL(/\/$/);
   await expect(
     page.getByRole("heading", { name: "Welcome, demo-hotel" }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "User menu" }).click();
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 });
 
@@ -143,6 +146,7 @@ test("sign-out clears the session and a later reload requires login again", asyn
 }) => {
   const { logoutCalls } = await mockSession(page, true);
   await page.goto("/");
+  await page.getByRole("button", { name: "User menu" }).click();
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/login$/);
