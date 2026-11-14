@@ -49,6 +49,13 @@ Reference: [Junction general terms](https://www.hackjunction.com/terms-of-servic
 
 ### Integrated dependencies and model
 
+The agent workstream on `codex/agent-role` reuses PR #12 (`2d49a62`), including
+its shared chat models, internal runner, typed direct-service tools and tests.
+Codex added prepared-basket recovery/association fixes and seven regression cases
+during the event on 2026-11-14. No new dependencies or assets were added. Integration
+verification uses a temporary PR #15 (`5b500a7`) source snapshot and isolated test
+databases; its provider, catalog and commercial evidence remain authored fixtures.
+
 Exact resolved versions and hashes are in `uv.lock` and `frontend/package-lock.json`; runtime versions are in `.python-version`, `.node-version` and Dockerfile. Main integrated versions: FastAPI 0.162.7 (MIT), Pydantic 2.14.3 (MIT), Uvicorn 0.54.0 (BSD-3-Clause), MCP Python SDK 1.30.0 (MIT), psycopg 3.3.9 (LGPL-3.0), HTTPX 0.28.1 (BSD-3-Clause), Sentence Transformers 5.7.0 (Apache-2.0), Transformers 5.23.0 (Apache-2.0), PyTorch 2.15.0 / Linux CPU build (BSD-3-Clause), Argon2-cffi 25.1.0 (MIT), ItsDangerous 2.2.0 (BSD-3-Clause), React 19.3.1 (MIT), TypeScript 5.9.3 (Apache-2.0), Vite 7.3.8 (MIT), Playwright 1.65.1 (Apache-2.0), uv 0.12.5 (MIT/Apache-2.0), PostgreSQL/pgvector (PostgreSQL licence). Distribution must retain the respective packages' licence notices; lockfiles are not substitutes for those licences.
 
 The [intfloat/multilingual-e5-small](https://huggingface.co/intfloat/multilingual-e5-small) model (MIT) is pinned to `614241f622f53c4eeff9890bdc4f31cfecc418b3`, used through Sentence Transformers with `passage:`/`query:` prefixes and normalized 384-dimensional embeddings. Model weights are downloaded during setup/image build, not committed to Git. Its [technical report](https://arxiv.org/abs/2402.05672) describes the model; our limited catalog evaluation is recorded separately.

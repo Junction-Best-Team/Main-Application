@@ -40,8 +40,12 @@ failures, and no early retry when the provider supplies `Retry-After`. Turns hav
 90-second provider budget, a configured round limit, at most 12 calls per response,
 and stop after four tool errors. Supplier lookups retain their own bounded retry
 behavior. If the provider fails after preparation, the successful basket is still
-returned to the application for persistence and customer review.
+returned to the application for persistence and customer review, including an
+empty final provider reply. After successful preparation, this turn's meal plan
+and purchase terms are fixed; identical retries remain allowed. Recipe or terms
+changes need a new customer message. Reading another saved purchase does not
+replace the prepared basket's association with its meal plan.
 
 Validation on 2026-11-14: `uv run ruff check src/aimo/agent.py tests/test_agent.py`
-and `uv run pytest -q tests/test_agent.py` passed (31 tests). These use a fake
+and `uv run pytest -q tests/test_agent.py` passed (38 tests). These use a fake
 provider and service; they do not assert a live provider/supplier checkout.

@@ -14,6 +14,14 @@ Entry format:
 
 Owner decisions use `D-<nnn>` and quote the owner's words verbatim.
 
+## Internal agent
+
+### F-AGENT-001: A prepared basket must retain its meal-plan association
+- Date: 2026-11-14   Track: 2   Status: verified
+- Finding: PR #12's runner could discard its successful result on an empty final provider reply, or attach a later meal plan/saved proposal lookup to the prepared basket. The agent now retains the basket on empty replies and freezes its meal plan and purchase terms for that turn; identical preparation retries and other saved-purchase reads remain available.
+- Evidence: `tests/test_agent.py` covers empty replies with/without preparation, rejected within-turn plan/terms changes, saved-purchase reads, identical retries and revised terms in a new turn. See `docs/validation.md` for actual branch and backend integration results.
+- Impact: The UI receives the validated prepared basket and its matching plan even after provider failures or extra tool calls. Recipe changes require a new customer message; authenticated backend confirmation still controls ordering.
+
 ## Infrastructure
 
 ### F-INFRA-001: Optional Terraform hosting and portable deployment

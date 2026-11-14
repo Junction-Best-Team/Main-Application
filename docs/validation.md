@@ -90,3 +90,27 @@ Broad English milk queries can rank flavored drinks, coffee products or sweets t
 - Demo identity/password/bearer auth is implemented, not identity federation or MCP OAuth discovery. Seed runs are privileged and preserve existing settings. No policy-editing endpoint or autonomous approval tool exists.
 - Kubernetes resources are templates for an existing environment; cluster, registry, ingress/TLS and deployment resource adequacy have not been verified. No paid infrastructure or live deployment was created.
 - Existing policies/revisions/audit records are immutable by database trigger. Product/vector generation retention is now bounded at publication; generation metadata, reusable embeddings and audit/history retention remain operator concerns.
+
+## Internal agent workstream and recovery checks
+
+On `codex/agent-role`, started at current `origin/develop` (`19bfda4`) and reused
+PR #12 at `2d49a62` without modifying its shared chat contracts. Follow-up agent
+changes preserve prepared baskets after empty provider replies, prevent changing
+their associated meal plans/terms within the same turn, and keep unrelated saved
+proposal lookups from replacing the prepared basket card.
+
+- `uv run --no-sync ruff check src tests scripts`: passed.
+- `uv run --no-sync pytest -q tests/test_agent.py`: **38 passed** with fake provider/service.
+- Full suite with `TEST_DATABASE_URL` selecting isolated `aimo_agent_role_test`:
+  **135 passed, 1 skipped**. The skipped integration module needs the chat backend.
+- Against a temporary source snapshot of PR #15 (`5b500a7`) with this branch's
+  `agent.py` overlaid, agent and integration tests: **39 passed**, using isolated
+  `aimo_agent_role_integration_test`. The integration test exercises actual
+  PostgreSQL/catalog/quantity/policy functions, browser authentication and customer
+  confirmation, persistent mock receipt retrieval and one-order retry behavior.
+  The provider is scripted; catalog, embeddings and commercial evidence are fixtures.
+
+LLM settings, identity provisioning, conversation persistence and confirmation
+remain dependencies owned by the product/backend integration. This workstream
+alone does not expose a runnable chat product. No live provider/supplier check,
+browser interaction, deployment or infrastructure change was performed here.

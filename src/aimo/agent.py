@@ -113,6 +113,7 @@ class Tools:
         self.turn_key = identity.get("_turn_id") or fingerprint(messages)
         self.meal_plan = None
         self.proposal = None
+        self.prepared_payload = None
         self.products = {}
         self.registry = {
             "search_products": Tool(
@@ -163,10 +164,22 @@ class Tools:
 
     def get_proposal(self, request):
         proposal = self.service.get_proposal(self.identity, request.proposal_id)
-        self.proposal = proposal
+        # Reading another saved purchase must not detach this turn's prepared
+        # basket from the meal plan that was validated for it.
+        if self.prepared_payload is None or str(request.proposal_id) == str(
+            self.proposal["proposal_id"]
+        ):
+            self.proposal = proposal
         return proposal
 
     def publish_meal_plan(self, plan):
+        if self.prepared_payload is not None and plan != self.meal_plan:
+            raise Problem(
+                "MEAL_PLAN_LOCKED",
+                "This turn already prepared a basket for its meal plan. "
+                "Keep that plan for review; request recipe changes in a new message.",
+                409,
+            )
         for ingredient in plan.ingredients:
             try:
                 TypeAdapter(Amount).validate_python(ingredient.amount)
@@ -207,11 +220,20 @@ class Tools:
                 422,
             )
         payload = request.model_dump(mode="json")
+        digest = fingerprint(payload)
+        if self.prepared_payload is not None and digest != self.prepared_payload:
+            raise Problem(
+                "IDEMPOTENCY_CONFLICT",
+                "This turn already prepared different purchase terms. "
+                "Review the saved basket or request changes in a new message.",
+                409,
+            )
         key = "chat-" + fingerprint({"turn": self.turn_key})
         proposal = self.service.prepare_order(
             self.identity, PrepareRequest(**payload, idempotency_key=key)
         )
         self.proposal = proposal
+        self.prepared_payload = digest
         return proposal
 
     def invoke(self, name, arguments):
@@ -408,6 +430,8 @@ def run_turn(identity, messages: list[dict], service) -> AgentTurn:
             if not reply.get("tool_calls"):
                 text = reply.get("content")
                 if not text or not text.strip():
+                    if tools.proposal:
+                        return tools.result()
                     raise Problem(
                         "LLM_RESPONSE_INVALID",
                         "The assistant returned no message. Retry this message.",

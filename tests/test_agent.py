@@ -350,3 +350,75 @@ def test_provider_failure_after_preparation_retains_verified_basket(monkeypatch,
     assert result.proposal_id == service.proposal["proposal_id"]
     assert "Review the verified basket" in result.text
     assert result.meal_plan == MealPlan(**plan())
+
+
+@pytest.mark.parametrize("text", [None, "", "   "])
+def test_empty_provider_reply_after_preparation_retains_verified_basket(
+    monkeypatch, cfg, identity, text
+):
+    service = FakeService()
+    responses = iter([
+        reply(*[tool("get_product", {"product_id": i["product_id"]}) for i in ingredients()]),
+        reply(tool("publish_meal_plan", plan()), tool("prepare_order", purchase())),
+        reply(text=text),
+    ])
+    install_provider(monkeypatch, lambda request: httpx.Response(
+        200, json={"choices": [{"message": next(responses)}]}
+    ))
+    result = internal.run_turn(identity, [{"role": "user", "content": "carbonara"}], service)
+    assert result.proposal_id == service.proposal["proposal_id"]
+    assert result.meal_plan == MealPlan(**plan())
+    assert "Confirm purchase button" in result.text
+    assert len([c for c in service.calls if c[0] == "prepare"]) == 1
+
+
+@pytest.mark.parametrize("text", [None, "", "   "])
+def test_empty_provider_reply_without_a_basket_is_actionable(monkeypatch, cfg, identity, text):
+    scripted(monkeypatch, [reply(text=text)])
+    with pytest.raises(Problem) as error:
+        internal.run_turn(identity, [{"role": "user", "content": "carbonara"}], FakeService())
+    assert error.value.code == "LLM_RESPONSE_INVALID"
+
+
+def test_successful_preparation_keeps_its_plan_and_terms_until_the_next_turn(identity):
+    service = FakeService()
+    registry = internal.Tools(identity, [], service)
+    for ingredient in ingredients():
+        invoke(registry, "get_product", {"product_id": ingredient["product_id"]})
+    invoke(registry, "publish_meal_plan", plan())
+    prepared = invoke(registry, "prepare_order", purchase())
+
+    changed = plan()
+    changed["ingredients"][0]["amount"] = "10"
+    with pytest.raises(Problem) as error:
+        invoke(registry, "publish_meal_plan", changed)
+    assert error.value.code == "MEAL_PLAN_LOCKED"
+    with pytest.raises(Problem) as error:
+        invoke(registry, "prepare_order", purchase() | {"budget_gross": "2000"})
+    assert error.value.code == "IDEMPOTENCY_CONFLICT"
+    assert len([c for c in service.calls if c[0] == "prepare"]) == 1
+
+    # Reading other saved purchases is allowed without replacing the prepared card.
+    other = {"proposal_id": str(uuid4()), "policy_outcome": "denied"}
+    service.proposal = other
+    assert invoke(registry, "get_proposal", {"proposal_id": other["proposal_id"]}) == other
+    result = registry.result()
+    assert result.proposal_id == prepared["proposal_id"]
+    assert result.meal_plan == MealPlan(**plan())
+
+    # Identical retries still use the purchasing service's persistent retry result.
+    service.proposal = prepared
+    invoke(registry, "publish_meal_plan", plan())
+    assert invoke(registry, "prepare_order", purchase()) == prepared
+    keys = [c[2].idempotency_key for c in service.calls if c[0] == "prepare"]
+    assert len(keys) == 2 and keys[0] == keys[1]
+
+    # A new persisted customer turn can propose and prepare revised terms.
+    following = internal.Tools(identity | {"_turn_id": str(uuid4())}, [], service)
+    for ingredient in changed["ingredients"]:
+        invoke(following, "get_product", {"product_id": ingredient["product_id"]})
+    invoke(following, "publish_meal_plan", changed)
+    revised = purchase()
+    revised["lines"][0]["amount"] = "10"
+    invoke(following, "prepare_order", revised)
+    assert service.calls[-1][2].idempotency_key != keys[0]
