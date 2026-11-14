@@ -121,18 +121,20 @@ def sample(buyer, service, placed_order):
     scheduler.run_due_schedules(service, now=at())
     run = run_of(s)
     proposal = service.get_proposal(auth.internal_agent(buyer), str(run["proposal_id"]))
-    return auth_row, proposal["request"], proposal["snapshot"], proposal["policy_outcome"]
+    return auth_row, proposal["request"], proposal["snapshot"], proposal["policy_outcome"], run
 
 
 def test_an_unchanged_basket_passes_the_run_time_check(buyer, service, placed_order):
-    auth_row, request, snapshot, outcome = sample(buyer, service, placed_order)
-    assert scheduler.compare(auth_row, request, snapshot, outcome)["ok"]
+    auth_row, request, snapshot, outcome, run = sample(buyer, service, placed_order)
+    assert scheduler.compare(
+        auth_row, request, snapshot, outcome, delivery_date=run["delivery_date"]
+    )["ok"]
 
 
 def test_a_changed_quantity_a_deposit_the_destination_or_the_currency_is_a_change_of_terms(
     buyer, service, placed_order
 ):
-    auth_row, request, snapshot, outcome = sample(buyer, service, placed_order)
+    auth_row, request, snapshot, outcome, run = sample(buyer, service, placed_order)
 
     def changed(**edits):
         req, snap = deepcopy(request), deepcopy(snapshot)
@@ -149,7 +151,9 @@ def test_a_changed_quantity_a_deposit_the_destination_or_the_currency_is_a_chang
             req["destination"] = edits["destination"]
         if "currency" in edits:
             snap["currency"] = edits["currency"]
-        return scheduler.compare(auth_row, req, snap, outcome)
+        if "delivery" in edits:
+            req["delivery_date"] = edits["delivery"]
+        return scheduler.compare(auth_row, req, snap, outcome, delivery_date=run["delivery_date"])
 
     for edits in (
         {"amount": "20"},
@@ -157,6 +161,7 @@ def test_a_changed_quantity_a_deposit_the_destination_or_the_currency_is_a_chang
         {"deposit": True},
         {"destination": "somewhere-else"},
         {"currency": "SEK"},
+        {"delivery": "2099-01-01"},
     ):
         verdict = changed(**edits)
         assert not verdict["ok"] and verdict["codes"][0] in (

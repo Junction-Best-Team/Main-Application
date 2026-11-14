@@ -57,10 +57,13 @@ first run date of today would be missed at once: use "Run now (demo)" there.
   runtime role: `aimo seed` and the migration create them; a buyer without one fails closed.
 - `terms_fingerprint` is not `material_fingerprint`: it leaves out dates, request id, stock, supplier cutoff
   and product facts. The field set is the `TERMS_*` constants in `scheduler.py`.
+  Owner Q-109 (CNF-024): the terms are compared exactly (product, quantity, delivery, substitutes) and prices are
+  judged by the agreed range, not by the literal fingerprint.
   The stored `terms_fingerprint` binds the customer's agreement at creation; it is **not** compared at run time,
   because it includes unit prices and the customer's percentage range lets those move. At run time `compare` (and
   the commit gate, under the buyer lock) re-checks what the range does not cover: the product set (with the accepted
-  substitutes), requested amount and unit, converted sales quantity and unit, deposit structure, destination,
+  substitutes), requested amount and unit, converted sales quantity and unit, deposit structure, destination, the
+  run's delivery date,
   currency, the per-line price range and the ceiling, and the policy outcome. Any difference is a disruption
   (`RUN_TERMS_CHANGED`, ...); nothing is committed. Not re-checked: product facts, tax rate (inside the gross price),
   deposit prices (bounded by the ceiling).

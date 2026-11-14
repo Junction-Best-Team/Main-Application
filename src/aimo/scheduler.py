@@ -157,7 +157,7 @@ def percent_off(current, agreed):
     return abs(current - agreed) * 100 / agreed
 
 
-def compare(auth, request, snapshot, outcome, plan=()):
+def compare(auth, request, snapshot, outcome, plan=(), delivery_date=None):
     """Pure. Does a prepared basket match what the customer agreed (CNF-024, CNF-036, POL-012)?
 
     A line matches when its product is usable and its unit gross price is within the customer's
@@ -227,6 +227,8 @@ def compare(auth, request, snapshot, outcome, plan=()):
         codes.append("RUN_TERMS_CHANGED")
     if request.get("destination") != (auth["request"] or {}).get("destination"):
         codes.append("RUN_TERMS_CHANGED")
+    if delivery_date is not None and str(request.get("delivery_date")) != str(delivery_date):
+        codes.append("RUN_TERMS_CHANGED")  # the delivery date of this run is part of the terms
     total = None if snapshot["gross_total"] is None else Decimal(snapshot["gross_total"])
     if total is not None and total > Decimal(auth["price_ceiling_gross"]):
         codes.append("CEILING_EXCEEDED")
@@ -311,7 +313,12 @@ def ensure_commit_allowed(c, identity, p, r, snapshot, evaluated):
     if not customer:
         refuse("The customer who created the schedule is no longer active.")
     verdict = compare(
-        auth, r["request"], snapshot, evaluated["policy_outcome"], run["substitutions"]
+        auth,
+        r["request"],
+        snapshot,
+        evaluated["policy_outcome"],
+        run["substitutions"],
+        run["delivery_date"],
     )
     if not verdict["ok"]:
         refuse("The current terms differ from the agreed terms.")
@@ -809,7 +816,12 @@ def prepare(service, run, auth, sched, now):
         agent, PrepareRequest.model_validate(request), constraints=run_constraints(auth)
     )
     verdict = compare(
-        auth, proposal["request"], proposal["snapshot"], proposal["policy_outcome"], plan
+        auth,
+        proposal["request"],
+        proposal["snapshot"],
+        proposal["policy_outcome"],
+        plan,
+        run["delivery_date"],
     )
     with connection() as c:
         if verdict["ok"]:
@@ -953,6 +965,7 @@ def commit(service, run, auth, sched, now):
             result["snapshot"],
             result["policy_outcome"],
             run["substitutions"],
+            run["delivery_date"],
         )
         auth_row = c.execute(
             "SELECT * FROM scheduled_authorizations WHERE id=%s FOR UPDATE", (auth["id"],)
