@@ -93,13 +93,15 @@ class ClusterAccessTest(unittest.TestCase):
 
 class AppDeploymentTest(unittest.TestCase):
     def run_deploy(self, replicas="1", fail_rollout=False, image=None, previous_image=None,
-                   llm_refreshed=False):
+                   llm_refreshed=False, migration_status="Complete"):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             kubectl = root / "kubectl"
             kubectl.write_text('''#!/usr/bin/env bash
 echo "$*" >> "$CALL_LOG"
 case "$*" in
+  *"get deployment aimo-api -o json") echo '{"spec":{"template":{"spec":{}}}}' ;;
+  *"get job"*) printf '{"status":{"conditions":[{"type":"%s","status":"True"}]}}\\n' "$MIGRATION_STATUS" ;;
   *spec.replicas*) echo "$REPLICAS" ;;
   *jsonpath*) echo "$PREVIOUS_IMAGE" ;;
   *"set image"*)
@@ -115,6 +117,7 @@ esac
                      "NAMESPACE": "junction", "IMAGE": image or "ghcr.io/team/app@sha256:" + "a" * 64,
                      "WORKER_IMAGE": "ghcr.io/team/app@sha256:" + "a" * 64,
                      "FRONTEND_IMAGE": "ghcr.io/team/app@sha256:" + "a" * 64,
+                     "MIGRATION_STATUS": migration_status,
                      "REPLICAS": replicas, "FAIL_ROLLOUT": "1" if fail_rollout else "0",
                      "LLM_REFRESHED": "true" if llm_refreshed else "false",
                      "PREVIOUS_IMAGE": previous_image or "ghcr.io/team/app@sha256:" + "b" * 64,
@@ -127,7 +130,16 @@ esac
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("set image deployment/aimo-api api=ghcr.io/team/app@sha256:", calls)
         self.assertIn("rollout status", calls)
+        self.assertLess(calls.index("create -f -"), calls.index("set image"))
+        self.assertLess(calls.index("get job"), calls.index("set image"))
         self.assertNotIn("rollout undo", calls)
+
+    def test_migration_failure_prevents_any_rollout_or_restart(self):
+        result, calls = self.run_deploy(migration_status="Failed", llm_refreshed=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("create -f -", calls)
+        self.assertNotIn("set image", calls)
+        self.assertNotIn("rollout", calls)
 
     def test_stopped_app_is_not_accidentally_enabled(self):
         result, calls = self.run_deploy(replicas="0")
@@ -164,6 +176,7 @@ esac
         image = "ghcr.io/team/app@sha256:" + "a" * 64
         result, calls = self.run_deploy(image=image, previous_image=image)
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("create -f -", calls)
         self.assertNotIn("rollout restart", calls)
         self.assertNotIn("set image", calls)
 
