@@ -173,8 +173,8 @@ These steps document the future deployment; none were performed for this PR.
    Saved old plans/state backups still contain secrets; protect them as above.
 6. Check `/health/live` and `/health/ready`, then run PR #4's root/login, chat streaming, exact customer confirmation and
    mock-receipt smoke flow. `upstream_mode="live"` is the default: set
-   `runtime_secrets.VALIO_AIMO_API_KEY` before serving (a hosted deployment must have the key; the
-   startup guard that fails without it is tracked in issue #73). Use `upstream_mode="fixture"` only
+   `runtime_secrets.VALIO_AIMO_API_KEY` before serving (a hosted deployment with `live` or `auto` and no
+   key fails at startup: the API lifespan and the worker readiness check refuse to start). Use `upstream_mode="fixture"` only
    as an explicit opt-in for an offline smoke run with mocked supplier price/availability.
    Orders/receipts remain mock acceptance as defined in the application plan.
 

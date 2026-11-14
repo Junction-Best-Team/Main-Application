@@ -59,6 +59,7 @@ def create_app(service=None):
         import anyio
 
         configure_logging()
+        upstream.check_supplier_startup()  # a hosted deployment must not start without the key
         event("api.started", upstream_mode=upstream.effective_mode())
         try:
             yield
