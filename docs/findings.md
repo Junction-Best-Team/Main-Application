@@ -986,6 +986,38 @@ Add new findings below, under your track heading.
 - Date: 2026-11-14. The owner saw Material Symbols ligature names (`dashboard`, `order_approve`) instead of icons when the local browser could not load Google Fonts. Replaced the external stylesheet with locked Fontsource packages for the same Hanken Grotesk, Space Grotesk and Material Symbols typefaces. Vite serves font assets from the app origin in development and production; license notices are shipped in `public/font-licenses/`.
 - Verification after merging current develop: `npm run check --prefix frontend` passed formatting, lint, TypeScript and production build. `BASE_URL=http://127.0.0.1:5196 npm test` passed 67 fixture-backed browser tests; two opt-in integration tests were skipped. The new regression blocks Google font hosts, loads all three bundled families and checks the sidebar icon has glyph width rather than word width. Refreshed the isolated local preview and visually verified the bundled-font build. Vite retains develop's nonblocking 547 kB JavaScript chunk warning from the Markdown integration. No backend, schema, authority or deployment change.
 
+### F-MEAL-PLANNING-001: The assistant owns recipe quantities
+
+- Date: 2026-11-15. Owner clarified that customers describe a dish and guest count;
+  the assistant chooses a recipe and calculates ingredient quantities. Removed the
+  instruction to stop when an exact saved recipe is absent. Saved recipes retain
+  their existing scaling/matching controls; the new `draft_recipe` tool labels an
+  assistant-authored recipe estimate and reuses exact server scaling. Matching
+  cannot change its totals or omit ingredients in the same turn. Drafts remain
+  free-form plans without saved-recipe completeness or cooked-yield guarantees.
+- The assistant publishes the recipe before investigating purchasing blockers,
+  chooses normal serving sizes, retains stated dietary needs/budgets, leaves an
+  unstated budget unset and asks only for material missing facts. Reply instructions
+  keep ingredient lists in the plan card and limit chat to three short sentences.
+  Overview now shows the latest persisted draft before a proposal exists, including
+  after an older basket; prepared proposals retain exact confirmation controls.
+- Verification: full fixture-backed `tests/ci.sh` passed against isolated local
+  databases (2,229 tests and all 11 strict HTTP sweep checks). Frontend `npm run check`
+  passed; 68 browser tests passed, with two optional backend integration tests
+  skipped. Desktop/320px draft screenshots were inspected. Regression coverage
+  includes missing/unavailable recipe discovery, exact/fractional scaling, repeated
+  calls, invalid units, changed/omitted quantities, saved-plan bypass prevention,
+  retained unsupported dietary requirements and draft-to-confirmed-mock-receipt
+  persistence. Two existing tests assumed a single saved-recipe scaling caller or
+  an exhaustive old tool list; both now cover the separate draft path.
+- Live limits: one Google chat/guardrail run using authored empty catalogs produced
+  a labelled 500-portion, 19-ingredient draft without asking for weights or preparing
+  an order. Its reply was verbose; the subsequent concise-prompt recheck failed with
+  provider `LLM_UNAVAILABLE` after a 45-second completion timeout. An earlier retry
+  exposed a missing substitution stub in the local smoke harness, which was fixed.
+  These runs do not establish culinary yields, live supplier matching or reliable
+  final reply style. No customer data, supplier call, new public API, migration,
+  dependency, shared-branch merge, Terraform operation or deployment.
 ### F-CHAT-DRAFT-001: Move from food planning to a progressive purchasing cart
 
 - Date: 2026-11-15. Clarified the assistant's goal: help with ideas/advice, advance selected recipes or direct product needs through a draft, matching, commercial checks and preparation when the customer is ready, then explicit exact-revision confirmation. Advice does not require delivery/checkout details. A separate display-only `draft_cart` streams selected ingredients and unresolved rows, with normalized checked sales-unit prices, source, delivery date and observation time. Unknown/expired/unresolved commercial evidence never becomes an invented total. Preparation supplies pack-rounded lines, prices, full totals and the existing purchasing controls; ordering remains mock.
@@ -1025,6 +1057,24 @@ Add new findings below, under your track heading.
 - Updated activity regressions for the new composer: voice and text are disabled during streamed work, and voice is enabled again after completion; the obsolete Working button expectation is removed.
 - Follow-up conflict resolution: integrated scheduler changes from `develop` at `02c76cd` that landed during CI. Retained both scheduler and chat schema probes, regenerated contracts, and preserved scheduler-aware worker/chat behavior. Frontend checks and 141 focused worker/scheduler/chat/role/readiness regressions passed; the preceding integration's full CI gate and all 83 browser tests passed.
 
+### F-MEAL-PLANNING-002: Integrate the activity harness and current develop
+
+- Date: 2026-11-15. Resolved #187 against #179 (`0b8ceaf`) and current `develop`
+  (`02c76cd`). Retained server-scaled recipe estimates, no ingredient-weight
+  questionnaire, shortlist checks, streamed tool activity and the progressive draft
+  cart. Added the `draft_recipe` activity label. The live cart takes precedence over
+  the persisted recipe fallback; preparation switches to the exact-revision basket.
+  Kept attachments, buyer settings and scheduler changes; regenerated browser contracts.
+- Verification: before the scheduler sync, isolated `tests/ci.sh` passed 2,289 tests
+  and all 11 strict API sweep checks. After the sync, 281 focused checks passed,
+  covering agent tools, real conversation persistence, activity fencing, guardrails,
+  scheduler chat/worker integration and migration readiness. Frontend `npm run check`
+  passed after contract regeneration; 85 browser checks passed (two optional backend
+  integration checks skipped), followed by all five activity checks with #179's final
+  composer assertions. Desktop and 320px combined draft-cart captures were inspected.
+  Fixtures are authored estimates and mocked provider/supplier data. No live provider
+  or supplier calls, PR merge, deployment or Terraform operation for this integration.
+
 
 ### F-HOME-001: Minimal chat entry and schedule strip
 
@@ -1035,3 +1085,10 @@ Add new findings below, under your track heading.
 
 - Composer merge compatibility (2026-11-15): rebased onto `develop` at `7e67f7e` and retained PR #186's single voice-or-send action, attachment-only sending, removed barcode and removed input focus ring in the homepage variant. Frontend `npm run check` passed; the full browser suite passed (78 passed, two optional backend checks skipped). Three focused checks additionally covered home voice/send switching with text and attachments at desktop/320px and starting voice from Home through persisted conversation creation. Desktop/mobile screenshots inspected. This PR still changes only frontend and documentation; no database migration was added or applied.
 - Resolved the subsequent minimal-homepage overlap from `develop` at `1a81373`, retaining its new page, schedules strip, composer and navigation while keeping the requested avatar dropdown and removed sidebar account block. Restored the desktop account header and adjusted homepage height for it; frontend checks passed.
+
+- Meal-planning follow-up: synced #187 with `develop` at `1a81373` and #179 at
+  `5ffb29c`, keeping the minimal homepage, account dropdown, attachments, streamed
+  cart and automatic ingredient scaling. Frontend checks and all 88 fixture-backed
+  browser checks passed (two optional backend integration checks skipped) before the
+  final shared homepage-height adjustment; focused homepage checks verify that adjustment.
+  The preceding CI run was superseded by these updates; final-head CI runs separately.
