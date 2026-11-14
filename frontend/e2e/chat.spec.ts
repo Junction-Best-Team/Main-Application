@@ -1472,8 +1472,8 @@ for (const width of [1440, 390, 320]) {
             title: "Pasta lunch",
             portions: 200,
             ingredients: [
-              { name: "Pasta", amount: "20", unit: "KG" },
-              { name: "Salt", amount: null, unit: "g" },
+              { name: "Pasta", amount: "20", unit: "KG", status: "proposed" },
+              { name: "Salt", amount: null, unit: "g", status: "unresolved" },
             ],
             notes: ["Assistant-drafted recipe estimate."],
           },
