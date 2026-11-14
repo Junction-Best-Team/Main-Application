@@ -9,6 +9,8 @@ on:
     secrets:
       DIGITALOCEAN_TOKEN:
         required: false
+      LLM_API_KEY:
+        required: false
   workflow_dispatch:
     inputs:
       deploy:
@@ -77,6 +79,9 @@ jobs:
       DIGITALOCEAN_CLUSTER_ID: ${{ vars.DIGITALOCEAN_CLUSTER_ID }}
       NAMESPACE: ${{ vars.DEPLOY_NAMESPACE || 'junction' }}
       IMAGE: ${{ needs.build.outputs.image }}
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      LLM_BASE_URL: ${{ vars.LLM_BASE_URL || 'https://openrouter.ai/api/v1' }}
+      LLM_MODEL: ${{ vars.LLM_MODEL || 'openai/gpt-4.1-mini' }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -93,7 +98,12 @@ jobs:
           version: v1.35.10
       - name: Temporarily allow this runner and get short-lived cluster credentials
         run: python3 infra/scripts/ci-cluster-access.py open
+      - name: Configure the server-side conversational provider
+        id: llm
+        run: python3 infra/scripts/sync-llm-secret.py
       - name: Update image and wait for readiness
+        env:
+          LLM_REFRESHED: ${{ steps.llm.outputs.changed }}
         run: bash infra/scripts/deploy-app.sh
       - name: Remove temporary API access and local credentials
         if: always() && steps.config.outcome == 'success'

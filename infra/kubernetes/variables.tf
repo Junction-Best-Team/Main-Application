@@ -162,13 +162,13 @@ variable "bootstrap_generation" {
 variable "llm_model" {
   description = "Conversational LLM model; separate from local embedding model."
   type        = string
-  default     = "gpt-4.1-mini"
+  default     = "openai/gpt-4.1-mini"
 }
 
 variable "llm_base_url" {
   description = "Server-side OpenAI-compatible provider URL; key in runtime_secrets.LLM_API_KEY."
   type        = string
-  default     = "https://api.openai.com/v1"
+  default     = "https://openrouter.ai/api/v1"
   validation {
     condition     = startswith(var.llm_base_url, "https://")
     error_message = "Hosted LLM provider traffic requires HTTPS."

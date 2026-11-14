@@ -27,8 +27,8 @@ class Settings(BaseSettings):
     proposal_ttl_seconds: int = 900
     # Conversational provider configuration is independent of local embeddings.
     llm_api_key: str = ""
-    llm_base_url: str = "https://api.openai.com/v1"
-    llm_model: str = "gpt-4.1-mini"
+    llm_base_url: str = "https://openrouter.ai/api/v1"
+    llm_model: str = "openai/gpt-4.1-mini"
     llm_timeout_seconds: float = Field(default=20, gt=0, le=30)
     llm_max_tool_rounds: int = Field(default=20, ge=1, le=24)
 
