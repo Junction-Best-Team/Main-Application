@@ -2,10 +2,10 @@ import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "../features/auth/AuthProvider";
 import { useAuth } from "../features/auth/useAuth";
 import { ErrorMessage } from "../shared/components/ErrorMessage";
-import { AppHeader } from "./layout/AppHeader";
+import { AppShell } from "./layout/AppShell";
 import { AppRoutes } from "./AppRoutes";
 function AppContent() {
-  const { loading, error } = useAuth();
+  const { loading, error, session } = useAuth();
   if (loading)
     return (
       <main className="loading" role="status">
@@ -13,11 +13,10 @@ function AppContent() {
       </main>
     );
   return (
-    <>
-      <AppHeader />
+    <AppShell key={session?.buyer_id ?? "signed-out"}>
       <ErrorMessage message={error} />
       <AppRoutes />
-    </>
+    </AppShell>
   );
 }
 export function App() {

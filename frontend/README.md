@@ -89,9 +89,11 @@ backend contract changes. `shared/api/types.ts` provides readable aliases;
 
 Use `../ui/DESIGN.md` plus the desktop/mobile references in `../ui/`.
 `src/styles/theme.css` reuses PR #107's tokens and fonts, without preflight.
-Legacy CSS is in a lower cascade layer, so utilities can override it as screens
-migrate. API behavior and existing routes are retained by this structural pass;
-new Home/Request layouts are subsequent visual work.
+The application shell uses the reference sidebar, typography and neutral/teal
+palette, with a modal navigation drawer below 1024px. Only existing Request and
+Purchases routes appear in navigation. Legacy CSS remains in a lower cascade
+layer for gradual feature-screen migration; new Home/Schedule screens and the
+deeper Request layout remain future work.
 
 `prototypes/chat-ui/` is a standalone fake-data reference, excluded from this
 package's lint, TypeScript and formatting checks. It is not the production

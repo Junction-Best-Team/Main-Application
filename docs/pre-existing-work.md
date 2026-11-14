@@ -127,3 +127,12 @@ On 2026-11-14, at the owner's request, Codex simplified the existing CI for the
 hackathon: reused the existing backend tests, API sweep, frontend build and
 infrastructure checks, removed coverage gating/artifact jobs and shared the
 backend setup. No new dependency, dataset, model or asset was introduced.
+
+## Frontend navigation foundation — 2026-11-14
+
+Reused the desktop/mobile references in `ui/`, `ui/DESIGN.md`, existing Tailwind
+tokens and Google Fonts declarations to build the production navigation shell.
+Added inline SVG navigation icons; no icon dependency or mock product workflow
+was introduced. Existing session, chat and purchasing hooks/API modules are
+reused. Shell browser checks intercept the API with explicitly authored test
+fixtures; screenshots show fixture accounts, not live purchasing data.
