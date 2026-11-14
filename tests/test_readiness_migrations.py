@@ -53,6 +53,7 @@ DROPS = [
         "019_history_immutability.sql",
     ),
     ("DROP TRIGGER immutable_recipe_versions ON recipe_versions", "019_history_immutability.sql"),
+    ("DROP TRIGGER immutable_truncate ON orders", "019_history_immutability.sql"),
 ]
 
 

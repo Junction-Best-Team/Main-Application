@@ -16,6 +16,13 @@ def configure_runtime_role(conn, role_name):
         sql.SQL("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {}").format(role)
     )
     conn.execute(sql.SQL("REVOKE ALL ON TABLE schema_migrations FROM {}").format(role))
+    # Defence in depth (PER-002): the runtime role never needs TRUNCATE, REFERENCES or TRIGGER, and
+    # a later grant must not survive the release Job re-applying these grants.
+    conn.execute(
+        sql.SQL(
+            "REVOKE TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA public FROM {}"
+        ).format(role)
+    )
     # Provisioning authority never belongs to ordinary serving/agent code.
     conn.execute(
         sql.SQL(

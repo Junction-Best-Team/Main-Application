@@ -539,12 +539,7 @@ def test_immutable_tables_still_accept_appended_history(history_rows, table):
         assert c.execute(f"SELECT count(*) AS n FROM {table}").fetchone()["n"] == before + 1
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="GAP: immutable_record is a row-level UPDATE/DELETE trigger; PostgreSQL does not fire "
-    "it for TRUNCATE. The runtime role lacks the TRUNCATE privilege (permissions.py grants "
-    "SELECT, INSERT, UPDATE, DELETE only) but the schema owner can erase the history tables.",
-)
+# PER-002 (Approved): migration 019 adds a statement-level TRUNCATE guard to the history tables.
 @pytest.mark.parametrize("table", IMMUTABLE)
 def test_immutable_tables_also_reject_truncate(history_rows, table):
     with connection() as c:

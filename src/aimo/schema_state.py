@@ -50,6 +50,7 @@ MANIFEST: dict[str, list[tuple[str, ...]]] = {
     "019_history_immutability.sql": [
         ("trigger", "recipe_plan_revisions", "immutable_recipe_plan_revisions"),
         ("trigger", "recipe_versions", "immutable_recipe_versions"),
+        ("trigger", "orders", "immutable_truncate"),
     ],
 }
 
