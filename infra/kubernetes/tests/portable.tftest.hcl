@@ -29,6 +29,26 @@ run "safe_initial_plan" {
     condition     = kubernetes_config_map_v1.runtime.data.SECURE_COOKIES == "true" && kubernetes_config_map_v1.runtime.data.UPSTREAM_MODE == "fixture"
     error_message = "Use secure cookies and explicitly mocked supplier responses by default."
   }
+  assert {
+    condition     = kubernetes_deployment_v1.aimo.spec[0].template[0].spec[0].security_context[0].run_as_non_root && kubernetes_deployment_v1.aimo.spec[0].template[0].spec[0].container[0].security_context[0].run_as_non_root
+    error_message = "The container must not override the pod's non-root requirement; restricted admission rejects an explicit false value."
+  }
+}
+
+run "restricted_setup_plan" {
+  command = plan
+  variables {
+    bootstrap_generation = "demo-v1"
+    bootstrap_credentials = {
+      database_url   = "postgresql://synthetic-admin@postgres.test/aimo"
+      database_user  = "aimo_runtime"
+      buyer_password = "synthetic-password-at-least-12-chars"
+    }
+  }
+  assert {
+    condition     = kubernetes_job_v1.bootstrap[0].spec[0].template[0].spec[0].security_context[0].run_as_non_root && kubernetes_job_v1.bootstrap[0].spec[0].template[0].spec[0].container[0].security_context[0].run_as_non_root
+    error_message = "The setup container must satisfy the namespace's restricted non-root admission policy."
+  }
 }
 
 run "existing_cluster_ingress" {

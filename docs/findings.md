@@ -28,6 +28,24 @@ Owner decisions use `D-<nnn>` and quote the owner's words verbatim.
 - Evidence: `terraform -chdir=infra/digitalocean apply -input=false weekend.tfplan` reported seven additions; DigitalOcean cluster/database/firewall reads and `kubectl get nodes` verified readiness and isolation. A subsequent Terraform plan and rejected settings-only update reproduced the provider issue; see [provider v2.107.0](https://github.com/digitalocean/terraform-provider-digitalocean/blob/v2.107.0/digitalocean/database/resource_database_user.go). Retaining the empty settings block applied successfully; a refreshed plan with the private deployment tfvars then reported no changes (exit 0).
 - Impact: Cloud billing is active. Keep the private tfvars and local state for future plans and teardown; credentials, kubeconfig and a private state backup stay outside Git. The Kubernetes application/ingress stack, SQL bootstrap, catalog import and app readiness remain pending; no application image, DNS or challenge API key was invented.
 
+### F-INFRA-003: Explicit container non-root settings are required by admission
+- Date: 2026-11-14   Track: 4   Status: verified
+- Finding: The Kubernetes provider planned a container-level `runAsNonRoot=false` when only the pod-level setting was true. The restricted `junction` namespace rejected every application pod. Both the application and Terraform setup containers now explicitly set `run_as_non_root=true`.
+- Evidence: Initial live ReplicaSet events reported `violates PodSecurity "restricted:latest": runAsNonRoot != true`. Applying the explicit container setting admitted the pod and completed rollout. `terraform -chdir=infra/kubernetes test` passes seven mocked plan checks, including effective pod/container settings for serving and setup.
+- Impact: Preserve the container setting as well as the pod setting; a pod-only assertion misses the provider default that overrides it.
+
+### F-INFRA-004: Restricted runtime roles need row-lock privileges without provisioning rights
+- Date: 2026-11-14   Track: all   Status: verified
+- Finding: Revoking every UPDATE privilege on buyers and identities also prevented PostgreSQL `SELECT FOR UPDATE/FOR SHARE`. Production login succeeded, but conversation creation failed with `permission denied for table buyers`. Bootstrap now grants UPDATE on identifier columns solely to permit locks, with an owner-installed BEFORE UPDATE guard that rejects actual runtime updates. Policy/authority/provisioning writes remain denied; privileged maintenance still works.
+- Evidence: The deployed restricted role reproduced the failure. `tests/test_runtime_permissions.py` provisions a disposable NOLOGIN role in a dedicated test database and verifies both lock modes, denied identifier/authority/policy/mapping writes, denied identity deletion and buyer creation, and successful owner updates. The corrected grants restored public authenticated conversation creation and chat.
+- Impact: Run the updated `configure_runtime_role` through the privileged setup role when upgrading an existing deployment. Serving roles must not own these tables or be able to alter their guards. Do not fix this by granting unrestricted buyer/identity UPDATE rights.
+
+### F-INFRA-005: First application rollout and public acceptance checks
+- Date: 2026-11-14   Track: all   Status: verified
+- Finding: The released main snapshot is serving at https://aimo.201-79-68-84.sslip.io with a valid HTTPS certificate, one application replica, the existing managed database and all 17,546 catalog products. The downloaded snapshot checksum and pinned embedding model match the recorded catalog. Existing local demo buyer credentials were preserved. Supplier prices/stock and ordering remain explicitly mocked.
+- Evidence: Public root, liveness, readiness and buyer login returned 200; authenticated conversation creation and a real configured-provider chat returned 200. Persisted SSE snapshots and a heartbeat arrived through the deployed ingress in 2.17 seconds. Runtime SQL confirmed 17,546 indexed products and source SHA-256 `50651aae31ca842112afdc16fcce92f9858d7f5d05e9928a3748aef16b22ea02`. [Release workflow](https://github.com/Junction-Best-Team/Main-Application/actions/runs/43595270621) passed build and deploy. Temporary setup Jobs/admin Secrets were removed; image access is public and the original organization package-creation restriction was restored.
+- Impact: Release CI can now update the initialized app. Initial catalog loading reused the verified local snapshot and its exact pinned-model embedding cache; no sponsor key or live supplier acceptance is claimed. Private portable Terraform inputs/state are retained under `~/.config/junction-terraform/initial-deployment/kubernetes`; retain them for updates and teardown. The temporary demo hostname depends on the load balancer IP.
+
 ## Owner decisions
 
 ### D-001: Build the Valio Aimo side, not the buyer's agent
