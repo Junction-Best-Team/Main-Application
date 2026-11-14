@@ -70,7 +70,8 @@ class SearchRequest(Model):
 
 class LookupRequest(Model):
     product_ids: list[str] = Field(min_length=1, max_length=50)
-    delivery_date: date
+    # Engineering guard, not an owner rule: 0001-01-01 is valid ISO but broke the supplier call path.
+    delivery_date: date = Field(ge=date(2000, 1, 1), le=date(2100, 12, 31))
 
 
 class LineRequest(Model):

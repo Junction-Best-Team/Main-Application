@@ -332,11 +332,6 @@ def test_tct003_nul_byte_arguments_become_a_correctable_error(session, name, arg
     assert_agent_safe(problem)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="JNP3-TCT-003: delivery_date 0001-01-01 is a valid ISO date but yields "
-    "TOOL_RESULT_INVALID 'Retry later' (502): a correctable input is reported as a transient fault",
-)
 def test_tct003_out_of_range_delivery_date_is_not_reported_as_retry_later(session):
     try:
         call(
