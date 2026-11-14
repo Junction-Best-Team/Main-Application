@@ -322,4 +322,3 @@ fixture content; only the homepage picker presentation changed. No new assets or
 Minimal-PR follow-up (2026-11-15): selected existing core regression cases for the owner-requested hackathon gate; no tests or fixtures were deleted and no new dependency or external material was added.
 Sidebar divider follow-up (2026-11-15): reused the existing shell and border token;
 no new dependencies, assets or external material.
-

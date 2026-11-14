@@ -1158,4 +1158,3 @@ Add new findings below, under your track heading.
 
 - Date: 2026-11-15. Added a full-height 1px right border to the desktop sidebar using the existing `border-subtle` token, matching the header separator.
 - Verification: frontend `npm run check` and both fixture-backed `minimal Home and navigation work` Playwright checks passed at 1440/390px; screenshots inspected. No merge or deployment.
-
