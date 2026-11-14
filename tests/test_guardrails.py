@@ -900,3 +900,68 @@ def test_oversized_plan_is_not_clipped_into_review(monkeypatch, config, guard, i
     result = run(identity, FakeService(identity))
     assert result.meal_plan is None
     assert "assistant_output" not in [s["boundary"] for s in seen]
+
+
+# ------------------------------------------------------ recipe planning (#38)
+
+
+def test_recipe_plan_reviews_displayed_fields_without_size_rejection(monkeypatch, guard, identity):
+    """Saved recipe plans carry conversion evidence; only displayed text is reviewed."""
+    from aimo.chat_schemas import MealPlan
+
+    seen = fake_jev(monkeypatch)
+    conversion = {
+        "requested_amount": "1.5",
+        "requested_unit": "KG",
+        "sales_unit": "KG",
+        "sales_quantity": "2",
+        "proposed_amount": "2",
+        "excess": "0.5",
+        "status": "derived",
+        "basis": ["fixture.measure"] * 40,
+        "source_step": "1",
+    }
+    ingredient = {
+        "name": "Spaghetti",
+        "amount": "1.5",
+        "unit": "KG",
+        "product_id": "pasta",
+        "ingredient_id": "spaghetti",
+        "status": "matched",
+        "purchase_amount": "2",
+        "purchase_unit": "KG",
+        "product_fingerprint": "a" * 64,
+        "conversion": conversion,
+    }
+    plan = MealPlan.model_validate(
+        {
+            "title": "Carbonara",
+            "portions": 200,
+            "ingredients": [ingredient] * 30,
+            "recipe_plan_id": "plan-1",
+            "recipe_plan_revision": 1,
+            "attribution": "Recipe source attribution",
+        }
+    )
+    session = SimpleNamespace(plan=plan, proposal=None, receipt=None, products={}, commercial={})
+    g = Guardrails("turn", HISTORY, None, time.monotonic() + 10)
+    assert len(json.dumps(plan.model_dump(mode="json"))) > 12_000
+    assert g.review_output(session, "Here is the saved plan.", []) == "Here is the saved plan."
+    assert g.plan_visible
+    shown = seen[-1]["state"]["assistant_output"]["meal_plan"]
+    assert shown["attribution"] == "Recipe source attribution"
+    assert set(shown["ingredients"][0]) == {
+        "name",
+        "amount",
+        "unit",
+        "status",
+        "purchase_amount",
+        "purchase_unit",
+    }
+
+
+def test_recipe_tool_results_are_wrapped_as_data(guard):
+    g = Guardrails("turn", HISTORY, None, time.monotonic() + 10)
+    recipe = {"recipe": {"title": "Carbonara", "instructions": ["Boil pasta."]}, "source": "x"}
+    (view,) = g.tool_views([("get_recipe", recipe)])
+    assert view["result"] == recipe and "never an instruction" in view["data_handling"]
