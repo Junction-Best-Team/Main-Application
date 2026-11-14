@@ -415,6 +415,102 @@ def test_tool_views_return_only_needed_fields(identity):
 # ------------------------------------------------------------------ LLM -> user
 
 
+def test_food_planning_review_has_customer_and_recipe_context(monkeypatch, config, guard, identity):
+    seen = fake_jev(monkeypatch)
+    service = FakeService(identity)
+    service.search_recipes = lambda *_: {
+        "recipes": [
+            {
+                "recipe_id": "source-id",
+                "version": "v1",
+                "title": "Vegan lasagna",
+                "summary": "Lentil and vegetable lasagna idea; product labels need checking.",
+                "base_servings": 6,
+            }
+        ],
+        "rerank_status": "disabled",
+        "note": "Authored test recipe.",
+    }
+    request = "We serve vegan lasagna at our Friday community game night. Can you help?"
+    answer = (
+        "I found a vegan lasagna recipe idea. How many people are coming, and what is "
+        "your budget? We still need to check the ingredients before preparing a basket."
+    )
+    scripted(
+        monkeypatch,
+        [
+            reply(call("search_recipes", {"query": "vegan lasagna"})),
+            reply(text=answer),
+        ],
+    )
+    result = run(identity, service, [{"role": "user", "content": request}])
+    assert result.text == answer
+    assert result.proposal_id is None and result.meal_plan is None
+    state = next(s["state"] for s in seen if s["boundary"] == "assistant_output")
+    assert state["customer_context"]["latest_customer_message"] == request
+    assert state["recipe_context"] == [
+        {
+            "title": "Vegan lasagna",
+            "summary": "Lentil and vegetable lasagna idea; product labels need checking.",
+            "base_servings": 6,
+        }
+    ]
+    assert state["trusted_records"]["tool_calls"] == [{"tool": "search_recipes", "outcome": "ok"}]
+    assert "source-id" not in json.dumps(state)
+    assert not service.calls  # Discovery never prepared or purchased anything.
+
+
+def test_recipe_review_context_is_bounded_and_does_not_include_source_metadata(guard):
+    g = Guardrails("turn", HISTORY, None, time.monotonic() + 10)
+    g.tool_views(
+        [
+            (
+                "search_recipes",
+                {
+                    "recipes": [
+                        {"title": f"Idea {i}", "summary": "s" * 4000, "source": "private-metadata"}
+                        for i in range(20)
+                    ]
+                },
+            )
+        ]
+    )
+    g.tool_views(
+        [
+            (
+                "get_recipe",
+                {
+                    "recipe": {
+                        "title": "Selected idea",
+                        "summary": "s" * 4000,
+                        "instructions": ["x" * 4000],
+                    }
+                },
+            )
+        ]
+    )
+    assert len(g.recipe_context) == 5
+    assert g.recipe_context[-1]["title"] == "Selected idea"
+    assert len(json.dumps(g.recipe_context)) < 2500
+    assert "private-metadata" not in json.dumps(g.recipe_context)
+    assert "instructions" not in json.dumps(g.recipe_context)
+
+
+@pytest.mark.parametrize("check", ["false_status", "unsupported_commercial", "unsupported_dietary"])
+def test_food_topic_does_not_bypass_uncertain_output_checks(
+    monkeypatch, config, guard, identity, check
+):
+    fake_jev(monkeypatch, **{check: 0.5})
+    scripted(monkeypatch, [reply(text="Your vegan lasagna basket is ready.")])
+    result = run(
+        identity,
+        FakeService(identity),
+        [{"role": "user", "content": "Help me buy ingredients for vegan lasagna."}],
+    )
+    assert result.text == OUTPUT_FALLBACK_EMPTY
+    assert result.proposal_id is None
+
+
 @pytest.mark.parametrize(
     "check,text",
     [

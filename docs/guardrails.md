@@ -5,7 +5,7 @@ authority and run in every mode. **Semantic checks** (Gemini Decision 1) add a
 probabilistic opinion at five boundaries. A model "allow" never grants permission,
 skips validation or replaces the customer's confirmation.
 
-Code: `src/aimo/guardrails.py` (policy `guard-2026-11-14.3`), wired in
+Code: `src/aimo/guardrails.py` (policy `guard-2026-11-14.4`), wired in
 `agent.py`, `agent_tools.py` and `conversations.py`.
 
 ## What is deterministic
@@ -42,6 +42,16 @@ The native endpoint, model (`gemini-decision-1`) and bounds are fixed in code.
 
 The classifier cannot prove arithmetic or an allergen claim. It only flags narrative
 that the supplied records do not support.
+
+Output review also receives the latest customer request, up to four earlier customer
+messages, and up to five bounded recipe titles/summaries from successful discovery
+tools. These are context, not purchase authority or dietary proof. The questions
+explicitly distinguish recipe ideas, dietary requests, portion/budget questions and
+explanations of confirmation from claims about verified products, prices, stock or
+completed purchases. Food planning does not require purchase records. Actual
+unsupported claims still block the reply; thresholds and purchasing controls are
+unchanged. An empty-state rejection no longer asks the customer to repeat the same
+message.
 
 ## Modes and failure behaviour
 

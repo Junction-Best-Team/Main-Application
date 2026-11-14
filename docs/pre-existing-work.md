@@ -182,3 +182,10 @@ The policy settings branch was rebased onto the complete designer UI integration
 Settings now uses the real Account Settings entry in the shared sidebar/mobile menu
 and retains the new Tailwind preflight instead of restoring the removed header or
 legacy stylesheet. Reused the existing schema readiness probes for migration 014.
+
+## Food-planning output review — 2026-11-14
+
+Reused the existing guardrail classifier, bounded context builders and synthetic
+evaluation harness. Added authored community-lasagna planning and unsupported-claim
+cases; fixture tests do not measure classifier accuracy. No new dependency, model,
+dataset or asset was introduced.
