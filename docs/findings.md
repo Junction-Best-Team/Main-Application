@@ -1040,3 +1040,5 @@ Add new findings below, under your track heading.
 
 - Date: 2026-11-15. Removed the homepage file-picker button at the owner's request and retained the existing voice/send switch aligned to the right. Chat's file picker and Home's existing paste/drop attachment handling remain available. Reused the shared composer without backend or schema changes.
 - Verification: frontend `npm run check` passed; 11 focused fixture-backed browser checks passed, covering desktop/mobile chat controls, attachments, homepage voice/send switching, multiline submission, retries and starting voice from Home. Desktop/320px screenshots inspected. No deployment or database migration.
+
+- Homepage polish follow-up (2026-11-15): disabled manual textarea resizing to remove the diagonal native resize handle identified by the owner. Frontend `npm run check` and both desktop/320px home submission checks passed; the mobile screenshot was inspected.

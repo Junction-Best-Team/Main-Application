@@ -42,7 +42,7 @@
   display: block;
   width: 100%;
   min-height: 4rem;
-  resize: vertical;
+  resize: none;
   background: transparent;
   font: inherit;
   font-size: 1.125rem;
