@@ -275,7 +275,13 @@ def test_wrong_product_leaves_only_that_ingredient_unresolved(tmp_path, actor, m
     # Same outcome as matching that same wrong pair on its own.
     second = another_plan(actor)
     single = single_match_all(actor, second, pairs(spaghetti="recipe-egg"))
-    assert result["ingredients"] == single["ingredients"]
+    # The batch also records the refused product (MEA-005 "selections"); single matching will
+    # once person 2 applies the patch in MEA-005-009-requests.md. Everything else is identical.
+    rejected = status["spaghetti"].pop("rejected")
+    assert [r["product_id"] for r in rejected] == ["recipe-egg"] and rejected[0]["reason"]
+    assert result["ingredients"] == [
+        {k: v for k, v in i.items() if k != "rejected"} for i in single["ingredients"]
+    ]
 
 
 def test_absent_product_is_unresolved_not_an_error(tmp_path, actor, meal_products):

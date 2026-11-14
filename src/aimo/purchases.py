@@ -6,6 +6,7 @@ from math import floor
 from pydantic import ValidationError
 
 from aimo import upstream
+from aimo.basket import allocate_line, line_contributions
 from aimo.catalog import quantity, requirement_reasons
 from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, now
@@ -88,9 +89,11 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
     with connection() as c:
         buyer, policy, _, _ = context(c, identity)
         products = load_products(c, [item.product_id for item in request.lines])
-        from aimo.recipes import purchase_count_evidence
+        from aimo.recipes import purchase_count_evidence, read_plan
 
         count_evidence = purchase_count_evidence(c, identity, request, products)
+        plan = read_plan(c, identity, request.recipe_plan_id)[1] if request.recipe_plan_id else None
+    contributions = line_contributions(request, plan)  # MEA-005/BAS-002: ingredients per line
     reasons, lines = [], []
     expires = current + timedelta(seconds=settings().proposal_ttl_seconds)
 
@@ -156,6 +159,8 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
             "product_evidence": p,
             "commercial_evidence": e,
         }
+        if pid in contributions:  # absent otherwise, so earlier proposals are unchanged
+            row["contributions"] = allocate_line(q, contributions[pid])
         if q["sales_quantity"] is None:
             add(
                 "QUANTITY_UNRESOLVED",

@@ -3,7 +3,15 @@ from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, RootModel, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    RootModel,
+    model_serializer,
+    model_validator,
+)
 
 # MEA-013: up to 1000 ingredients/lines. 1000 is also the supplier's per-request product limit,
 # so a lookup needs no batching until SUP-007 (WS-A) lands.
@@ -33,6 +41,15 @@ class LookupRequest(Model):
     delivery_date: date
 
 
+class Contribution(Model):
+    """One ingredient's required quantity inside a basket line (BAS-002, MEA-005)."""
+
+    ingredient: str = Field(min_length=1, max_length=240)
+    ingredient_id: str | None = Field(default=None, max_length=120)
+    amount: Amount
+    unit: str = Field(min_length=1, max_length=12)
+
+
 class LineRequest(Model):
     product_id: str = Field(min_length=1, max_length=40)
     amount: Amount
@@ -42,6 +59,28 @@ class LineRequest(Model):
         description="Explicit catalog unit code, L or KG; boxes is ambiguous.",
     )
     substitutes_for: str | None = Field(default=None, max_length=40)
+    contributions: list[Contribution] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=30,
+        description="Free-form baskets: the ingredients this line serves; amounts add up to it.",
+    )
+
+    @model_validator(mode="after")
+    def contributions_add_up(self):
+        parts = self.contributions or []
+        if parts and all(c.unit == self.unit for c in parts):
+            if sum(c.amount for c in parts) != self.amount:
+                raise ValueError("Contributions must add up to the line amount")
+        return self
+
+    @model_serializer(mode="wrap")
+    def omit_absent_contributions(self, handler):
+        # Keeps the dump (stored request, retry hash, fingerprints) of earlier lines unchanged.
+        data = handler(self)
+        if data.get("contributions") is None:
+            data.pop("contributions", None)
+        return data
 
 
 class PurchaseRequest(Model):
@@ -61,6 +100,8 @@ class PurchaseRequest(Model):
         ids = [line.product_id for line in self.lines]
         if len(ids) != len(set(ids)):
             raise ValueError("Combine quantities for duplicate product IDs before preparing")
+        if self.recipe_plan_id and any(line.contributions for line in self.lines):
+            raise ValueError("A saved recipe request takes its contributions from the saved plan")
         return self
 
 
@@ -136,6 +177,7 @@ class SnapshotLine(Model):
     deposit_lines: list[dict]
     product_evidence: dict
     commercial_evidence: dict
+    contributions: list[dict] | None = None
 
 
 class PurchaseSnapshot(Model):

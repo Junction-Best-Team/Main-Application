@@ -149,7 +149,9 @@ def test_tool_prepares_the_combined_line_and_rejects_uncombined_ones(agent, serv
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="BAS-002 gap: the snapshot line does not carry the contributing ingredient quantities",
+    reason="BAS-002 gap: backend half done (LineRequest/SnapshotLine.contributions); "
+    "ToolSession.prepare (agent_tools.py, person 2) must attach them. "
+    "See evidence ws-b/MEA-005-009-requests.md patch 3.",
 )
 def test_combined_line_keeps_each_contributing_ingredient(agent, service, request_data):
     when = request_data["delivery_date"]

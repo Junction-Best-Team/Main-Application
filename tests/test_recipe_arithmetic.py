@@ -588,16 +588,16 @@ def test_every_plan_revision_is_kept_and_shows_the_selection_history(
     ]
 
 
-def test_snapshot_line_for_a_shared_product_carries_no_ingredient_breakdown(
+def test_request_line_for_a_shared_product_carries_no_ingredient_breakdown(
     tmp_path, actor, service, meal_products
 ):
-    """Characterisation: today the trace exists only through the plan revision (by reference)."""
+    """The request line stays a plain product total; the breakdown is on the snapshot line
+    (see the MEA-005 test below) and the saved plan revision keeps the by-reference trace."""
     plan = shared_product_plan(tmp_path, actor, meal_products)
     line = {"product_id": "recipe-spaghetti", "amount": "30", "unit": "KG"}
     prepared = service.prepare_order(actor, request_for(plan, lines=[line]))
-    snapshot_line = prepared["snapshot"]["lines"][0]
-    assert not [k for k in snapshot_line if "ingredient" in k]
     assert not [k for k in prepared["request"]["lines"][0] if "ingredient" in k]
+    assert "contributions" not in prepared["request"]["lines"][0]
     explanation = plan_revisions(plan["recipe_plan_id"])[
         prepared["request"]["recipe_plan_revision"]
     ]
@@ -607,17 +607,16 @@ def test_snapshot_line_for_a_shared_product_carries_no_ingredient_breakdown(
     ]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="MEA-005 stricter reading: a snapshot line should name the ingredient(s) it serves; "
-    "today the link exists only by reference (request.recipe_plan_id/revision).",
-)
-def test_gap_snapshot_line_names_the_ingredients_it_serves(tmp_path, actor, service, meal_products):
+def test_snapshot_line_names_the_ingredients_it_serves(tmp_path, actor, service, meal_products):
+    """MEA-005 stricter reading: the snapshot line names its ingredients and their quantities."""
     plan = shared_product_plan(tmp_path, actor, meal_products)
     line = {"product_id": "recipe-spaghetti", "amount": "30", "unit": "KG"}
     prepared = service.prepare_order(actor, request_for(plan, lines=[line]))
-    keys = [k for k in prepared["snapshot"]["lines"][0] if "ingredient" in k]
-    assert keys, "no ingredient reference on the snapshot line"
+    contributions = prepared["snapshot"]["lines"][0]["contributions"]
+    assert [(c["ingredient_id"], c["amount"], c["unit"]) for c in contributions] == [
+        ("spaghetti", "20", "KG"),
+        ("spaghetti2", "10", "KG"),
+    ]
 
 
 @pytest.mark.xfail(
@@ -842,7 +841,9 @@ def test_free_form_basket_that_omits_ingredients_is_prepared_but_labelled_free_f
 @pytest.mark.xfail(
     strict=True,
     reason="MEA-008 gap: a later-turn free-form plan that names the same dish as an earlier "
-    "unresolved saved plan is prepared (only labelled free_form); proposed contract: refuse it.",
+    "unresolved saved plan is prepared (only labelled free_form); proposed contract: refuse it. "
+    "Backend half exists (aimo.recipe_guard, Service.ensure_saved_plan_resolved); remaining step: "
+    "ToolSession.prepare (agent_tools.py, person 2) must call it. See evidence MEA-008-requests.md.",
 )
 def test_gap_free_form_basket_for_a_dish_with_unresolved_saved_plan_is_refused(
     tmp_path, actor, service, meal_products, monkeypatch
@@ -898,19 +899,19 @@ def test_purchase_amount_field_is_a_copy_of_the_required_amount_not_the_rounded_
         assert item["purchase_amount"] != item["conversion"]["proposed_amount"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="MEA-009 stricter reading: per-ingredient conversion.proposed_amount is computed per "
-    "ingredient, so for two ingredients on one product they sum to more than the basket buys "
-    "(11 packs = 33 KG against 10 packs = 30 KG).",
-)
-def test_gap_ingredient_purchased_amounts_add_up_to_the_basket_line(
+def test_ingredient_purchased_amounts_add_up_to_the_basket_line(
     tmp_path, actor, service, meal_products
 ):
+    """MEA-009 stricter reading, measured on the proposal the customer sees: the purchased
+    amounts per ingredient on the snapshot line add up to the line (a shared pack is split).
+
+    The saved plan still shows each ingredient converted ALONE (7 + 4 packs there against 10
+    packs bought), which is why the split is made on the proposal, not read from the plan."""
     plan = shared_product_plan(tmp_path, actor, meal_products)
     line = {"product_id": "recipe-spaghetti", "amount": "30", "unit": "KG"}
     prepared = service.prepare_order(actor, request_for(plan, lines=[line]))
-    bought = Decimal(prepared["snapshot"]["lines"][0]["quantity"]["proposed_amount"])
-    assert bought == Decimal("30")
-    per_ingredient = sum(Decimal(i["conversion"]["proposed_amount"]) for i in plan["ingredients"])
-    assert per_ingredient == bought
+    snapshot_line = prepared["snapshot"]["lines"][0]
+    bought = Fraction(snapshot_line["quantity"]["proposed_amount"])
+    assert bought == 30
+    shares = [Fraction(c["purchased_amount"]) for c in snapshot_line["contributions"]]
+    assert len(shares) == 2 and sum(shares) == bought

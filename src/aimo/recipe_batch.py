@@ -52,7 +52,9 @@ def match_ingredients(identity, request):
             seen.add(pair.ingredient_id)
         products = load_products(c, sorted({m.product_id for m in request.matches}))
         for pair in request.matches:
-            _match(c, policy, items[pair.ingredient_id], products.get(pair.product_id), pair)
+            item = items[pair.ingredient_id]
+            _match(c, policy, item, products.get(pair.product_id), pair)
+            _record_rejection(item, pair.product_id)
         plan["recipe_plan_revision"] = row["revision"] + 1
         c.execute(
             "INSERT INTO recipe_plan_revisions VALUES(%s,%s,%s,now())",
@@ -63,6 +65,12 @@ def match_ingredients(identity, request):
             (plan["recipe_plan_revision"], row["id"]),
         )
     return plan
+
+
+def _record_rejection(item, product_id):
+    """MEA-005: keep a refused product choice (appended, never removed) with its reason."""
+    if item["status"] == "unresolved" and item["amount"] and item.get("reason"):
+        item.setdefault("rejected", []).append({"product_id": product_id, "reason": item["reason"]})
 
 
 # Mirrors recipes.match_ingredient; keep in sync or refactor (see MEA-014-requests.md).
