@@ -43,11 +43,21 @@ function readError(status: number, body: ErrorBody) {
 }
 
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
-  const r = await fetch(path, {
-    credentials: "same-origin",
-    ...options,
-    headers: { "Content-Type": "application/json", ...options?.headers },
-  });
+  let r: Response;
+  try {
+    r = await fetch(path, {
+      credentials: "same-origin",
+      ...options,
+      headers: { "Content-Type": "application/json", ...options?.headers },
+    });
+  } catch {
+    // fetch rejects with the browser's own text ("Failed to fetch"); show a plain sentence.
+    throw new ApiError(
+      0,
+      "Could not reach the service. Check your connection and try again.",
+      "NETWORK_ERROR",
+    );
+  }
   if (!r.ok) {
     const body: ErrorBody = await r.json().catch(() => ({}));
     const { message, code, details } = readError(r.status, body);

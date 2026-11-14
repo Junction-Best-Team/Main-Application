@@ -134,6 +134,18 @@ test.describe("schedule list", () => {
     await expect(page.getByText("No standing orders yet")).toHaveCount(0);
   });
 
+  test("a network failure is a plain sentence, not the browser's raw text", async ({
+    page,
+  }) => {
+    await mockSignedIn(page);
+    await page.route(listUrl, (route) => route.abort("connectionrefused"));
+    await page.goto("/schedules");
+    await expect(page.getByRole("alert")).toContainText(
+      "Could not reach the service. Check your connection and try again.",
+    );
+    await expect(page.getByRole("alert")).not.toContainText("Failed to fetch");
+  });
+
   test("an expired session returns to sign-in", async ({ page }) => {
     await mockSignedIn(page);
     await page.route(listUrl, (route) =>
@@ -285,6 +297,66 @@ test.describe("schedule detail", () => {
     await expect(
       page.getByRole("button", { name: "Show older runs" }),
     ).toHaveCount(0);
+  });
+
+  test("rarer stop reasons have a sentence and an unknown one falls back to its code", async ({
+    page,
+  }) => {
+    const runs: ScheduleRun[] = [
+      { ...disruptedRun, id: "r1", reason_code: "UPSTREAM_RATE_LIMITED" },
+      { ...disruptedRun, id: "r2", reason_code: "COMMIT_BLOCKED" },
+      { ...disruptedRun, id: "r3", reason_code: "RUN_FAILED" },
+      { ...disruptedRun, id: "r4", reason_code: "SOMETHING_NEW" },
+    ];
+    await mockDetail(page, stoppedSchedule, runs);
+    await page.goto(`/schedules/${ids.stoppedSchedule}`);
+    const history = page.getByRole("region", { name: "Run history" });
+    await expect(history).toContainText("after several automatic retries");
+    await expect(history).not.toContainText(
+      "will not be retried automatically",
+    );
+    await expect(history).toContainText("Your purchasing policy blocked");
+    await expect(history).toContainText("kept failing");
+    await expect(history).toContainText("Stopped (SOMETHING_NEW).");
+  });
+
+  test("a skipped run says why it was skipped", async ({ page }) => {
+    const runs: ScheduleRun[] = [
+      { ...skippedRun, id: "s1", reason_code: "PAUSED" },
+      { ...skippedRun, id: "s2", reason_code: "AUTHORIZATION_CANCELLED" },
+      { ...skippedRun, id: "s3", reason_code: "AUTHORIZATION_EXPIRED" },
+    ];
+    await mockDetail(page, schedule, runs);
+    await page.goto(`/schedules/${ids.schedule}`);
+    const history = page.getByRole("region", { name: "Run history" });
+    await expect(history).toContainText("Reason: Paused");
+    await expect(history).toContainText("The standing order was cancelled");
+    await expect(history).toContainText("The standing order had expired");
+  });
+
+  test("further reason codes are listed: known ones as a sentence, unknown ones as the code", async ({
+    page,
+  }) => {
+    const run: ScheduleRun = {
+      ...disruptedRun,
+      reason: {
+        ...disruptedRun.reason,
+        codes: ["PRICE_OUTSIDE_RANGE", "CEILING_EXCEEDED", "SOMETHING_NEW"],
+      },
+    };
+    await mockDetail(page, stoppedSchedule, [run]);
+    await page.goto(`/schedules/${ids.stoppedSchedule}`);
+    const item = page
+      .getByRole("region", { name: "Run history" })
+      .getByRole("listitem")
+      .first();
+    const more = item.getByTestId("run-codes");
+    await expect(more).toContainText(
+      "The total went above the price ceiling you agreed.",
+    );
+    await expect(more).toContainText("SOMETHING_NEW");
+    // The code that is already the main reason is not repeated.
+    await expect(more).not.toContainText("moved outside the range");
   });
 
   test("a disrupted run shows every line status, prices and totals", async ({

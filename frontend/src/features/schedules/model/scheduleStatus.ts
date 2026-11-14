@@ -48,8 +48,31 @@ export const STOP_REASON_TEXT: Record<string, string> = {
   SCHEDULER_NOT_CONFIGURED: "Standing orders are not available right now.",
   UPSTREAM_UNAVAILABLE: "The supplier could not be reached.",
   UPSTREAM_RATE_LIMITED:
-    "The supplier was busy. It will not be retried automatically.",
+    "The supplier kept refusing requests as too many, even after several automatic retries.",
+  // Codes raised by the order commit path; they arrive as free text.
+  COMMIT_BLOCKED: "Your purchasing policy blocked the order.",
+  APPROVAL_REQUIRED:
+    "The order needs an approval that a standing order cannot give.",
+  SCHEDULE_NOT_AUTHORIZED:
+    "The standing order was not authorized for this run.",
+  AUTHORITY_REVOKED: "Your authority for this order was withdrawn.",
+  ALREADY_COMMITTED: "An order for this date already exists.",
+  STALE_REVISION: "The proposed order changed before it could be placed.",
+  CONSTRAINT_LOOSENED:
+    "The basket would loosen a requirement you agreed, such as your diet or budget.",
+  RUN_FAILED: "The run kept failing for a reason the system could not name.",
 };
+
+// Why a run was skipped (a skipped run is not a disruption).
+export const SKIPPED_REASON_TEXT: Record<string, string> = {
+  PAUSED: "Paused",
+  AUTHORIZATION_CANCELLED: "The standing order was cancelled",
+  AUTHORIZATION_SUPERSEDED: "The standing order was replaced",
+  AUTHORIZATION_EXPIRED: "The standing order had expired",
+  AUTHORIZATION_STOPPED: "The standing order was stopped",
+};
+export const skippedReasonText = (code?: string | null) =>
+  SKIPPED_REASON_TEXT[code ?? "PAUSED"] ?? `Skipped (${code}).`;
 export const stopReasonText = (code?: string | null) =>
   code ? (STOP_REASON_TEXT[code] ?? `Stopped (${code}).`) : "";
 

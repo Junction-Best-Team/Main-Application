@@ -4,6 +4,8 @@ import { currency } from "../../../shared/lib/format";
 import {
   formatDate,
   RUN_STATUS_LABEL,
+  skippedReasonText,
+  STOP_REASON_TEXT,
   stopReasonText,
   type ChipTone,
 } from "../model/scheduleStatus";
@@ -22,7 +24,7 @@ const linkClass =
   "font-label text-label-md text-wholesale-teal underline-offset-2 hover:underline";
 
 function reasonText(run: ScheduleRun) {
-  if (run.status === "skipped") return "Paused";
+  if (run.status === "skipped") return skippedReasonText(run.reason_code);
   if (run.status === "disrupted") return stopReasonText(run.reason_code);
   return "";
 }
@@ -41,6 +43,11 @@ function RunItem({
     (s) => !lines.some((l) => l.product_id === s.product_id),
   );
   const reason = reasonText(run);
+  // Further reasons besides the main one: known codes as a sentence, unknown ones as the code.
+  const moreCodes =
+    run.status === "disrupted"
+      ? (run.reason?.codes ?? []).filter((c) => c !== run.reason_code)
+      : [];
   const agreed = run.reason?.agreed_gross_total;
   const current = run.reason?.current_gross_total;
   return (
@@ -64,6 +71,14 @@ function RunItem({
       {reason && (
         <p className="m-0 text-body-sm text-on-surface-variant">
           Reason: {reason}
+        </p>
+      )}
+      {moreCodes.length > 0 && (
+        <p
+          data-testid="run-codes"
+          className="m-0 text-body-sm text-on-surface-variant"
+        >
+          Also: {moreCodes.map((c) => STOP_REASON_TEXT[c] ?? c).join(" · ")}
         </p>
       )}
       {(lines.length > 0 || extra.length > 0) && (
