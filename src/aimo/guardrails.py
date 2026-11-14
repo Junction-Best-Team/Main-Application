@@ -347,8 +347,12 @@ def product_view(product):
     return view
 
 
-def proposal_view(proposal):
-    """Fields the assistant needs; no buyer/agent identifiers, audit history or raw evidence."""
+def proposal_view(proposal, catalog_names=True):
+    """Fields the assistant needs; no buyer/agent identifiers, audit history or raw evidence.
+
+    ``catalog_names=False`` omits catalog product names for contexts that are not screened
+    in the current turn (saved purchase history); IDs, quantities and prices remain.
+    """
     keep = (
         "proposal_id",
         "revision",
@@ -399,6 +403,9 @@ def proposal_view(proposal):
         }
         for line in snapshot.get("lines") or []
     ]
+    if not catalog_names:
+        for line in view["snapshot"]["lines"]:
+            line.pop("name")
     return view
 
 
