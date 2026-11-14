@@ -4,6 +4,17 @@ One seller-side FastAPI service exposes eight HTTP/MCP tools, serves a React buy
 
 The agreed scope is in [docs/brief.md](docs/brief.md). PR #2 was **closed without merging** before implementation; this branch starts from `main` at `76296c1`, preserves PR #3's reference documents, and implements the attached PR #2 brief. `Plan/post-mvp-plan.md` is a separate draft, not the implementation contract. See [actual validation and limitations](docs/validation.md).
 
+## Working in parallel
+
+- Start a task from the latest `develop`: `git switch develop`, then `git pull --ff-only` with a clean working tree. For an existing clone without that branch, first run `git fetch origin` and `git switch --track origin/develop`.
+- Use a short task branch, for example `git switch -c otto/map-view`. Do not commit or push directly to `develop` or `main`.
+- Say which feature/files you are changing. Coordinate edits to shared APIs, schemas, dependency files, and deployment configuration.
+- Check the affected feature works, then open a PR into `develop`: `gh pr create --base develop`. All feature, fix, documentation, and maintenance PRs must target `develop`. You can merge your own work; reviews are optional.
+- Keep `main` ready to demonstrate. Promote a tested snapshot with a release PR from `develop` to `main` only when a release is explicitly requested. Avoid force pushes to shared branches and preserve teammates' uncommitted work.
+- Use a separate checkout/worktree and branch for each concurrent agent on the same machine.
+
+No required pipelines, approval gates, or special GitHub board. Use the team chat to coordinate.
+
 ## Local setup
 
 Requires Docker, Python **3.12.12** through uv **0.12.5**, and Node **24.6.0**. Python and frontend dependencies are locked. All commands below start in the repository root.
