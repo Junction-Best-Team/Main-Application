@@ -24,6 +24,12 @@ class Model(BaseModel):
 class Requirements(Model):
     lactose_free: bool = False
     milk_free: bool = False
+    unsupported: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(
+        default_factory=list,
+        max_length=10,
+        description="Customer requirements the catalog cannot verify (for example gluten-free). "
+        "Each entry blocks readiness: the basket needs the customer's decision (POL-009).",
+    )
 
 
 class SearchRequest(Model):

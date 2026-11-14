@@ -20,6 +20,13 @@ def evaluate_purchase(request: dict, snapshot: dict, rules: dict, approvers: lis
         add("CURRENCY_UNRESOLVED", "Currency or its authority is not established.", "unresolved")
     elif snapshot["currency"] != rules["currency"]:
         add("CURRENCY_NOT_ALLOWED", "Currency is outside current authority.", "denied")
+    for item in (request.get("requirements") or {}).get("unsupported") or []:
+        # POL-009: a stated requirement the system cannot verify is never silently dropped.
+        add(
+            "REQUIREMENT_UNSUPPORTED",
+            f"The requirement '{item}' cannot be verified against the catalog; ask the customer.",
+            "unresolved",
+        )
     total = Decimal(snapshot["gross_total"]) if snapshot["gross_total"] is not None else None
     if total is None and not any(r["code"] == "TOTAL_UNRESOLVED" for r in reasons):
         # Owner decision (Q-30, POL-009): readiness never depends on the caller having reported
