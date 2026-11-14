@@ -104,6 +104,21 @@ Known gaps: the approval flow is not exercised against live stock; there are no 
 - **Live (`--live`).** `UPSTREAM_MODE=live`, so it fails closed without `VALIO_AIMO_API_KEY`. The key exists and teammates have it. Run with your `.env` database and the full catalog ingested. Live stock for the default product `464306` is an unknown-quantity sentinel, so expect skips; `SWEEP_ARGS="--product 463380"` commits for real (F-MVP-006).
 - The agent token, buyer password and API key are never printed or logged.
 
+## Coverage
+
+Python line and branch coverage of `src/aimo`, measured on the pytest suite and, separately, on the real uvicorn server (plus the `migrate`/`seed`/`fixture-catalog` steps) that the black-box sweep drives, then combined:
+
+```sh
+CI_COVERAGE=1 tests/ci.sh                  # data goes to .coverage/ (gitignored); behaviour is unchanged without the variable
+uv run python tests/coverage_report.py     # pytest only / sweep only / combined, per file, lines only the sweep reaches, HTML + XML in .coverage/
+```
+
+- **Gate.** `fail_under` in `pyproject.toml` (`[tool.coverage.report]`), currently **84**, is applied to the combined total by `coverage_report.py` (exit 1 below it). It is the only place to change it. Do not run bare `pytest --cov` expecting a pass: pytest alone is about 84.5%, so add `--cov-fail-under=0` (`tests/ci.sh` does).
+- **CI.** `.github/workflows/coverage.yml` (pull requests, manual) runs the above with fixtures and no API key, prints the table in the log and the job summary, uploads the HTML/XML report and fails below the gate. The quick `ci.yml` is unchanged.
+- **Excluded.** Only `if __name__ == "__main__":` blocks. `tests/`, `scripts/`, `frontend/` and the live Valio path (not reachable without a key) are not measured.
+- **Frontend: not measured.** Browser tests need a `.env` and a coverage fixture in the specs; see F-MVP-007 for the options.
+- **Measured 2026-11-14** (fixture mode): pytest only 84.5%, sweep only about 73%, combined about 87% (runs differ by about 0.5 point). Weakest: `ingest.py` 51%, `cli.py` 69%, `upstream.py` 81% (live HTTP branches), `purchases.py` and `catalog.py` about 83-86%.
+
 ## Running pieces on their own
 
 ```sh
