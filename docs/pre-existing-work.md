@@ -194,3 +194,15 @@ The owner clarified the product scope and refusal style: accept food, products a
 nearby topics; decline clearly unrelated requests in simple language. Extended the
 same synthetic evaluation with workout, food-before-exercise, storage, kitchen-supply
 and community-serving cases. No new external material was used.
+
+
+## Google dataset cutover — 2026-11-14
+
+Reused the complete provided product snapshot and staged importer. Reused UniTools
+World Recipes revision `2f554073f7e730b18d707fe1164d18308f6ec16c`, verified SHA-256
+`41fdc0572b7272ca557d2df22a0fac1cc1f18146e97ebd2c8258c395daf87d8a`,
+with unchanged UniTools attribution, CC BY-SA 4.0 licence and all existing content
+versions. Google vectors were generated once in the deployed database and reused
+from model/profile-specific caches. Verification used authored recipe-lookup
+messages, no real purchase or order; existing fixture commercial data remain
+labelled. No new dependency or visual asset was introduced.
