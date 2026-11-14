@@ -4,13 +4,12 @@
 DIS-011: a cleanup function removes withdrawn products that no pending proposal (and no
 refreshable recipe proposal) includes. Proposed name: `aimo.ingest.cleanup_withdrawn()`.
 DIS-012: when withdrawn products exceed 10 percent of the stored products, the oldest withdrawn
-products by withdrawal date are removed. Proposed column: `products.withdrawn_since` (migration
-009, not created yet). Proposed function: `aimo.ingest.enforce_withdrawn_limit()` (name assumed).
+products by withdrawal date are removed: the same cleanup, run at the end of an ingestion publish
+(`publish(..., trim_withdrawn=True)`, which `ingest_file` uses), skipping protected products.
 
 "Stored products" means the rows of the active generation. Synthetic catalogs through `publish`
 with fixture embeddings; the shared fixture catalog and the recipe tables are restored after every
-test, and proposals are wiped by the shared `reset_buyers` fixture. Nothing is built yet, so every
-test except the controls is a strict xfail.
+test, and proposals are wiped by the shared `reset_buyers` fixture.
 """
 
 from copy import deepcopy
@@ -186,11 +185,8 @@ def test_cleanup_keeps_a_withdrawn_product_of_a_refreshable_recipe_proposal(
 
 # --- DIS-012 -------------------------------------------------------------------------------------
 
-# Oldest first by withdrawal date; the ids run the other way so that id order cannot pass the test.
-WITHDRAWN_BY_AGE = [("cl-11", 30), ("cl-07", 20), ("cl-03", 10)]
 
-
-def publish_catalog(total, withdrawn_ids):
+def catalog(total, withdrawn_ids):
     base = fixture_facts()[0]
     data = []
     for number in range(total):
@@ -200,12 +196,17 @@ def publish_catalog(total, withdrawn_ids):
         product.update(id=pid, name=name, names={"en": name}, deleted=pid in withdrawn_ids)
         product["provenance"] = {"source": "dis-012 test", "product_id": pid}
         data.append(product)
-    publish(data, "dis-012-catalog", fingerprint(data))
+    return data
 
 
-def set_withdrawal_dates(dated):
+def publish_trimmed(data):
+    return publish(data, "dis-012-catalog", fingerprint(data) + str(uuid4()), trim_withdrawn=True)
+
+
+def age(dated):
+    """Back-date withdrawals in the active generation: {id: days ago}."""
     with connection() as c:
-        for pid, days_ago in dated:
+        for pid, days_ago in dated.items():
             c.execute(
                 "UPDATE products SET withdrawn_since = now() - make_interval(days => %s) "
                 "WHERE id=%s AND generation=(SELECT generation FROM active_catalog)",
@@ -213,48 +214,55 @@ def set_withdrawal_dates(dated):
             )
 
 
-def test_control_twenty_stored_products_three_withdrawn_is_over_ten_percent():
-    """Control (passes today): the synthetic catalog stores 20 products of which 3 are withdrawn."""
-    publish_catalog(20, {pid for pid, _ in WITHDRAWN_BY_AGE})
-    rows = active_rows()
-    assert len(rows) == 20 and sum(rows.values()) == 3
-    assert sum(rows.values()) / len(rows) > 0.10
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason="JNP3-DIS-012 Draft: column products.withdrawn_since and the limit rule do not exist",
-)
-def test_over_ten_percent_removes_the_oldest_withdrawn_until_within_the_limit():
-    """JNP3-DIS-012: 3 of 20 stored products are withdrawn (15 percent). After the rule runs, the
-    withdrawn products that were removed are the oldest by withdrawn_since (never the newest), live
-    products are untouched, and withdrawn products are at most 10 percent of what is stored."""
-    publish_catalog(20, {pid for pid, _ in WITHDRAWN_BY_AGE})
-    set_withdrawal_dates(WITHDRAWN_BY_AGE)  # UndefinedColumn today
-    from aimo.ingest import enforce_withdrawn_limit
-
-    enforce_withdrawn_limit()
-    rows = active_rows()
-    withdrawn_left = [pid for pid, _ in WITHDRAWN_BY_AGE if pid in rows]
-    removed = [pid for pid, _ in WITHDRAWN_BY_AGE if pid not in rows]
-    assert removed, "nothing was removed although 15 percent are withdrawn"
-    assert removed == [pid for pid, _ in WITHDRAWN_BY_AGE][: len(removed)]  # oldest first
-    assert "cl-03" in rows  # the newest withdrawal is never removed first
-    assert sum(rows[pid] for pid in withdrawn_left) / len(rows) <= 0.10
-    assert sum(1 for pid, flag in rows.items() if not flag) == 17  # live products untouched
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason="JNP3-DIS-012 Draft: column products.withdrawn_since and the limit rule do not exist",
-)
 def test_at_exactly_ten_percent_nothing_is_removed():
-    """JNP3-DIS-012: 2 of 20 stored products withdrawn is exactly 10 percent, not above it, so the
-    rule removes nothing."""
-    publish_catalog(20, {"cl-11", "cl-07"})
-    set_withdrawal_dates([("cl-11", 30), ("cl-07", 20)])  # UndefinedColumn today
-    from aimo.ingest import enforce_withdrawn_limit
-
-    enforce_withdrawn_limit()
+    """JNP3-DIS-012: 2 of 20 stored products withdrawn is exactly 10 percent, not above it."""
+    result = publish_trimmed(catalog(20, {"cl-11", "cl-07"}))
     rows = active_rows()
-    assert len(rows) == 20 and {"cl-11", "cl-07"} <= set(rows)
+    assert len(rows) == 20 and {"cl-11", "cl-07"} <= set(rows) and result["trimmed_withdrawn"] == 0
+
+
+def test_over_ten_percent_removes_the_oldest_withdrawn_one_at_a_time_until_within_the_limit():
+    """JNP3-DIS-012: a third withdrawal (3 of 20 = 15 percent) removes the oldest by withdrawn_since
+    first (cl-11, then cl-07 because 2 of 19 is still above 10 percent), keeps the newest (cl-03) and
+    leaves live products untouched. The ids run against the ages so id order cannot pass."""
+    publish_trimmed(catalog(20, {"cl-11"}))
+    age({"cl-11": 30})
+    publish_trimmed(
+        catalog(20, {"cl-11", "cl-07"})
+    )  # first withdrawal date carried: cl-11 stays old
+    age({"cl-07": 20})
+    result = publish_trimmed(catalog(20, {"cl-11", "cl-07", "cl-03"}))
+    rows = active_rows()
+    assert result["trimmed_withdrawn"] == 2
+    assert "cl-11" not in rows and "cl-07" not in rows and rows["cl-03"] is True
+    assert sum(1 for flag in rows.values() if not flag) == 17
+    assert sum(rows.values()) / len(rows) <= 0.10
+    with connection() as c:  # the generation stays re-activatable
+        count = c.execute(
+            "SELECT g.product_count, (SELECT count(*) FROM products p WHERE p.generation=g.id) AS n "
+            "FROM catalog_generations g JOIN active_catalog a ON a.generation=g.id"
+        ).fetchone()
+    assert count["product_count"] == count["n"] == 18
+
+
+def test_a_protected_withdrawn_product_is_skipped_and_the_next_oldest_goes(
+    service, agent, request_data
+):
+    """JNP3-DIS-012 with DIS-011: the oldest withdrawn product (464306) is named by a pending
+    proposal, so the rule skips it and removes the next oldest ones until within 10 percent."""
+    pending = prepare(service, agent, request_data, "464306")
+    assert pending["order_id"] is None
+    extras = [
+        dict(fixture_facts()[0], id=f"cl-x{n:02d}", name=f"Filler {n}", names={"en": f"Filler {n}"})
+        for n in range(30)
+    ]
+    withdrawn = ["464306", "464398", "463380", "465039", "460123"]  # oldest first
+    data = flagged(fixture_facts(), set(withdrawn)) + extras
+    publish(data, "dis-012-protected", fingerprint(data) + str(uuid4()))
+    age({pid: 50 - number for number, pid in enumerate(withdrawn)})
+    result = publish_trimmed(data)
+    rows = active_rows()
+    assert result["trimmed_withdrawn"] == 2
+    assert rows["464306"] is True  # protected, though the oldest
+    assert "464398" not in rows and "463380" not in rows
+    assert {"465039", "460123"} <= set(rows)

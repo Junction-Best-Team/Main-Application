@@ -68,7 +68,7 @@ def ingest_file(
     facts = [_normalize_record(index, p, source) for index, p in enumerate(records)]
     if carry_withdrawn:  # DIS-008; tests of unrelated snapshot rules opt out
         facts += _absent_as_withdrawn(facts)
-    return publish(facts, source, actual, activate=activate)
+    return publish(facts, source, actual, activate=activate, trim_withdrawn=carry_withdrawn)
 
 
 def _absent_as_withdrawn(facts):
@@ -106,7 +106,7 @@ def _normalize_record(index, raw, source):
     return facts
 
 
-def publish(facts, source, source_hash, *, activate=True):
+def publish(facts, source, source_hash, *, activate=True, trim_withdrawn=False):
     if not facts or len({p["id"] for p in facts}) != len(facts):
         raise ValueError("Empty or duplicate import")
     key = model_key()
@@ -197,10 +197,13 @@ def publish(facts, source, source_hash, *, activate=True):
                 raise ValueError("Incomplete product import")
         if activate:
             _activate(c, generation)
+        # DIS-012: keep withdrawn products at most WITHDRAWN_LIMIT of the stored products.
+        trimmed = _cleanup(c, WITHDRAWN_LIMIT)["removed"] if activate and trim_withdrawn else 0
     return {
         "generation": str(generation),
         "products": len(facts),
-        "withdrawn_products": sum(bool(p["deleted"]) for p in facts),
+        "withdrawn_products": sum(bool(p["deleted"]) for p in facts) - trimmed,
+        "trimmed_withdrawn": trimmed,
         "new_embeddings": generated,
         "reused_embeddings": len(text_by_hash) - generated,
         "active": activate,
@@ -260,8 +263,17 @@ def activate_catalog(generation):
     return {"generation": str(generation), "products": actual, "model": model_key()}
 
 
-def cleanup_withdrawn():
-    """Remove withdrawn products from the active catalog that no pending proposal includes (DIS-011).
+WITHDRAWN_LIMIT = Decimal("0.10")
+
+
+def cleanup_withdrawn(max_share=None):
+    """Remove withdrawn products from the active catalog that no pending proposal includes.
+
+    `max_share=None` (DIS-011, the manual call) removes every unprotected withdrawn product.
+    With a share such as `WITHDRAWN_LIMIT` (DIS-012, run at the end of an ingestion publish) it
+    removes only the oldest by `withdrawn_since`, one at a time, until withdrawn products are at
+    most that share of the stored products of the active generation (all stored products,
+    including withdrawn, re-counted after each removal), skipping protected products.
 
     Pending means the proposal can still be committed or refreshed: no order yet, the current
     revision not rejected, and either live (not denied, not expired) or a saved-recipe proposal,
@@ -270,31 +282,45 @@ def cleanup_withdrawn():
     """
     with connection() as c:
         c.execute("SELECT pg_advisory_xact_lock(893017)")
-        active = c.execute("SELECT generation FROM active_catalog").fetchone()
-        if not active:
-            return {"removed": 0, "kept_in_use": 0, "removed_ids": []}
-        generation = active["generation"]
-        in_use = """SELECT DISTINCT line->>'product_id' FROM proposals p
+        return _cleanup(c, max_share)
+
+
+def _cleanup(c, max_share):
+    """Cleanup inside a transaction that already holds the publisher lock."""
+    active = c.execute("SELECT generation FROM active_catalog").fetchone()
+    if not active:
+        return {"removed": 0, "kept_in_use": 0, "removed_ids": []}
+    generation = active["generation"]
+    rows = c.execute(
+        """SELECT id, id IN (
+            SELECT DISTINCT line->>'product_id' FROM proposals p
             JOIN proposal_revisions r ON r.proposal_id=p.id AND r.revision=p.current_revision
             LEFT JOIN approvals a ON a.proposal_id=p.id AND a.revision=p.current_revision
             CROSS JOIN LATERAL jsonb_array_elements(r.snapshot->'lines') AS line
             WHERE p.order_id IS NULL AND COALESCE(a.status,'') NOT IN ('rejected','superseded')
+            AND line->>'product_id' IS NOT NULL
             AND ((r.policy_outcome <> 'denied' AND r.expires_at > now())
-                 OR EXISTS (SELECT 1 FROM recipe_plans rp WHERE rp.proposal_id=p.id))"""
-        removed = [
-            r["id"]
-            for r in c.execute(
-                f"""DELETE FROM products WHERE generation=%s AND facts->'deleted'='true'::jsonb
-                AND id NOT IN ({in_use} AND line->>'product_id' IS NOT NULL) RETURNING id""",
-                (generation,),
-            ).fetchall()
-        ]
-        kept = c.execute(
-            "SELECT count(*) AS n FROM products WHERE generation=%s AND facts->'deleted'='true'::jsonb",
-            (generation,),
-        ).fetchone()["n"]
+                 OR EXISTS (SELECT 1 FROM recipe_plans rp WHERE rp.proposal_id=p.id))
+        ) AS protected FROM products
+        WHERE generation=%s AND facts->'deleted'='true'::jsonb
+        ORDER BY withdrawn_since NULLS FIRST, id""",
+        (generation,),
+    ).fetchall()
+    total = c.execute(
+        "SELECT count(*) AS n FROM products WHERE generation=%s", (generation,)
+    ).fetchone()["n"]
+    withdrawn, doomed = len(rows), []
+    for row in rows:
+        if max_share is not None and Decimal(withdrawn) <= Decimal(total) * max_share:
+            break
+        if not row["protected"]:
+            doomed.append(row["id"])
+            withdrawn -= 1
+            total -= 1
+    if doomed:
+        c.execute("DELETE FROM products WHERE generation=%s AND id = ANY(%s)", (generation, doomed))
         c.execute(
             "UPDATE catalog_generations SET product_count=product_count-%s WHERE id=%s",
-            (len(removed), generation),
+            (len(doomed), generation),
         )
-    return {"removed": len(removed), "kept_in_use": kept, "removed_ids": sorted(removed)}
+    return {"removed": len(doomed), "kept_in_use": withdrawn, "removed_ids": sorted(doomed)}
