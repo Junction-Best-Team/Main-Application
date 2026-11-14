@@ -5,6 +5,7 @@ import { HomePage } from "../features/home/pages/HomePage";
 import { ChatPage } from "../features/chat/pages/ChatPage";
 import { PurchasesPage } from "../features/purchases/pages/PurchasesPage";
 import { PurchaseDetailPage } from "../features/purchases/pages/PurchaseDetailPage";
+import { PreferencesPage } from "../features/preferences/pages/PreferencesPage";
 import { SettingsPage } from "../features/settings/pages/SettingsPage";
 import { AppShell } from "./layout/AppShell";
 import { NoticeBar } from "../shared/components/NoticeBar";
@@ -35,6 +36,7 @@ export function AppRoutes() {
         <Route path="/purchases" element={<PurchasesPage />} />
         <Route path="/purchases/:proposalId" element={<PurchasesPage />} />
         <Route path="/approvals/:approvalId" element={<PurchaseDetailPage />} />
+        <Route path="/settings/preferences" element={<PreferencesPage />} />
       </Route>
       <Route
         path="*"
