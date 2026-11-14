@@ -47,9 +47,9 @@ DROPS = [
         "013_catalog_sync_withdrawals.sql",
     ),
     ("DROP VIEW catalog_protected_products", "013_catalog_sync_withdrawals.sql"),
-    ("DROP TABLE scheduler_identities", "016_scheduled_orders.sql"),
-    ("DROP TABLE order_request_cancellations", "016_scheduled_orders.sql"),
-    ("DROP TRIGGER sched_auth_guard ON scheduled_authorizations", "016_scheduled_orders.sql"),
+    ("DROP TABLE scheduler_identities", "020_scheduled_orders.sql"),
+    ("DROP TABLE order_request_cancellations", "020_scheduled_orders.sql"),
+    ("DROP TRIGGER sched_auth_guard ON scheduled_authorizations", "020_scheduled_orders.sql"),
 ]
 
 

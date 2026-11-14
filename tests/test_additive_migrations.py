@@ -239,7 +239,7 @@ REVIEWED = {
         "no row changes."
     ),
     (
-        "016_scheduled_orders.sql",
+        "020_scheduled_orders.sql",
         "DROP_CONSTRAINT",
         "identities",
         "identities_role_check",
@@ -249,7 +249,7 @@ REVIEWED = {
         "pattern as 004 for conversation_turns_state_check."
     ),
     (
-        "016_scheduled_orders.sql",
+        "020_scheduled_orders.sql",
         "DROP_CONSTRAINT",
         "conversation_messages",
         "conversation_messages_role_check",
@@ -371,7 +371,7 @@ def test_inserts_only_add_reference_rows_to_known_tables():
     assert {table for _, _, table in inserts} <= ALLOWED_INSERT_TABLES, inserts
     assert {file for file, _, _ in inserts} == {
         "003_chat_purchasing.sql",
-        "016_scheduled_orders.sql",
+        "020_scheduled_orders.sql",
     }
 
 

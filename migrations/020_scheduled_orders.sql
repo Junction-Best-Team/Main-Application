@@ -1,5 +1,5 @@
 -- WS-E scheduled (standing) re-orders. Additive. Every order it places is a MOCK order.
--- Number 016: 014 and 015 are in flight on other branches (014_policy_settings, 015_recipe_images).
+-- Number 020: after WS-D's 018 (purge unfinished proposals) and 019 (history immutability); 014 and 015 are other branches.
 
 -- 1. A separate scheduler identity per buyer: no login, no model, no authority.
 ALTER TABLE identities DROP CONSTRAINT identities_role_check;
