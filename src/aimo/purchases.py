@@ -12,6 +12,8 @@ from aimo.db import Problem, connection, fingerprint, now
 from aimo.numeric import D, fraction_text
 from aimo.schemas import AgentAuthority, ApproverAuthority, PolicyRules, PurchaseRequest
 
+MAX_MATERIALS = 1000  # request lines plus deposit materials in one supplier lookup
+
 
 def money(value):
     return value.quantize(D(".01"), rounding=ROUND_HALF_UP)
@@ -103,8 +105,12 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
     with connection() as c:
         deposit_products = load_products(c, list(deposit_ids))
     ids = list(dict.fromkeys([item.product_id for item in request.lines] + sorted(deposit_ids)))
-    if len(ids) > 100:
-        raise Problem("TOO_MANY_MATERIALS", "Shortlist plus deposits exceeds 100 materials.", 422)
+    if len(ids) > MAX_MATERIALS:
+        raise Problem(
+            "TOO_MANY_MATERIALS",
+            f"Shortlist plus deposits exceeds {MAX_MATERIALS} materials.",
+            422,
+        )
     raw = connector.lookup(buyer["upstream_customer"], ids, request.delivery_date)
     evidence = upstream.validate_lookup(
         raw, buyer["upstream_customer"], ids, request.delivery_date, products, current

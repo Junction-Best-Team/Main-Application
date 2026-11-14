@@ -110,16 +110,14 @@ BIG = 1000
 
 
 @pytest.mark.xfail(
-    strict=True, reason="MEA-013 Draft: MealPlan.ingredients is capped at 30, not 1000"
+    strict=True,
+    reason="MEA-013 Approved: MealPlan.ingredients (chat_schemas.py, person 1) is still capped at 30",
 )
 def test_meal_plan_accepts_one_thousand_ingredients():
     ingredients = [Ingredient(name=f"ingredient {n}", amount="1", unit="KG") for n in range(BIG)]
     assert len(MealPlan(title="Big", portions=1, ingredients=ingredients).ingredients) == BIG
 
 
-@pytest.mark.xfail(
-    strict=True, reason="MEA-013 Draft: PurchaseRequest.lines is capped at 30, not 1000"
-)
 def test_purchase_request_accepts_one_thousand_lines():
     lines = [line(f"authored-{n}") for n in range(BIG)]
     assert len(PurchaseRequest.model_validate(purchase(lines)).lines) == BIG
@@ -127,16 +125,13 @@ def test_purchase_request_accepts_one_thousand_lines():
 
 @pytest.mark.xfail(
     strict=True,
-    reason="MEA-013 Draft: Recipe is capped at 100 ingredients and scaled_plan at 30, not 1000",
+    reason="MEA-013 Approved: Recipe (100) and scaled_plan (30) in person 2's recipe files are not raised",
 )
 def test_recipe_with_one_thousand_ingredients_can_be_scaled():
     plan = scaled_plan(recipe(count=BIG), 2)
     assert len(plan.ingredients) == BIG
 
 
-@pytest.mark.xfail(
-    strict=True, reason="MEA-013 Draft: LookupRequest.product_ids is capped at 50, not 1000"
-)
 def test_lookup_request_accepts_one_thousand_product_ids():
     request = LookupRequest(
         product_ids=[f"authored-{n}" for n in range(BIG)], delivery_date=date(2030, 1, 1)
@@ -306,3 +301,10 @@ def test_shortfall_is_absent_when_stock_covers_the_need_and_keeps_old_fingerprin
         "snapshot"
     ]["lines"][0]["quantity"]
     assert "shortfall" not in quantity
+
+
+def test_material_cap_matches_the_supplier_limit_until_lookups_are_batched():
+    from aimo import purchases
+    from aimo.schemas import MAX_BASKET_LINES, MAX_LOOKUP_IDS
+
+    assert MAX_BASKET_LINES == MAX_LOOKUP_IDS == purchases.MAX_MATERIALS == SUPPLIER_LIMIT

@@ -5,6 +5,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, RootModel, model_validator
 
+# MEA-013: up to 1000 ingredients/lines. 1000 is also the supplier's per-request product limit,
+# so a lookup needs no batching until SUP-007 (WS-A) lands.
+MAX_BASKET_LINES = 1000
+MAX_LOOKUP_IDS = 1000
 Amount = Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)]
 Money = Annotated[Decimal, Field(ge=0, max_digits=16, decimal_places=4)]
 
@@ -25,7 +29,7 @@ class SearchRequest(Model):
 
 
 class LookupRequest(Model):
-    product_ids: list[str] = Field(min_length=1, max_length=50)
+    product_ids: list[str] = Field(min_length=1, max_length=MAX_LOOKUP_IDS)
     delivery_date: date
 
 
@@ -44,7 +48,7 @@ class PurchaseRequest(Model):
     recipe_plan_id: UUID | None = None
     recipe_plan_revision: int | None = Field(default=None, ge=1)
     request_id: str = Field(min_length=1, max_length=100)
-    lines: list[LineRequest] = Field(min_length=1, max_length=30)
+    lines: list[LineRequest] = Field(min_length=1, max_length=MAX_BASKET_LINES)
     destination: str = Field(min_length=1, max_length=120)
     delivery_date: date
     requirements: Requirements = Field(default_factory=Requirements)

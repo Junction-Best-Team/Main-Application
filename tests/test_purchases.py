@@ -11,7 +11,7 @@ import pytest
 
 from aimo import purchases
 from aimo.db import Problem, connection, js
-from aimo.purchases import build_snapshot, context, material_fingerprint
+from aimo.purchases import MAX_MATERIALS, build_snapshot, context, material_fingerprint
 from aimo.schemas import PrepareRequest
 from aimo.upstream import FixtureClient
 
@@ -130,7 +130,8 @@ def test_withdrawn_product_is_denied(agent, request_data, monkeypatch):
 def test_too_many_materials_are_refused_before_calling_upstream(agent, request_data, monkeypatch):
     def many(p):
         p["deposits"] = [
-            {"material": f"dep-{i}", "quantity": "1", "unit": "ST"} for i in range(101)
+            {"material": f"dep-{i}", "quantity": "1", "unit": "ST"}
+            for i in range(MAX_MATERIALS)  # plus the line itself: one over the cap
         ]
 
     patch_products(monkeypatch, {"464306": many})
