@@ -59,15 +59,14 @@ resource "kubernetes_config_map_v1" "runtime" {
     namespace = kubernetes_namespace_v1.aimo.metadata[0].name
   }
   data = {
-    PUBLIC_BASE_URL          = "https://${var.hostname}"
-    SECURE_COOKIES           = "true"
-    UPSTREAM_MODE            = var.upstream_mode
-    VALIO_AIMO_BASE_URL      = "https://junction26.valioaimo.fi"
-    EMBEDDING_BACKEND        = "sentence_transformers"
-    EMBEDDING_MODEL          = "intfloat/multilingual-e5-small"
-    EMBEDDING_MODEL_REVISION = "614241f622f53c4eeff9890bdc4f31cfecc418b3"
-    HF_HUB_OFFLINE           = "1"
-    TOKENIZERS_PARALLELISM   = "false"
+    PUBLIC_BASE_URL     = "https://${var.hostname}"
+    SECURE_COOKIES      = "true"
+    UPSTREAM_MODE       = var.upstream_mode
+    VALIO_AIMO_BASE_URL = "https://junction26.valioaimo.fi"
+    EMBEDDING_BACKEND   = "sentence_transformers"
+    # Model name/revision use the application's shared image/runtime pin.
+    HF_HUB_OFFLINE         = "1"
+    TOKENIZERS_PARALLELISM = "false"
   }
 }
 
@@ -173,6 +172,13 @@ resource "kubernetes_deployment_v1" "aimo" {
   }
   timeouts { create = "15m" }
   lifecycle {
+    precondition {
+      condition = var.app_replicas == 0 || (
+        trimspace(lookup(var.runtime_secrets, "FORWARDED_ALLOW_IPS", "")) != "" &&
+        !strcontains(lookup(var.runtime_secrets, "FORWARDED_ALLOW_IPS", ""), "*")
+      )
+      error_message = "Before serving behind ingress, set runtime_secrets.FORWARDED_ALLOW_IPS to the actual trusted proxy IPs/CIDRs, never *."
+    }
     # Terraform supplies the first image; release CI owns subsequent image updates.
     ignore_changes = [spec[0].template[0].spec[0].container[0].image]
   }

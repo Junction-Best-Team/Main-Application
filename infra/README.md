@@ -140,7 +140,18 @@ These steps document the future deployment; none were performed for this PR.
    Bootstrap may take time; inspect its logs if it fails. It stops on any error,
    does not silently substitute fixtures, and preserves completed Job state so
    later Terraform runs do not unexpectedly repeat setup.
-5. After successful import, set `bootstrap_generation=null`,
+5. Before enabling serving, add `FORWARDED_ALLOW_IPS` to `runtime_secrets` with
+   the actual ingress proxy IPs/CIDRs. Never use `*` or a publicly routable
+   catch-all network. Ensure ingress replaces untrusted forwarded headers and
+   restrict direct application access to trusted proxies. This lets login
+   throttling distinguish clients instead of locking every buyer behind one
+   ingress address. The plan rejects enabling replicas without explicit proxy
+   trust. The application image supplies its own shared model name/revision pin.
+   For upgrades from earlier PR #4 revisions, also follow the migration 002,
+   prepare-key and privileged product-scope steps in [README](../README.md).
+   Migration with an admin role must grant the runtime role access to any new
+   tables, including `prepare_requests`; bootstrap's grant step covers them.
+   After successful import, set `bootstrap_generation=null`,
    `bootstrap_credentials=null`, and `app_replicas=1`. Plan/apply again. This
    removes the temporary admin/seed Kubernetes Secret and completed setup Job,
    then starts serving with the restricted database role. Keep the private demo
