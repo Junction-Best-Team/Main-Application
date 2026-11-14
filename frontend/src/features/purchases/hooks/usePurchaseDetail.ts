@@ -21,26 +21,46 @@ export function usePurchaseDetail({
   const currentDetail = `${proposalId ?? ""}/${approvalId ?? ""}`;
   const activeDetail = useRef(currentDetail);
   activeDetail.current = currentDetail;
-  const [p, setProposal] = useState<Proposal | null>(null);
+  const [snapshot, setSnapshot] = useState<{ key: string; p: Proposal } | null>(
+    null,
+  );
+  const p = snapshot?.key === currentDetail ? snapshot.p : null;
+  const sequence = useRef(0);
+  const actionInFlight = useRef(false);
+  const setProposal = (value: Proposal) =>
+    setSnapshot({ key: currentDetail, p: value });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const load = useCallback(async () => {
+    if ((!proposalId && !approvalId) || activeDetail.current !== currentDetail)
+      return;
+    const request = ++sequence.current;
     try {
       const result = proposalId
         ? await getPurchase(proposalId)
         : await getApproval(approvalId!);
-      if (activeDetail.current !== `${proposalId ?? ""}/${approvalId ?? ""}`)
+      if (
+        activeDetail.current !== currentDetail ||
+        sequence.current !== request
+      )
         return;
-      setProposal(result);
+      setSnapshot({ key: currentDetail, p: result });
       setError("");
     } catch (e) {
+      if (
+        activeDetail.current !== currentDetail ||
+        sequence.current !== request
+      )
+        return;
       if (e instanceof ApiError && e.status === 401) setSession(null);
       else setError((e as Error).message);
     }
-  }, [approvalId, proposalId, setSession]);
+  }, [approvalId, proposalId, setSession, currentDetail]);
   useEffect(() => {
-    setProposal(null);
+    setSnapshot(null);
+    setError("");
+    setBusy(false);
     setMessage("");
     void load();
   }, [load]);
@@ -53,33 +73,41 @@ export function usePurchaseDetail({
         "policy_changed",
       ].includes(getPurchaseStatus(p))
     : false;
-  useRefresh(load, !terminal);
+  useRefresh(load, Boolean(proposalId || approvalId) && !terminal);
   async function reject() {
-    if (!p || !session || !p.approval_id) return;
+    if (!p || !session || !p.approval_id || actionInFlight.current) return;
+    actionInFlight.current = true;
     setBusy(true);
     setError("");
     setMessage("");
     try {
-      setProposal(
-        await rejectPurchase(p.approval_id, p.revision, session.csrf_token),
+      const result = await rejectPurchase(
+        p.approval_id,
+        p.revision,
+        session.csrf_token,
       );
+      if (activeDetail.current !== currentDetail) return;
+      setProposal(result);
       setMessage("Rejection recorded. This purchase cannot be committed.");
     } catch (e) {
       const msg = (e as Error).message;
       await load();
-      setError(msg);
+      if (activeDetail.current === currentDetail) setError(msg);
     } finally {
-      setBusy(false);
+      actionInFlight.current = false;
+      if (activeDetail.current === currentDetail) setBusy(false);
     }
   }
   async function confirm() {
-    if (!p || !session) return;
+    if (!p || !session || actionInFlight.current) return;
+    actionInFlight.current = true;
     setBusy(true);
     setError("");
     setMessage("");
     try {
       const result = await confirmPurchase(p, session);
       await load();
+      if (activeDetail.current !== currentDetail) return;
       if (result.status === "revised") {
         setMessage(
           "Terms changed during verification. Review the new revision and confirm again.",
@@ -90,9 +118,10 @@ export function usePurchaseDetail({
     } catch (e) {
       const msg = (e as Error).message;
       await load();
-      setError(msg);
+      if (activeDetail.current === currentDetail) setError(msg);
     } finally {
-      setBusy(false);
+      actionInFlight.current = false;
+      if (activeDetail.current === currentDetail) setBusy(false);
     }
   }
   const canConfirm =
