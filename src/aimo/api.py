@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from aimo import approval_workflow as workflow
-from aimo import auth, conversations, memory, schema_state, upstream
+from aimo import auth, cancellations, conversations, memory, orders_list, schema_state, upstream
 from aimo.chat_schemas import (
     ConversationCreate,
     ConversationList,
@@ -33,6 +33,7 @@ from aimo.memory_schemas import (
     MemoryUpdate,
 )
 from aimo.observability import RequestLoggingMiddleware, configure_logging, event
+from aimo.order_schemas import CancellationResponse, OrdersResponse
 from aimo.schemas import (
     CommitRequest,
     CommitResponse,
@@ -286,6 +287,22 @@ def create_app(service=None):
     def purchase_receipt(proposal_id: UUID, identity=Depends(buyer)):
         # The stored mock receipt of this buyer's own proposal; 404 NO_RECEIPT until it is ordered.
         return workflow.get_receipt(identity, proposal_id)
+
+    @app.post("/api/purchases/{proposal_id}/cancel", response_model=CancellationResponse)
+    def cancel_purchase(proposal_id: UUID, request: Request, identity=Depends(buyer)):
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+        # CNF-035: an append-only cancellation of a pending request; a placed order is refused.
+        return cancellations.cancel_my_request(identity, proposal_id)
+
+    @app.get("/api/orders", response_model=OrdersResponse)
+    def orders(
+        offset: int = Query(0, ge=0, le=10000),
+        limit: int = Query(20, ge=1, le=50),
+        identity=Depends(buyer),
+    ):
+        return orders_list.orders_page(identity, offset, limit)
 
     @app.get("/api/memories", response_model=MemoryList)
     def memory_list(
