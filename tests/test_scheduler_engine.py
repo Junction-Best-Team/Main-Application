@@ -545,3 +545,16 @@ def test_each_pass_creates_a_bounded_number_of_runs(buyer, service, placed_order
         scheduled(buyer, service, placed_order)
     assert scheduler.materialise(at()) == 2
     assert scheduler.materialise(at()) == 1
+
+
+def test_a_stored_request_with_a_server_only_constraints_key_still_prepares():
+    auth = {
+        "id": uuid4(),
+        "request": {
+            "destination": "hotel-helsinki",
+            "lines": [{"product_id": "464306", "amount": "10", "unit": "L"}],
+            "constraints": [{"name": "budget_gross", "value": "1", "source": "chat"}],
+        },
+    }
+    run = {"scheduled_date": TODAY, "delivery_date": TODAY + timedelta(days=2)}
+    assert "constraints" not in scheduler.basket(auth, run, [])

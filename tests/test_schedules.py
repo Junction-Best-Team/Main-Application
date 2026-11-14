@@ -343,3 +343,50 @@ def test_events_record_who_did_what(buyer, service, placed_order):
             ).fetchall()
         ]
     assert events == [(e, "buyer") for e in ("created", "paused", "resumed", "cancelled")]
+
+
+# --- server-only keys of a source order's stored request -------------------------------------
+
+
+def order_with_server_constraints(placed_order):
+    """A past order whose stored request carries the server-only `constraints` key (PR #133)."""
+    with connection() as c:
+        old = c.execute(
+            "SELECT p.agent_id,r.* FROM proposals p JOIN proposal_revisions r ON r.proposal_id=p.id "
+            "WHERE p.id=%s AND r.revision=1",
+            (placed_order["proposal_id"],),
+        ).fetchone()
+        pid, oid = uuid4(), uuid4()
+        c.execute(
+            "INSERT INTO proposals(id,buyer_id,agent_id,current_revision) VALUES(%s,'demo-hotel',%s,1)",
+            (pid, old["agent_id"]),
+        )
+        request = old["request"] | {
+            "constraints": [
+                {"name": "budget_gross", "value": "500", "source": "chat", "confirmed": True}
+            ]
+        }
+        c.execute(
+            "INSERT INTO proposal_revisions(proposal_id,revision,policy_version,request,snapshot,"
+            "fingerprint,policy_outcome,reasons,required_exceptions,expires_at) "
+            "SELECT %s,1,policy_version,%s,snapshot,fingerprint,policy_outcome,reasons,"
+            "required_exceptions,expires_at FROM proposal_revisions WHERE proposal_id=%s AND revision=1",
+            (pid, js(request), placed_order["proposal_id"]),
+        )
+        c.execute(
+            "INSERT INTO orders(id,proposal_id,buyer_id,revision,receipt) VALUES(%s,%s,'demo-hotel',1,'{}')",
+            (oid, pid),
+        )
+    return {"order_id": str(oid), "proposal_id": str(pid)}
+
+
+def test_a_source_orders_server_only_constraints_never_enter_the_standing_order(
+    buyer, service, placed_order
+):
+    source = order_with_server_constraints(placed_order)
+    s = make(buyer, service, source)
+    with connection() as c:
+        stored = c.execute(
+            "SELECT request FROM scheduled_authorizations WHERE id=%s", (s["id"],)
+        ).fetchone()["request"]
+    assert "constraints" not in stored  # the limits are the ones the customer agrees now

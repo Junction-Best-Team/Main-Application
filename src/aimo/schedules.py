@@ -23,7 +23,15 @@ from aimo.schedule_schemas import (
 from aimo.schemas import PurchaseRequest
 
 PAGE_OF_RUNS = 20
-NOT_A_SCHEDULE_DATE = ("request_id", "delivery_date", "recipe_plan_id", "recipe_plan_revision")
+# Dates and the recipe link do not belong to a standing order; `constraints` is a server-only key of
+# a stored request (the limits of that one purchase) and is not accepted by PrepareRequest.
+NOT_A_SCHEDULE_DATE = (
+    "request_id",
+    "delivery_date",
+    "recipe_plan_id",
+    "recipe_plan_revision",
+    "constraints",
+)
 
 
 def require_customer(identity):
