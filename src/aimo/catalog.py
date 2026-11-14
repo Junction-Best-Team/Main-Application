@@ -124,6 +124,42 @@ def requirement_reasons(p: dict, requirements: Requirements) -> list[dict]:
     return reasons
 
 
+# Configured unit priority for one product requested in several units: KG, then L, then any
+# other unit (pieces). BAS-009.
+UNIT_PRIORITY = ("KG", "L")
+
+
+def per_sales_for(p: dict, unit: str, count_evidence=None) -> tuple:
+    """Requested-unit amount in one sales unit, from catalog evidence only.
+
+    Returns (per_sales or None, basis, conflicting). Shared by `quantity` and
+    `combine_in_priority_unit`; the sales unit must already have a positive factor.
+    """
+    factors = {k: Fraction(v) for k, v in p["units"].items()}
+    sales = factors[p["sales_unit"]]
+    per_sales, basis = None, []
+    if unit == "piece" and count_evidence:
+        per_sales = Fraction(count_evidence["piece_per_sales"])
+        basis = [count_evidence["source"], "reviewed_ingredient_count_per_sales_unit"]
+    elif unit == p["sales_unit"]:
+        per_sales = Fraction(1)
+        basis = ["salesUnit"]
+    elif unit in factors and factors[unit] > 0:
+        per_sales = sales / factors[unit]
+        basis = ["units.sizeInBaseUnits"]
+    elif unit == "KG" and p["base_unit"] == "KG":
+        per_sales = sales
+        basis = ["baseUnit", "units.sizeInBaseUnits"]
+    elif unit in p["measures"]:
+        measure = p["measures"][unit]
+        if measure["status"] == "conflicting":
+            return None, [], True
+        if measure["status"] == "known" and D(measure["value"]) > 0:
+            per_sales = Fraction(measure["value"]) * sales
+            basis = measure["basis"] + ["units.sizeInBaseUnits"]
+    return per_sales, basis, False
+
+
 def quantity(
     p: dict, amount: Decimal, unit: str, whole_packs: bool, *, count_evidence=None
 ) -> dict:
@@ -142,27 +178,10 @@ def quantity(
     sales = factors.get(p["sales_unit"])
     if not sales or sales <= 0 or p["conflicts"]:
         return result
-    per_sales = None
-    if unit == "piece" and count_evidence:
-        per_sales = Fraction(count_evidence["piece_per_sales"])
-        result["basis"] = [count_evidence["source"], "reviewed_ingredient_count_per_sales_unit"]
-    elif unit == p["sales_unit"]:
-        per_sales = Fraction(1)
-        result["basis"] = ["salesUnit"]
-    elif unit in factors and factors[unit] > 0:
-        per_sales = sales / factors[unit]
-        result["basis"] = ["units.sizeInBaseUnits"]
-    elif unit == "KG" and p["base_unit"] == "KG":
-        per_sales = sales
-        result["basis"] = ["baseUnit", "units.sizeInBaseUnits"]
-    elif unit in p["measures"]:
-        measure = p["measures"][unit]
-        if measure["status"] == "conflicting":
-            result["status"] = "conflicting"
-            return result
-        if measure["status"] == "known" and D(measure["value"]) > 0:
-            per_sales = Fraction(measure["value"]) * sales
-            result["basis"] = measure["basis"] + ["units.sizeInBaseUnits"]
+    per_sales, result["basis"], conflicting = per_sales_for(p, unit, count_evidence)
+    if conflicting:
+        result["status"] = "conflicting"
+        return result
     if not per_sales:
         return result
     step = Fraction(p["order_step"])
@@ -183,6 +202,60 @@ def quantity(
         status="derived",
     )
     return result
+
+
+def _unknown_combination(reason: str) -> dict:
+    return {"amount": None, "unit": None, "status": "unknown", "basis": [], "reason": reason}
+
+
+def combine_in_priority_unit(
+    p: dict, items: list[tuple[Decimal, str]], *, count_evidence=None
+) -> dict:
+    """Sum amounts of ONE product requested in several units, in one priority unit (BAS-009).
+
+    Each amount goes to sales units with exact `Fraction` arithmetic and the same catalog
+    evidence as `quantity`; nothing is guessed or rounded. The unit is the first of
+    `UNIT_PRIORITY` among the requested units, else the sales unit if requested, else the
+    alphabetically first requested unit (never the request order, so the result is stable).
+    """
+    if not items:
+        return _unknown_combination("No quantities were given.")
+    factors = {k: Fraction(v) for k, v in p["units"].items()}
+    sales = factors.get(p["sales_unit"])
+    if not sales or sales <= 0 or p["conflicts"]:
+        return _unknown_combination("The product's unit facts are missing or conflict.")
+    total, basis, per_sales = Fraction(0), [], {}
+    for amount, unit in items:
+        if amount <= 0:
+            return _unknown_combination(f"The amount in {unit} must be positive.")
+        if unit not in per_sales:
+            factor, unit_basis, conflicting = per_sales_for(p, unit, count_evidence)
+            if conflicting or not factor:
+                return _unknown_combination(
+                    f"No catalog evidence converts {unit} to the sales unit."
+                )
+            per_sales[unit] = factor
+            basis.extend(b for b in unit_basis if b not in basis)
+        total += Fraction(amount) / per_sales[unit]
+    requested = set(per_sales)
+    chosen = next((u for u in UNIT_PRIORITY if u in requested), None)
+    if chosen is None:
+        chosen = p["sales_unit"] if p["sales_unit"] in requested else min(requested)
+    exact = total * per_sales[chosen]
+    if (exact * 10_000).denominator != 1:
+        return _unknown_combination(
+            f"The exact total in {chosen} needs more than 4 decimal places."
+        )
+    text = fraction_text(exact)
+    digits = Decimal(text).as_tuple()
+    if max(len(digits.digits), -digits.exponent) > 14:
+        return _unknown_combination(f"The exact total in {chosen} needs more than 14 digits.")
+    return {
+        "amount": text,
+        "unit": chosen,
+        "status": "derived",
+        "basis": [*sorted(basis), "unit_priority"],
+    }
 
 
 def search_text(facts: dict) -> str:
