@@ -1,11 +1,11 @@
 # Agent guardrails
 
 The chat agent has two layers of protection. **Deterministic controls** are the
-authority and run in every mode. **Semantic checks** (TypeSafe Jev) add a
-probabilistic opinion at five boundaries. A Jev "allow" never grants permission,
+authority and run in every mode. **Semantic checks** (Gemini Decision 1) add a
+probabilistic opinion at five boundaries. A model "allow" never grants permission,
 skips validation or replaces the customer's confirmation.
 
-Code: `src/aimo/guardrails.py` (policy `guard-2026-11-14.3`), wired in
+Code: `src/aimo/guardrails.py` (policy `guard-2026-11-14.5`), wired in
 `agent.py`, `agent_tools.py` and `conversations.py`.
 
 ## What is deterministic
@@ -18,12 +18,13 @@ Code: `src/aimo/guardrails.py` (policy `guard-2026-11-14.3`), wired in
 | LLM → user | Proposal links and status notices come from saved, buyer-scoped records (`ToolSession.result`); a runner-supplied proposal ID is re-read as the buyer before it is linked. Plain-text rendering in React (no raw HTML). |
 | Confirmation | `POST /api/purchases/{id}/confirm`: session, Origin, CSRF, buyer ownership, exact revision, current authority/policy, persisted confirmation, idempotency key and one order per proposal. Unchanged by this work; regression tests in `test_guardrails_integration.py`. |
 
-## What is semantic (Jev)
+## What is semantic
 
-Jev is called through `POST https://openrouter.ai/api/alpha/decisions` with
-`typesafe/jev-1.14`, `noul` questions and provider fallbacks disabled. Screened
-text goes only into `state`; the questions are server constants, so text cannot
-redefine the guard policy. A response from a different model is rejected.
+Gemini Decision 1 is called through Google's native `/v1beta/decisions` endpoint
+with `noul` questions. Screened text goes only into serialized `input`; question
+instructions and true/false criteria are server constants. No fallback to another
+provider occurs. The retained Jev adapter requires explicit
+`GUARDRAIL_PROVIDER=openrouter` selection and its separate credential.
 
 | Boundary | When | Questions | Enforcement |
 | --- | --- | --- | --- |
@@ -33,15 +34,35 @@ redefine the guard policy. A response from a different model is rejected.
 | LLM → tool (memory) | Before each `manage_memory` write. State: the persisted customer messages, the immediately preceding assistant reply (marked model-authored), the proposed change and, for update/delete, the current item. No catalog, supplier or recipe text | `persistence_intent` (the latest customer message asks to keep, change or forget it for the future), `matches_request`, `scope` (shared vs personal is clear), `no_authority` (no credentials, payment data or purchasing authority) | Any failure, uncertainty, unavailability or an unpassed input screen → no write; the assistant is told to ask the customer. |
 | LLM → user | Everything the model wrote for display, the reply **and** the meal plan (title, ingredient names, notes), against trusted records (proposal, receipt, tool outcomes, product and commercial evidence). Text is never clipped into review: oversized output counts as uncertain | Unsupported purchase status, prices/stock, dietary safety, disclosure | The reply is replaced by a server-authored fallback and the plan is withheld. The proposal, its link and the trusted status notice are kept. Under enforcement a plan is also withheld when the turn ends before review (provider failure, step or error limit). |
 
-Read-only tools other than catalog text are not sent to Jev. A typical turn makes
+Read-only tools other than catalog text do not trigger separate classifier calls;
+bounded recipe discovery context accompanies output review. A typical turn makes
 2 calls (input and output); a basket turn adds about one per batch of tool calls
-plus one for preparation. Bounds: 5 seconds per call, one transient retry (none
-after 429 or `Retry-After`), 16 calls per turn, 28 KB of state per request (below
-TypeSafe's long-context mode), and the turn's own deadline. The endpoint, model
-(`typesafe/jev-1.14`) and bounds are constants in `guardrails.py`.
+plus one for preparation. Bounds: 5 seconds per call, no automatic Google retries,
+16 calls per turn, 28 KB of state per request, and the turn's own deadline.
+The native endpoint, model (`gemini-decision-1`) and bounds are fixed in code.
 
-Jev cannot check arithmetic or prove an allergen claim. It only flags narrative
+The classifier cannot prove arithmetic or an allergen claim. It only flags narrative
 that the supplied records do not support.
+
+Output review also receives the latest customer request, up to four earlier customer
+messages, and up to five bounded recipe titles/summaries from successful discovery
+tools. These are context, not purchase authority or dietary proof. The questions
+explicitly distinguish recipe ideas, dietary requests, portion/budget questions and
+explanations of confirmation from claims about verified products, prices, stock or
+completed purchases. Food planning does not require purchase records. Actual
+unsupported claims still block the reply; thresholds and purchasing controls are
+unchanged. Refusals use plain language ("I can't help with that.") instead of
+explaining internal verification or asking for the same request again. Saved
+proposal links and authoritative purchase status notices still appear when present.
+
+The customer-facing scope is intentionally broad: food, drinks, nutrition, recipes,
+products, kitchen supplies, shopping, storage, serving and nearby food-related event
+planning are welcome without an immediate purchase. Food before a workout is in
+scope; a standalone workout routine is not. Only clearly unrelated requests are
+redirected with "I can't help with that. I can help with food, products and meal
+planning." The chat prompt and scope checker share this direction; uncertain scope
+continues to pass. Input manipulation and unsupported purchase claims remain separate
+checks.
 
 ## Modes and failure behaviour
 
@@ -51,13 +72,13 @@ that the supplied records do not support.
 | `shadow` | Every check runs and is logged; nothing is blocked or withheld. Use it to collect labelled evidence. It provides **no** protection. |
 | `off` | No classifier calls. Deterministic controls only. |
 
-`GUARDRAIL_MODE` is the only guardrail setting. Jev uses the chat model's
-`LLM_API_KEY`, and only while `LLM_BASE_URL` is on `openrouter.ai`; the key is never
-sent anywhere else. Without that key every check is `unavailable` and no request is
+`GUARDRAIL_PROVIDER=google` (default) uses `GEMINI_API_KEY`, sent only to Google's
+fixed native endpoint. Without that key every check is `unavailable` and no request is
 sent, so in `enforce` mode chat turns fail with a retryable `GUARDRAIL_UNAVAILABLE`.
-Set `GUARDRAIL_MODE=off` for a local chat model that is not on OpenRouter. Shadow and enforce send
-customer messages, catalog text and the assistant's reply to TypeSafe through
-OpenRouter. No buyer IDs, cookies, CSRF tokens or credentials are sent.
+Shadow and enforce send minimized customer messages, catalog text and the
+assistant's reply to Google. No buyer IDs, cookies, CSRF tokens or other credentials
+are sent. Explicit legacy OpenRouter selection uses `LLM_API_KEY` only when
+`LLM_BASE_URL` is on `openrouter.ai`.
 
 Thresholds are on the risk probability: ≤ 0.2 passes, ≥ 0.8 fails, and anything
 between is uncertain. They are **provisional** and enforced by default: re-select
@@ -75,7 +96,8 @@ names and probabilities. Conversation text and keys are never logged.
   `test_agent*.py`, `test_conversations.py` and `test_http.py`.
 - Mocked guardrail integration: `tests/test_guardrails.py`, with a fake Decisions
   provider and authored probabilities. These tests check wiring and failure
-  behaviour. They do **not** measure Jev's accuracy.
+  behaviour. Native Google contracts are covered by `tests/test_google_providers.py`.
+  Fake-provider tests do **not** measure detection accuracy.
 - Live classifier evaluation (opt-in, never in CI): `uv run python
   scripts/evaluate_guardrails.py --write docs/guardrail-evaluation.json`. It runs
   authored English/Finnish/Swedish cases and reports per boundary: samples,

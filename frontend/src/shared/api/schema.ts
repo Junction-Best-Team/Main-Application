@@ -106,6 +106,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Policy Settings */
+        get: operations["get_policy_settings_api_settings_policy_get"];
+        /** Save Policy Settings */
+        put: operations["save_policy_settings_api_settings_policy_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/approvals/{approval_id}": {
         parameters: {
             query?: never;
@@ -333,6 +351,21 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ApproverAuthority
+         * @description A human approver's limits: the maximum gross amount and the exceptions they may approve.
+         */
+        ApproverAuthority: {
+            /**
+             * Currency
+             * @constant
+             */
+            currency: "EUR";
+            /** Max Gross */
+            max_gross: string;
+            /** Exceptions */
+            exceptions: ("substitution" | "overbuy")[];
+        };
         /** ChatMessage */
         ChatMessage: {
             /** Id */
@@ -352,6 +385,7 @@ export interface components {
             meal_plan?: components["schemas"]["MealPlan"] | null;
             /** Proposal Id */
             proposal_id?: string | null;
+            image?: components["schemas"]["RecipeImage"] | null;
         };
         /** CommitRequest */
         CommitRequest: {
@@ -451,6 +485,30 @@ export interface components {
              * @enum {string}
              */
             decision: "approve" | "reject";
+        };
+        /** EditablePolicy */
+        EditablePolicy: {
+            /**
+             * Currency
+             * @constant
+             */
+            currency: "EUR";
+            /** Destinations */
+            destinations: string[];
+            /**
+             * Substitution
+             * @enum {string}
+             */
+            substitution: "allowed" | "requires_approval" | "forbidden";
+            /**
+             * Overbuy
+             * @enum {string}
+             */
+            overbuy: "allowed" | "requires_approval" | "forbidden";
+            /** Whole Sales Units */
+            whole_sales_units: boolean;
+            /** Approved Product Ids */
+            approved_product_ids: string[];
         };
         /**
          * ErrorBody
@@ -781,6 +839,61 @@ export interface components {
             /** Explanation */
             explanation: string;
         };
+        /** PolicyChange */
+        PolicyChange: {
+            /** Version */
+            version: number;
+            /** Actor Id */
+            actor_id: string;
+            /** Created At */
+            created_at: string;
+        };
+        /** PolicyRules */
+        PolicyRules: {
+            /**
+             * Currency
+             * @constant
+             */
+            currency: "EUR";
+            /** Destinations */
+            destinations: string[];
+            /**
+             * Substitution
+             * @enum {string}
+             */
+            substitution: "allowed" | "requires_approval" | "forbidden";
+            /**
+             * Overbuy
+             * @enum {string}
+             */
+            overbuy: "allowed" | "requires_approval" | "forbidden";
+            /** Whole Sales Units */
+            whole_sales_units: boolean;
+            /**
+             * Approved Product Ids
+             * @description Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope always blocks a purchase until a policy manager configures it in Settings.
+             */
+            approved_product_ids?: string[] | null;
+        };
+        /** PolicySettings */
+        PolicySettings: {
+            /** Buyer Id */
+            buyer_id: string;
+            /** Policy Version */
+            policy_version: number;
+            rules: components["schemas"]["PolicyRules"];
+            /** Can Edit */
+            can_edit: boolean;
+            approval_authority: components["schemas"]["ApproverAuthority"];
+            /** History */
+            history: components["schemas"]["PolicyChange"][];
+        };
+        /** PolicyUpdate */
+        PolicyUpdate: {
+            /** Expected Version */
+            expected_version: number;
+            rules: components["schemas"]["EditablePolicy"];
+        };
         /** ProposalResponse */
         ProposalResponse: {
             /** Proposal Id */
@@ -939,6 +1052,15 @@ export interface components {
              * @enum {string}
              */
             severity: "denied" | "unresolved" | "exception" | "warning";
+        };
+        /** RecipeImage */
+        RecipeImage: {
+            /** Url */
+            url: string;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
         };
         /** Requirements */
         Requirements: {
@@ -1340,6 +1462,95 @@ export interface operations {
             };
         };
     };
+    get_policy_settings_api_settings_policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicySettings"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    save_policy_settings_api_settings_policy_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PolicyUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicySettings"];
+                };
+            };
+            /** @description Validation error. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     detail_api_approvals__approval_id__get: {
         parameters: {
             query?: never;
@@ -1391,7 +1602,10 @@ export interface operations {
     };
     current_purchase_api_purchases__proposal_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description An earlier revision of this proposal; default the current one. */
+                revision?: number | null;
+            };
             header?: never;
             path: {
                 proposal_id: string;

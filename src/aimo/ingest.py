@@ -475,7 +475,11 @@ def _embed_missing(key, missing):
     batches = iter(
         missing[start : start + batch_size] for start in range(0, len(missing), batch_size)
     )
-    workers = settings().embedding_workers if settings().embedding_backend == "openrouter" else 1
+    workers = (
+        settings().embedding_workers
+        if settings().embedding_backend in ("google", "openrouter")
+        else 1
+    )
     generated = 0
     # Keep at most four batches in flight; don't queue the whole paid import.
     with ThreadPoolExecutor(max_workers=workers) as executor:

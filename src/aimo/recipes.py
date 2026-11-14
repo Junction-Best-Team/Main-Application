@@ -245,6 +245,34 @@ def read_plan(c, identity, plan_id, lock=False):
     return row, data
 
 
+def get_plan_revision(identity, plan_id, revision=None):
+    """A plan's data at one revision (default: the current one), scoped to the caller's buyer.
+
+    A buyer session reads any plan of its buyer; an agent identity only its own plans, as
+    read_plan does. Another buyer, an unknown plan and an unknown revision are all 404.
+    """
+    with connection() as c:
+        context(c, identity)
+        row = c.execute(
+            "SELECT id, revision FROM recipe_plans WHERE id=%s AND buyer_id=%s"
+            + (" AND agent_id=%s" if identity["role"] == "agent" else ""),
+            (
+                plan_id,
+                identity["buyer_id"],
+                *((identity["id"],) if identity["role"] == "agent" else ()),
+            ),
+        ).fetchone()
+        if not row:
+            raise Problem("NOT_FOUND", "Recipe plan not found.", 404)
+        data = c.execute(
+            "SELECT data FROM recipe_plan_revisions WHERE plan_id=%s AND revision=%s",
+            (plan_id, row["revision"] if revision is None else revision),
+        ).fetchone()
+        if not data:
+            raise Problem("NOT_FOUND", "Recipe plan revision not found.", 404)
+        return data["data"]
+
+
 def get_plan(identity, request):
     with connection() as c:
         context(c, identity)

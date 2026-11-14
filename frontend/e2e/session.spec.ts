@@ -29,6 +29,9 @@ async function mockSession(page: Page, signedIn = false) {
   await page.route("**/api/conversations?*", (route) =>
     route.fulfill({ json: { items: [], next_offset: null } }),
   );
+  await page.route("**/api/purchases?*", (route) =>
+    route.fulfill({ json: { items: [], next_offset: null } }),
+  );
   const logoutCalls: Array<Record<string, string>> = [];
   await page.route("**/api/logout", async (route) => {
     logoutCalls.push(route.request().headers());
@@ -112,7 +115,7 @@ test("sign-in succeeds and yields a usable session", async ({ page }) => {
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
   await expect(
-    page.getByRole("heading", { name: "What are we cooking?" }),
+    page.getByRole("heading", { name: "Welcome, demo-hotel" }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
   expect(loginBodies).toEqual([
@@ -124,13 +127,13 @@ test("a valid session restores automatically on reload", async ({ page }) => {
   await mockSession(page, true);
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "What are we cooking?" }),
+    page.getByRole("heading", { name: "Welcome, demo-hotel" }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
   await page.reload();
   await expect(page).toHaveURL(/\/$/);
   await expect(
-    page.getByRole("heading", { name: "What are we cooking?" }),
+    page.getByRole("heading", { name: "Welcome, demo-hotel" }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 });

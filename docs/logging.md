@@ -73,17 +73,18 @@ and collect logs before pod replacement if historical investigation is needed.
 
 ## Main chat model
 
-New defaults select `anthropic/claude-sonnet-5.5` through OpenRouter, with
+New defaults select `gemini-4-carbon` through the native Google API, with
 `LLM_REASONING_EFFORT=low`, `LLM_MAX_COMPLETION_TOKENS=8192` and
 `LLM_TIMEOUT_SECONDS=45`. The overall 90-second turn budget remains unchanged.
 Opaque reasoning/signature blocks are replayed unchanged between tool rounds
 within the turn; they are neither persisted in chat messages nor logged.
 Set `LLM_REASONING_EFFORT` to an empty string to omit that override for a different
-provider. The separate Jev guardrail and search models are unchanged.
+provider. Decision 1 supplies semantic checks and relevance ranking; Embedding 2
+supplies product/recipe vectors. See [Google cutover](google-models.md).
 
 Explicit environment/Secret settings, Terraform `llm_model`, and the GitHub
 `LLM_MODEL` variable override defaults. For an existing installation, set that
-repository variable to `anthropic/claude-sonnet-5.5` as part of its authorized
-release, and reconcile any private Terraform inputs. Existing production values
+repository variable to `gemini-4-carbon` as part of its authorized
+release, and reconcile private Terraform inputs and old index profiles. Existing production values
 are not modified by opening this PR. No merge, rollout or Terraform apply is
 performed here.

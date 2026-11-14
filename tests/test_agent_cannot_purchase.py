@@ -34,6 +34,7 @@ RECIPE_TOOLS = {
 }
 MEMORY_TOOLS = {"search_memory", "manage_memory"}
 MEMORY_SERVICE = MEMORY_TOOLS | {"memory_context", "get_memory", "replay_memory"}
+IMAGE_TOOLS = {"generate_recipe_image"}  # Visual aids only, no purchasing authority.
 PURCHASING = {
     "commit_order",
     "record_human_decision",
@@ -69,7 +70,7 @@ def session():
 def test_registry_exposes_only_read_and_prepare_operations():
     names = set(session().registry)
     extra = RECIPE_TOOLS
-    assert names - {"publish_meal_plan"} == READ_AND_PREPARE | extra | MEMORY_TOOLS
+    assert names - {"publish_meal_plan"} == READ_AND_PREPARE | extra | MEMORY_TOOLS | IMAGE_TOOLS
     assert not [
         n for n in names if any(word in n for word in ("confirm", "approve", "commit", "decide"))
     ]
@@ -88,6 +89,7 @@ def test_registry_exposes_only_read_and_prepare_operations():
         "decide",
         "set_product_scope",
         "update_purchase_policy",
+        "save_buyer_policy",
         "withdraw_meal_authorization",
     ],
 )
@@ -110,7 +112,7 @@ def test_registry_handlers_call_only_read_and_prepare_service_methods():
         and node.value.attr == "service"
     }
     assert used, "expected the tool handlers to call self.service"
-    allowed = READ_AND_PREPARE | RECIPE_TOOLS | MEMORY_SERVICE | SERVICE_CHECKS
+    allowed = READ_AND_PREPARE | RECIPE_TOOLS | MEMORY_SERVICE | SERVICE_CHECKS | IMAGE_TOOLS
     assert used <= allowed, used - allowed
 
 

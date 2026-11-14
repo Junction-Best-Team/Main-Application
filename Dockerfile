@@ -34,13 +34,18 @@ COPY --from=ghcr.io/astral-sh/uv:0.12.5 /uv /usr/local/bin/uv
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy HF_HOME=/opt/aimo-model
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+ARG LOCAL_EMBEDDINGS=false
+RUN if [ "$LOCAL_EMBEDDINGS" = "true" ]; then uv sync --frozen --no-dev --no-install-project; \
+    else uv export --locked --no-dev --prune torch --prune sentence-transformers --no-emit-project -o /tmp/requirements.txt && \
+    uv venv && uv pip sync --require-hashes /tmp/requirements.txt; fi
 COPY src/aimo/model_spec.py /tmp/model_spec.py
-RUN .venv/bin/python -c "import sys; sys.path.insert(0, '/tmp'); from model_spec import EMBEDDING_MODEL, EMBEDDING_REVISION; from sentence_transformers import SentenceTransformer; SentenceTransformer(EMBEDDING_MODEL, revision=EMBEDDING_REVISION, device='cpu', trust_remote_code=False)"
+RUN mkdir -p /opt/aimo-model && if [ "$LOCAL_EMBEDDINGS" = "true" ]; then \
+    .venv/bin/python -c "import sys; sys.path.insert(0, '/tmp'); from model_spec import EMBEDDING_MODEL, EMBEDDING_REVISION; from sentence_transformers import SentenceTransformer; SentenceTransformer(EMBEDDING_MODEL, revision=EMBEDDING_REVISION, device='cpu', trust_remote_code=False)"; fi
 COPY src/ src/
-RUN uv sync --frozen --no-dev
+RUN uv pip install --no-deps -e .
 
-# Independent worker image: durable queue consumer, local embeddings and agent tools.
+# Independent worker image: durable queue, hosted Google models and agent tools.
+# Legacy offline E5 support can be built with --build-arg LOCAL_EMBEDDINGS=true.
 FROM runtime AS worker
 ENV HF_HOME=/opt/aimo-model HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false
 COPY --from=worker-build /app/.venv /app/.venv

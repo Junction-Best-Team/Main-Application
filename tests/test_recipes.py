@@ -29,6 +29,8 @@ from aimo.schemas import PrepareRequest
 @pytest.fixture(autouse=True)
 def clean_recipes():
     with connection() as c:
+        # A recipe reset cascades into guarded history (PER-002): say it is deliberate.
+        c.execute("SET LOCAL aimo.allow_history_truncate = 'on'")
         c.execute(
             "TRUNCATE recipes,recipe_catalogs,recipe_embedding_cache,recipe_product_evidence CASCADE"
         )

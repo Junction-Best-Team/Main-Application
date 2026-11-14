@@ -5,6 +5,7 @@ from typing import Literal
 
 from pydantic import Field
 
+from aimo.image_schemas import RecipeImage
 from aimo.schemas import Model, ProposalResponse, QuantityCalculation
 
 
@@ -48,6 +49,7 @@ class AgentTurn(Model):
     text: str = Field(min_length=1, max_length=20000)
     meal_plan: MealPlan | None = None
     proposal_id: str | None = None
+    image: RecipeImage | None = None
 
 
 class MessageRequest(Model):
@@ -67,6 +69,7 @@ class ChatMessage(Model):
     created_at: datetime
     meal_plan: MealPlan | None = None
     proposal_id: str | None = None
+    image: RecipeImage | None = None
 
 
 class ConversationSummary(Model):
