@@ -656,6 +656,21 @@ def move(identity, schedule_id, event_name, wanted, *, allowed_from):
             WHERE id=%s RETURNING *""",
             (wanted, stamp, stamp if wanted == "paused" else None, wanted, row["id"]),
         ).fetchone()
+        if wanted == "cancelled":
+            # The run's open proposal must not stay confirmable after the cancel (the customer's own
+            # explicit confirm of it would still be valid otherwise).
+            for open_run in c.execute(
+                "SELECT * FROM scheduled_runs WHERE authorization_id=%s AND status='prepared' "
+                "AND proposal_id IS NOT NULL",
+                (row["id"],),
+            ).fetchall():
+                scheduler.cancel_request(
+                    c,
+                    open_run["proposal_id"],
+                    open_run["buyer_id"],
+                    "customer_cancelled",
+                    open_run["id"],
+                )
         event(c, row["id"], identity["id"], event_name, {})
         return response(c, row)
 
@@ -681,6 +696,8 @@ def resume(identity, schedule_id):
 def substitute_candidates(identity, product_id, service):
     """Catalog substitutes the browser may offer in the dropdown: inside the approved scope."""
     require_customer(identity)
+    if "\x00" in product_id or len(product_id) > 40:
+        raise Problem("INVALID_PRODUCT_ID", "That is not a product id.", 422)
     found = service.list_substitution_candidates(identity, product_id)
     with connection() as c:
         _, policy, _, _ = context(c, identity)

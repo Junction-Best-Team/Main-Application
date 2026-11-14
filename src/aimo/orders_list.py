@@ -120,7 +120,7 @@ def orders_page(identity, offset=0, limit=20, now=None, statuses=None, query=Non
             422,
         )
     query = (query or "").strip()
-    if len(query) > MAX_QUERY_LENGTH:
+    if len(query) > MAX_QUERY_LENGTH or "\x00" in query:
         raise Problem(
             "INVALID_ORDER_QUERY",
             f"The search text is at most {MAX_QUERY_LENGTH} characters.",

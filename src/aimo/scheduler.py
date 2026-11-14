@@ -155,6 +155,8 @@ def gross_of(line):
 
 
 def percent_off(current, agreed):
+    if agreed == 0:  # no percentage of nothing: any price above zero is outside every range
+        return Decimal(0) if current == 0 else Decimal("Infinity")
     return abs(current - agreed) * 100 / agreed
 
 

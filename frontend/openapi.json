@@ -3287,7 +3287,9 @@
         "properties": {
           "accepted_substitutes": {
             "items": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 40,
+              "pattern": "^[^\\x00]*$"
             },
             "type": "array",
             "maxItems": 5,
@@ -5408,7 +5410,8 @@
               {
                 "type": "string",
                 "maxLength": 80,
-                "minLength": 1
+                "minLength": 1,
+                "pattern": "^[^\\x00]+$"
               },
               {
                 "type": "null"
@@ -5426,8 +5429,13 @@
             "title": "First Run Date"
           },
           "line_rules": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/LineRule"
+            "patternProperties": {
+              "^[^\\x00]*$": {
+                "$ref": "#/components/schemas/LineRule"
+              }
+            },
+            "propertyNames": {
+              "maxLength": 40
             },
             "type": "object",
             "title": "Line Rules",
@@ -5437,6 +5445,7 @@
             "anyOf": [
               {
                 "type": "number",
+                "maximum": 999999999999.99,
                 "minimum": 0.0
               },
               {
@@ -5455,6 +5464,7 @@
             "type": "string",
             "maxLength": 120,
             "minLength": 8,
+            "pattern": "^[^\\x00]+$",
             "title": "Idempotency Key"
           }
         },
@@ -5672,7 +5682,8 @@
               {
                 "type": "string",
                 "maxLength": 80,
-                "minLength": 1
+                "minLength": 1,
+                "pattern": "^[^\\x00]+$"
               },
               {
                 "type": "null"
@@ -5706,8 +5717,13 @@
           "line_rules": {
             "anyOf": [
               {
-                "additionalProperties": {
-                  "$ref": "#/components/schemas/LineRule"
+                "patternProperties": {
+                  "^[^\\x00]*$": {
+                    "$ref": "#/components/schemas/LineRule"
+                  }
+                },
+                "propertyNames": {
+                  "maxLength": 40
                 },
                 "type": "object"
               },
@@ -5888,7 +5904,8 @@
               {
                 "type": "string",
                 "maxLength": 80,
-                "minLength": 1
+                "minLength": 1,
+                "pattern": "^[^\\x00]+$"
               },
               {
                 "type": "null"
@@ -5906,8 +5923,13 @@
             "title": "First Run Date"
           },
           "line_rules": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/LineRule"
+            "patternProperties": {
+              "^[^\\x00]*$": {
+                "$ref": "#/components/schemas/LineRule"
+              }
+            },
+            "propertyNames": {
+              "maxLength": 40
             },
             "type": "object",
             "title": "Line Rules",
@@ -5930,7 +5952,8 @@
               {
                 "type": "string",
                 "maxLength": 80,
-                "minLength": 1
+                "minLength": 1,
+                "pattern": "^[^\\x00]+$"
               },
               {
                 "type": "null"
@@ -5964,8 +5987,13 @@
           "line_rules": {
             "anyOf": [
               {
-                "additionalProperties": {
-                  "$ref": "#/components/schemas/LineRule"
+                "patternProperties": {
+                  "^[^\\x00]*$": {
+                    "$ref": "#/components/schemas/LineRule"
+                  }
+                },
+                "propertyNames": {
+                  "maxLength": 40
                 },
                 "type": "object"
               },
@@ -5991,6 +6019,7 @@
             "anyOf": [
               {
                 "type": "number",
+                "maximum": 999999999999.99,
                 "minimum": 0.0
               },
               {
@@ -6012,6 +6041,7 @@
             "type": "string",
             "maxLength": 120,
             "minLength": 8,
+            "pattern": "^[^\\x00]+$",
             "title": "Idempotency Key"
           }
         },
