@@ -285,3 +285,6 @@ The three schedule entries are authored static demo placeholders, with disabled
 schedule navigation. The composer retains develop’s file attachment behavior.
 No scheduling service, new dependency or external data was added. New browser checks use authored API responses, without supplier or
 model calls.
+
+Homepage paperclip follow-up (2026-11-15): reused the existing shared composer and
+fixture content; only the homepage picker presentation changed. No new assets or external material.

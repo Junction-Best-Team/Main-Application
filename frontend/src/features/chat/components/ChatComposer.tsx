@@ -175,35 +175,36 @@ export function ChatComposer({
               : "flex shrink-0 items-center gap-space-xs"
           }
         >
-          <div className="flex items-center text-on-surface-variant md:gap-space-xs">
-            <input
-              ref={picker}
-              type="file"
-              multiple
-              accept={ACCEPT_FILES}
-              className="sr-only"
-              tabIndex={-1}
-              aria-label="Choose attachments"
-              disabled={disabled || reading}
-              onChange={(event) => {
-                void addFiles(Array.from(event.target.files ?? []));
-                event.target.value = "";
-              }}
-            />
-            <button
-              type="button"
-              aria-label="Attach file"
-              onClick={() => picker.current?.click()}
-              disabled={disabled || reading}
-              className={
-                home
-                  ? "home-attachment"
-                  : "flex h-11 w-7 items-center justify-center md:w-8"
-              }
-            >
-              <Icon name="attach_file" className="text-[20px] md:text-[24px]" />
-            </button>
-          </div>
+          {!home && (
+            <div className="flex items-center text-on-surface-variant md:gap-space-xs">
+              <input
+                ref={picker}
+                type="file"
+                multiple
+                accept={ACCEPT_FILES}
+                className="sr-only"
+                tabIndex={-1}
+                aria-label="Choose attachments"
+                disabled={disabled || reading}
+                onChange={(event) => {
+                  void addFiles(Array.from(event.target.files ?? []));
+                  event.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                aria-label="Attach file"
+                onClick={() => picker.current?.click()}
+                disabled={disabled || reading}
+                className="flex h-11 w-7 items-center justify-center md:w-8"
+              >
+                <Icon
+                  name="attach_file"
+                  className="text-[20px] md:text-[24px]"
+                />
+              </button>
+            </div>
+          )}
           {hasDraft ? (
             <button
               type="submit"

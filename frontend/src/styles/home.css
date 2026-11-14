@@ -57,21 +57,16 @@
 .home-composer-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   margin-top: 0.75rem;
 }
 
-.home-attachment,
 .home-send {
   display: inline-flex;
   width: 2.75rem;
   height: 2.75rem;
   align-items: center;
   justify-content: center;
-}
-
-.home-attachment {
-  color: var(--color-secondary);
 }
 
 .home-send {
