@@ -42,6 +42,7 @@ MANIFEST: dict[str, list[tuple[str, ...]]] = {
         ("column", "catalog_generations", "source_product_count"),
         ("view", "catalog_protected_products"),
     ],
+    "021_turn_constraints.sql": [("column", "conversation_turns", "constraints")],
 }
 
 _RELATION = "SELECT to_regclass(%s) IS NOT NULL"

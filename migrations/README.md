@@ -15,6 +15,7 @@ Do not rename applied migrations or delete their ledger rows.
 | 012_buyer_user_memory | Buyer and user memory (`docs/memory.md`) |
 | 012_catalog_import_profile | Catalog sync: `catalog_generations.import_profile` (additive, nullable) |
 | 013_catalog_sync_withdrawals | Release integration: source snapshot count and product-ID-only cleanup protection view |
+| 021_turn_constraints | The customer's structured limits (budget, dietary toggles) stored with the chat turn that carries them (POL-008 producer, owner Q-97). One nullable `jsonb` column on `conversation_turns`; additive |
 
 Before allocating another number, check remote branch tips and open PRs and update
 this table with the agreed allocation. Reservations do not create migration files.

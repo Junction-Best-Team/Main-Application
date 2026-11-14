@@ -138,8 +138,21 @@ request JSON under `constraints` (key omitted when empty; no new table), so the 
 and refresh and commit re-evaluate with the stored record; callers never see the key. Entries with
 source `stated_assumption` and `confirmed` false are ignored; trusted values set the stricter limit.
 A looser request value or a dropped flag adds `CONSTRAINT_LOOSENED` (unresolved, so `needs_resolution`),
-and a looser budget is enforced at the customer's number (`HARD_BUDGET_EXCEEDED`, denied). Nothing fills
-the record yet: extraction from the conversation (#75) is person 1's work, so production passes `None`.
+and a looser budget is enforced at the customer's number (`HARD_BUDGET_EXCEEDED`, denied). The model fills
+nothing in the record: the customer does (owner Q-97), see below.
+
+**Producer (owner Q-97).** `POST /api/conversations/{id}/messages` takes an optional `constraints`
+object, `{budget_gross, lactose_free, milk_free}`; only the signed-in customer can send it. The
+server stores it as records `{name, value, source: "user_request", confirmed: true}` in the turn's
+`constraints` column (migration 021, additive, never in a field the UI shows as content), covers it
+in the turn's idempotency hash (the same key with another record is `IDEMPOTENCY_CONFLICT`), and the
+worker hands the limits in force to `run_turn(constraints=)`, which reaches `prepare_order`
+through `ToolSession`. The limits in force are the latest value per name over the conversation's
+turns up to this one; a toggle sent as `false` withdraws that requirement. Without any limit the
+runner is called exactly as before. The reply's `retry_message` carries the fields back so the
+client can retry the unfinished message with the same key. The UI must add the fields later.
+Scheduled runs (`scheduled_request`) are the scheduler's change: see
+`evidence/ws-c/scheduler-constraints-patch.md`.
 
 **Limits (MEA-013, owner Q-67: "raise the limit to 100, not 1000, and apply this everywhere").** A
 meal plan, a saved recipe, a purchase request and a `match_ingredients` batch hold at most 100

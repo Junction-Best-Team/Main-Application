@@ -1,11 +1,12 @@
 """Shared internal agent and authenticated conversation contracts."""
 
 from datetime import datetime
-from typing import Literal
+from decimal import Decimal
+from typing import Annotated, Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
-from aimo.schemas import MAX_BASKET_LINES, Model, ProposalResponse, QuantityCalculation
+from aimo.schemas import MAX_BASKET_LINES, Constraint, Model, ProposalResponse, QuantityCalculation
 
 
 class Ingredient(Model):
@@ -50,9 +51,61 @@ class AgentTurn(Model):
     proposal_id: str | None = None
 
 
+class MessageConstraints(Model):
+    """Hard limits the customer sets on a message (POL-008); false withdraws an earlier toggle."""
+
+    budget_gross: Annotated[Decimal, Field(gt=0, max_digits=16, decimal_places=4)] | None = Field(
+        default=None, description="Hard budget in euros, gross; the basket may not exceed it."
+    )
+    lactose_free: bool | None = Field(default=None, description="Require lactose-free products.")
+    milk_free: bool | None = Field(default=None, description="Require milk-free products.")
+
+    @model_validator(mode="after")
+    def says_something(self):
+        if self.budget_gross is None and self.lactose_free is None and self.milk_free is None:
+            raise ValueError("Set at least one limit, or omit the field")
+        return self
+
+    def records(self):
+        """The trusted constraint records (source user_request, confirmed) for these fields."""
+        values = {
+            "budget_gross": self.budget_gross,
+            "lactose_free": self.lactose_free,
+            "milk_free": self.milk_free,
+        }
+        return [
+            Constraint(name=name, value=value, source="user_request", confirmed=True).model_dump(
+                mode="json"
+            )
+            for name, value in values.items()
+            if value is not None
+        ]
+
+
 class MessageRequest(Model):
     text: str = Field(min_length=1, max_length=4000)
     idempotency_key: str = Field(min_length=8, max_length=120)
+    constraints: MessageConstraints | None = Field(
+        default=None,
+        description="Optional hard limits set by the customer (budget, dietary toggles). They "
+        "stay in force for the rest of the conversation until a later message changes them.",
+    )
+
+
+class RetryConstraints(Model):
+    """The limits of an unfinished message, in the shape the client sends them back."""
+
+    budget_gross: str | None = None
+    lactose_free: bool | None = None
+    milk_free: bool | None = None
+
+
+class RetryMessage(Model):
+    """An unfinished message the client can send again with the same key and the same limits."""
+
+    text: str
+    idempotency_key: str
+    constraints: RetryConstraints | None = None
 
 
 class ConversationCreate(Model):
@@ -80,7 +133,7 @@ class ConversationResponse(ConversationSummary):
     messages: list[ChatMessage]
     purchases: list[ProposalResponse]
     busy: bool = False
-    retry_message: MessageRequest | None = None
+    retry_message: RetryMessage | None = None
 
 
 class ConversationList(Model):

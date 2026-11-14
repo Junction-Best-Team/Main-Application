@@ -80,7 +80,7 @@ def detail(identity, cid):
             is not None
         )
         retry = c.execute(
-            """SELECT t.key,m.text FROM conversation_turns t JOIN conversation_messages m
+            """SELECT t.key,t.constraints,m.text FROM conversation_turns t JOIN conversation_messages m
             ON m.turn_id=t.id AND m.role='user' WHERE t.conversation_id=%s AND t.state!='complete'
             ORDER BY t.created_at LIMIT 1""",
             (cid,),
@@ -99,6 +99,7 @@ def detail(identity, cid):
         "purchases": purchases,
         "busy": busy,
         "retry_message": {"text": retry["text"], "idempotency_key": retry["key"]}
+        | ({"constraints": {r["name"]: r["value"] for r in retry["constraints"]}} if retry["constraints"] else {})
         if retry
         else None,
     }
@@ -115,7 +116,10 @@ def enqueue(identity, cid, body):
             "SELECT * FROM conversation_turns WHERE conversation_id=%s AND key=%s",
             (cid, body.idempotency_key),
         ).fetchone()
-        digest = fingerprint({"text": body.text})
+        records = body.constraints.records() if body.constraints else None
+        # The hash covers the text and, when present, the customer's limits (POL-008), so a retry
+        # with the same key and another record is a conflict. Without limits it is unchanged.
+        digest = fingerprint({"text": body.text} | ({"constraints": records} if records else {}))
         if old and old["payload_hash"] != digest:
             raise Problem("IDEMPOTENCY_CONFLICT", "This key already identifies another message.")
         if old and old["state"] in ("complete", "queued", "running"):
@@ -134,8 +138,8 @@ def enqueue(identity, cid, body):
             c.execute(
                 """INSERT INTO conversation_turns
                 (id,conversation_id,key,payload_hash,state,lease_until,attempt,requested_by,
-                worker_attempts,submitted_by)
-                VALUES(%s,%s,%s,%s,'queued',%s,%s,%s,0,%s) ON CONFLICT(conversation_id,key)
+                worker_attempts,submitted_by,constraints)
+                VALUES(%s,%s,%s,%s,'queued',%s,%s,%s,0,%s,%s) ON CONFLICT(conversation_id,key)
                 DO UPDATE SET state='queued',requested_by=EXCLUDED.requested_by,worker_attempts=0""",
                 # A retry changes the executor (requested_by) but never the author.
                 (
@@ -147,6 +151,7 @@ def enqueue(identity, cid, body):
                     uuid4(),
                     identity["id"],
                     identity["id"],
+                    js(records) if records else None,
                 ),
             )
             c.execute(
@@ -235,6 +240,24 @@ def claim_turn(cid=None):
         ).fetchone()
 
 
+def customer_constraints(c, cid, tid):
+    """The limits in force for one turn (POL-008): what the customer set on this message and
+    on earlier ones in this conversation, the latest value per name. A toggle set to false
+    withdraws that requirement. Server-written records only; the model never supplies them."""
+    rows = c.execute(
+        """SELECT constraints FROM conversation_turns
+        WHERE conversation_id=%s AND constraints IS NOT NULL
+        AND (created_at, id) <= (SELECT created_at, id FROM conversation_turns WHERE id=%s)
+        ORDER BY created_at, id""",
+        (cid, tid),
+    ).fetchall()
+    merged = {}
+    for row in rows:
+        for record in row["constraints"]:
+            merged[record["name"]] = record
+    return [r for r in merged.values() if r["value"] is not False]
+
+
 @operation("chat.execute", context_arg="turn")
 def execute_turn(turn, service, runner=None):
     """Execute only a claimed job, and fence the reply against lease replacement."""
@@ -275,6 +298,8 @@ def execute_turn(turn, service, runner=None):
         else:
             actor["_memory_unavailable"] = True
         data = detail(identity, cid)
+        with connection() as c:
+            limits = customer_constraints(c, cid, tid)
         history = [{"role": m["role"], "content": m["text"]} for m in data["messages"]]
         # Structured persisted plans and status survive refresh, restarts and a provider context reset.
         for index, msg in enumerate(data["messages"]):
@@ -306,7 +331,9 @@ def execute_turn(turn, service, runner=None):
                 proposal_id=str(prepared["proposal_id"]),
             )
             if prepared
-            else AgentTurn.model_validate(runner(actor, history, service))
+            else AgentTurn.model_validate(
+                runner(actor, history, service, **({"constraints": limits} if limits else {}))
+            )
         )
         if result.proposal_id:
             service.get_proposal(
