@@ -78,9 +78,10 @@ def prepare(service, agent, request_data, product_id):
 # --- DIS-011 -------------------------------------------------------------------------------------
 
 
-def build_history(service, agent, request_data):
+def build_history(service, agent, request_data, confirm_terms):
     """A committed order for 464306 and a pending (uncommitted, awaiting approval) one for 464398."""
     done = prepare(service, agent, request_data, "464306")
+    confirm_terms(done)  # every agent role needs a recorded customer confirmation (WS-D)
     receipt = service.commit_order(
         agent,
         CommitRequest(
@@ -95,11 +96,11 @@ def build_history(service, agent, request_data):
 
 
 def test_control_cleanup_setup_has_one_committed_and_one_pending_proposal(
-    service, agent, request_data
+    service, agent, request_data, confirm_terms
 ):
     """Control (passes today): 464306 is in a committed order, 464398 in a pending proposal,
     463380 in none; flagging all three withdrawn leaves them stored and the history readable."""
-    receipt, pending = build_history(service, agent, request_data)
+    receipt, pending = build_history(service, agent, request_data, confirm_terms)
     withdrawn = {"464306", "464398", "463380"}
     publish(flagged(fixture_facts(), withdrawn), "dis-011-flagged", "dis-011-flagged-hash")
     rows = active_rows()
@@ -108,11 +109,13 @@ def test_control_cleanup_setup_has_one_committed_and_one_pending_proposal(
     assert service.get_proposal(agent, pending["proposal_id"])["order_id"] is None
 
 
-def test_cleanup_keeps_a_withdrawn_product_of_a_pending_proposal(service, agent, request_data):
+def test_cleanup_keeps_a_withdrawn_product_of_a_pending_proposal(
+    service, agent, request_data, confirm_terms
+):
     """JNP3-DIS-011: cleanup_withdrawn() removes the withdrawn products that no pending proposal
     includes (463380 never ordered, 464306 only in a committed order) and keeps 464398, which a
     pending proposal still names; proposal and order history stay readable."""
-    receipt, pending = build_history(service, agent, request_data)
+    receipt, pending = build_history(service, agent, request_data, confirm_terms)
     publish(
         flagged(fixture_facts(), {"464306", "464398", "463380"}),
         "dis-011-flagged",

@@ -48,7 +48,9 @@ def test_lookup_result_and_every_product_carry_the_mode(agent, connector_type, e
 @pytest.mark.parametrize(
     "connector_type,expected", [(FixtureClient, "fixture"), (LiveLabelled, "live")]
 )
-def test_stored_proposal_and_receipt_record_the_mode(agent, request_data, connector_type, expected):
+def test_stored_proposal_and_receipt_record_the_mode(
+    agent, request_data, connector_type, expected, confirm_terms
+):
     service = Service(connector_type())
     proposal = service.prepare_order(agent, PrepareRequest(**request_data))
     assert proposal["policy_outcome"] == "ready_to_commit"
@@ -61,6 +63,7 @@ def test_stored_proposal_and_receipt_record_the_mode(agent, request_data, connec
         line["commercial_evidence"]["mode"] == expected for line in stored["lines"]
     )
 
+    confirm_terms(proposal)  # every agent role needs a recorded customer confirmation (WS-D)
     receipt = service.commit_order(
         agent,
         CommitRequest(

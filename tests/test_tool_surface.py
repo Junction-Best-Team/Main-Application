@@ -587,10 +587,13 @@ def test_tct005_proposal_view_given_to_the_model_keeps_units_basis_mode_and_time
         assert view["request"]["lines"][0]["unit"] == "L"
 
 
-def test_tct005_get_order_receipt_names_currency_and_evidence_mode(session, actor, prepared):
+def test_tct005_get_order_receipt_names_currency_and_evidence_mode(
+    session, actor, prepared, confirm_terms
+):
     receipt = ToolSession(actor, session.service)  # a later turn reading the saved receipt
     from aimo.service import Service
 
+    confirm_terms(prepared)  # every agent role needs a recorded customer confirmation (WS-D)
     order = Service(session.service.connector).commit_order(
         actor,
         CommitRequest(
