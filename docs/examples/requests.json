@@ -1,0 +1,6 @@
+{
+  "create_conversation": {"title": "Carbonara for 200", "idempotency_key": "example-create-2026"},
+  "send_message": {"text": "I need ingredients for 200 portions of carbonara.", "idempotency_key": "example-message-2026"},
+  "confirm_exact_purchase": {"proposal_id": "00000000-0000-0000-0000-000000000001", "revision": 1, "idempotency_key": "example-confirm-revision-1"},
+  "note": "Browser writes require the signed-in buyer session, exact Origin and session-bound X-CSRF-Token. Never confirm from assistant text. All orders remain mocks."
+}

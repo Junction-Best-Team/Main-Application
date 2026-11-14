@@ -1,0 +1,44 @@
+# Chat purchasing migration — 2026-11-14
+
+This product scope supersedes the original external-agent/MCP entry points in `brief.md`. One existing React app → authenticated FastAPI → internal typed agent/Service → existing PostgreSQL/supplier connectors. Order placement is a persistent mock, never supplier checkout or stock reservation.
+
+## Integrated product
+
+The root opens chat after sign-in. Conversations have stable URLs and persisted user/assistant messages, proposed recipes and actual proposal links. The agent clarifies destination/date/dietary needs/budget, drafts ingredient quantities, searches catalog products, loads their evidence, and prepares the full matched basket through the existing Service. Recipe quantities are estimates for customer review. Every ingredient must have an actual product; the prepared request must exactly match the published plan. Unsupported dietary requirements require manual resolution.
+
+Purchase history includes existing proposals and accepted mock purchases. The exact old approval URL still loads its stored revision, preserving superseded/rejected/expired/accepted states and an explicit link to current terms. It never silently substitutes new terms.
+
+## Contracts and authorization
+
+`chat_schemas.py` owns MealPlan, AgentTurn, MessageRequest and conversation responses; `schemas.py` retains purchasing contracts. The backend owns routes and generated OpenAPI. The agent owns direct typed Service tools; the frontend consumes generated types. The agent cannot select an authorization identity, edit policy, approve or commit. Its provider credentials remain server-only. Missing provider configuration fails with an actionable error; there is no pretend response fallback.
+
+Privileged migration/seed creates one mapped internal identity per buyer with zero autonomous authority and no bearer login. Existing identities remain untouched for references. Existing milk-only demo product scope is preserved: pasta, eggs, pork, cheese and pepper remain outside scope and require the policy's buyer-authorized substitution exception. No wildcard product scope or agent-approved recipe authority is introduced. The buyer can approve only within their current amount and exception limits.
+
+`POST /api/purchases/{id}/confirm` checks browser session/Origin/CSRF, exact proposal/revision, current buyer authority and policy. It persists an immutable confirmation containing the proposal fingerprint and authenticated actor, and records any required approval under the existing buyer lock. Only then does it call existing commit revalidation. Changed price, policy or effective authority produces a new revision without a confirmation; the UI must show new terms and require another explicit click. Denied and needs-resolution baskets remain blocked.
+
+A completed retry returns the persistent identical receipt without contacting provider/supplier. Preparation/commit keys and one-order-per-proposal constraints remain. Internal commit additionally requires an exact persisted confirmation by an active authorized buyer. Legacy approval-only decisions do not satisfy the new internal confirmation gate.
+
+## Persistence and recovery
+
+Conversation creation and messages require stable buyer-scoped keys; changed payloads conflict. A transactional conversation lock reserves one bounded turn, without holding database connections while the model runs. Completed retries replay messages. Failed attempts expose `retry_message` with the original key; crashed work can resume after the 240-second lease. Attempt fencing prevents an old worker publishing a second assistant reply. Preparation keys derive from the trusted turn ID. A stopped process that already prepared a basket recovers that exact proposal before invoking the model again; changed payloads under the same turn key conflict. All decisions and receipts survive process restarts in PostgreSQL.
+
+SSE publishes persisted conversation snapshots and two-second heartbeat comments, with a 25-second reconnect interval and per-poll session revocation checks. It does not stream unpersisted model tokens. Polling remains available on the same detail route. `/mcp` and `/api/agent/*` are absent JSON routes, never SPA fallback.
+
+## Operations
+
+Run `migrate` as setup role for additive migration 003 before the new image; grant runtime access to new tables/sequences and revoke policy/identity provisioning as in `infra/kubernetes/bootstrap.py`. Never reset a production database. Existing policy versions, approvals, orders and audit history remain. `seed` still inserts missing demo data only. Configure the LLM through server-only environment/Secret fields from `.env.example`; local embeddings retain their independent pinned model.
+
+Keep the existing single image/Deployment/Service/database/ingress and allocations. Terraform and portable manifests have been inspected. No infrastructure is applied and no release switch is enabled. The actual selected cluster ingress still needs an operator's streaming smoke after deployment; static rendering/local checks do not establish production routing. Traefik needs no buffering middleware; the app also sets `X-Accel-Buffering: no`. Reused Nginx settings are documented in `deploy/README.md`.
+
+## Verification record
+
+Integrated local validation on 2026-11-14:
+
+- Ruff and backend PostgreSQL/pgvector suite pass, including the full carbonara request → clarification → five actual catalog matches → quantity/commercial/policy validation → authenticated customer confirmation → identical mock receipt retry. The provider and catalog/supplier facts are authored fixtures; no live supplier purchase is claimed.
+- Nine Playwright checks pass: seven UI route-fixture regressions plus live-server historical revision and removed-route checks. Generated OpenAPI/TypeScript and production frontend build pass.
+- Production multi-stage Docker image builds successfully with the original pinned local embedding model. A dedicated local application container preserves conversation messages, browser session, customer confirmation and identical receipt across an actual container restart.
+- Both Terraform stacks format, initialize with existing provider locks, validate and pass all nine mocked plan tests. Sixteen infrastructure helper tests and the Traefik 42.4.0 Helm render pass. No Terraform apply or remote deployment runs.
+- Through a disposable local Traefik v3.7.18 proxy (the image selected by the rendered chart), a persisted SSE snapshot and heartbeat arrive in 2.02 seconds, before the 25-second connection closes. Logout revocation is observed on the active stream. This uses a local file-provider route to the same app; the live Kubernetes controller/network/TLS is unverified and still requires the operator smoke after deployment.
+- Fixture-mode idle measurement: local application container about 49 MiB and 0.23% CPU; local Traefik about 62 MiB and 0% CPU. These are neither production embedding-model nor load measurements. Resource allocations are unchanged.
+
+No live conversational-provider run was made; configure the server's private LLM key and run the documented demo for that acceptance check. Ordering remains mock.

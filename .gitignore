@@ -36,3 +36,25 @@ Thumbs.db
 # Personal agent settings; shared instructions and skills stay tracked.
 .claude/settings.local.json
 CLAUDE.local.md
+
+# Restricted source data, model cache, and test artifacts.
+data/
+.cache/
+frontend/test-results/
+frontend/playwright-report/
+*.onnx
+*.safetensors
+
+# Terraform state, saved plans, generated credentials and machine-specific inputs.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfplan.*
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+infra/**/kubeconfig*.yaml
+infra/**/kubeconfig*.yml
+infra/**/database-ca*.crt

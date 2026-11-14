@@ -14,6 +14,20 @@ Entry format:
 
 Owner decisions use `D-<nnn>` and quote the owner's words verbatim.
 
+## Infrastructure
+
+### F-INFRA-001: Optional Terraform hosting and portable deployment
+- Date: 2026-11-14   Track: 4   Status: verified (preparation); cloud deployment subsequently verified in F-INFRA-002
+- Finding: The owner requested a separate worktree and Terraform PR based on PR #2, selected the DigitalOcean weekend direction, required cloud portability, and explicitly prohibited applying Terraform. PR #2 is closed and unmerged; PR #4 separately implements the application image/CLI. Two Terraform stacks isolate DigitalOcean VPC/DOKS/managed PostgreSQL provisioning from portable Kubernetes/Helm application resources. PostgreSQL runs outside Kubernetes, using its private endpoint and verified TLS. Initial app replicas and setup Jobs remain off until explicitly enabled by the operator.
+- Evidence: `infra/README.md`, `infra/digitalocean`, and `infra/kubernetes`; read-only authenticated DigitalOcean `/v2/account`, `/v2/regions`, `/v2/kubernetes/options`, and `/v2/databases/options` on this date confirmed account access, `ams3`, Kubernetes `1.35.10-do.0`, PostgreSQL 17 and the selected single-node database size. The token is stored privately outside the repository. No infrastructure was applied during preparation; see F-INFRA-002 for the later authorized rollout.
+- Impact: Plans and CI can be reviewed without spending or mutating existing resources. Before rollout, supply the actual operator CIDRs, published application image, DNS name/email and challenge API key. Replacing the cloud requires a new provisioning adapter; the Kubernetes deployment accepts standard kubeconfig/PostgreSQL inputs. One worker and one database primary are demo defaults, not a high-availability or measured-capacity claim.
+
+### F-INFRA-002: First cloud apply and provider settings normalization
+- Date: 2026-11-14   Track: 4   Status: verified (cloud foundation); application rollout unverified
+- Finding: After PR #9 merged and the owner explicitly authorized applying the plan, Terraform created all seven cloud resources in `ams3`. One 4-GB worker is Ready, PostgreSQL is online, and its sole firewall rule trusts the Kubernetes cluster. Private deployment inputs use the operator's current public IPv4 and `10.121.0.0/20`; the original range was already used by the account's default VPC. The provider records an empty runtime-user settings block at creation; omitting it produces a subsequent removal request rejected with HTTP 400. Declare `settings {}` to retain the returned default.
+- Evidence: `terraform -chdir=infra/digitalocean apply -input=false weekend.tfplan` reported seven additions; DigitalOcean cluster/database/firewall reads and `kubectl get nodes` verified readiness and isolation. A subsequent Terraform plan and rejected settings-only update reproduced the provider issue; see [provider v2.107.0](https://github.com/digitalocean/terraform-provider-digitalocean/blob/v2.107.0/digitalocean/database/resource_database_user.go). Retaining the empty settings block applied successfully; a refreshed plan with the private deployment tfvars then reported no changes (exit 0).
+- Impact: Cloud billing is active. Keep the private tfvars and local state for future plans and teardown; credentials, kubeconfig and a private state backup stay outside Git. The Kubernetes application/ingress stack, SQL bootstrap, catalog import and app readiness remain pending; no application image, DNS or challenge API key was invented.
+
 ## Owner decisions
 
 ### D-001: Build the Valio Aimo side, not the buyer's agent
@@ -247,3 +261,49 @@ Add new findings below, under your track heading.
 ### Track 3: Mandates, Policy and Approvals
 
 ### Track 4: Interface, Audit and Demo
+
+## MVP implementation verification
+
+### F-MVP-001: Explicit implementation handoff resolves the draft seams
+- Date: 2026-11-14   Track: all   Status: verified
+- Finding: The implementation request explicitly selected PR #2's final brief: PostgreSQL-seeded versioned buyer policy, eight tools, four outcomes, independent React inbox, ordinary audit history, persistent mock orders, and no live deployment. PR #2 was closed without merge; PR #3 is on main. The implementation branch starts at main `76296c1` and preserves the alternate draft and prior findings as reference.
+- Evidence: User-provided implementation handoff; `gh pr view 2 --json state,mergedAt`, `gh pr view 3 --json mergeCommit`; `docs/brief.md` restored from `b0d1ee3` with its implementation-status note updated.
+- Impact: For this implementation, the handoff supersedes conflicting draft recommendations about policy storage, notifier, hash chaining, tool names and whether approval repairs unresolved facts. It does not rewrite or misattribute the historical owner quotes above.
+
+### F-MVP-002: Seven golden cases reverified; lettuce also has variable weight
+- Date: 2026-11-14   Track: 1, 2   Status: verified
+- Finding: The identified 17,546-product snapshot supports 1,000 L → 1,000 ST for `464306`; `465039` has five ST per KI but no structured base volume; ten KI of `460123` entails 120 bottles/deposit units; `460675` rounds 12 KG to 20 KG. `460035` rounds 4 KG to 6 KG **and also has `variableUnit=true`**, so it cannot be committed by the fixed-quantity MVP. The two reported allergen conflicts retain their distinct CONTAINS and MAY_CONTAIN relationships.
+- Evidence: `uv run python scripts/verify_catalog.py /absolute/private/valio_aimo_junction26_product_data.json`, SHA-256 `50651aae31ca842112afdc16fcce92f9858d7f5d05e9928a3748aef16b22ea02`. No raw records exported. Unit/deposit meaning checked against the local supplied schema.
+- Impact: Names are corroboration only, not a missing physical-volume source. Quantity rounding can be explained for variable-weight products, but commercial settlement remains unresolved. Deposit pricing also requires a known conversion from the declared deposit unit to the material's priced sales unit; missing deposit material facts are not assumed.
+
+### F-MVP-003: Full indexing and limited retrieval evaluation completed
+- Date: 2026-11-14   Track: 1   Status: verified
+- Finding: Full ingestion published 17,546 products and pinned multilingual E5 embeddings. An unchanged rerun generated zero new embeddings and reused 17,546. The 30-case curated evaluation found a labeled top-five result (or correct exact-ID exclusion) in 21/30 keyword, 26/30 semantic and 26/30 hybrid cases, with zero supported dietary-filter violations. Hybrid top-one was 21/30. Warm median latency on this machine was about 77 ms; first model load was about 4.5 s.
+- Evidence: `scripts/evaluate_search.py`, `docs/search-evaluation.json`, explicit full-snapshot ingestion/rerun. Six identifier cases, 21 descriptive cases, three exact-ID dietary exclusion cases; this is not a held-out benchmark. HNSW iterative scanning is enabled to preserve recall with generation/dietary filters.
+- Impact: Keep the multilingual model pinned as the MVP candidate, not a proven best model. Broad English milk queries still rank adjacent flavored/sweet categories too highly. Agents must inspect candidates, choose explicit requirements and obtain commercial evidence. Retrieval similarity never proves suitability.
+
+### F-MVP-004: Application checks use fixture commerce, not freshly verified live stock
+- Date: 2026-11-14   Track: all   Status: verified
+- Finding: Autonomous purchase, independent buyer inbox/approval/resume, rejection, denied versus unresolved requests, concurrent decisions/commits, changes, expiry, revocation and retries were exercised against real PostgreSQL and explicitly invented commercial fixtures. The official MCP SDK was exercised over stateless HTTP. Browser tests include two-tab conflict and paused polling. Raw source data and credentials are excluded from Git and images.
+- Evidence: `tests/`, `frontend/e2e/`, `scripts/mcp_smoke.py`, `scripts/demo.py`, and `docs/validation.md`.
+- Impact: There was no configured live Valio API key in the available project environment, so this session does not independently reproduce F-API-002 through F-API-010. `scripts/probe_upstream.py` is the bounded read-only probe for when access is supplied. Upstream lookups are read-only; every receipt is explicitly mock acceptance with no reservation or supplier order.
+
+### F-MVP-005: Authority, revision history and output contracts verified after PR #4 review
+- Date: 2026-11-14   Track: all   Status: verified
+- Finding: Commercial fingerprints alone do not capture changes in agent authority. Commit now compares the effective authorization decision under the buyer/identity locks and persists a new revision plus any required approval. Historical approval pages attach accepted status only to the order's exact revision and link to authenticated current terms. All eight HTTP/MCP operations now export shared typed responses, including both commit outcomes. Swagger renders with a documentation-specific nonce/CSP; the buyer UI's CSP remains strict.
+- Evidence: 53 backend tests, six Chromium browser flows, all eight official-SDK tool calls, TypeScript/Vite build and Ruff passed. The new product response model also validated all 17,546 existing normalized products. See `docs/validation.md` for the scope, isolated databases and current limitations.
+- Impact: An agent-limit reduction produces actionable approval or resolution state without editing the buyer policy version. Superseded terms cannot be mislabeled as accepted, including after later autonomous commitment. Generated OpenAPI/browser contracts describe the actual wire responses. These checks use fixture commerce; no new claim about live integration or cluster deployment is made.
+
+### F-MVP-006: Second review verifies policy, retry and runtime boundaries
+- Date: 2026-11-14   Track: all   Status: verified
+- Finding: On `ea8e9aa`, omitting a substitution flag avoided substitution policy because no trusted product scope existed; Decimal pack division could round an exact six packs up to seven; repeated preparation created duplicate proposals; file ingestion discarded withdrawal markers; successful logins consumed the failure budget; MCP repeated synchronous authentication; a 20-item inbox used 164 queries. Permanent supplier errors were retried, although transient responses already had backoff. Old catalog generations remained indexed; actual filtered-HNSW recall loss was not reproduced in the existing query plan.
+- Evidence: New regression coverage and `docs/validation.md`: 97 backend tests, six browser flows in the rebuilt read-only container, eight official MCP tools, HTTP demo and process restart passed. Inbox now uses six statements excluding outer authentication/pool checks. A read-only rerun on 17,546 existing products retained 26/30 hybrid top-five hits/correct exclusions with zero supported constraint violations; median 90.6 ms on this machine.
+- Impact: Trusted versioned product scope closes the undeclared outside-scope selection path, with privileged setup and fail-closed missing configuration. It is standing product authority, not an arbitrary mission-intent verifier. Preparation has atomic buyer/agent-scoped deduplication; quantities use rational ceilings; withdrawn products receive explicit denial. Login/proxy handling, bounded pooling/cleanup/retries and batched reads stay in the same backend. Exact active-catalog ranking removes approximate scan-limit dependence; imports retain active/previous product generations while preserving evidence history. New migration/client/setup requirements are explicit; live supplier and cluster claims remain unverified. F-MVP-003's iterative-HNSW statement describes the initial implementation, superseded by this exact-ranking change.
+
+## Chat purchasing cutover
+
+### F-CHAT-001: Internal chat preserves the purchasing control boundary
+- Date: 2026-11-14   Track: all   Status: verified (fixture/provider and local runtime); live provider/cluster ingress unverified
+- Finding: The existing React/FastAPI image now owns customer chat, typed direct Service tools, persisted conversation recovery and exact-revision browser confirmation. Migration 003 is additive and starts internal agents at zero autonomous authority without changing the buyer product scope. MCP/external-agent routes and dependency are removed; historical identity/proposal/approval/order references remain.
+- Evidence: `tests/test_agent_integration.py`, `tests/test_conversations.py`, `frontend/e2e`, generated browser contracts, and `docs/chat-purchasing.md` contain the current checks and limits. The carbonara fixture exercises five catalog matches and the actual quantity/policy/order modules; a local production-image restart retains session/messages/decision/receipt. Local Traefik streams the snapshot/heartbeat and observes logout revocation.
+- Impact: The backend, frontend and agent workstreams are integrated for review. Recipe agreement/model text cannot authorize purchasing. Changed terms require a new customer click. Apply neither Terraform nor release/deployment steps as part of this task. Live LLM and selected-cluster ingress still need operator acceptance after configuration/deployment.

@@ -1,0 +1,195 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  # Never cancel a main release halfway through its deployment.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  components:
+    name: Detect application components
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      backend: ${{ steps.detect.outputs.backend }}
+      frontend: ${{ steps.detect.outputs.frontend }}
+      terraform: ${{ steps.terraform.outputs.changed }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: detect
+        shell: bash
+        run: |
+          # develop is documentation-only until the MVP PR merges.
+          # Incomplete application manifests must fail rather than skip checks.
+          if [[ -f pyproject.toml || -f uv.lock || -d src || -d tests ]]; then
+            test -f pyproject.toml
+            test -f uv.lock
+            echo 'backend=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'backend=false' >> "$GITHUB_OUTPUT"
+            echo '::notice::No backend application yet; backend checks skipped.'
+          fi
+          if [[ -d frontend ]]; then
+            test -f frontend/package.json
+            test -f frontend/package-lock.json
+            echo 'frontend=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'frontend=false' >> "$GITHUB_OUTPUT"
+            echo '::notice::No frontend application yet; frontend checks skipped.'
+          fi
+      - id: terraform
+        name: Detect infrastructure changes
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BASE: ${{ github.event.before }}
+          PUSH_HEAD: ${{ github.sha }}
+        run: |
+          if [[ "$EVENT_NAME" == pull_request ]]; then
+            range="$PR_BASE...$PR_HEAD"
+          elif [[ "$EVENT_NAME" == push && ! "$PUSH_BASE" =~ ^0+$ ]]; then
+            range="$PUSH_BASE..$PUSH_HEAD"
+          else
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Include deletions/renames and changes to either CI workflow.
+          if git diff --quiet --no-renames "$range" -- infra/ .github/workflows/ci.yml .github/workflows/terraform.yml .github/workflows/deploy.yml; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          else
+            status=$?
+            if [[ "$status" != 1 ]]; then exit "$status"; fi
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+
+  terraform:
+    name: Terraform
+    needs: components
+    if: needs.components.outputs.terraform == 'true'
+    uses: ./.github/workflows/terraform.yml
+
+  backend:
+    name: Python lint and tests
+    needs: components
+    if: needs.components.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: aimo
+          POSTGRES_PASSWORD: aimo
+          POSTGRES_DB: aimo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aimo -d aimo_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://aimo:aimo@localhost:5432/aimo_test
+      EMBEDDING_BACKEND: fixture
+      UPSTREAM_MODE: fixture
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: '0.12.5'
+          python-version: '3.12.12'
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install locked test dependencies without the ML stack
+        run: |
+          uv export --locked --prune torch --prune sentence-transformers --no-emit-project --output-file "$RUNNER_TEMP/aimo-ci-requirements.txt"
+          uv venv
+          uv pip sync --require-hashes "$RUNNER_TEMP/aimo-ci-requirements.txt"
+          uv pip install --no-deps -e .
+      - name: Lint Python
+        run: .venv/bin/ruff check src tests scripts
+      - name: Test backend against PostgreSQL and fixture data
+        run: .venv/bin/pytest -q
+
+  frontend:
+    name: Frontend types and build
+    needs: components
+    if: needs.components.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.6.0'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked frontend dependencies
+        run: npm ci
+      - name: Check TypeScript and build production assets
+        run: npm run build
+
+  gate:
+    name: CI gate
+    needs: [components, backend, frontend, terraform]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every applicable check to pass
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          needs = json.loads(os.environ["NEEDS_JSON"])
+          if needs["components"]["result"] != "success":
+              sys.exit("Component/change detection did not succeed.")
+          for job in ("backend", "frontend", "terraform"):
+              enabled = needs["components"]["outputs"].get(job)
+              if enabled not in ("true", "false"):
+                  sys.exit(f"Missing or invalid detection output for {job}.")
+              expected = "success" if enabled == "true" else "skipped"
+              actual = needs[job]["result"]
+              if actual != expected:
+                  sys.exit(f"{job}: expected {expected}, got {actual}.")
+              print(f"{job}: {actual}")
+          PY
+
+  release:
+    name: Build and deploy release
+    needs: gate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/deploy.yml
+    with:
+      deploy: ${{ vars.DEPLOY_ENABLED == 'true' }}
+    secrets:
+      DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}

@@ -1,0 +1,79 @@
+# Existing cluster/database only. Replace image, hostname and existing Secret first.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aimo
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: aimo}
+  template:
+    metadata:
+      labels: {app: aimo}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: aimo
+          image: registry.example.invalid/aimo:REPLACE_WITH_COMMIT
+          args: [serve]
+          ports: [{name: http, containerPort: 8000}]
+          envFrom: [{secretRef: {name: aimo-runtime}}]
+          env:
+            - {name: SECURE_COOKIES, value: "true"}
+            - {name: HF_HUB_OFFLINE, value: "1"}
+            # Must identify the actual ingress proxy IPs/CIDRs; do not use '*'.
+            - name: FORWARDED_ALLOW_IPS
+              valueFrom:
+                secretKeyRef:
+                  name: aimo-runtime
+                  key: FORWARDED_ALLOW_IPS
+          resources:
+            requests: {cpu: "500m", memory: "1Gi"}
+            limits: {cpu: "2", memory: "3Gi"}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+          startupProbe:
+            httpGet: {path: /health/ready, port: http}
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            httpGet: {path: /health/ready, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health/live, port: http}
+            periodSeconds: 10
+      volumes: [{name: tmp, emptyDir: {}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aimo
+spec:
+  selector: {app: aimo}
+  ports: [{name: http, port: 80, targetPort: http}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aimo
+spec:
+  tls:
+    - hosts: [aimo.example.invalid]
+      secretName: aimo-existing-tls
+  rules:
+    - host: aimo.example.invalid
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aimo
+                port: {name: http}

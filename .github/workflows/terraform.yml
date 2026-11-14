@@ -1,0 +1,45 @@
+name: Terraform
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        directory: [infra/digitalocean, infra/kubernetes]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+      - run: terraform fmt -check -recursive infra
+      - run: terraform init -backend=false -input=false -lockfile=readonly
+        working-directory: ${{ matrix.directory }}
+      - run: terraform validate
+        working-directory: ${{ matrix.directory }}
+      # Every test is command=plan and both providers are mocked. No cloud token.
+      - run: terraform test
+        working-directory: ${{ matrix.directory }}
+      - uses: azure/setup-helm@v4
+        if: matrix.directory == 'infra/kubernetes'
+        with:
+          version: v3.18.6
+      - name: Render the tested ingress chart values
+        if: matrix.directory == 'infra/kubernetes'
+        run: |
+          terraform -chdir=infra/kubernetes test -verbose -json > "$RUNNER_TEMP/terraform-tests.jsonl"
+          python3 infra/scripts/ingress-values.py "$RUNNER_TEMP/terraform-tests.jsonl" > "$RUNNER_TEMP/ingress-values.yaml"
+          helm template junction-ingress traefik --repo https://traefik.github.io/charts --version 42.4.0 --namespace junction-ingress --skip-crds -f "$RUNNER_TEMP/ingress-values.yaml" > "$RUNNER_TEMP/ingress.yaml"
+      - name: Check private input handling
+        if: matrix.directory == 'infra/kubernetes'
+        run: |
+          python3 -m unittest discover -s infra/tests -v
+          python3 -m py_compile infra/kubernetes/bootstrap.py
+          python3 -m py_compile infra/scripts/ci-cluster-access.py
+          bash -n infra/scripts/deploy-app.sh

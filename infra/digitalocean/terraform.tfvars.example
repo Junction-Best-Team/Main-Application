@@ -1,0 +1,7 @@
+name = "junction-demo"
+region = "ams3"
+# Replace with your public operator/VPN IP range before planning.
+operator_cidrs = ["192.0.2.10/32"]
+worker_count = 1
+worker_size = "s-2vcpu-4gb"
+database_size = "db-s-1vcpu-2gb"
