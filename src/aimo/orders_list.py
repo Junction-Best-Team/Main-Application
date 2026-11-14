@@ -38,7 +38,7 @@ WITH label AS (
          link.title AS schedule_title, false AS paused,
          r.snapshot->>'gross_total' AS gross_total, r.snapshot->>'currency' AS currency,
          COALESCE(jsonb_array_length(r.request->'lines'), 0) AS line_count,
-         x.reason AS cancel_reason,
+         x.reason AS cancel_reason, o.created_at AS placed_at,
          COALESCE(o.created_at, x.created_at, p.updated_at) AS sort_at,
          p.id::text AS sort_key
   FROM proposals p
@@ -57,34 +57,56 @@ WITH label AS (
   UNION ALL
   SELECT 'scheduled', l.title, a.next_run_date, NULL, NULL, a.id::text, l.title,
          a.status = 'paused', a.agreed_gross_total::text, a.currency,
-         COALESCE(jsonb_array_length(a.request->'lines'), 0), NULL,
+         COALESCE(jsonb_array_length(a.request->'lines'), 0), NULL, NULL::timestamptz,
          COALESCE(a.next_run_date::timestamp AT TIME ZONE 'Europe/Helsinki', a.updated_at),
          a.id::text
   FROM scheduled_authorizations a JOIN label l ON l.id=a.id
   WHERE a.buyer_id=%(buyer)s AND a.status IN ('active', 'paused')
 )
-SELECT * FROM rows ORDER BY sort_at DESC, sort_key DESC LIMIT %(limit)s OFFSET %(offset)s
+SELECT *, count(*) OVER () AS total FROM rows
+WHERE cardinality(%(statuses)s::text[]) = 0 OR status = ANY(%(statuses)s::text[])
+ORDER BY sort_at DESC, sort_key DESC LIMIT %(limit)s OFFSET %(offset)s
 """
 
+COUNT_SQL = (
+    LIST_SQL.split("SELECT *, count(*) OVER ()")[0]
+    + """SELECT count(*) AS total FROM rows
+WHERE cardinality(%(statuses)s::text[]) = 0 OR status = ANY(%(statuses)s::text[])
+"""
+)
 
-def orders_page(identity, offset=0, limit=20, now=None):
+STATUSES = ("scheduled", "pending", "placed", "cancelled")
+
+
+def orders_page(identity, offset=0, limit=20, now=None, statuses=None):
+    """`statuses`: keep only these (empty or None keeps all); `total` counts every match."""
     if identity["role"] != "approver":
         raise Problem("FORBIDDEN", "Only a buyer session can list orders.", 403)
+    statuses = list(statuses or [])
+    unknown = sorted(set(statuses) - set(STATUSES))
+    if unknown:
+        raise Problem(
+            "INVALID_ORDER_STATUS",
+            f"Unknown order status {', '.join(unknown)}; use {', '.join(STATUSES)}.",
+            422,
+        )
     with connection() as c:
         c.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         context(c, identity)
-        rows = c.execute(
-            LIST_SQL,
-            {
-                "buyer": identity["buyer_id"],
-                "now": now or clock(),
-                "limit": limit + 1,
-                "offset": offset,
-            },
-        ).fetchall()
+        params = {
+            "buyer": identity["buyer_id"],
+            "now": now or clock(),
+            "statuses": statuses,
+            "limit": limit + 1,
+            "offset": offset,
+        }
+        rows = c.execute(LIST_SQL, params).fetchall()
+        # A page past the end has no row to carry the window total, so count separately then.
+        total = rows[0]["total"] if rows else c.execute(COUNT_SQL, params).fetchone()["total"]
     return {
         "items": [_item(row) for row in rows[:limit]],
         "next_offset": offset + limit if len(rows) > limit else None,
+        "total": total,
     }
 
 
@@ -102,5 +124,6 @@ def _item(row):
         "currency": row["currency"],
         "line_count": row["line_count"],
         "cancel_reason": row["cancel_reason"],
+        "placed_at": row["placed_at"],
         "updated_at": row["sort_at"],
     }

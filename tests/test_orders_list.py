@@ -83,8 +83,8 @@ def scheduled_run(aid, buyer, proposal_id, day=None):
         )
 
 
-def page(identity, offset=0, limit=20, now=None):
-    return orders_list.orders_page(identity, offset, limit, now=now)
+def page(identity, offset=0, limit=20, now=None, statuses=None):
+    return orders_list.orders_page(identity, offset, limit, now=now, statuses=statuses)
 
 
 def by_status(result):
@@ -266,3 +266,67 @@ def test_a_scheduler_or_agent_identity_gets_forbidden(agent):
     with pytest.raises(Problem) as error:
         page(agent)
     assert error.value.code == "FORBIDDEN" and error.value.status == 403
+
+
+def mixed(buyer, prepare, place):
+    """One placed, one pending, one cancelled request and one scheduled standing order."""
+    source = place(prepare("Source"))
+    pending = prepare("Pending")
+    gone = prepare("Gone")
+    cancellations.cancel_my_request(buyer, gone["proposal_id"])
+    authorization(buyer, source["order_id"], next_run=date.today() + timedelta(days=5))
+    return pending, gone
+
+
+def test_the_status_filter_keeps_only_the_named_statuses(buyer, prepare, place):
+    mixed(buyer, prepare, place)
+    assert {i["status"] for i in page(buyer)["items"]} == {
+        "scheduled",
+        "pending",
+        "placed",
+        "cancelled",
+    }
+    assert {i["status"] for i in page(buyer, statuses=["placed"])["items"]} == {"placed"}
+    two = page(buyer, statuses=["pending", "cancelled"])["items"]
+    assert {i["status"] for i in two} == {"pending", "cancelled"} and len(two) == 2
+
+
+def test_an_empty_or_missing_status_filter_means_everything(buyer, prepare, place):
+    mixed(buyer, prepare, place)
+    assert len(page(buyer, statuses=None)["items"]) == 4
+    assert len(page(buyer, statuses=[])["items"]) == 4
+
+
+def test_an_unknown_status_is_refused(buyer):
+    from aimo.db import Problem
+
+    with pytest.raises(Problem) as error:
+        page(buyer, statuses=["shipped"])
+    assert error.value.code == "INVALID_ORDER_STATUS" and error.value.status == 422
+
+
+def test_total_counts_every_matching_row_not_just_the_page(buyer, prepare, place):
+    mixed(buyer, prepare, place)
+    first = page(buyer, 0, 2)
+    assert len(first["items"]) == 2 and first["total"] == 4
+    assert page(buyer, 2, 2)["total"] == 4  # same on every page
+    assert page(buyer, 0, 20, statuses=["placed"])["total"] == 1
+    assert page(buyer, 0, 20, statuses=["scheduled", "pending"])["total"] == 2
+    assert page(buyer, 5, 2)["items"] == [] and page(buyer, 5, 2)["total"] == 4
+
+
+def test_total_leaves_out_hidden_rows(buyer, prepare):
+    prepare("Expires")
+    assert page(buyer)["total"] == 1
+    assert page(buyer, now=NOW + timedelta(days=3))["total"] == 0
+
+
+def test_placed_rows_carry_placed_at_and_other_rows_do_not(buyer, prepare, place):
+    mixed(buyer, prepare, place)
+    with connection() as c:
+        created = c.execute("SELECT created_at FROM orders").fetchone()["created_at"]
+    for item in page(buyer)["items"]:
+        if item["status"] == "placed":
+            assert item["placed_at"] == created and item["updated_at"] == created
+        else:
+            assert item["placed_at"] is None
