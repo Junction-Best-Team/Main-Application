@@ -311,6 +311,8 @@ class SessionResponse(Model):
     username: str
     buyer_id: str
     csrf_token: str
+    role: str
+    scheduler_demo_mode: bool = False  # CNF-038: the UI shows "Run now (demo)" only when true
 
 
 class PolicyRules(Model):

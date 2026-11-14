@@ -5,7 +5,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 from aimo import approval_workflow as workflow
-from aimo import attachments, auth
+from aimo import attachments, auth, cancellations, scheduler
 from aimo.approval_policy import can_approve
 from aimo.chat_schemas import AgentTurn
 from aimo.db import Problem, connection, fingerprint, js, now
@@ -268,6 +268,7 @@ def claim_turn(cid=None):
         ).fetchone()
         if turn["worker_attempts"] >= 3:
             c.execute("UPDATE conversation_turns SET state='failed' WHERE id=%s", (turn["id"],))
+            scheduler.settle_failed_system_turn(c, turn["id"], turn["conversation_id"])
             event(
                 "worker.attempt_limit",
                 turn_id=str(turn["id"]),
@@ -371,7 +372,7 @@ def execute_turn(turn, service, runner=None):
         # A stored failure notice is for the customer, not the model: it is left out of the history.
         shown = [m for m in data["messages"] if not m["notice"]]
         history = [
-            {"role": m["role"], "content": m["text"], "attachments": m["attachments"]}
+            scheduler.provider_message(m["role"], m["text"]) | {"attachments": m["attachments"]}
             for m in shown
         ]
         # Structured persisted plans and status survive refresh, restarts and a provider context reset.
@@ -460,8 +461,11 @@ def execute_turn(turn, service, runner=None):
                 "UPDATE conversation_turns SET state='failed' WHERE id=%s AND attempt=%s AND state='running' RETURNING id",
                 (tid, attempt),
             ).fetchone()
+            if failed:
+                # a system-authored turn (the scheduler's chat) has no customer message to retry
+                scheduler.settle_failed_system_turn(c, tid, cid)
         if failed and provider_failure(exc):
-            store_failure_notice(cid, tid)
+            store_failure_notice(cid, tid)  # Q-108; a no-op for a system turn (no customer message)
         raise
     return detail(identity, cid)
 
@@ -491,6 +495,9 @@ def purchases(identity, offset, limit):
 
 
 def confirm(identity, pid, body, service):
+    # CNF-003: only a human customer role confirms, never an agent that happens to hold authority.
+    if identity["role"] != "approver":
+        raise Problem("FORBIDDEN", "Only a buyer session can confirm a purchase.", 403)
     if str(body.proposal_id) != str(pid):
         raise Problem(
             "PROPOSAL_MISMATCH", "Confirmation must identify the purchase being reviewed.", 422
@@ -502,6 +509,7 @@ def confirm(identity, pid, body, service):
         old = workflow.prior_result(c, identity, body, any_key=True)
         if old:
             return old
+        cancellations.ensure_not_cancelled(c, p["id"])  # CNF-035
         if r["revision"] != body.revision:
             raise Problem("STALE_REVISION", "Terms changed. Review and confirm the new revision.")
         if p["order_id"] or r["expires_at"] <= now() or r["policy_version"] != policy["version"]:

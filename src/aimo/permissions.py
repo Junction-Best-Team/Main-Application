@@ -15,6 +15,10 @@ HISTORY_TABLES = (
     "recipe_plan_revisions",
     "recipe_versions",
     "purged_proposals",
+    # WS-E: append-only logs of the scheduler and the cancelled order requests.
+    "scheduled_run_events",
+    "scheduled_authorization_events",
+    "order_request_cancellations",
 )
 
 
@@ -57,7 +61,7 @@ def configure_runtime_role(conn, role_name):
     # Provisioning authority never belongs to ordinary serving/agent code.
     conn.execute(
         sql.SQL(
-            "REVOKE INSERT, UPDATE, DELETE ON buyers,identities,policies,internal_agents,policy_managers,policy_changes FROM {}"
+            "REVOKE INSERT, UPDATE, DELETE ON buyers,identities,policies,internal_agents,scheduler_identities,policy_managers,policy_changes FROM {}"
         ).format(role)
     )
     conn.execute(

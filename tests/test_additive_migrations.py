@@ -243,6 +243,26 @@ REVIEWED = {
         "Relaxes a constraint; the primary key (buyer, agent, key) still enforces idempotency; "
         "no row changes."
     ),
+    (
+        "020_scheduled_orders.sql",
+        "DROP_CONSTRAINT",
+        "identities",
+        "identities_role_check",
+    ): (
+        "Immediately re-added in the same file with a wider CHECK that also allows the role "
+        "'scheduler'. Every existing row already satisfies it, so no row changes; the same "
+        "pattern as 004 for conversation_turns_state_check."
+    ),
+    (
+        "020_scheduled_orders.sql",
+        "DROP_CONSTRAINT",
+        "conversation_messages",
+        "conversation_messages_role_check",
+    ): (
+        "Immediately re-added in the same file with a wider CHECK that also allows the role "
+        "'system' (the system-authored first message of a scheduled-run chat). Existing user and "
+        "assistant rows are unchanged."
+    ),
     ("011_proposal_revision_ordering.sql", "UPDATE", "proposals", "updated_at"): (
         "Only fills the NEW column updated_at (guarded so it runs once, inside the block that "
         "adds the column). No existing column of proposals changes."
@@ -258,6 +278,7 @@ REVIEWED = {
 ALLOWED_INSERTS = {
     "003_chat_purchasing.sql": {"identities", "internal_agents"},
     "014_policy_settings.sql": {"policy_managers", "policies", "policy_changes"},
+    "020_scheduled_orders.sql": {"identities", "scheduler_identities"},
     "022_buyer_settings.sql": {"policies", "policy_changes"},
 }
 
