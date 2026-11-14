@@ -501,6 +501,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/schedules/{schedule_id}/run-now": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Schedule Run Now */
+        post: operations["schedule_run_now_api_schedules__schedule_id__run_now_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/schedules/{schedule_id}/pause": {
         parameters: {
             query?: never;
@@ -994,6 +1011,8 @@ export interface components {
             currency?: string | null;
             /** Line Count */
             line_count: number;
+            /** Line Names */
+            line_names?: string[];
             /** Cancel Reason */
             cancel_reason?: ("run_disrupted" | "run_retry" | "customer_revised" | "customer_cancelled") | null;
             /** Placed At */
@@ -1826,6 +1845,11 @@ export interface components {
             csrf_token: string;
             /** Role */
             role: string;
+            /**
+             * Scheduler Demo Mode
+             * @default false
+             */
+            scheduler_demo_mode: boolean;
         };
         /** SnapshotLine */
         SnapshotLine: {
@@ -2633,6 +2657,8 @@ export interface operations {
                 limit?: number;
                 /** @description Comma list of scheduled, pending, placed, cancelled; empty means all */
                 status?: string | null;
+                /** @description Search: trimmed, at most 80 characters, case-insensitive substring over titles, order and proposal ids, destination, delivery date, line names, product ids */
+                q?: string | null;
             };
             header?: never;
             path?: never;
@@ -2895,6 +2921,37 @@ export interface operations {
         };
     };
     schedule_cancel_api_schedules__schedule_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                schedule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    schedule_run_now_api_schedules__schedule_id__run_now_post: {
         parameters: {
             query?: never;
             header?: never;

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import type { ScheduleLine } from "../../../shared/api/types";
 import { createSchedule, previewNewSchedule } from "../api/schedulesApi";
+import { useAuth } from "../../auth/useAuth";
 import { ScheduleEditorBody } from "../components/ScheduleEditorBody";
 import {
   DEFAULT_DRAFT,
@@ -58,6 +59,7 @@ export function ScheduleCreatePage() {
 }
 
 function CreateFlow({ orderId }: { orderId: string }) {
+  const demo = !!useAuth().session?.scheduler_demo_mode;
   const navigate = useNavigate();
   const [recurrence, setRecurrence] = useState<RecurrenceDraft>(DEFAULT_DRAFT);
   const [firstRunDate, setFirstRunDate] = useState(() => todayHelsinki(1));
@@ -68,10 +70,10 @@ function CreateFlow({ orderId }: { orderId: string }) {
   const built = buildRecurrence(recurrence, firstRunDate);
   const ready =
     built.recurrence != null &&
-    validateDate(firstRunDate) === "" &&
+    validateDate(firstRunDate, demo) === "" &&
     !ruleErrors(rules);
   const body =
-    built.recurrence && validateDate(firstRunDate) === ""
+    built.recurrence && validateDate(firstRunDate, demo) === ""
       ? {
           order_id: orderId,
           recurrence: built.recurrence,

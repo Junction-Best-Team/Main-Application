@@ -317,6 +317,20 @@ for (const [name, offset] of [
   });
 }
 
+test("in demo mode the first run date may be today", async ({ page }) => {
+  await mockApi(page, { [PREVIEW]: previewOk }, true);
+  await openCreate(page);
+  const input = page.getByLabel("First run date");
+  await expect(input).toHaveAttribute("min", helsinkiDay(0));
+  await input.fill(helsinkiDay(0));
+  await expect(page.getByText(/The first run date must be from/)).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole("button", { name: "Preview terms" }),
+  ).toBeEnabled();
+});
+
 for (const offset of [1, 365]) {
   test(`a first run date ${offset} day(s) ahead is accepted`, async ({
     page,

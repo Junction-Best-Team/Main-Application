@@ -428,6 +428,111 @@ test.describe("schedule detail", () => {
     await expect(page.getByTestId("run-line")).toContainText("464398");
   });
 
+  test.describe("demo mode: Run now (demo)", () => {
+    const runNowUrl = (id: string) =>
+      new RegExp(`/api/schedules/${id}/run-now$`);
+
+    test("the control is absent when the demo flag is off", async ({
+      page,
+    }) => {
+      await mockDetail(page, schedule);
+      await page.goto(`/schedules/${ids.schedule}`);
+      await expect(
+        page.getByRole("heading", { name: schedule.title, level: 1 }),
+      ).toBeVisible();
+      await expect(page.getByRole("button", { name: /Run now/ })).toHaveCount(
+        0,
+      );
+    });
+
+    test("with the flag on it shows on an active schedule only, styled as a demo command", async ({
+      page,
+    }) => {
+      await mockSignedIn(page, true);
+      await page.route(detailUrl(ids.schedule), (route) =>
+        json(route, detail(schedule)),
+      );
+      await page.route(detailUrl(ids.pausedSchedule), (route) =>
+        json(route, detail(pausedSchedule)),
+      );
+      await page.goto(`/schedules/${ids.schedule}`);
+      await expect(
+        page.getByRole("button", { name: "Run now (demo)" }),
+      ).toBeVisible();
+      await expect(page.getByText("Demo command")).toBeVisible();
+      await page.goto(`/schedules/${ids.pausedSchedule}`);
+      await expect(
+        page.getByRole("heading", { name: pausedSchedule.title, level: 1 }),
+      ).toBeVisible();
+      await expect(page.getByRole("button", { name: /Run now/ })).toHaveCount(
+        0,
+      );
+    });
+
+    test("clicking it calls run-now with the CSRF token and then shows the finished run", async ({
+      page,
+    }) => {
+      await mockSignedIn(page, true);
+      let started = false;
+      let csrf: string | undefined;
+      await page.route(detailUrl(ids.schedule), (route) =>
+        json(
+          route,
+          started
+            ? detail({ ...schedule, last_run: committedRun }, [committedRun])
+            : detail(schedule),
+        ),
+      );
+      await page.route(runNowUrl(ids.schedule), (route) => {
+        started = true;
+        csrf = route.request().headers()["x-csrf-token"];
+        return json(route, {
+          ...schedule,
+          last_run: { ...committedRun, status: "due", order_id: null },
+        });
+      });
+      await page.goto(`/schedules/${ids.schedule}`);
+      await page.getByRole("button", { name: "Run now (demo)" }).click();
+      await expect(
+        page
+          .getByRole("region", { name: "Run history" })
+          .getByText("Order placed"),
+      ).toBeVisible({ timeout: 15_000 });
+      expect(csrf).toBe("test-csrf");
+    });
+
+    test("a refused run says why", async ({ page }) => {
+      await mockSignedIn(page, true);
+      await page.route(detailUrl(ids.schedule), (route) =>
+        json(route, detail(schedule)),
+      );
+      await page.route(runNowUrl(ids.schedule), (route) =>
+        problem(route, 403, "SCHEDULE_DEMO_DISABLED", "Demo mode is off."),
+      );
+      await page.goto(`/schedules/${ids.schedule}`);
+      await page.getByRole("button", { name: "Run now (demo)" }).click();
+      await expect(page.getByRole("alert")).toContainText("Demo mode is off.");
+    });
+  });
+
+  test("a run that ran late after an outage says so, as a note and not a problem", async ({
+    page,
+  }) => {
+    const late: ScheduleRun = {
+      ...committedRun,
+      reason: { codes: ["RAN_LATE"], lines: [] },
+    };
+    await mockDetail(page, schedule, [late]);
+    await page.goto(`/schedules/${ids.schedule}`);
+    const item = page
+      .getByRole("region", { name: "Run history" })
+      .getByRole("listitem")
+      .first();
+    await expect(item).toContainText("Order placed");
+    await expect(item).toContainText("Ran late after an outage");
+    await expect(item).not.toContainText("Needs your attention");
+  });
+
   test("a stopped schedule explains why and offers a restart from a new order", async ({
     page,
   }) => {

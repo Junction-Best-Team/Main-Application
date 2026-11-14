@@ -20,8 +20,12 @@ export type Handler = (
   nth: number,
 ) => Promise<void> | void;
 
-export async function mockApi(page: Page, handlers: Record<string, Handler>) {
-  await mockSignedIn(page);
+export async function mockApi(
+  page: Page,
+  handlers: Record<string, Handler>,
+  demoMode = false,
+) {
+  await mockSignedIn(page, demoMode);
   const calls: Call[] = [];
   const unmocked: string[] = [];
   const counts = new Map<string, number>();

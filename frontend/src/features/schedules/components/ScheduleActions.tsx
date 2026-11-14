@@ -8,19 +8,25 @@ import {
   cancelSchedule,
   pauseSchedule,
   resumeSchedule,
+  runScheduleNow,
 } from "../api/schedulesApi";
 
-type Kind = "pause" | "resume" | "cancel";
+type Kind = "pause" | "resume" | "cancel" | "runNow";
 const BUSY_LABEL: Record<Kind, string> = {
   pause: "Pausing…",
   resume: "Resuming…",
   cancel: "Cancelling…",
+  runNow: "Running…",
 };
 const ACTION: Record<Kind, typeof pauseSchedule> = {
   pause: pauseSchedule,
   resume: resumeSchedule,
   cancel: cancelSchedule,
+  runNow: runScheduleNow,
 };
+const demoButton =
+  "inline-flex cursor-pointer items-center justify-center gap-1 rounded-lg border-2 border-dashed border-amber-500 bg-amber-100 px-space-md py-2 font-mono text-label-md text-amber-900 disabled:cursor-not-allowed disabled:opacity-50";
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const button =
   "inline-flex cursor-pointer items-center justify-center rounded-lg px-space-md py-2 font-label text-label-md no-underline disabled:cursor-not-allowed disabled:opacity-50";
@@ -54,6 +60,9 @@ export function ScheduleActions({
     !compact &&
     (status === "active" || status === "paused" || status === "stopped");
   const canEdit = !compact && (status === "active" || status === "paused");
+  // Demo mode (session.scheduler_demo_mode, set on the server): make today's run due at once.
+  const canRunNow =
+    !compact && status === "active" && !!session?.scheduler_demo_mode;
 
   async function run(kind: Kind) {
     if (!session) return;
@@ -63,6 +72,13 @@ export function ScheduleActions({
       const next = await ACTION[kind](session.csrf_token, schedule.id);
       setConfirming(false);
       onChanged(next);
+      if (kind === "runNow") {
+        // The worker prepares and commits the run within a few seconds: reload a few times.
+        for (let i = 0; i < 5; i++) {
+          await sleep(2000);
+          await onStale?.();
+        }
+      }
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         setSession(null);
@@ -103,6 +119,21 @@ export function ScheduleActions({
             >
               {label("resume", "Resume")}
             </button>
+          )}
+          {canRunNow && (
+            <span className="inline-flex items-center gap-space-xs">
+              <button
+                type="button"
+                className={demoButton}
+                disabled={disabled}
+                onClick={() => void run("runNow")}
+              >
+                {label("runNow", "Run now (demo)")}
+              </button>
+              <span className="font-mono text-label-sm uppercase text-amber-900">
+                Demo command
+              </span>
+            </span>
           )}
           {canEdit && (
             <Link to={`/schedules/${schedule.id}/edit`} className={quiet}>

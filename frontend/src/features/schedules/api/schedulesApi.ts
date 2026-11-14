@@ -47,3 +47,7 @@ export const pauseSchedule = (csrf: string, id: string) =>
   api<Schedule>(`/api/schedules/${id}/pause`, write(csrf));
 export const resumeSchedule = (csrf: string, id: string) =>
   api<Schedule>(`/api/schedules/${id}/resume`, write(csrf));
+// Demo mode only (session.scheduler_demo_mode): make today's run due now. 403
+// SCHEDULE_DEMO_DISABLED when the switch is off; the worker then prepares and commits it.
+export const runScheduleNow = (csrf: string, id: string) =>
+  api<Schedule>(`/api/schedules/${id}/run-now`, write(csrf));

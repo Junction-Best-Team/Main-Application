@@ -1056,6 +1056,25 @@
               "title": "Status"
             },
             "description": "Comma list of scheduled, pending, placed, cancelled; empty means all"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Search: trimmed, at most 80 characters, case-insensitive substring over titles, order and proposal ids, destination, delivery date, line names, product ids",
+              "title": "Q"
+            },
+            "description": "Search: trimmed, at most 80 characters, case-insensitive substring over titles, order and proposal ids, destination, delivery date, line names, product ids"
           }
         ],
         "responses": {
@@ -1425,6 +1444,46 @@
       "post": {
         "summary": "Schedule Cancel",
         "operationId": "schedule_cancel_api_schedules__schedule_id__cancel_post",
+        "parameters": [
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Schedule Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/schedules/{schedule_id}/run-now": {
+      "post": {
+        "summary": "Schedule Run Now",
+        "operationId": "schedule_run_now_api_schedules__schedule_id__run_now_post",
         "parameters": [
           {
             "name": "schedule_id",
@@ -2893,6 +2952,14 @@
           "line_count": {
             "type": "integer",
             "title": "Line Count"
+          },
+          "line_names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "title": "Line Names"
           },
           "cancel_reason": {
             "anyOf": [
@@ -5206,6 +5273,11 @@
           "role": {
             "type": "string",
             "title": "Role"
+          },
+          "scheduler_demo_mode": {
+            "type": "boolean",
+            "title": "Scheduler Demo Mode",
+            "default": false
           }
         },
         "additionalProperties": false,

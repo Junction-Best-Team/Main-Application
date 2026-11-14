@@ -17,7 +17,9 @@ export const session: Session = {
   buyer_id: "demo-hotel",
   csrf_token: "test-csrf",
   role: "approver",
+  scheduler_demo_mode: false,
 };
+export const demoSession: Session = { ...session, scheduler_demo_mode: true };
 export const ids = {
   schedule: "5e1c6c33-4a0b-4c0e-9d2b-0f1f6c0a7a01",
   pausedSchedule: "5e1c6c33-4a0b-4c0e-9d2b-0f1f6c0a7a02",
@@ -267,8 +269,10 @@ export const problem = (
   );
 
 // Signs in and answers the calls every page makes. Register page-specific routes AFTER this.
-export async function mockSignedIn(page: Page) {
-  await page.route("**/api/session", (route) => json(route, session));
+export async function mockSignedIn(page: Page, demoMode = false) {
+  await page.route("**/api/session", (route) =>
+    json(route, demoMode ? demoSession : session),
+  );
   await page.route("**/api/conversations?*", (route) =>
     json(route, { items: [], next_offset: null }),
   );

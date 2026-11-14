@@ -43,6 +43,8 @@ function RunItem({
     (s) => !lines.some((l) => l.product_id === s.product_id),
   );
   const reason = reasonText(run);
+  const ranLate =
+    run.status !== "disrupted" && !!run.reason?.codes?.includes("RAN_LATE");
   // Further reasons besides the main one: known codes as a sentence, unknown ones as the code.
   const moreCodes =
     run.status === "disrupted"
@@ -68,6 +70,11 @@ function RunItem({
           tone={RUN_TONE[run.status]}
         />
       </div>
+      {ranLate && (
+        <p className="m-0 text-body-sm text-on-surface-variant">
+          Ran late after an outage
+        </p>
+      )}
       {reason && (
         <p className="m-0 text-body-sm text-on-surface-variant">
           Reason: {reason}

@@ -14,11 +14,7 @@ import {
   primaryButton,
   secondaryButton,
 } from "./formStyles";
-import {
-  firstRunRange,
-  type RecurrenceDraft,
-  type RuleDrafts,
-} from "./scheduleDraft";
+import { type RecurrenceDraft, type RuleDrafts } from "./scheduleDraft";
 
 export const AUTHORIZATION =
   "I agree to these exact terms, this price ceiling per run and this recurrence.";
@@ -64,8 +60,6 @@ export function ScheduleEditorBody(p: Props) {
             onDraft={p.onRecurrence}
             firstRunDate={p.firstRunDate}
             onFirstRunDate={p.onFirstRunDate}
-            minDate={firstRunRange().min}
-            maxDate={firstRunRange().max}
           />
         </section>
 

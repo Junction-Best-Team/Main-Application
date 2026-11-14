@@ -2,10 +2,12 @@ import {
   PRESETS,
   WEEKDAY_NAMES,
   buildRecurrence,
+  firstRunRange,
   validateDate,
   weekdayOf,
   type RecurrenceDraft,
 } from "./scheduleDraft";
+import { useAuth } from "../../auth/useAuth";
 import { formatDate } from "../model/scheduleStatus";
 import { errorText, field, hint, label } from "./formStyles";
 
@@ -14,9 +16,6 @@ type Props = {
   onDraft: (draft: RecurrenceDraft) => void;
   firstRunDate: string;
   onFirstRunDate: (isoDate: string) => void;
-  minDate: string;
-  maxDate: string;
-  allowToday?: boolean;
 };
 
 const radioRow =
@@ -28,9 +27,6 @@ export function RecurrencePicker({
   onDraft,
   firstRunDate,
   onFirstRunDate,
-  minDate,
-  maxDate,
-  allowToday = false,
 }: Props) {
   const set = (patch: Partial<RecurrenceDraft>) =>
     onDraft({ ...draft, ...patch });
@@ -40,6 +36,10 @@ export function RecurrencePicker({
         ? draft.weekdays.filter((d) => d !== day)
         : [...draft.weekdays, day],
     });
+  const { session } = useAuth();
+  // Demo mode may start a standing order today; otherwise tomorrow or later (owner Q-103).
+  const allowToday = !!session?.scheduler_demo_mode;
+  const { min: minDate, max: maxDate } = firstRunRange(allowToday);
   const dateError = validateDate(firstRunDate, allowToday);
   const recurrenceError = buildRecurrence(draft, firstRunDate).error;
   const weekday = weekdayOf(firstRunDate);

@@ -9,6 +9,7 @@ import type { ScheduleDetail, ScheduleLine } from "../../../shared/api/types";
 import { currency } from "../../../shared/lib/format";
 import { previewScheduleEdit, replaceSchedule } from "../api/schedulesApi";
 import { RestartOrderSelect } from "../components/RestartOrderSelect";
+import { useAuth } from "../../auth/useAuth";
 import { ScheduleEditorBody } from "../components/ScheduleEditorBody";
 import {
   buildLineRules,
@@ -81,6 +82,7 @@ function EditFlow({
   reload: () => Promise<void>;
 }) {
   const navigate = useNavigate();
+  const demo = !!useAuth().session?.scheduler_demo_mode;
   const [params] = useSearchParams();
   const restart =
     params.get("restart") === "1" || schedule.status === "stopped";
@@ -89,7 +91,7 @@ function EditFlow({
   // Prefill from what was agreed. The first run date starts at the next run (or tomorrow when the
   // series start is too soon) because a first run must be tomorrow or later.
   const [firstRunDate, setFirstRunDate] = useState(() => {
-    const earliest = todayHelsinki(1);
+    const earliest = todayHelsinki(demo ? 0 : 1);
     return (
       [schedule.next_run_date, schedule.first_run_date].find(
         (d): d is string => !!d && d >= earliest,
@@ -108,7 +110,7 @@ function EditFlow({
   const placed = usePlacedOrders(restart);
 
   const built = buildRecurrence(recurrence, firstRunDate);
-  const dateOk = validateDate(firstRunDate) === "";
+  const dateOk = validateDate(firstRunDate, demo) === "";
   const body =
     built.recurrence && dateOk
       ? {

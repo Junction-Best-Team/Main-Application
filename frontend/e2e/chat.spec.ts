@@ -13,6 +13,7 @@ const session: Session = {
   buyer_id: "demo-hotel",
   csrf_token: "test-csrf",
   role: "approver",
+  scheduler_demo_mode: false,
 };
 const conversationId = "fa0d5e73-f5a5-4594-a1c5-e4c1a24eebae";
 const proposalId = "b7b7dc8d-8e75-4f79-ac23-649ed1e5fd96";
