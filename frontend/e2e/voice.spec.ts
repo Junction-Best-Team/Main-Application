@@ -323,7 +323,7 @@ test("a new voice conversation survives route creation on mobile", async ({
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const mock = await fixture(page);
-  await page.goto("/request");
+  await page.goto("/");
   await page.getByRole("button", { name: "Start voice mode" }).click();
   await expect(page).toHaveURL(`/conversations/${id}`);
   const voice = page.getByRole("region", { name: "Voice mode" });
@@ -392,10 +392,7 @@ test("navigation ends voice and accepted work continues in saved chat", async ({
     page.getByRole("region", { name: "Voice mode" }).getByRole("status"),
   ).toHaveText("Aimo is working…");
   await page.screenshot({ path: "test-results/voice-desktop.png" });
-  await page
-    .getByRole("link", { name: "Past Orders", exact: true })
-    .first()
-    .click();
+  await page.getByRole("link", { name: "Orders", exact: true }).first().click();
   await expect(page.getByRole("region", { name: "Voice mode" })).toHaveCount(0);
   await expectReleased(page);
   expect(mock.confirms()).toBe(0);

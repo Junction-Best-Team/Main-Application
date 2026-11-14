@@ -633,11 +633,11 @@ test("fonts and sidebar icons load without Google Fonts access", async ({
     );
   });
   expect(loaded).toEqual([true, true, true]);
-  const dashboard = page
+  const newRequestIcon = page
     .getByRole("complementary", { name: "Sidebar" })
     .locator(".material-symbols-outlined")
-    .filter({ hasText: /^dashboard$/ });
-  const iconWidth = await dashboard.evaluate(
+    .filter({ hasText: /^add$/ });
+  const iconWidth = await newRequestIcon.evaluate(
     (node) => node.getBoundingClientRect().width,
   );
   expect(iconWidth).toBeLessThan(40);

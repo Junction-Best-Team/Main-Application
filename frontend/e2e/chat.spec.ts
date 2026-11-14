@@ -1032,18 +1032,18 @@ for (const basis of ["free_form", "saved_recipe"] as const) {
 }
 
 for (const width of [1440, 390]) {
-  test(`designer Home and navigation work at ${width}px`, async ({ page }) => {
+  test(`minimal Home and navigation work at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
     await mockSession(page);
     await page.goto("/");
     await expect(
-      page.getByRole("heading", { name: "Welcome, demo-hotel" }),
+      page.getByRole("heading", { name: "What are we cooking?" }),
     ).toBeVisible();
     await expect(
-      page.getByText("Active Delivery Schedule · Placeholder"),
+      page.getByRole("heading", { name: "Scheduled deliveries" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "View All Schedules" }),
+      page.getByRole("button", { name: "View all schedules" }),
     ).toBeDisabled();
     if (width < 768) {
       await page.getByRole("button", { name: "Open menu" }).click();
@@ -1054,7 +1054,7 @@ for (const width of [1440, 390]) {
         page.getByRole("button", { name: "Open menu" }),
       ).toBeFocused();
       await page.getByRole("button", { name: "Open menu" }).click();
-      await menu.getByRole("link", { name: "Request", exact: true }).click();
+      await menu.getByRole("link", { name: "Requests", exact: true }).click();
       await expect(menu).toHaveCount(0);
     } else {
       const nav = page.getByRole("complementary", { name: "Sidebar" });
@@ -1066,7 +1066,7 @@ for (const width of [1440, 390]) {
       await expect(
         nav.getByRole("link", { name: blankConversation.title }),
       ).toBeVisible();
-      await nav.getByRole("link", { name: "Request", exact: true }).click();
+      await nav.getByRole("link", { name: "Requests", exact: true }).click();
     }
     await expect(page).toHaveURL(/\/request$/);
     await expect(
@@ -1519,4 +1519,140 @@ test("failed worker retry restores attachments after refresh and retains the exa
   await expect(page.getByText("menu.txt", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Retry request" }).click();
   await expect.poll(() => posted).toEqual(retry);
+});
+
+for (const width of [1440, 320]) {
+  test(`home submits a multiline request and attachment into saved chat at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: width < 768 ? 844 : 1000 });
+    await mockSession(page);
+    let saved = structuredClone(blankConversation);
+    const messages: string[] = [];
+    const requestText = "Milk and eggs for Monday.\nFor 40 guests.";
+    await page.route("**/api/conversations", async (route) => {
+      expect(route.request().headers()["x-csrf-token"]).toBe(
+        session.csrf_token,
+      );
+      expect(route.request().postDataJSON().idempotency_key).toBeTruthy();
+      await route.fulfill({ json: saved });
+    });
+    await page.route(`**/api/conversations/${conversationId}`, (route) =>
+      route.fulfill({ json: saved }),
+    );
+    await page.route(
+      `**/api/conversations/${conversationId}/messages`,
+      async (route) => {
+        const body = route.request().postDataJSON();
+        messages.push(body.text);
+        expect(body.attachments).toEqual([
+          {
+            name: "restock.txt",
+            media_type: "text/plain",
+            data: Buffer.from("Milk and eggs").toString("base64"),
+          },
+        ]);
+        expect(route.request().headers()["x-csrf-token"]).toBe(
+          session.csrf_token,
+        );
+        saved = {
+          ...saved,
+          messages: [
+            { id: 1, role: "user", text: body.text, created_at: timestamp },
+            {
+              id: 2,
+              role: "assistant",
+              text: "What quantities do you need?",
+              created_at: timestamp,
+            },
+          ],
+        };
+        await route.fulfill({ json: saved });
+      },
+    );
+    await page.goto("/");
+    const input = page.getByLabel("Your meal or purchasing request");
+    await expect(
+      page.getByRole("button", { name: "Send Order Request" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Start voice mode" }),
+    ).toBeEnabled();
+    await input.fill("Milk");
+    await expect(
+      page.getByRole("button", { name: "Send Order Request" }),
+    ).toBeEnabled();
+    await expect(
+      page.getByRole("button", { name: "Start voice mode" }),
+    ).toHaveCount(0);
+    await input.fill(" ");
+    await expect(
+      page.getByRole("button", { name: "Start voice mode" }),
+    ).toBeEnabled();
+    await input.fill("");
+    const schedule = page.getByRole("region", { name: "Scheduled deliveries" });
+    await expect(schedule.getByRole("listitem")).toHaveCount(3);
+    await expect(
+      page.getByText("Demo schedule · No supplier orders are placed."),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBeTruthy();
+    await page.evaluate(() => document.fonts.ready);
+    await page.screenshot({
+      path: testInfo.outputPath(`home-${width}.png`),
+      fullPage: true,
+    });
+    await page.getByLabel("Choose attachments").setInputFiles({
+      name: "restock.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("Milk and eggs"),
+    });
+    await expect(page.getByText("restock.txt", { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Send Order Request" }),
+    ).toBeEnabled();
+    await expect(
+      page.getByRole("button", { name: "Start voice mode" }),
+    ).toHaveCount(0);
+    await input.fill("Milk and eggs for Monday.");
+    await input.press("Enter");
+    await expect(input).toHaveValue("Milk and eggs for Monday.\n");
+    await input.fill(requestText);
+    await expect(page).toHaveURL(/\/$/);
+    await page.getByRole("button", { name: "Send Order Request" }).click();
+    await expect(page).toHaveURL(
+      new RegExp(`/conversations/${conversationId}$`),
+    );
+    await expect(page.getByText("What quantities do you need?")).toBeVisible();
+    await page.reload();
+    await expect(page.getByText("What quantities do you need?")).toBeVisible();
+    expect(messages).toEqual([requestText]);
+  });
+}
+
+test("home retains the draft and creation key after a failed start", async ({
+  page,
+}) => {
+  await mockSession(page);
+  const keys: string[] = [];
+  await page.route("**/api/conversations", async (route) => {
+    keys.push(route.request().postDataJSON().idempotency_key);
+    await route.fulfill({
+      status: 503,
+      json: { error: { code: "UNAVAILABLE", message: "Try again shortly." } },
+    });
+  });
+  await page.goto("/");
+  const input = page.getByLabel("Your meal or purchasing request");
+  await input.fill("Restock milk for Monday");
+  await page.getByRole("button", { name: "Send Order Request" }).click();
+  await expect(page.getByRole("alert")).toContainText("Try again shortly.");
+  await expect(input).toHaveValue("Restock milk for Monday");
+  await page.getByRole("button", { name: "Retry request" }).click();
+  await expect(page.getByRole("alert")).toContainText("Try again shortly.");
+  expect(keys).toHaveLength(2);
+  expect(keys[0]).toBe(keys[1]);
 });
