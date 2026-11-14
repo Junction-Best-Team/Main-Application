@@ -9,18 +9,19 @@ import json
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Callable
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
 import httpx
-from pydantic import Field, ValidationError
+from pydantic import Field, TypeAdapter, ValidationError
 
 from aimo.chat_schemas import AgentTurn, MealPlan
 from aimo.config import settings
 from aimo.db import Problem, fingerprint
 from aimo.schemas import (
+    Amount,
     LookupRequest,
     Model,
     PrepareRequest,
@@ -160,12 +161,10 @@ class Tools:
     def publish_meal_plan(self, plan):
         for ingredient in plan.ingredients:
             try:
-                amount = Decimal(ingredient.amount)
-                if not amount.is_finite() or amount <= 0:
-                    raise InvalidOperation
-            except InvalidOperation:
-                raise Problem("INVALID_MEAL_QUANTITY", "Use a positive finite ingredient amount.",
-                              422) from None
+                TypeAdapter(Amount).validate_python(ingredient.amount)
+            except ValidationError:
+                raise Problem("INVALID_MEAL_QUANTITY", "Use a positive finite ingredient amount "
+                              "within 14 digits and 4 decimal places.", 422) from None
             if ingredient.product_id and ingredient.product_id not in self.products:
                 raise Problem("PRODUCT_NOT_VERIFIED", "Load every selected product with get_product "
                               "before attaching it to a meal plan.", 422)
@@ -239,7 +238,7 @@ def _completion(client, cfg, messages, definitions, deadline):
                 cfg.llm_base_url.rstrip("/") + "/chat/completions",
                 headers={"Authorization": "Bearer " + cfg.llm_api_key},
                 json={"model": cfg.llm_model, "messages": messages, "tools": definitions,
-                      "tool_choice": "auto", "parallel_tool_calls": False,
+                      "tool_choice": "auto", "parallel_tool_calls": True,
                       "max_completion_tokens": 4000},
                 timeout=min(cfg.llm_timeout_seconds, remaining),
             )

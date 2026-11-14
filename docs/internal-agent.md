@@ -44,5 +44,5 @@ behavior. If the provider fails after preparation, the successful basket is stil
 returned to the application for persistence and customer review.
 
 Validation on 2026-11-14: `uv run ruff check src/aimo/agent.py tests/test_agent.py`
-and `uv run pytest -q tests/test_agent.py` passed (29 tests). These use a fake
+and `uv run pytest -q tests/test_agent.py` passed (31 tests). These use a fake
 provider and service; they do not assert a live provider/supplier checkout.
