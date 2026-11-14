@@ -621,6 +621,29 @@ def test_commit_rechecks_suitability_for_mass_ingredients(tmp_path, actor, servi
     assert error.value.code == "RECIPE_PRODUCT_EVIDENCE_CHANGED"
 
 
+def test_commit_after_a_planned_product_left_the_catalog_is_a_problem_not_a_crash(
+    tmp_path, actor, service, meal_products
+):
+    """Issue 94: a product missing from the active catalog must not raise a bare KeyError."""
+    from aimo.schemas import CommitRequest
+
+    *_, versions = import_fixture(tmp_path)
+    plan = match_all(actor, scale_recipe(actor, ref(versions)))
+    prepared = service.prepare_order(actor, request_for(plan))
+    with connection() as c:
+        c.execute("DELETE FROM products WHERE id=%s", (plan["ingredients"][0]["product_id"],))
+    with pytest.raises(Problem) as error:
+        service.commit_order(
+            actor,
+            CommitRequest(
+                proposal_id=prepared["proposal_id"],
+                revision=prepared["revision"],
+                idempotency_key=str(uuid4()),
+            ),
+        )
+    assert error.value.code in {"RECIPE_PRODUCT_EVIDENCE_CHANGED", "RECIPE_PRODUCT_CHANGED"}
+
+
 @pytest.mark.parametrize("pool_size", [1, 2])
 def test_concurrent_preparations_release_connections_and_plan_locks_during_supplier_io(
     tmp_path, actor, service, meal_products, monkeypatch, pool_size

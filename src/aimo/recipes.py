@@ -381,7 +381,7 @@ def purchase_count_evidence(c, identity, request, products):
         evidence = c.execute(
             """SELECT * FROM recipe_product_evidence WHERE product_id=%s
             AND product_fingerprint=%s AND ingredient_id=%s AND form=%s""",
-            (pid, fingerprint(products[pid]), item["ingredient_id"], item["form"]),
+            (pid, fingerprint(products.get(pid)), item["ingredient_id"], item["form"]),
         ).fetchone()
         if not evidence:
             raise Problem(
