@@ -104,6 +104,16 @@ def label(buyer_id, c=None):
     return "demo" if offset_seconds(buyer_id, c) > 0 else "real"
 
 
+def fulfilment_view(c, buyer_id):
+    """`f(delivery_date, accepted_at)`: the simulated status at the buyer's time (offset read once)."""
+    offset = offset_seconds(buyer_id, c)
+    now = real_now() + timedelta(seconds=offset)
+    mode = "demo" if offset > 0 else "real"
+    return lambda delivery_date, accepted_at=None: fulfilment(
+        delivery_date, now, clock=mode, accepted_at=accepted_at
+    )
+
+
 def _state(real, offset):
     return {
         "enabled": True,

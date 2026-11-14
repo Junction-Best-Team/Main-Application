@@ -271,6 +271,21 @@ class PurchaseSnapshot(Model):
     )
 
 
+class Fulfilment(Model):
+    """The SIMULATED fulfilment status of a mock order, derived from its delivery date and a clock.
+
+    Never stored and never real: the supplier has no order API (`simulated` is always true). `clock`
+    says whether the status follows real time or the buyer's demo clock.
+    """
+
+    status: Literal["accepted", "preparing", "out_for_delivery", "delivered"]
+    since: datetime | None = None
+    next_status: Literal["preparing", "out_for_delivery", "delivered"] | None = None
+    next_at: datetime | None = None
+    simulated: Literal[True] = True
+    clock: Literal["real", "demo"]
+
+
 class ProposalResponse(Model):
     proposal_id: str
     revision: int
@@ -288,6 +303,10 @@ class ProposalResponse(Model):
     recipe_basis: Literal["saved_recipe", "free_form"] = "free_form"
     approval_status: str
     order_status: str
+    fulfilment: Fulfilment | None = Field(
+        default=None,
+        description="The simulated fulfilment status once an order exists, otherwise null.",
+    )
     reasons: list[Reason]
     expires_at: datetime
     next_action: NextAction
@@ -474,6 +493,10 @@ class OrderResponse(Model):
     evidence_mode: str
     accepted_at: datetime
     explanation: str
+    # Derived on read by the receipt route (null in the confirm response and in the stored receipt).
+    delivery_date: date | None = None
+    destination: str | None = None
+    fulfilment: Fulfilment | None = None
 
 
 class DemoClockState(Model):

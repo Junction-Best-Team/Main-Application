@@ -226,6 +226,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/demo/clock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Demo Clock State */
+        get: operations["demo_clock_state_api_demo_clock_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/demo/clock/advance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Demo Clock Advance */
+        post: operations["demo_clock_advance_api_demo_clock_advance_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/demo/clock/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Demo Clock Reset */
+        post: operations["demo_clock_reset_api_demo_clock_reset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/memories": {
         parameters: {
             query?: never;
@@ -791,6 +842,53 @@ export interface components {
             decision: "approve" | "reject";
         };
         /**
+         * DemoClockAdvance
+         * @description Exactly one of `days` (1..30) or `to: "delivery_day"` (06:00 Helsinki on the delivery date
+         *     of the earliest undelivered order).
+         */
+        DemoClockAdvance: {
+            /** Days */
+            days?: number | null;
+            /** To */
+            to?: "delivery_day" | null;
+            /** Idempotency Key */
+            idempotency_key: string;
+        };
+        /** DemoClockReset */
+        DemoClockReset: {
+            /** Idempotency Key */
+            idempotency_key: string;
+        };
+        /**
+         * DemoClockState
+         * @description The buyer's simulated time (demo mode only; the routes answer 404 when it is off).
+         */
+        DemoClockState: {
+            /**
+             * Enabled
+             * @constant
+             */
+            enabled: true;
+            /**
+             * Real Now
+             * Format: date-time
+             */
+            real_now: string;
+            /**
+             * Demo Now
+             * Format: date-time
+             */
+            demo_now: string;
+            /** Offset Seconds */
+            offset_seconds: number;
+            /** Offset Days */
+            offset_days: number;
+            /** Max Jump Days */
+            max_jump_days: number;
+            /** Max Total Days */
+            max_total_days: number;
+        };
+        /**
          * DraftCart
          * @description Display-only plan projection; never accepted by confirmation or preparation.
          */
@@ -895,6 +993,37 @@ export interface components {
          */
         ErrorResponse: {
             error: components["schemas"]["ErrorBody"];
+        };
+        /**
+         * Fulfilment
+         * @description The SIMULATED fulfilment status of a mock order, derived from its delivery date and a clock.
+         *
+         *     Never stored and never real: the supplier has no order API (`simulated` is always true). `clock`
+         *     says whether the status follows real time or the buyer's demo clock.
+         */
+        Fulfilment: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "accepted" | "preparing" | "out_for_delivery" | "delivered";
+            /** Since */
+            since?: string | null;
+            /** Next Status */
+            next_status?: ("preparing" | "out_for_delivery" | "delivered") | null;
+            /** Next At */
+            next_at?: string | null;
+            /**
+             * Simulated
+             * @default true
+             * @constant
+             */
+            simulated: true;
+            /**
+             * Clock
+             * @enum {string}
+             */
+            clock: "real" | "demo";
         };
         /** InboxResponse */
         InboxResponse: {
@@ -1204,6 +1333,7 @@ export interface components {
             cancel_reason?: ("run_disrupted" | "run_retry" | "customer_revised" | "customer_cancelled") | null;
             /** Placed At */
             placed_at?: string | null;
+            fulfilment?: components["schemas"]["Fulfilment"] | null;
             /**
              * Updated At
              * Format: date-time
@@ -1275,6 +1405,11 @@ export interface components {
             accepted_at: string;
             /** Explanation */
             explanation: string;
+            /** Delivery Date */
+            delivery_date?: string | null;
+            /** Destination */
+            destination?: string | null;
+            fulfilment?: components["schemas"]["Fulfilment"] | null;
         };
         /** OrdersResponse */
         OrdersResponse: {
@@ -1379,6 +1514,8 @@ export interface components {
             approval_status: string;
             /** Order Status */
             order_status: string;
+            /** @description The simulated fulfilment status once an order exists, otherwise null. */
+            fulfilment?: components["schemas"]["Fulfilment"] | null;
             /** Reasons */
             reasons: components["schemas"]["Reason"][];
             /**
@@ -1629,6 +1766,8 @@ export interface components {
             approval_status: string;
             /** Order Status */
             order_status: string;
+            /** @description The simulated fulfilment status once an order exists, otherwise null. */
+            fulfilment?: components["schemas"]["Fulfilment"] | null;
             /** Reasons */
             reasons: components["schemas"]["Reason"][];
             /**
@@ -2770,6 +2909,146 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderResponse"];
+                };
+            };
+            /** @description Validation error. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    demo_clock_state_api_demo_clock_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoClockState"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    demo_clock_advance_api_demo_clock_advance_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DemoClockAdvance"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoClockState"];
+                };
+            };
+            /** @description Validation error. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    demo_clock_reset_api_demo_clock_reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DemoClockReset"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoClockState"];
                 };
             };
             /** @description Validation error. */

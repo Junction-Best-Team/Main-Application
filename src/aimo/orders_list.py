@@ -14,6 +14,9 @@ One query over three sources, newest first, one row per thing the customer cares
 Orders stay immutable (CNF-020); nothing here writes.
 """
 
+from datetime import date
+
+from aimo import clock as demo_clock
 from aimo.db import Problem, connection
 from aimo.db import now as clock
 from aimo.purchases import context
@@ -136,14 +139,15 @@ def orders_page(identity, offset=0, limit=20, now=None, statuses=None, query=Non
         rows = c.execute(LIST_SQL, params).fetchall()
         # A page past the end has no row to carry the window total, so count separately then.
         total = rows[0]["total"] if rows else c.execute(COUNT_SQL, params).fetchone()["total"]
+        view = demo_clock.fulfilment_view(c, identity["buyer_id"])
     return {
-        "items": [_item(row) for row in rows[:limit]],
+        "items": [_item(row, view) for row in rows[:limit]],
         "next_offset": offset + limit if len(rows) > limit else None,
         "total": total,
     }
 
 
-def _item(row):
+def _item(row, view):
     return {
         "status": row["status"],
         "title": row["title"],
@@ -159,5 +163,10 @@ def _item(row):
         "line_names": row["names"][:MAX_LINE_NAMES],
         "cancel_reason": row["cancel_reason"],
         "placed_at": row["placed_at"],
+        "fulfilment": (
+            view(date.fromisoformat(row["delivery_date"]), row["placed_at"])
+            if row["status"] == "placed"
+            else None
+        ),
         "updated_at": row["sort_at"],
     }

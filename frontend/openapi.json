@@ -785,6 +785,160 @@
         }
       }
     },
+    "/api/demo/clock": {
+      "get": {
+        "summary": "Demo Clock State",
+        "operationId": "demo_clock_state_api_demo_clock_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoClockState"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error. Every error body is an ErrorResponse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error. Every error body is an ErrorResponse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/demo/clock/advance": {
+      "post": {
+        "summary": "Demo Clock Advance",
+        "operationId": "demo_clock_advance_api_demo_clock_advance_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DemoClockAdvance"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoClockState"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error. Every error body is an ErrorResponse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error. Every error body is an ErrorResponse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/demo/clock/reset": {
+      "post": {
+        "summary": "Demo Clock Reset",
+        "operationId": "demo_clock_reset_api_demo_clock_reset_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DemoClockReset"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoClockState"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error. Every error body is an ErrorResponse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error. Every error body is an ErrorResponse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/memories": {
       "get": {
         "summary": "Memory List",
@@ -3004,6 +3158,112 @@
         ],
         "title": "DecisionRequest"
       },
+      "DemoClockAdvance": {
+        "properties": {
+          "days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 30.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "delivery_day"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 8,
+            "title": "Idempotency Key"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "idempotency_key"
+        ],
+        "title": "DemoClockAdvance",
+        "description": "Exactly one of `days` (1..30) or `to: \"delivery_day\"` (06:00 Helsinki on the delivery date\nof the earliest undelivered order)."
+      },
+      "DemoClockReset": {
+        "properties": {
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 8,
+            "title": "Idempotency Key"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "idempotency_key"
+        ],
+        "title": "DemoClockReset"
+      },
+      "DemoClockState": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "const": true,
+            "title": "Enabled"
+          },
+          "real_now": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Real Now"
+          },
+          "demo_now": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Demo Now"
+          },
+          "offset_seconds": {
+            "type": "integer",
+            "title": "Offset Seconds"
+          },
+          "offset_days": {
+            "type": "integer",
+            "title": "Offset Days"
+          },
+          "max_jump_days": {
+            "type": "integer",
+            "title": "Max Jump Days"
+          },
+          "max_total_days": {
+            "type": "integer",
+            "title": "Max Total Days"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "enabled",
+          "real_now",
+          "demo_now",
+          "offset_seconds",
+          "offset_days",
+          "max_jump_days",
+          "max_total_days"
+        ],
+        "title": "DemoClockState",
+        "description": "The buyer's simulated time (demo mode only; the routes answer 404 when it is off)."
+      },
       "DraftCart": {
         "properties": {
           "turn_id": {
@@ -3293,6 +3553,82 @@
         ],
         "title": "ErrorResponse",
         "description": "The one body of every HTTP error response (TCT-008)."
+      },
+      "Fulfilment": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "preparing",
+              "out_for_delivery",
+              "delivered"
+            ],
+            "title": "Status"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "next_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "preparing",
+                  "out_for_delivery",
+                  "delivered"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Status"
+          },
+          "next_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next At"
+          },
+          "simulated": {
+            "type": "boolean",
+            "const": true,
+            "title": "Simulated",
+            "default": true
+          },
+          "clock": {
+            "type": "string",
+            "enum": [
+              "real",
+              "demo"
+            ],
+            "title": "Clock"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "clock"
+        ],
+        "title": "Fulfilment",
+        "description": "The SIMULATED fulfilment status of a mock order, derived from its delivery date and a clock.\n\nNever stored and never real: the supplier has no order API (`simulated` is always true). `clock`\nsays whether the status follows real time or the buyer's demo clock."
       },
       "InboxResponse": {
         "properties": {
@@ -4281,6 +4617,16 @@
             ],
             "title": "Placed At"
           },
+          "fulfilment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Fulfilment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time",
@@ -4393,6 +4739,39 @@
           "explanation": {
             "type": "string",
             "title": "Explanation"
+          },
+          "delivery_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Date"
+          },
+          "destination": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination"
+          },
+          "fulfilment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Fulfilment"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -4677,6 +5056,17 @@
           "order_status": {
             "type": "string",
             "title": "Order Status"
+          },
+          "fulfilment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Fulfilment"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The simulated fulfilment status once an order exists, otherwise null."
           },
           "reasons": {
             "items": {
@@ -5397,6 +5787,17 @@
           "order_status": {
             "type": "string",
             "title": "Order Status"
+          },
+          "fulfilment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Fulfilment"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The simulated fulfilment status once an order exists, otherwise null."
           },
           "reasons": {
             "items": {

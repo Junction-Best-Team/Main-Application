@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import Field
 
-from aimo.schemas import Model
+from aimo.schemas import Fulfilment, Model
 
 
 class OrderListItem(Model):
@@ -27,6 +27,7 @@ class OrderListItem(Model):
         Literal["run_disrupted", "run_retry", "customer_revised", "customer_cancelled"] | None
     ) = None
     placed_at: datetime | None = None  # the mock order's time, `placed` rows only
+    fulfilment: Fulfilment | None = None  # the simulated status, `placed` rows only
     updated_at: datetime
 
 
