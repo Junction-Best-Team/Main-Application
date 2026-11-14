@@ -36,7 +36,6 @@ def test_conversation_persists_retry_and_cannot_choose_identity(service, buyer, 
         p = shared.prepare_order(actor, PrepareRequest.model_validate(request_data))
         return AgentTurn(text="Review this verified basket.", proposal_id=p["proposal_id"])
 
-    app.state.agent_runner = runner
     with TestClient(app) as client:
         assert client.get("/api/conversations").status_code == 401
         headers = signed(client)
@@ -57,6 +56,11 @@ def test_conversation_persists_retry_and_cannot_choose_identity(service, buyer, 
         )
         response = client.post(url, headers=headers, json=body)
         assert response.status_code == 200, response.text
+        assert response.json()["busy"] is True and calls == []
+        from aimo.worker import run_once
+
+        assert run_once(service, runner)
+        response = client.get(f"/api/conversations/{cid}")
         assert len(response.json()["messages"]) == 2 and len(response.json()["purchases"]) == 1
         assert client.post(url, headers=headers, json=body).json() == response.json()
         assert len(calls) == 1

@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import time
 from uuid import uuid4
 
 import httpx
@@ -43,6 +44,13 @@ def main():
             },
         )
         response.raise_for_status()
+        deadline = time.monotonic() + 300
+        while response.json()["busy"] and time.monotonic() < deadline:
+            time.sleep(2)
+            response = client.get("/api/conversations/" + cid)
+            response.raise_for_status()
+        if response.json()["busy"] or response.json()["retry_message"]:
+            raise RuntimeError("Response pending or interrupted; reopen the saved conversation to retry.")
         print(
             json.dumps(
                 {

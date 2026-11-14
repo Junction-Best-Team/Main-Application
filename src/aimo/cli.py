@@ -124,7 +124,7 @@ def configure():
 def main():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("configure", "migrate", "seed", "serve", "fixture-catalog", "cache-model"):
+    for name in ("configure", "migrate", "seed", "serve", "worker", "fixture-catalog", "cache-model"):
         sub.add_parser(name)
     scope = sub.add_parser(
         "set-product-scope", help="Privileged provisioning: version a buyer's approved product IDs"
@@ -165,6 +165,10 @@ def main():
             port=8000,
             forwarded_allow_ips=settings().forwarded_allow_ips,
         )
+    elif args.command == "worker":
+        from aimo.worker import main as worker_main
+
+        worker_main()
     elif args.command == "cache-model":
         from aimo.search import model
 

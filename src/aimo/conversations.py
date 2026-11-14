@@ -72,7 +72,7 @@ def detail(identity, cid):
         ).fetchall()
         busy = (
             c.execute(
-                "SELECT 1 FROM conversation_turns WHERE conversation_id=%s AND state='running' AND lease_until>%s",
+                "SELECT 1 FROM conversation_turns WHERE conversation_id=%s AND (state='queued' OR (state='running' AND lease_until>%s))",
                 (cid, now()),
             ).fetchone()
             is not None
@@ -102,11 +102,8 @@ def detail(identity, cid):
     }
 
 
-def message(identity, cid, body, service, runner=None):
-    if runner is None:
-        from aimo.agent import run_turn
-
-        runner = run_turn
+def enqueue(identity, cid, body):
+    """Persist a buyer-authorized turn; provider work only happens in the worker."""
     with connection() as c:
         context(c, identity)
         owned(c, identity, cid, lock=True)
@@ -117,23 +114,9 @@ def message(identity, cid, body, service, runner=None):
         digest = fingerprint({"text": body.text})
         if old and old["payload_hash"] != digest:
             raise Problem("IDEMPOTENCY_CONFLICT", "This key already identifies another message.")
-        if old and old["state"] == "complete":
-            complete = True
+        if old and old["state"] in ("complete", "queued", "running"):
+            pass  # Retrying an accepted job never schedules a second execution.
         else:
-            complete = False
-            running = c.execute(
-                "SELECT 1 FROM conversation_turns WHERE conversation_id=%s AND state='running' AND lease_until>%s",
-                (cid, now()),
-            ).fetchone()
-            if running:
-                raise Problem(
-                    "CONVERSATION_BUSY",
-                    "A response is in progress. Reconnect before retrying.",
-                    409,
-                    3,
-                )
-            # Do not accept a different turn while a crashed/failed turn is unresolved:
-            # replaying it after newer customer messages would change its meaning.
             unfinished = c.execute(
                 "SELECT key FROM conversation_turns WHERE conversation_id=%s AND state!='complete' ORDER BY created_at LIMIT 1",
                 (cid,),
@@ -142,12 +125,13 @@ def message(identity, cid, body, service, runner=None):
                 raise Problem(
                     "RETRY_PREVIOUS_MESSAGE", "Retry the previous message before sending another."
                 )
-            attempt, tid = uuid4(), old["id"] if old else uuid4()
+            tid = old["id"] if old else uuid4()
             c.execute(
-                """INSERT INTO conversation_turns(id,conversation_id,key,payload_hash,state,lease_until,attempt)
-                VALUES(%s,%s,%s,%s,'running',%s,%s) ON CONFLICT(conversation_id,key)
-                DO UPDATE SET state='running',lease_until=EXCLUDED.lease_until,attempt=EXCLUDED.attempt""",
-                (tid, cid, body.idempotency_key, digest, now() + timedelta(seconds=240), attempt),
+                """INSERT INTO conversation_turns
+                (id,conversation_id,key,payload_hash,state,lease_until,attempt,requested_by,worker_attempts)
+                VALUES(%s,%s,%s,%s,'queued',%s,%s,%s,0) ON CONFLICT(conversation_id,key)
+                DO UPDATE SET state='queued',requested_by=EXCLUDED.requested_by,worker_attempts=0""",
+                (tid, cid, body.idempotency_key, digest, now(), uuid4(), identity["id"]),
             )
             c.execute(
                 """INSERT INTO conversation_messages(conversation_id,turn_id,role,text)
@@ -155,9 +139,67 @@ def message(identity, cid, body, service, runner=None):
                 (cid, tid, body.text),
             )
             c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
-    if complete:
-        return detail(identity, cid)
+    return detail(identity, cid)
+
+
+def claim_turn(cid=None):
+    """Claim one turn with the same conversation-first lock order as HTTP writes.
+
+    A killed worker's lease can be reclaimed. Three interrupted attempts require
+    an explicit customer retry, so a permanently broken job cannot loop forever.
+    """
+    with connection() as c:
+        conversation = c.execute(
+            """SELECT c.id FROM conversations c WHERE (%s::uuid IS NULL OR c.id=%s)
+            AND EXISTS (SELECT 1 FROM conversation_turns t WHERE t.conversation_id=c.id
+            AND (t.state='queued' OR (t.state='running' AND t.lease_until<=%s)))
+            ORDER BY c.updated_at,c.id FOR UPDATE OF c SKIP LOCKED LIMIT 1""",
+            (cid, cid, now()),
+        ).fetchone()
+        if not conversation:
+            return None
+        turn = c.execute(
+            """SELECT * FROM conversation_turns WHERE conversation_id=%s
+            AND (state='queued' OR (state='running' AND lease_until<=%s))
+            ORDER BY created_at LIMIT 1 FOR UPDATE""",
+            (conversation["id"], now()),
+        ).fetchone()
+        if turn["worker_attempts"] >= 3:
+            c.execute("UPDATE conversation_turns SET state='failed' WHERE id=%s", (turn["id"],))
+            return None
+        return c.execute(
+            """UPDATE conversation_turns SET state='running',attempt=%s,lease_until=%s,
+            worker_attempts=worker_attempts+1 WHERE id=%s RETURNING *""",
+            (uuid4(), now() + timedelta(seconds=240), turn["id"]),
+        ).fetchone()
+
+
+def execute_turn(turn, service, runner=None):
+    """Execute only a claimed job, and fence the reply against lease replacement."""
+    if runner is None:
+        from aimo.agent import run_turn
+
+        runner = run_turn
+    cid, tid, attempt = turn["conversation_id"], turn["id"], turn["attempt"]
     try:
+        with connection() as c:
+            current = c.execute("SELECT * FROM conversation_turns WHERE id=%s", (tid,)).fetchone()
+            if (
+                not current
+                or current["attempt"] != attempt
+                or current["state"] != "running"
+                or current["lease_until"] <= now()
+            ):
+                raise Problem(
+                    "TURN_REPLACED", "This response was replaced; reload the conversation."
+                )
+            identity = c.execute(
+                """SELECT i.* FROM identities i JOIN conversations c ON c.buyer_id=i.buyer_id
+                WHERE c.id=%s AND i.id=%s AND i.active AND i.role='approver'""",
+                (cid, turn["requested_by"]),
+            ).fetchone()
+        if not identity:
+            raise Problem("UNAUTHENTICATED", "The requesting customer is no longer active.", 401)
         actor = auth.internal_agent(identity) | {"_turn_id": str(tid)}
         data = detail(identity, cid)
         history = [{"role": m["role"], "content": m["text"]} for m in data["messages"]]
@@ -198,7 +240,11 @@ def message(identity, cid, body, service, runner=None):
             turn = c.execute(
                 "SELECT * FROM conversation_turns WHERE id=%s FOR UPDATE", (tid,)
             ).fetchone()
-            if turn["attempt"] != attempt or turn["state"] != "running":
+            if (
+                turn["attempt"] != attempt
+                or turn["state"] != "running"
+                or turn["lease_until"] <= now()
+            ):
                 raise Problem(
                     "TURN_REPLACED", "This response was replaced; reload the conversation."
                 )
@@ -223,6 +269,17 @@ def message(identity, cid, body, service, runner=None):
             )
         raise
     return detail(identity, cid)
+
+
+def message(identity, cid, body, service, runner=None):
+    """Synchronous service helper for tests/CLI; never used by the HTTP API."""
+    data = enqueue(identity, cid, body)
+    if not data["busy"] and not data["retry_message"]:
+        return data
+    turn = claim_turn(cid)
+    if turn is None:
+        raise Problem("CONVERSATION_BUSY", "A response is in progress.", 409, 3)
+    return execute_turn(turn, service, runner)
 
 
 def purchases(identity, offset, limit):

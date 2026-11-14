@@ -398,6 +398,12 @@ function ChatPage() {
       setSending(false);
     }
   }
+  useEffect(() => {
+    if (conversation?.retry_message && !conversation.busy && !sending) {
+      setText(conversation.retry_message.text);
+      setError("The response was interrupted. Retry this request to continue.");
+    }
+  }, [conversation?.retry_message?.idempotency_key, conversation?.busy, sending]);
   const busy = sending || conversation?.busy;
   return (
     <main className="chat-workspace">
