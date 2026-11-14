@@ -4,7 +4,7 @@ Three independently deployed apps serve chat purchasing: a React/Nginx frontend,
 
 Chat accepts small [documents, spreadsheets and images](docs/attachments.md) through file selection, drag/drop or paste, with previews and a limit of three files (2 MB each / 4 MB total). Apply migration `020_chat_attachments.sql` before running this version.
 
-The request composer also offers [voice mode](docs/voice.md): click the waveform button, allow
+The request composer also offers [voice mode](docs/voice.md): while the composer has no draft or attachment, click the waveform button (typing or attaching swaps it for the send arrow), allow
 the microphone and speak with Aimo using Gemini 3.8 Live. Voice uses the same saved
 chat and purchasing controls; baskets still require confirmation on screen.
 
