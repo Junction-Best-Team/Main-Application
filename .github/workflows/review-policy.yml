@@ -1,0 +1,88 @@
+name: Review policy
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, labeled, unlabeled, edited, ready_for_review]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  workflow_dispatch:
+    inputs:
+      pull_number:
+        description: Pull request number to recheck
+        required: true
+        type: string
+
+permissions:
+  pull-requests: read
+  statuses: write
+
+concurrency:
+  group: review-policy-${{ github.event.pull_request.number || inputs.pull_number }}
+  cancel-in-progress: false
+
+jobs:
+  review-policy:
+    runs-on: ubuntu-latest
+    steps:
+      # Read GitHub metadata only. Never check out or run pull request code.
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pull_number = context.payload.pull_request?.number
+              ?? Number(context.payload.inputs?.pull_number);
+            if (!Number.isSafeInteger(pull_number) || pull_number < 1) {
+              throw new Error('A valid pull request number is required.');
+            }
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number });
+            if (pr.state !== 'open' || pr.base.ref !== 'develop') {
+              core.info('Only open pull requests into develop require this policy.');
+              return;
+            }
+
+            const status = {
+              owner, repo, sha: pr.head.sha, context: 'review-policy',
+              target_url: `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
+            };
+            await github.rest.repos.createCommitStatus({
+              ...status, state: 'pending', description: 'Checking teammate reviews and skip-review',
+            });
+
+            let passed = pr.labels.some(label => label.name === 'skip-review');
+            let description = 'Review explicitly bypassed with skip-review';
+            if (!passed) {
+              const reviews = await github.paginate(github.rest.pulls.listReviews, {
+                owner, repo, pull_number, per_page: 100,
+              });
+              const latest = new Map();
+              for (const review of reviews) {
+                // Comments do not revoke an approval or a request for changes.
+                if (review.user && review.user.login !== pr.user.login
+                    && ['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(review.state)) {
+                  latest.set(review.user.login, review);
+                }
+              }
+              let approvals = 0;
+              let changesRequested = false;
+              for (const [username, review] of latest) {
+                if (review.user.type === 'Bot' || review.state === 'DISMISSED') continue;
+                const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+                  owner, repo, username,
+                });
+                if (!['admin', 'maintain', 'write'].includes(data.permission)) continue;
+                if (review.state === 'CHANGES_REQUESTED') changesRequested = true;
+                if (review.state === 'APPROVED' && review.commit_id === pr.head.sha) approvals++;
+              }
+              passed = approvals >= 1 && !changesRequested;
+              description = changesRequested
+                ? 'Resolve requested changes or apply skip-review'
+                : passed ? 'At least one teammate approved the latest commit'
+                : 'Needs one teammate approval of the latest commit or skip-review';
+            }
+
+            await github.rest.repos.createCommitStatus({
+              ...status,
+              state: passed ? 'success' : 'failure',
+              description,
+            });
+            core.info(description);

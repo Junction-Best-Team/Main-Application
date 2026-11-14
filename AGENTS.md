@@ -8,13 +8,14 @@ Four-person Junction hackathon repository. Preparation files only; challenge and
 - Check the changed behavior using available commands or the demo flow. Report what actually ran and any remaining blocker; do not invent successful checks.
 - Keep credentials out of source control and browser-side code. Document variable names in `.env.example` and commit dependency lockfiles.
 - Clearly identify mocks and record preparation/reused material in `docs/pre-existing-work.md`.
-- Pull requests are required for changes. Reviews, issues, skills, and CI are optional. Keep documentation short and follow the user's requested delivery scope.
+- Pull requests and the review policy below are required for changes. Issues, skills, and other CI are optional. Keep documentation short and follow the user's requested delivery scope.
 
 ## Branch and pull request workflow
 
 - `develop` is the default branch and the shared integration branch. Start every task branch from the latest `origin/develop`.
 - Work on a separate task branch; never commit or push changes directly to `develop` or `main`.
 - Always open feature, fix, documentation, and maintenance PRs against `develop`. Specify the base explicitly: `gh pr create --base develop`. Verify the base before creating or merging a PR.
+- Before merging into `develop`, request a teammate review and require at least one approval of the latest commit from a teammate with write access, with no outstanding requests for changes. The `skip-review` PR label explicitly bypasses this review requirement. Check the `review-policy` status before merging; never invent an approval or apply the bypass label without the user's instruction.
 - `main` holds stable demo/release snapshots. Only open a release PR from `develop` to `main` when the user explicitly requests a release; never target `main` with a task PR.
 - Do not force-push either shared branch. Preserve other contributors' changes and checkouts.
 

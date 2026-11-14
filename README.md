@@ -18,11 +18,13 @@ All four teammates need write access. Before building, each person should confir
 - Start a task from the latest `develop`: `git switch develop`, then `git pull --ff-only` with a clean working tree. For an existing clone without that branch, first run `git fetch origin` and `git switch --track origin/develop`.
 - Use a short task branch, for example `git switch -c otto/map-view`. Do not commit or push directly to `develop` or `main`.
 - Say which feature/files you are changing. Coordinate edits to shared APIs, schemas, dependency files, and deployment configuration.
-- Check the affected feature works, then open a PR into `develop`: `gh pr create --base develop`. All feature, fix, documentation, and maintenance PRs must target `develop`. You can merge your own work; reviews are optional.
+- Check the affected feature works, then open a PR into `develop`: `gh pr create --base develop`. All feature, fix, documentation, and maintenance PRs must target `develop`. Request a teammate review; merging requires one approval of the latest commit from a teammate with write access and no outstanding requests for changes. A teammate can explicitly bypass reviews by adding the `skip-review` label: `gh pr edit <number> --add-label skip-review`.
 - Keep `main` ready to demonstrate. Promote a tested snapshot with a release PR from `develop` to `main` only when a release is explicitly requested. Avoid force pushes to shared branches and preserve teammates' uncommitted work.
 - Use a separate checkout/worktree and branch for each concurrent agent on the same machine.
 
-No required pipelines, approval gates, or special GitHub board. Use the team chat to coordinate.
+The `Review policy` workflow publishes the `review-policy` commit status. It passes with the review requirement above or the `skip-review` label, and rechecks when commits, labels, or reviews change. It reads GitHub metadata only and never executes PR code. Agents must follow this policy before merging.
+
+**Enforcement limitation:** GitHub currently rejects branch protection for this private repository on the organization's plan, so the check is advisory in GitHub's merge UI. Once branch protection is available, require PRs and the `review-policy` status on `develop` (including administrators). Leave GitHub's separate approving-review count at zero so the label can bypass the custom review check. No other pipelines or special GitHub board are required. Use the team chat to coordinate.
 
 ## Application setup — fill in once the stack is chosen
 
