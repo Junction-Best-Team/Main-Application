@@ -66,6 +66,11 @@ class Service:
             )
         return workflow.prepare_order(identity, request, self.connector)
 
+    def ensure_saved_plan_resolved(self, identity, title):
+        from aimo import recipe_guard
+
+        recipe_guard.ensure_no_unresolved_saved_plan(identity, title)
+
     def recipe_operation(self, name, identity, request):
         from aimo import recipes
 
@@ -85,6 +90,11 @@ class Service:
 
     def match_ingredient(self, identity, request):
         return self.recipe_operation("match_ingredient", identity, request)
+
+    def match_ingredients(self, identity, request):
+        from aimo import recipe_batch
+
+        return recipe_batch.match_ingredients(identity, request)
 
     def get_proposal(self, identity, proposal_id):
         return workflow.get_proposal(identity, proposal_id)

@@ -1,18 +1,28 @@
 from datetime import timedelta
 from decimal import ROUND_HALF_UP
+from fractions import Fraction
+from math import floor
 
 from pydantic import ValidationError
 
 from aimo import upstream
+from aimo.basket import allocate_line, line_contributions
 from aimo.catalog import quantity, requirement_reasons
 from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, now
-from aimo.numeric import D
+from aimo.numeric import D, fraction_text
 from aimo.schemas import AgentAuthority, ApproverAuthority, PolicyRules, PurchaseRequest
+
+MAX_MATERIALS = 1000  # request lines plus deposit materials in one supplier lookup
 
 
 def money(value):
     return value.quantize(D(".01"), rounding=ROUND_HALF_UP)
+
+
+def exact_money(value: Fraction):
+    """Half-up cents of an exact rational amount (no intermediate Decimal rounding)."""
+    return D(floor(value * 100 + Fraction(1, 2))).scaleb(-2)
 
 
 def context(c, identity, lock=False):
@@ -79,9 +89,11 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
     with connection() as c:
         buyer, policy, _, _ = context(c, identity)
         products = load_products(c, [item.product_id for item in request.lines])
-        from aimo.recipes import purchase_count_evidence
+        from aimo.recipes import purchase_count_evidence, read_plan
 
         count_evidence = purchase_count_evidence(c, identity, request, products)
+        plan = read_plan(c, identity, request.recipe_plan_id)[1] if request.recipe_plan_id else None
+    contributions = line_contributions(request, plan)  # MEA-005/BAS-002: ingredients per line
     reasons, lines = [], []
     expires = current + timedelta(seconds=settings().proposal_ttl_seconds)
 
@@ -96,8 +108,12 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
     with connection() as c:
         deposit_products = load_products(c, list(deposit_ids))
     ids = list(dict.fromkeys([item.product_id for item in request.lines] + sorted(deposit_ids)))
-    if len(ids) > 100:
-        raise Problem("TOO_MANY_MATERIALS", "Shortlist plus deposits exceeds 100 materials.", 422)
+    if len(ids) > MAX_MATERIALS:
+        raise Problem(
+            "TOO_MANY_MATERIALS",
+            f"Shortlist plus deposits exceeds {MAX_MATERIALS} materials.",
+            422,
+        )
     raw = connector.lookup(buyer["upstream_customer"], ids, request.delivery_date)
     evidence = upstream.validate_lookup(
         raw, buyer["upstream_customer"], ids, request.delivery_date, products, current
@@ -143,6 +159,8 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
             "product_evidence": p,
             "commercial_evidence": e,
         }
+        if pid in contributions:  # absent otherwise, so earlier proposals are unchanged
+            row["contributions"] = allocate_line(q, contributions[pid])
         if q["sales_quantity"] is None:
             add(
                 "QUANTITY_UNRESOLVED",
@@ -160,11 +178,15 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
                     f"Only {e['available_sales_quantity']} {p['sales_unit']} available; revise or select suitable substitutes.",
                     pid,
                 )
+                # BAS-008: numeric shortfall in sales units. Set only when short, so the quantity
+                # of a covered line (and its fingerprint) is exactly what it was before.
+                q["shortfall"] = str(count - D(e["available_sales_quantity"]))
             if e["net"] is None or e["gross"] is None:
                 complete = False
             else:
                 net, gross = money(count * D(e["net"])), money(count * D(e["gross"]))
                 dep_net, dep_gross = D(0), D(0)
+                deposits_known = True
                 for deposit in p["deposits"]:
                     de = evidence.get(deposit.get("material"))
                     try:
@@ -181,7 +203,10 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
                         sales_factor = D(factors[deposit_product["sales_unit"]])
                         if source_factor <= 0 or sales_factor <= 0:
                             raise ValueError()
-                        priced_units = units * source_factor / sales_factor
+                        # Exact rational quantity; Decimal division would round 1/3 at 28 digits.
+                        priced_exact = (
+                            Fraction(units) * Fraction(source_factor) / Fraction(sales_factor)
+                        )
                         if (
                             not units.is_finite()
                             or units <= 0
@@ -192,8 +217,16 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
                         ):
                             raise ValueError()
                         dn, dg = (
-                            money(priced_units * D(de["net"])),
-                            money(priced_units * D(de["gross"])),
+                            exact_money(priced_exact * Fraction(de["net"])),
+                            exact_money(priced_exact * Fraction(de["gross"])),
+                        )
+                        # Keep the legacy text for exact quantities so stored fingerprints of
+                        # earlier proposals stay valid; only non-terminating ratios differ.
+                        legacy = units * source_factor / sales_factor
+                        priced_units = (
+                            legacy
+                            if Fraction(legacy) == priced_exact
+                            else fraction_text(priced_exact)
                         )
                         dep_net += dn
                         dep_gross += dg
@@ -212,20 +245,24 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
                         )
                     except (KeyError, ValueError, ArithmeticError):
                         complete = False
+                        deposits_known = False
                         add(
                             "DEPOSIT_UNRESOLVED",
                             "Deposit quantity or current price is unknown; it is not zero.",
                             pid,
                         )
-                row.update(
-                    net=str(net + dep_net),
-                    gross=str(gross + dep_gross),
-                    tax=str(gross + dep_gross - net - dep_net),
-                    deposits_gross=str(dep_gross),
-                )
-                net_total += net + dep_net
-                gross_total += gross + dep_gross
-                deposit_total += dep_gross
+                # An unknown deposit leaves the line amounts unknown (None): neither the price
+                # without the deposit nor a deposit of zero is shown. Totals are withheld too.
+                if deposits_known:
+                    row.update(
+                        net=str(net + dep_net),
+                        gross=str(gross + dep_gross),
+                        tax=str(gross + dep_gross - net - dep_net),
+                        deposits_gross=str(dep_gross),
+                    )
+                    net_total += net + dep_net
+                    gross_total += gross + dep_gross
+                    deposit_total += dep_gross
         lines.append(row)
     snapshot = {
         "lines": lines,
