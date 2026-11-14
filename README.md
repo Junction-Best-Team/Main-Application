@@ -2,7 +2,7 @@
 
 Four-person team repository for [Junction 2026](https://2026.hackjunction.com/), November 13–15 in Espoo, Finland.
 
-Preparation and design files for Valio Aimo's [Trusted Trade Agents challenge](https://hackjunction.app/participate/45/challenges/327). The [implementation plan](docs/brief.md) describes a seller-side purchasing gateway that external agents use to discover products, prepare valid orders, and obtain the required approval. Application code is not implemented yet; deployment is undecided.
+Preparation and design files for Valio Aimo's [Trusted Trade Agents challenge](https://hackjunction.app/participate/45/challenges/327). The [implementation plan](docs/brief.md) defines one seller-side backend with HTTP/MCP access, catalog ingestion and hybrid search, buyer approval inside an existing agent application, and mock ordering. Kubernetes is the intended hosting target. Application code and deployment resources are not implemented yet.
 
 ## Get started
 
@@ -28,27 +28,33 @@ No required pipelines, approval gates, or special GitHub board. Use the team cha
 
 | Setting | Value |
 | --- | --- |
-| Backend | Python / FastAPI; one application service shared by HTTP and MCP adapters |
-| Storage and search | SQLite with full-text search; local multilingual embedding matrix |
-| Human interface | React for proposal review, approval, and order receipts |
-| Demo client | Existing MCP-capable external agent; no custom buyer-agent application required |
-| Runtime versions, package managers, and embedding model | TBD during the application skeleton and retrieval evaluation |
+| Backend | Python, FastAPI, Pydantic, Uvicorn; one application service shared by HTTP and MCP adapters |
+| MCP | Official Python MCP SDK; HTTP transport compatible with the selected client |
+| Dependencies and packaging | `uv` with committed lockfile; one Docker image with planned `serve` and `ingest` modes |
+| Shared storage | PostgreSQL: separate tables for the derived product index and new proposals, approvals, orders, and receipts |
+| Hybrid search | pgvector similarity plus PostgreSQL full-text search; reciprocal rank fusion and structured validation |
+| Embeddings | Sentence Transformers; evaluate `intfloat/multilingual-e5-small` on Finnish/English catalog queries before pinning a model revision |
+| Human interface / demo client | Existing MCP-capable agent with a verified human-confirmation path; no custom agent or approval frontend in the MVP |
+| Runtime and dependency versions | TBD and pinned with the application skeleton |
 | Install command | TBD |
 | Local development command | TBD |
 | Build / quick validation command | TBD |
-| Deployment service and procedure | TBD |
+| Deployment target | Available Kubernetes cluster: one backend Deployment initially, an on-demand ingestion Job, Service/HTTPS routing, and shared PostgreSQL |
+| Deployment procedure and resource values | TBD with actual cluster, registry, database, and domain access; no new cluster or database operator in application scope |
 | Demo URL | TBD |
 
 Commit the chosen runtime-version configuration and dependency lockfile with the application skeleton. Then verify that another teammate can get from a fresh clone to a running app using these instructions. Add automated checks only when they save time.
 
+The product has **one running custom service**, not separate search, MCP, approval, and ordering microservices. The importer runs to completion when invoked. PostgreSQL/pgvector is the proposed shared-storage choice for the Kubernetes direction; the earlier SQLite/file-index idea is only a single-instance alternative, not another required implementation. See the plan's [element inventory](docs/brief.md#2-elements-ownership-and-service-count), [ingestion flow](docs/brief.md#4-ingestion-where-the-searchable-data-comes-from), and [deployment diagram](docs/brief.md#10-kubernetes-deployment).
+
 ## Environment
 
-Document required variable names and safe placeholders in [.env.example](.env.example). Use real values only in the local environment file expected by the stack and the deployment service's environment settings. Keep secrets out of commits and browser-side code. Commit lockfiles; ignore dependencies and generated output.
+[.env.example](.env.example) records planned variable names only; no application reads them yet. Supply real values through local ignored files or deployment secrets when the implementation exists. Keep secrets out of commits and browser-side code. Authentication variables for the chosen agent's human-confirmation mechanism will be documented after that integration is selected. Commit lockfiles; ignore dependencies and generated output.
 
 ## Shared context
 
 - [AGENTS.md](AGENTS.md): short instructions shared by coding agents. [CLAUDE.md](CLAUDE.md) imports the same file for Claude Code.
-- [Implementation plan](docs/brief.md): scope, data handling, proposed interfaces, controls, demo, milestones, and acceptance checks.
+- [Implementation plan](docs/brief.md): core scope, element count, stack, ingestion and updates, tool schemas, in-agent approval, data checks, Kubernetes diagrams, demo, milestones, and acceptance checks.
 - [Pre-existing work](docs/pre-existing-work.md): preparation and reused material to disclose in the submission.
 
 Check the current event and challenge rules before preparing application code. Junction's [general terms](https://www.hackjunction.com/terms-of-service) require projects to be built primarily during the event and pre-existing material to be identified in the submission. Confirm the required project licence before submitting.
