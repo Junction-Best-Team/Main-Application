@@ -7,11 +7,10 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../../../shared/api/client";
-import type { Conversation, ConversationList } from "../../../shared/api/types";
+import type { Conversation } from "../../../shared/api/types";
 import { useRefresh } from "../../../shared/hooks/useRefresh";
 import { useAuth } from "../../auth/useAuth";
 import {
-  listConversations,
   getConversation,
   createConversation,
   sendMessage,
@@ -22,19 +21,16 @@ export function useChat(conversationId?: string) {
   const { session, setSession } = useAuth();
   const navigate = useNavigate();
   const [conversation, setConversation] = useState<Conversation | null>(null);
-  const [conversations, setConversations] = useState<ConversationList | null>(
-    null,
-  );
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
-  const [loadingOlder, setLoadingOlder] = useState(false);
   const sendingRef = useRef(false);
   const createKey = useRef(crypto.randomUUID());
   const transcript = useRef<HTMLDivElement>(null);
   const loadedConversation = useRef<string | null>(null);
+  const snapshotVersion = useRef(0);
   const activeConversation = useRef(conversationId);
   activeConversation.current = conversationId;
   const pendingStorage = `aimo-pending-${session?.buyer_id}-${conversationId}`;
@@ -45,43 +41,16 @@ export function useChat(conversationId?: string) {
     },
     [setSession],
   );
-  const loadList = useCallback(async () => {
-    try {
-      setConversations(await listConversations());
-    } catch (e) {
-      fail(e);
-    }
-  }, [fail]);
-  async function loadOlder() {
-    if (conversations?.next_offset == null || loadingOlder) return;
-    setLoadingOlder(true);
-    try {
-      const older = await listConversations(conversations.next_offset);
-      setConversations((current) =>
-        current
-          ? {
-              ...older,
-              items: [
-                ...current.items,
-                ...older.items.filter(
-                  (item) =>
-                    !current.items.some((existing) => existing.id === item.id),
-                ),
-              ],
-            }
-          : older,
-      );
-    } catch (e) {
-      fail(e);
-    } finally {
-      setLoadingOlder(false);
-    }
-  }
   const load = useCallback(async () => {
     if (!conversationId) return;
+    const version = snapshotVersion.current;
     try {
       const data = await getConversation(conversationId);
-      if (activeConversation.current !== conversationId) return;
+      if (
+        activeConversation.current !== conversationId ||
+        snapshotVersion.current !== version
+      )
+        return;
       setConversation(data);
       if (loadedConversation.current !== conversationId) {
         loadedConversation.current = conversationId;
@@ -93,9 +62,6 @@ export function useChat(conversationId?: string) {
       fail(e);
     }
   }, [conversationId, fail]);
-  useEffect(() => {
-    void loadList();
-  }, [loadList, conversationId]);
   useEffect(() => {
     setConversation(null);
     loadedConversation.current = null;
@@ -122,7 +88,9 @@ export function useChat(conversationId?: string) {
       stream.addEventListener("conversation", (event) => {
         if (activeConversation.current !== conversationId) return;
         try {
-          setConversation(JSON.parse((event as MessageEvent).data));
+          const data: Conversation = JSON.parse((event as MessageEvent).data);
+          snapshotVersion.current++;
+          setConversation(data);
           setReconnecting(false);
         } catch {
           void load();
@@ -160,6 +128,7 @@ export function useChat(conversationId?: string) {
           session.csrf_token,
         );
         id = created.id;
+        activeConversation.current = id;
         setConversation(created);
         createKey.current = crypto.randomUUID();
         navigate(`/conversations/${id}`, { replace: true });
@@ -186,10 +155,10 @@ export function useChat(conversationId?: string) {
       );
       sessionStorage.removeItem(storageKey);
       if (activeConversation.current === id) {
+        snapshotVersion.current++;
         setConversation(result);
         setText("");
       }
-      await loadList();
     } catch (e) {
       if (activeConversation.current !== id) return;
       fail(e);
@@ -218,14 +187,11 @@ export function useChat(conversationId?: string) {
   const busy = Boolean(sending || conversation?.busy);
   return {
     conversation,
-    conversations,
     text,
     setText,
     error,
     loading,
     reconnecting,
-    loadingOlder,
-    loadOlder,
     transcript,
     send,
     busy,

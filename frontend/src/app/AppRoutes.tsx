@@ -1,61 +1,49 @@
 import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { RequireAuth } from "../features/auth/components/RequireAuth";
 import { LoginPage } from "../features/auth/pages/LoginPage";
+import { HomePage } from "../features/home/pages/HomePage";
 import { ChatPage } from "../features/chat/pages/ChatPage";
 import { PurchasesPage } from "../features/purchases/pages/PurchasesPage";
 import { PurchaseDetailPage } from "../features/purchases/pages/PurchaseDetailPage";
+import { AppShell } from "./layout/AppShell";
+import { NoticeBar } from "../shared/components/NoticeBar";
 export function AppRoutes() {
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/login"
+        element={
+          <>
+            <NoticeBar />
+            <LoginPage />
+          </>
+        }
+      />
       <Route path="/approvals" element={<Navigate to="/purchases" replace />} />
       <Route
-        path="/purchases/:proposalId"
         element={
           <RequireAuth>
-            <PurchaseDetailPage />
+            <AppShell />
           </RequireAuth>
         }
-      />
-      <Route
-        path="/approvals/:approvalId"
-        element={
-          <RequireAuth>
-            <PurchaseDetailPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/"
-        element={
-          <RequireAuth>
-            <ChatPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/conversations/:conversationId"
-        element={
-          <RequireAuth>
-            <ChatPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/purchases"
-        element={
-          <RequireAuth>
-            <PurchasesPage />
-          </RequireAuth>
-        }
-      />
+      >
+        <Route path="/" element={<HomePage />} />
+        <Route path="/request" element={<ChatPage />} />
+        <Route path="/conversations/:conversationId" element={<ChatPage />} />
+        <Route path="/purchases" element={<PurchasesPage />} />
+        <Route path="/purchases/:proposalId" element={<PurchasesPage />} />
+        <Route path="/approvals/:approvalId" element={<PurchaseDetailPage />} />
+      </Route>
       <Route
         path="*"
         element={
-          <main className="workspace">
-            <h1>Page not found</h1>
-            <Link to="/">Plan a purchase</Link>
-          </main>
+          <>
+            <NoticeBar />
+            <main className="mx-auto max-w-6xl p-8">
+              <h1>Page not found</h1>
+              <Link to="/">Go to Home</Link>
+            </main>
+          </>
         }
       />
     </Routes>
