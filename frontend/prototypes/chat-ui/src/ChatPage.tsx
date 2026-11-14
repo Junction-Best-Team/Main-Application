@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import type { Conversation, ConversationList, Proposal } from "./types";
+import type { Conversation, Proposal } from "./types";
 import { Badge, ErrorMessage, currency, dateTime, purchaseStatus } from "./shared";
 import { MOCK } from "./mock";
 import { Icon, InertButton } from "./placeholders";
@@ -13,7 +13,6 @@ export function ChatPage() {
   const navigate = useNavigate();
   const { session, scenario } = useStoreState();
   const [conversation, setConversation] = useState<Conversation | null>(null);
-  const [conversations, setConversations] = useState<ConversationList | null>(null);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
@@ -21,17 +20,6 @@ export function ChatPage() {
   const transcript = useRef<HTMLDivElement>(null);
   const activeConversation = useRef(conversationId);
   activeConversation.current = conversationId;
-
-  const loadList = useCallback(async () => {
-    try {
-      setConversations(await store.listConversations());
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  }, []);
-  useEffect(() => {
-    void loadList();
-  }, [loadList, conversationId]);
 
   useEffect(() => {
     setConversation(null);
@@ -72,7 +60,6 @@ export function ChatPage() {
         setConversation(result);
         setText("");
       }
-      await loadList();
     } catch (e) {
       const message = e instanceof FakeApiError ? e.message : (e as Error).message;
       setError(message);
@@ -117,32 +104,6 @@ export function ChatPage() {
               <span>{MOCK.request.quota}</span>
             </div>
           </div>
-
-          <nav
-            aria-label="Conversations"
-            className="flex items-center gap-space-sm overflow-x-auto px-space-md py-space-sm"
-          >
-            <Link
-              to="/request"
-              className="shrink-0 rounded-lg bg-primary-container px-space-md py-space-xs font-label text-label-md text-on-primary"
-            >
-              New request
-            </Link>
-            {!conversations ? (
-              <span className="text-body-sm text-secondary">Loading conversations…</span>
-            ) : (
-              conversations.items.map((item) => (
-                <Link
-                  key={item.id}
-                  to={`/conversations/${item.id}`}
-                  aria-current={conversationId === item.id ? "page" : undefined}
-                  className="shrink-0 whitespace-nowrap rounded-lg bg-surface-container px-space-md py-space-xs font-label text-label-md text-on-surface-variant aria-[current=page]:bg-secondary-container aria-[current=page]:text-primary"
-                >
-                  {item.title}
-                </Link>
-              ))
-            )}
-          </nav>
 
           <div className="flex flex-1 flex-col gap-space-lg p-space-md md:p-space-lg">
             <ErrorMessage message={error} />

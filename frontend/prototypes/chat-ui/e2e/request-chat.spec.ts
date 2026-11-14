@@ -83,9 +83,12 @@ test("a proposal in the thread renders SKU cards with quantity and prices excl. 
   await shot(page, info, "request-sku-cards");
 });
 
-test("existing conversations stay reachable from the request screen", async ({ page }, info) => {
+test("existing conversations are reached from the Request sub-list, not from inside the chat", async ({ page }, info) => {
   await openRequest(page, info);
-  const conversations = page.getByRole("navigation", { name: "Conversations" });
+  // The chat card itself no longer carries a conversation switcher.
+  await expect(page.getByRole("main").getByRole("navigation", { name: "Conversations" })).toHaveCount(0);
+  await expect(page.getByRole("main").getByRole("link", { name: "New request" })).toHaveCount(0);
+  const conversations = (await mainNav(page, info)).getByRole("list", { name: "Conversations" });
   await conversations.getByRole("link", { name: "Weekly oat milk restock" }).click();
   await expect(page).toHaveURL(/\/conversations\/conv-oat-restock$/);
   await expect(page.getByRole("log", { name: "Conversation messages" }).getByText(/usual oat products/)).toBeVisible();

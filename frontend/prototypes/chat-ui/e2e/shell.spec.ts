@@ -18,6 +18,8 @@ async function mainNav(page: Page, info: TestInfo) {
 test("navigation offers Home, Request and Past Orders, and no Schedule", async ({ page }, info) => {
   await signIn(page, "/");
   const nav = await mainNav(page, info);
+  // Top-level items only: collapse the conversation sub-list under Request.
+  await nav.getByRole("button", { name: "Hide conversations" }).click();
   const links = nav.getByRole("link");
   await expect(links).toHaveCount(3);
   for (const [i, name] of ["Home", "Request", "Past Orders"].entries()) {
@@ -38,8 +40,13 @@ test("each route marks its nav item as the current page", async ({ page }, info)
   await expect(page).toHaveURL(/\/request$/);
   await expectCurrent("Request");
 
+  // Inside a conversation, the conversation is the page and Request the current section.
+  await signIn(page, "/conversations/conv-carbonara");
+  const nav = await mainNav(page, info);
+  await expect(nav.locator('[aria-current="page"]')).toHaveAccessibleName("200 portions of carbonara");
+  await expect(nav.getByRole("link", { name: "Request", exact: true })).toHaveAttribute("aria-current", "true");
+
   for (const [path, current] of [
-    ["/conversations/conv-carbonara", "Request"],
     ["/purchases", "Past Orders"],
     ["/purchases/prop-ready", "Past Orders"],
   ] as const) {
