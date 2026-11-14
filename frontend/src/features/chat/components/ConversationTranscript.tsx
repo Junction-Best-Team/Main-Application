@@ -3,6 +3,7 @@ import type { Conversation } from "../../../shared/api/types";
 import { Icon } from "../../../shared/components/DesignPrimitives";
 import { dateTime } from "../../../shared/lib/format";
 import { MealPlanCard } from "./MealPlanCard";
+import { RecipeIllustration } from "./RecipeIllustration";
 import { SkuCards } from "./SkuCards";
 export function ConversationTranscript({
   conversation,
@@ -50,6 +51,12 @@ export function ConversationTranscript({
                 <p className="whitespace-pre-wrap wrap-anywhere text-body-md text-on-surface">
                   {message.text}
                 </p>
+                {message.image && (
+                  <RecipeIllustration
+                    key={message.image.url}
+                    image={message.image}
+                  />
+                )}
                 {message.meal_plan && <MealPlanCard plan={message.meal_plan} />}
                 {message.proposal_id && (
                   <SkuCards

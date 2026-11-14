@@ -39,6 +39,7 @@ CLAUDE.local.md
 
 # Restricted source data, model cache, and test artifacts.
 data/
+local/
 .cache/
 frontend/test-results/
 frontend/playwright-report/

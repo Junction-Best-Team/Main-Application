@@ -162,9 +162,9 @@ variable "bootstrap_generation" {
 }
 
 variable "llm_model" {
-  description = "Conversational LLM model; separate from local embedding model."
+  description = "Native Google conversational model; separate from embedding model."
   type        = string
-  default     = "anthropic/claude-sonnet-5.5"
+  default     = "gemini-4-carbon"
 }
 
 variable "llm_base_url" {

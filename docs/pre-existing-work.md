@@ -18,6 +18,20 @@ Add any starter code or earlier prototypes separately. Describe which parts exis
 
 ## Reused code, data, models, and assets
 
+During the event on 2026-11-14, Codex added the recipe illustration tool using
+the portable Google helper from PR #129 and Cloudinary's documented signed
+upload API. The tool, durable ledger, chat display and failure tests were written
+during the event. Tests use authored tiny PNG/HTTP/browser fixtures; no provider
+credentials or downloaded recipe photographs are bundled.
+A single live smoke generated a synthetic tomato-pasta illustration and uploaded
+it with the private event accounts; the resulting image is a local ignored QA asset.
+
+During the event on 2026-11-14, Codex added a standalone native Google REST helper
+using the existing HTTPX dependency and Google's documented request formats.
+Tests use authored HTTP fixtures. Small synthetic live checks exercised Carbon,
+Decision 1 and Embedding 2 through the private hackathon key; no image generation,
+customer data or credentials were bundled. See [Google API usage](google-api.md).
+
 On 2026-11-14, at the owner's request, Codex rebuilt Person 2's runner, provider
 client and direct-tool adapter on `develop` `f13b75b`. The prior agent
 implementation was replaced; existing shared models, product/purchasing code and
@@ -127,6 +141,17 @@ On 2026-11-14, at the owner's request, Codex simplified the existing CI for the
 hackathon: reused the existing backend tests, API sweep, frontend build and
 infrastructure checks, removed coverage gating/artifact jobs and shared the
 backend setup. No new dependency, dataset, model or asset was introduced.
+
+## Native Google provider cutover — 2026-11-14
+
+At the owner's request, PR #132 reuses the portable HTTPX Google helper and the
+existing typed agent, Decisions checks, ingestion caches and versioned catalog
+cutover. New adapters select Google's Gemini 4 Carbon, Gemini Decision 1 and
+Gemini Embedding 2; no model weights or datasets are committed. The existing
+authored guardrail cases were rerun against Decision 1, with a compact result
+artifact retained for review. Live transport checks used synthetic food text and
+stub tool results only. Legacy local-model weights become an explicit worker
+build option; no new dependency or customer asset is introduced by this cutover.
 
 ## Production screen styling port — 2026-11-14
 

@@ -723,14 +723,14 @@ def main():
     args = parser.parse_args()
     base = settings()
     if not api_key(base):
-        print("skipped: LLM_API_KEY for OpenRouter (LLM_BASE_URL on openrouter.ai) is not configured")
+        print("skipped: the selected guardrail provider credential is not configured")
         sys.exit(1 if args.require_config else 0)
     cfg = SimpleNamespace(**base.model_dump())
     cfg.guardrail_mode = "enforce"
     cases = run(cfg, args.repeat)
     result = {
         "date": date.today().isoformat(),
-        "model": guardrails.MODEL,
+        "model": guardrails.GOOGLE_MODEL if cfg.guardrail_provider == "google" else guardrails.MODEL,
         "served_models": sorted({c[4].model for c in cases if c[4].model}),
         "policy_version": guardrails.POLICY_VERSION,
         "thresholds": {

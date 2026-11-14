@@ -385,6 +385,7 @@ export interface components {
             meal_plan?: components["schemas"]["MealPlan"] | null;
             /** Proposal Id */
             proposal_id?: string | null;
+            image?: components["schemas"]["RecipeImage"] | null;
         };
         /** CommitRequest */
         CommitRequest: {
@@ -1013,6 +1014,15 @@ export interface components {
              * @enum {string}
              */
             severity: "denied" | "unresolved" | "exception";
+        };
+        /** RecipeImage */
+        RecipeImage: {
+            /** Url */
+            url: string;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
         };
         /** Requirements */
         Requirements: {
