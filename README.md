@@ -4,6 +4,8 @@ One authenticated FastAPI application serves the existing React frontend, runs o
 
 The current [product migration](docs/chat-purchasing.md) overrides the external-agent entry points in the [original brief](docs/brief.md). The underlying purchasing controls remain. [Infrastructure](infra/README.md) is optional and operator-managed; this migration does not apply Terraform, deploy or enable releases.
 
+See the [architecture diagrams](docs/architecture.md) for the system overview, purchase confirmation flow and code map.
+
 ## Working in parallel
 
 - Start a task from the latest `develop`: `git switch develop`, then `git pull --ff-only` with a clean working tree. For an existing clone without that branch, first run `git fetch origin` and `git switch --track origin/develop`.
