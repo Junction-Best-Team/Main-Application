@@ -167,7 +167,8 @@ def build_terms(
     return {
         "source_order_id": str(order["id"]),
         "title": title or str(order["request"].get("request_id") or "Standing order"),
-        "lines": lines,
+        "lines": [{k: v for k, v in line.items() if k != "deposits"} for line in lines],
+        "_agreed_lines": lines,  # with the deposit structure, stored for the run time check
         "currency": snapshot["currency"],
         "gross_total": snapshot["gross_total"],
         "policy_outcome": evaluated["policy_outcome"],
@@ -200,6 +201,9 @@ def agreed_line(line, rule, names):
         "unit_gross": evidence["gross"],
         "tax_rate": evidence["tax_rate"],
         "line_gross": line["gross"],
+        "deposits": scheduler.deposit_structure(
+            line["deposit_lines"]
+        ),  # kept for the run time check
         "accepted_substitutes": [
             {
                 "product_id": s,
@@ -269,7 +273,11 @@ def response(c, row):
     rules = row["line_rules"] or {}
     names = load_products(c, [s for r in rules.values() for s in r.get("accepted_substitutes", [])])
     lines = [
-        {k: v for k, v in line.items() if k not in ("accepted_substitutes", "price_range_pct")}
+        {
+            k: v
+            for k, v in line.items()
+            if k not in ("accepted_substitutes", "price_range_pct", "deposits")
+        }
         | {
             "accepted_substitutes": [
                 {
@@ -416,7 +424,7 @@ def insert(c, identity, terms, *, key, digest, ceiling, supersedes=None):
             terms["title"],
             js(terms["_request"]),
             js(terms["_rules"]),
-            js(terms["lines"]),
+            js(terms["_agreed_lines"]),
             terms["terms_fingerprint"],
             terms["currency"],
             terms["gross_total"],
