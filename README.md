@@ -67,6 +67,8 @@ For a quick authored-fixture catalog, use `uv run aimo fixture-catalog` instead 
 
 Open [chat purchasing](http://localhost:8000/). Username: **buyer**. Read the generated `DEMO_BUYER_PASSWORD` privately from `.env`. Configure `LLM_API_KEY` privately for chat; `LLM_BASE_URL` and `LLM_MODEL` select the conversational provider independently of local embeddings. The browser never receives provider/API keys. `SECURE_COOKIES=false` is for localhost HTTP only. Hosted deployments require HTTPS and `SECURE_COOKIES=true`.
 
+Persons 2/3 integrating the bare-min buyer path on this practical branch: short start + exercise steps in [docs/run-notes.md](docs/run-notes.md) (real API only; phase-0 stub linked from there). Designer skins are out of that handoff.
+
 For frontend development, run `npm run dev --prefix frontend` and temporarily set `PUBLIC_BASE_URL=http://localhost:5173` for the backend. Vite proxies `/api`; production serves the built assets from FastAPI. The source of the browser's generated types is Python: `uv run python scripts/export_schema.py && npm run types --prefix frontend`.
 
 ## Demo and browser interfaces
