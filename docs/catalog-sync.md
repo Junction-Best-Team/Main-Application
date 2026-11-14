@@ -26,8 +26,10 @@ flowchart LR
 2. **Downloads the snapshot** through the existing supplier path. Downloads use
    HTTPS only. The `X-API-Key` header goes only to the configured base URL and is
    never forwarded to a redirect. At most three redirects are followed, each must
-   be HTTPS, and signed URLs are never logged. Each read has a 60-second timeout,
-   and a single download has a 900-second deadline and a 256 MiB size limit. Up to
+   be HTTPS, and signed URLs are never logged. Each download attempt has a
+   900-second deadline that covers redirects and every network read of the body, so
+   a slow trickle of small chunks cannot outlast it. Each read also has a 60-second
+   timeout, capped at the time remaining, and there is a 256 MiB size limit. Up to
    three attempts are made, and only on timeouts, transport errors, 408/425/429 and
    5xx responses. The file is streamed into the pod's bounded `/tmp` volume and
    deleted when the run ends.

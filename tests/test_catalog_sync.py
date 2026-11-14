@@ -365,6 +365,40 @@ def test_download_deadline_is_bounded(tmp_path, monkeypatch):
         ingestion.download(tmp_path / "s.json")
 
 
+def test_slow_trickle_of_small_chunks_cannot_outlast_the_deadline(tmp_path, monkeypatch):
+    import time
+
+    def trickle():
+        for _ in range(100):  # 5 s of 100-byte chunks, never idle long enough to time out
+            time.sleep(0.05)
+            yield b"x" * 100
+
+    mock_supplier(
+        monkeypatch,
+        lambda r: httpx.Response(200, content=trickle()),
+        catalog_download_deadline_seconds=0.5,
+        catalog_download_attempts=1,
+    )
+    started = time.monotonic()
+    with pytest.raises(CatalogError) as failure:
+        ingestion.download(tmp_path / "s.json")
+    assert failure.value.code == "DOWNLOAD_FAILED"
+    assert time.monotonic() - started < 1.5  # aborted near the deadline, not after 5 s
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_each_request_read_timeout_is_capped_by_the_remaining_deadline(tmp_path, monkeypatch):
+    seen = []
+
+    def handler(request):
+        seen.append(request.extensions["timeout"])
+        return httpx.Response(200, content=b"[]")
+
+    mock_supplier(monkeypatch, handler, catalog_download_deadline_seconds=5)
+    ingestion.download(tmp_path / "s.json")
+    assert 0 < seen[0]["read"] <= 5 and seen[0]["connect"] <= 5
+
+
 def test_second_redirect_hop_must_stay_https(tmp_path, monkeypatch):
     def handler(request):
         if request.url.host == "api.test":

@@ -162,10 +162,17 @@ def download(path: Path) -> str:
 def _download_once(path, cfg):
     url = httpx.URL(cfg.valio_aimo_base_url + DOWNLOAD_PATH)
     headers = {"X-API-Key": cfg.valio_aimo_api_key}
-    timeout = httpx.Timeout(cfg.catalog_download_timeout_seconds, connect=10)
-    with httpx.Client(timeout=timeout, follow_redirects=False) as client:
+    # One wall-clock deadline per attempt, covering redirect hops and the body.
+    deadline = time.monotonic() + cfg.catalog_download_deadline_seconds
+    with httpx.Client(follow_redirects=False) as client:
         for _ in range(MAX_REDIRECTS + 1):
-            with client.stream("GET", url, headers=headers) as response:
+            # No single read may wait past the deadline either, so a stalled read
+            # overruns it by at most the remaining time it was started with.
+            remaining = _remaining(deadline)
+            timeout = httpx.Timeout(
+                min(cfg.catalog_download_timeout_seconds, remaining), connect=min(10, remaining)
+            )
+            with client.stream("GET", url, headers=headers, timeout=timeout) as response:
                 if response.is_redirect:
                     location = response.headers.get("location")
                     if not location:
@@ -183,30 +190,38 @@ def _download_once(path, cfg):
                     raise CatalogError(
                         "DOWNLOAD_FAILED", f"Catalog download returned HTTP {response.status_code}"
                     )
-                return _write_limited(response, path, cfg)
+                return _write_limited(response, path, cfg, deadline)
     raise CatalogError("DOWNLOAD_REJECTED", "Too many catalog redirects")
 
 
-def _write_limited(response, path, cfg):
+def _remaining(deadline):
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise _Retryable()
+    return remaining
+
+
+def _write_limited(response, path, cfg, deadline):
     limit = cfg.catalog_download_max_bytes
     declared = response.headers.get("content-length", "")
     if declared.isdigit() and int(declared) > limit:
         raise CatalogError(
             "DOWNLOAD_TOO_LARGE", "Catalog download exceeds the configured size limit"
         )
-    deadline = time.monotonic() + cfg.catalog_download_deadline_seconds
     digest, size = hashlib.sha256(), 0
     partial = path.with_name(path.name + ".part")
     try:
         with open(partial, "wb") as stream:
-            for chunk in response.iter_bytes(1 << 20):
+            # No chunk_size: httpx would otherwise buffer up to that size before
+            # yielding, letting a slow trickle of small reads bypass the deadline.
+            # Each underlying network read is checked instead.
+            for chunk in response.iter_bytes():
+                _remaining(deadline)
                 size += len(chunk)
                 if size > limit:
                     raise CatalogError(
                         "DOWNLOAD_TOO_LARGE", "Catalog download exceeds the configured size limit"
                     )
-                if time.monotonic() > deadline:
-                    raise _Retryable()
                 digest.update(chunk)
                 stream.write(chunk)
         os.replace(partial, path)
