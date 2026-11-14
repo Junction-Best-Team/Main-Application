@@ -82,6 +82,7 @@ MANIFEST: dict[str, list[tuple[str, ...]]] = {
         ("trigger", "order_request_cancellations", "cancellation_no_order"),
         ("trigger", "order_request_cancellations", "immutable_order_request_cancellations"),
     ],
+    "024_message_notice.sql": [("column", "conversation_messages", "notice")],
 }
 
 _RELATION = "SELECT to_regclass(%s) IS NOT NULL"

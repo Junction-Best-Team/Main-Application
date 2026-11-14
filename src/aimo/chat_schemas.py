@@ -137,6 +137,11 @@ class ChatMessage(Model):
     proposal_id: str | None = None
     image: RecipeImage | None = None
     attachments: list[AttachmentInfo] = Field(default_factory=list)
+    notice: Literal["provider_unavailable"] | None = Field(
+        default=None,
+        description="Set on a plain assistant notice stored when the model provider failed; show it "
+        "as a notice, not as an answer. The unfinished message keeps its retry offer.",
+    )
 
 
 class ConversationSummary(Model):
