@@ -16,4 +16,13 @@ export const MOCK = {
     account: { name: "Ravintola Aarni", number: "Acc #94821-FI" },
     hasUnreadNotifications: true,
   },
+  /** Request screen (chat): context header, quota badge, composer hints. */
+  request: {
+    assistantSubtitle:
+      "Instant restocking, menu recipe parsing & standing order modifications for Valio Aimo Wholesale",
+    context: "Ravintola Aarni • Service Context: Tasting Menu Weekend Prep",
+    quota: "Account Quota Active (Tier A)",
+    composerHint: "Press Shift+Enter for new line",
+    composerPlaceholder: "Ask Aimo Assistant or paste recipe ingredients, EAN codes, or meal counts...",
+  },
 } as const;
