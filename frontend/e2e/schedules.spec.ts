@@ -242,7 +242,8 @@ test.describe("schedule detail", () => {
       hasText: "Whole milk 10 L",
     });
     await expect(milkLine).toContainText("8 L");
-    await expect(milkLine).toContainText("€13.68");
+    await expect(milkLine).toContainText("€13.68 per BIB incl. tax");
+    await expect(milkLine).not.toContainText("per L");
     await expect(milkLine).toContainText("€109.44");
     await expect(milkLine).toContainText("Organic whole milk 10 L");
     await expect(milkLine).toContainText("7.50 %");

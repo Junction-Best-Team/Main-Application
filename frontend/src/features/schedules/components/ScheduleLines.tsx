@@ -31,7 +31,7 @@ export function ScheduleLines({
           </div>
           <p className="m-0 text-body-sm text-on-surface-variant">
             {line.amount} {line.unit} · {currency(line.unit_gross, eur)} per{" "}
-            {line.unit} incl. tax
+            {line.sales_unit ?? line.unit} incl. tax
           </p>
           {(line.accepted_substitutes?.length ?? 0) > 0 && (
             <div className="rounded-lg bg-surface-container-low px-space-md py-space-sm text-body-sm text-on-surface-variant">
