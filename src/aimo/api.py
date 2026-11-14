@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from secrets import token_urlsafe
 from typing import Literal
@@ -10,7 +11,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 from aimo import approval_workflow as workflow
-from aimo import auth, conversations, memory, upstream
+from aimo import auth, conversations, memory, schema_state, upstream
 from aimo.chat_schemas import (
     ConversationCreate,
     ConversationList,
@@ -140,6 +141,15 @@ def create_app(service=None):
             )
         with connection() as c:
             c.execute("SELECT requested_by FROM conversation_turns LIMIT 0")
+        pending = schema_state.missing_migrations()
+        if pending:
+            # The names go to the server log only; the response says nothing internal.
+            logging.getLogger(__name__).error("Database is missing migrations: %s", pending)
+            raise Problem(
+                "SCHEMA_NOT_READY",
+                "The database schema is not up to date; run the migrations.",
+                503,
+            )
         return {
             "status": "ready",
             "model": active["model_key"],
