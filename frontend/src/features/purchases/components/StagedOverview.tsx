@@ -17,5 +17,7 @@ export function StagedOverview({
   useEffect(() => {
     void load();
   }, [load, latest?.revision, latest?.order_id, latest?.approval_status]);
-  return <OverviewPanel key={conversation?.id ?? "new"} flow={flow} />;
+  return latest ? (
+    <OverviewPanel key={conversation?.id ?? "new"} flow={flow} />
+  ) : null;
 }

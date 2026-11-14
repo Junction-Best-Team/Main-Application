@@ -75,39 +75,6 @@ function Substitutions({ p }: { p: Proposal }) {
   );
 }
 
-function AccountManager() {
-  const m = MOCK.overview.accountManager;
-  return (
-    <div className="flex items-center justify-between gap-space-sm rounded-xl bg-surface-container-low p-space-sm">
-      <div className="flex min-w-0 items-center gap-space-sm">
-        <span
-          aria-hidden="true"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary font-label text-label-sm font-bold text-on-primary"
-        >
-          {m.initials}
-        </span>
-        <span className="flex min-w-0 flex-col">
-          <span className="font-label text-[10px] font-bold uppercase tracking-wider text-secondary">
-            Account Manager · Placeholder
-          </span>
-          <span className="truncate font-headline text-[13px] font-bold text-on-surface">
-            {m.name}
-          </span>
-          <span className="truncate font-label text-[11px] text-on-surface-variant">
-            {m.phone}
-          </span>
-        </span>
-      </div>
-      <InertButton
-        label="Call account manager"
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-pure text-primary shadow-level-2"
-      >
-        <Icon name="call" className="text-[16px]" />
-      </InertButton>
-    </div>
-  );
-}
-
 export function OverviewPanel({
   flow,
   drawer = true,
@@ -136,7 +103,11 @@ export function OverviewPanel({
         </h2>
         <span className="flex items-center gap-space-sm">
           <span className="font-label text-label-sm text-secondary">
-            {p ? `${p.snapshot.lines.length} items staged` : "Nothing staged"}
+            {p
+              ? `${p.snapshot.lines.length} items staged`
+              : error
+                ? "Basket unavailable"
+                : "Loading basket…"}
           </span>
           {drawer && (
             <button
@@ -154,12 +125,14 @@ export function OverviewPanel({
       <ErrorMessage message={error} />
       <div className="flex flex-col gap-space-sm pt-space-sm">
         {!p ? (
-          <p
-            className={`m-0 text-body-sm text-on-surface-variant ${drawer && !open ? "hidden lg:block" : ""}`}
-          >
-            No items staged yet. Describe a meal or an ingredient list and the
-            proposed basket appears here.
-          </p>
+          !error && (
+            <p
+              role="status"
+              className={`m-0 text-body-sm text-on-surface-variant ${drawer && !open ? "hidden lg:block" : ""}`}
+            >
+              Loading the proposed basket…
+            </p>
+          )
         ) : (
           <>
             <div
@@ -201,9 +174,6 @@ export function OverviewPanel({
             </div>
           </>
         )}
-        <div className={drawer && !open ? "hidden lg:block" : ""}>
-          <AccountManager />
-        </div>
       </div>
     </aside>
   );

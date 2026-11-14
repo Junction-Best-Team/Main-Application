@@ -19,11 +19,6 @@ export const DESIGN_PLACEHOLDERS = {
   overview: {
     substitutionsLabel: "Substitutions allowed",
     substitutionsOn: true,
-    accountManager: {
-      initials: "MV",
-      name: "Mikael Virtanen",
-      phone: "+358 10 381 00",
-    },
   },
   /** Past Orders screen (inert toolbar and account chips). */
   pastOrders: {

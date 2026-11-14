@@ -545,6 +545,9 @@ test("request starts a meal conversation and keeps messages through refresh", as
   );
   await page.goto("/request");
   await expect(
+    page.getByRole("complementary", { name: "Overview" }),
+  ).toHaveCount(0);
+  await expect(
     page.getByRole("heading", { name: "Aimo Kitchen Assistant" }),
   ).toBeVisible();
   await page
@@ -1025,7 +1028,9 @@ for (const basis of ["free_form", "saved_recipe"] as const) {
 }
 
 for (const width of [1440, 390]) {
-  test(`designer Home and navigation work at ${width}px`, async ({ page }) => {
+  test(`designer Home and navigation work at ${width}px`, async ({
+    page,
+  }, testInfo) => {
     await page.setViewportSize({ width, height: 1000 });
     await mockSession(page);
     await page.goto("/");
@@ -1070,7 +1075,13 @@ for (const width of [1440, 390]) {
     ).toBeDisabled();
     await expect(
       page.getByRole("complementary", { name: "Overview" }),
-    ).toContainText("Nothing staged");
+    ).toHaveCount(0);
+    await expect(
+      page.getByText("Mikael Virtanen", { exact: true }),
+    ).toHaveCount(0);
+    await page.screenshot({
+      path: testInfo.outputPath(`empty-chat-${width}.png`),
+    });
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,
@@ -1129,6 +1140,12 @@ for (const width of [1440, 390]) {
     await page.goto(`/conversations/${conversationId}`);
     const panel = page.getByRole("complementary", { name: "Overview" });
     await expect(panel).toContainText("1 items staged");
+    await expect(
+      panel.getByRole("button", { name: "Call account manager" }),
+    ).toHaveCount(0);
+    await expect(
+      panel.getByText("Mikael Virtanen", { exact: true }),
+    ).toHaveCount(0);
     await expect(
       page.getByRole("list", { name: "Proposed items" }),
     ).toContainText("4 BAG");
@@ -1239,6 +1256,12 @@ for (const state of ["denied", "expired", "rejected"] as const) {
     await page.goto(`/conversations/${conversationId}`);
     const panel = page.getByRole("complementary", { name: "Overview" });
     await expect(panel).toContainText("1 items staged");
+    await expect(
+      panel.getByRole("button", { name: "Call account manager" }),
+    ).toHaveCount(0);
+    await expect(
+      panel.getByText("Mikael Virtanen", { exact: true }),
+    ).toHaveCount(0);
     await expect(
       panel.getByRole("button", { name: "Approve & Push to Dispatch" }),
     ).toHaveCount(0);

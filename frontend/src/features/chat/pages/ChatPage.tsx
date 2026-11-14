@@ -30,7 +30,9 @@ export function ChatPage() {
     busy,
   } = useChat(conversationId);
   return (
-    <main className="mx-auto flex min-h-0 w-full max-w-[1720px] flex-1 flex-col gap-space-md p-margin-sm pb-28 lg:flex-row lg:items-start lg:pb-space-lg md:gap-space-lg md:p-space-lg md:pb-28">
+    <main
+      className={`mx-auto flex min-h-0 w-full max-w-[1720px] flex-1 flex-col gap-space-md p-margin-sm lg:flex-row lg:items-start md:gap-space-lg md:p-space-lg ${conversation?.purchases.length ? "pb-28 md:pb-28 lg:pb-space-lg" : ""}`}
+    >
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-space-sm md:gap-space-md">
         <header className="flex shrink-0 items-center gap-space-md [@media(max-height:650px)]:hidden">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary-container text-on-primary shadow-sm">

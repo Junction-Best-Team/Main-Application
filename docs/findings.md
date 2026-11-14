@@ -941,3 +941,7 @@ Add new findings below, under your track heading.
 ### F-FE-CHAT-HEADER-001: Remove the chat header extras
 
 - Date: 2026-11-14. Removed the Exact-revision confirmation badge and Assistant preferences shortcut from the chat header at the owner's request. Reused the existing page layout and updated its navigation expectation. `npm run check --prefix frontend` and all 48 chat/activity/preferences browser tests passed, including desktop and phone layouts.
+
+### F-FE-EMPTY-OVERVIEW-001: Keep the basket panel out of a new chat
+
+- Date: 2026-11-14. Removed the fake account-manager contact and its unused placeholder data. A new/unprepared chat no longer renders an empty Overview; desktop chat uses the space and mobile no longer reserves drawer padding. The panel appears when a persisted proposal exists, with an honest loading/error state while fetching it. Frontend checks and all 71 browser tests passed (two optional integration checks skipped), including empty-to-proposal, revised confirmation, blocked baskets and mock receipts. Desktop and phone empty-chat captures were inspected.
