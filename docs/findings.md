@@ -1084,3 +1084,11 @@ Add new findings below, under your track heading.
 - Final rebase (2026-11-15): incorporated `develop` at `2c923e4` after chat attachments merged during validation. Preserved both attachment and homepage regressions, and reused the attachment-aware composer for the homepage variant. Formatting, lint, type checking and build passed; the full browser suite passed (76 passed, two optional backend checks skipped), including desktop/320px homepage submission with a text attachment. The diff against develop still has no backend or migration changes. The older API used for the local shared-database preview does not support attachments; attachment behavior was verified with current-contract browser fixtures.
 
 - Composer merge compatibility (2026-11-15): rebased onto `develop` at `7e67f7e` and retained PR #186's single voice-or-send action, attachment-only sending, removed barcode and removed input focus ring in the homepage variant. Frontend `npm run check` passed; the full browser suite passed (78 passed, two optional backend checks skipped). Three focused checks additionally covered home voice/send switching with text and attachments at desktop/320px and starting voice from Home through persisted conversation creation. Desktop/mobile screenshots inspected. This PR still changes only frontend and documentation; no database migration was added or applied.
+- Resolved the subsequent minimal-homepage overlap from `develop` at `1a81373`, retaining its new page, schedules strip, composer and navigation while keeping the requested avatar dropdown and removed sidebar account block. Restored the desktop account header and adjusted homepage height for it; frontend checks passed.
+
+- Meal-planning follow-up: synced #187 with `develop` at `1a81373` and #179 at
+  `5ffb29c`, keeping the minimal homepage, account dropdown, attachments, streamed
+  cart and automatic ingredient scaling. Frontend checks and all 88 fixture-backed
+  browser checks passed (two optional backend integration checks skipped) before the
+  final shared homepage-height adjustment; focused homepage checks verify that adjustment.
+  The preceding CI run was superseded by these updates; final-head CI runs separately.
