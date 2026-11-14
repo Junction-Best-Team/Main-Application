@@ -10,18 +10,17 @@ Four-person Junction hackathon repository. The implemented Valio Aimo MVP is des
 - Clearly identify mocks and record preparation/reused material in `docs/pre-existing-work.md`.
 - Reviews, PRs, issues, skills, and CI are optional. Keep documentation short and follow the user's requested delivery scope.
 
-## Post-MVP plan
+## Data and secrets
 
-The longer-term design (MVP and full product, two-part purchasing contract, normalisation layer, approval flow) is a draft in `Plan/post-mvp-plan.md`. Verified data and API facts and owner decisions are in `docs/findings.md`; record new ones there (format at the top of that file). Build the MVP on the plan's seams, and read its section 0 before changing a shared interface. Still unresolved:
+- Challenge datasets live in `data/` (gitignored; the product JSON is about 84 MB). The raw brief, which contains personal details and credentials, lives in `local/` (gitignored). The Valio Aimo API key is in `.env` (`AIMO_API_KEY` in the original checkout, `VALIO_AIMO_API_KEY` for the app). Never print, log or commit these; copy a key between `.env` files without echoing it.
+- **The API key exists and team members have it.** Without it the app falls back to labelled fixture price/stock (`UPSTREAM_MODE=auto`, see README), which must never be presented as live data.
+- The live price and availability APIs are rate limited and the spec says not to poll them for all products. Narrow candidates with the static data first, then query only the shortlist.
+- Everything provided is synthetic. The API has no order endpoint, so orders, policy and approvals are our own mocks and must be labelled as mocks.
 
-- Whether an approval can make an unknown-quantity or passed-cut-off order executable (recommended: no, add a `needs_resolution` outcome).
-- How the customer receives the approval request (mock inbox, or the approval URL returned through the agent).
-- Whether the MVP needs a hash-chained audit log (recommended: no) and where the purchasing rules live (code, per D-003, or database rows).
-- Repricing tolerance default, and the status vocabulary for derived values.
-- The live-API probe is not committed or reproduced; `closingTime` behaviour and several variable meanings need a mentor.
-- Reconciling this plan with PR #2 (stack, tool names, decision vocabulary) and confirming cluster access.
+## Checks
 
+`tests/ci.sh` runs lint, the pytest suite and a black-box sweep of all eight agent tools (`tests/README.md`). Run it before pushing; `tests/ci.sh --live` repeats the sweep against the real Valio API.
 
-## Implementation scope precedence
+## Scope and history
 
-The explicit implementation handoff selects the PR #2 brief for this MVP. PR #2 was closed unmerged; implementation starts on current main and preserves the post-MVP draft as reference. For this implementation use database-seeded versioned policy, eight named tools, four outcomes, independent buyer inbox, ordinary persistent audit and no live deployment. The draft open issues above are resolved for this scope by `docs/brief.md`; do not reintroduce a notifier, policy editor or hash chaining. New verification is appended to `docs/findings.md`.
+The team works as one group on one backend (`docs/brief.md`). The earlier four-track split, the C1 to C5 contract numbering and the Type1 draft were dropped on 2026-11-14 (decision D-006 in `docs/findings.md`). New verification is appended to `docs/findings.md`; record non-obvious facts there with evidence and mark anything unchecked `unverified`.

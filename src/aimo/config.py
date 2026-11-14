@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     public_base_url: str = "http://localhost:8000"
     approval_session_secret: str = ""
     secure_cookies: bool = True
-    upstream_mode: Literal["fixture", "live"] = "fixture"
+    upstream_mode: Literal["auto", "fixture", "live"] = "auto"
     valio_aimo_base_url: str = "https://junction26.valioaimo.fi"
     valio_aimo_api_key: str = ""
     embedding_model: str = "intfloat/multilingual-e5-small"

@@ -420,7 +420,7 @@ Actual cluster access, namespace, registry, database endpoint/pgvector availabil
 
 **Build now:** ingestion, hybrid search, the eight agent tools including read-only policy and proposal-status retrieval, shared typed contracts/examples, unit/price validation with evidence and golden cases, one seeded demo customer policy/authority configuration, four-outcome policy evaluation and approval workflow in the existing backend, the React login/inbox/review frontend, persistent mock ordering, and ordinary audit history with a retrievable explanation/receipt.
 
-**Defer:** a custom buyer agent, separate frontend runtime service, customer policy-editing/admin UI and tools, direct in-agent approval integrations, outbound email/SMS/push/chat notifications, reminders and webhooks, broad contract/policy engine, hash-chained audit, daily/organization budget management, production identity federation, dedicated approval/search/model services, message queues, continuous ingestion, autoscaling, multi-agent orchestration, recipe planning, sustainability scoring, payments, and marketplace features. Add distinctive features only after the complete core purchase works.
+**Defer:** a `list_substitutes` tool (design below), an admin UI for the distributor's API key (open decision in section 12), a custom buyer agent, separate frontend runtime service, customer policy-editing/admin UI and tools, direct in-agent approval integrations, outbound email/SMS/push/chat notifications, reminders and webhooks, broad contract/policy engine, hash-chained audit, daily/organization budget management, production identity federation, dedicated approval/search/model services, message queues, continuous ingestion, autoscaling, multi-agent orchestration, recipe planning, sustainability scoring, payments, and marketplace features. Add distinctive features only after the complete core purchase works.
 
 Demo sequence:
 
@@ -459,6 +459,7 @@ Resolve early:
 - Can missing deposit IDs be priced, and what other charges belong in the total?
 - Are unit/code mappings or corrections available for ambiguous/conflicting catalog facts?
 - How should variable weight and uncertain Terminal fulfillment be represented if included later?
+- **How does a distributor supply the Valio API key in the full product?** Either an admin UI (the distributor enters it; stored server-side and encrypted, never reaching a browser, with rotation and a "test connection" button) or deployment configuration (environment variable or Kubernetes Secret, as in the MVP). Decide before production. Meanwhile the key exists, teammates have it, and without it the app uses labelled fixtures (`UPSTREAM_MODE=auto`).
 - Which cluster/database resources are available, and what are the actual submission requirements?
 
 Sources:
@@ -471,3 +472,14 @@ Sources:
 - [Embedding model candidate](https://huggingface.co/intfloat/multilingual-e5-small), [pgvector and hybrid search](https://github.com/pgvector/pgvector#hybrid-search), and [Kubernetes Jobs](https://kubernetes.io/docs/concepts/workloads/controllers/job/)
 - Reviewed [PR #1](https://github.com/Junction-Best-Team/Main-Application/pull/1) at `5a14b3fde3448ec2674d8711bbba676d6c6a1667`: shared contracts, conversion evidence, agent next actions, read-only policy discovery, and reported API findings informed this update. Its draft instructions and unverified interpretations were assessed as reference material, not adopted wholesale.
 - [Preparation and reuse log](pre-existing-work.md)
+
+## 13. Planned: `list_substitutes` (not built)
+
+Input: a product ID plus the same `requirements` used by search. Output: ranked candidates, each with the evidence it was chosen on and what still has to be checked. It returns candidates only; it never approves a substitution.
+
+Candidate sources, in order:
+
+1. **Supplied pairs** from the product's `substitutions` field. Only 189 of 17,546 products (1.1%) have it (250 pairs, 83 of 349 categories), and the pairs are unreliable (a self-substitution, only 63 reciprocal, see F-DATA-004). Treat them as hints, labelled `source: supplied`.
+2. **Our own matching** for everything else: same category, compatible sales unit and normalised quantity, then hybrid search on the product text. This covers the 98.9% of products with no supplied pairs, labelled `source: derived`.
+
+Every candidate is re-checked before it is returned: requirements (lactose-free, milk-free, allergen conflicts), unit compatibility, price and availability for the delivery date (shortlist only, never the whole list). Failures are returned as `rejected` with the reason, so an agent can see why. Using a substitute still goes through `prepare_order` with `substitutes_for`, and the seeded policy decides whether the buyer must approve.

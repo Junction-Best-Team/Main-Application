@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from aimo import approval_workflow as workflow
-from aimo import auth
+from aimo import auth, upstream
 from aimo.config import settings
 from aimo.db import Problem, connection
 from aimo.mcp_adapter import build_mcp
@@ -94,7 +94,7 @@ def create_app(service=None):
         return {
             "status": "ready",
             "model": active["model_key"],
-            "upstream_mode": settings().upstream_mode,
+            "upstream_mode": upstream.effective_mode(),
         }
 
     @app.post("/api/login", response_model=SessionResponse)

@@ -2,7 +2,7 @@
 
 One seller-side FastAPI service exposes eight HTTP/MCP tools, serves a React buyer approval inbox, and commits **persistent mock orders**. PostgreSQL stores the catalog index, versioned buyer policy, identities, immutable proposal revisions, approvals, audit events and receipts. The buyer's purchasing agent is external.
 
-The agreed scope is in [docs/brief.md](docs/brief.md). PR #2 was **closed without merging** before implementation; this branch starts from `main` at `76296c1`, preserves PR #3's reference documents, and implements the attached PR #2 brief. `Plan/post-mvp-plan.md` is a separate draft, not the implementation contract. See [actual validation and limitations](docs/validation.md).
+The agreed scope is in [docs/brief.md](docs/brief.md). PR #2 was **closed without merging** before implementation; this branch starts from `main` at `76296c1`, keeps PR #3's findings, and implements the attached PR #2 brief. See [actual validation and limitations](docs/validation.md).
 
 ## Local setup
 
@@ -36,6 +36,20 @@ For a quick authored-fixture catalog, use `uv run aimo fixture-catalog` instead 
 Open [the buyer inbox](http://localhost:8000/approvals). Username: **buyer**. Read the generated `DEMO_BUYER_PASSWORD` privately from `.env`; the agent uses the separate `DEMO_AGENT_TOKEN`. The browser never receives agent/API keys. `SECURE_COOKIES=false` is for localhost HTTP only. Hosted deployments require HTTPS and `SECURE_COOKIES=true`.
 
 For frontend development, run `npm run dev --prefix frontend` and temporarily set `PUBLIC_BASE_URL=http://localhost:5173` for the backend. Vite proxies `/api`; production serves the built assets from FastAPI. The source of the browser's generated types is Python: `uv run python scripts/export_schema.py && npm run types --prefix frontend`.
+
+## Valio API key and upstream modes
+
+`UPSTREAM_MODE` selects where price and availability come from:
+
+| Value | Behaviour |
+| --- | --- |
+| `auto` (default) | Live Valio API when `VALIO_AIMO_API_KEY` is set, otherwise **authored fixtures** with a logged warning. |
+| `live` | Live only; fails closed (`UPSTREAM_CREDENTIALS_MISSING`) without a key. |
+| `fixture` | Invented fixtures only (used by the pytest suite). |
+
+**The key exists and team members have it.** Ask a teammate and put it in your own gitignored `.env` as `VALIO_AIMO_API_KEY` (never commit or print it). Without it everything still runs on fixtures, but nothing from that run is live data: `GET /health/ready` reports `upstream_mode`, and every lookup response carries `mode: live|fixture`.
+
+**Open decision for the full product:** how a distributor supplies this key. Options: an admin UI where the distributor enters it (stored server-side, never sent to browsers), or deployment configuration as today (an environment variable or Kubernetes Secret). The MVP uses the environment variable. This must be resolved before production; see `docs/brief.md` section 12.
 
 ## Demo
 
@@ -75,6 +89,16 @@ Commit re-fetches commercial evidence outside the transaction, then locks the bu
 Receipts say **“Accepted by demo order service”** and explicitly report no supplier order and no reservation. Demo delivery charges are zero by adapter definition; real checkout charges need an upstream contract. The supplied API has no order endpoint.
 
 ## Verification
+
+One command runs lint, the pytest suite and a black-box sweep of all eight tools (details in [tests/README.md](tests/README.md)):
+
+```sh
+tests/ci.sh          # hermetic: own database, fixture catalog and fixture price/stock, no key needed
+tests/ci.sh --live   # your .env database and full catalog, real Valio price/stock
+```
+
+The individual checks:
+
 
 ```sh
 uv run ruff check src tests scripts

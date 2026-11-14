@@ -1,6 +1,6 @@
 # Findings
 
-Non-obvious facts, traps, decisions and known issues, each with evidence. Append to your track's section. Do not delete another track's finding; change its status and say why.
+Non-obvious facts, traps, decisions and known issues, each with evidence. Append to the relevant section. Do not delete a finding; change its status and say why. The `Track:` field on older entries refers to the four-track split that was dropped (D-006); ignore it.
 
 Entry format:
 
@@ -19,22 +19,32 @@ Owner decisions use `D-<nnn>` and quote the owner's words verbatim.
 ### D-001: Build the Valio Aimo side, not the buyer's agent
 - Date: 2026-11-13   Track: all   Status: verified
 - Decision: "Can you get rid of the buyer agent interface, and stick with what the brief wanted."
-- Impact: Scope is the interface and operating model (lookup, quote and order, mandates and approvals, audit). A thin reference client exists only for demo and testing. See `Plan/post-mvp-plan.md`.
+- Impact: Scope is the interface and operating model (lookup, quote and order, mandates and approvals, audit). A thin reference client exists only for demo and testing. The Type1 draft that elaborated this was removed (D-006).
 
 ### D-003: The agent contract is fixed in source code
-- Date: 2026-11-14   Track: 3 (affects 2, 4)   Status: verified (decision); applies to the MVP, extended for the full product by D-004; design is a draft in `Plan/post-mvp-plan.md`
+- Date: 2026-11-14   Track: 3 (affects 2, 4)   Status: verified (decision); the draft design in `Plan/post-mvp-plan.md` was removed (D-006); the MVP instead uses database-seeded, versioned, read-only policy (F-MVP-001)
 - Decision: "For the mandate, I would like this to behave as a contract, which is the behavior of how the MCP will behave with the agent. I want it to be fixed in the code, and be unchangable without source code changes."
 - Impact: What the agent may do alone is a frozen constant in source, with no endpoint, tool or setting that changes it. Every policy decision and audit event records the contract hash. The human realm only approves or rejects held orders; it cannot edit limits. Production path: replace the constant with a buyer-signed mandate.
 
 ### D-004: Two-part contract; client-editable in the full product
-- Date: 2026-11-14   Track: 3 (affects 2, 4)   Status: verified (decision); design is a draft in `Plan/post-mvp-plan.md` section 6
+- Date: 2026-11-14   Track: 3 (affects 2, 4)   Status: verified (decision) as a full-product idea; its draft design was removed (D-006) and is not in the MVP
 - Decision: "In the full feature list, I would like for the contract to be editable by the client only, as part of some sort of settings, but only specific elements. there would be a distribution part of the contract, and a client part of the contract"
 - Impact: The contract has a distribution part (Aimo-owned, changed by code release) and a client part (customer-owned). The client part may contain only fields the distribution part lists as client-editable, inside its bounds. The effective contract is the stricter of the two. In the MVP both parts are still frozen constants (D-003).
 
 ### D-005: MVP and full design as two parts; customer and agent are separate entities
-- Date: 2026-11-14   Track: all   Status: verified (decision)
+- Date: 2026-11-14   Track: all   Status: verified (decision); the Type1 draft it refers to was removed (D-006), the customer/agent separation is kept in the MVP (separate buyer login and agent token)
 - Decision: "They are technically one device, but two seperate entities. Also, in the architecture for type1, can you write out the elements/contracts as two seperate elements. Requiremnts for MVP, and requiremnets that would make a great product. So we aren't over commiting, but at the same time, we make sure we build a good first product."
 - Impact: The Type1 draft has Part A (MVP) and Part B (full product), with seams so the MVP grows into the full design. The approval request goes to the customer through a channel that does not pass through the agent, and the agent's output contains no approval secret.
+
+### D-006: Drop the four tracks, C1 to C5 and the Type1 draft
+- Date: 2026-11-14   Track: all   Status: verified
+- Decision: "For the conflicts, lets drop the four tracks, and the c1-5. lets also drop the type1 draft.  the plan/post-mvp findings should now be based on the main, maybe we rebase locally to the main, then adopt the pr to work locally on it."
+- Impact: PR #4 (`codex/valio-aimo-mvp`) is the base. `docs/architecture.md`, the contract numbering and `docs/drafts/type1-architecture.md` (on the `Init` branch) are not carried forward, and `Plan/post-mvp-plan.md` is deleted on the working branch. PR #3 was already merged into main (`76296c1`), so the findings branch needed no rebase. Old entries keep their `Track:` field for history only.
+
+### D-007: API key fallback and future key provisioning
+- Date: 2026-11-14   Track: all   Status: verified
+- Decision: "Add the no api key as a fall back, but add notes that it does exist and members of the team will have it. Also lets note in the future build that the api key method needs to be added, either via a UI that the distributor can add, or it is hard coded, but we need to resolve this."
+- Impact: `UPSTREAM_MODE=auto` (default) uses the live API when `VALIO_AIMO_API_KEY` is set and labelled fixtures otherwise. The key's provisioning method for the full product is an open decision (admin UI versus deployment configuration), recorded in `docs/brief.md` section 12.
 
 ## Data (static files in `data/`)
 
@@ -235,18 +245,6 @@ Owner decisions use `D-<nnn>` and quote the owner's words verbatim.
 - Finding: The challenge page showed "Status: Closed" and a countdown of about 12 hours 47 minutes when the brief was saved. It is not clear whether that is the submission deadline.
 - Evidence: `local/project-brief.raw.txt` (gitignored).
 - Impact: Confirm the official deadline on the event platform before planning scope.
-
-## Track sections
-
-Add new findings below, under your track heading.
-
-### Track 1: Catalog and Discovery
-
-### Track 2: Quote and Order
-
-### Track 3: Mandates, Policy and Approvals
-
-### Track 4: Interface, Audit and Demo
 
 ## MVP implementation verification
 
