@@ -953,6 +953,26 @@ Add new findings below, under your track heading.
 
 - Date: 2026-11-14. Removed the fake account-manager contact and its unused placeholder data. A new/unprepared chat no longer renders an empty Overview; desktop chat uses the space and mobile no longer reserves drawer padding. The panel appears when a persisted proposal exists, with an honest loading/error state while fetching it. Frontend checks and all 71 browser tests passed (two optional integration checks skipped), including empty-to-proposal, revised confirmation, blocked baskets and mock receipts. Desktop and phone empty-chat captures were inspected.
 
+### F-SCHED-001: The commit gate was fail-open for any role except agent
+- Date: 2026-11-14   Track: 3   Status: verified (local run, not CI)
+- Finding: `commit_order` checked the customer confirmation only `if identity["role"] == "agent"`, so every other role skipped it like an approver. A simulated `scheduler` role and an unknown role each committed a mock order. `conversations.confirm` refused an agent only because its authority was empty: an agent row given approver-like authority recorded a `customer_confirmations` row.
+- Evidence: tests/test_commit_role_gate.py (red: DID NOT RAISE for both roles, then green after `require_commit_authority`); tests/test_confirm_role.py (red: confirmation recorded, then FORBIDDEN). Commits 50aa73e and 131a4ef on p3/scheduler-design.
+- Impact: gate dispatch is now per role and refuses unknown roles; the scheduler role goes through `scheduler.ensure_commit_allowed`.
+
+### F-SCHED-002: Fingerprint equality cannot mean "the same terms" across dates
+- Date: 2026-11-14   Track: 3   Status: verified (code reading, tests/test_scheduler_helpers.py)
+- Finding: `material_fingerprint` hashes `request_id`, `delivery_date`, the supplier cutoff and the full product facts, so two runs of one standing order never match. The scheduler compares `terms_fingerprint` (products, quantities, deposits, unit net/gross/tax rate, destination, currency) and checks the policy outcome and the ceiling separately. The field set is the `TERMS_*` constants in `src/aimo/scheduler.py`.
+- Impact: a different answer on which fields count is a change to those constants only.
+
+### F-SCHED-003: A failed system-authored first turn strands the chat
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: after a failed turn `enqueue` refuses new messages (`RETRY_PREVIOUS_MESSAGE`) and `detail()` builds `retry_message` from a *user* message. A turn that starts with a system message has none, so the customer could neither write nor retry.
+- Evidence: tests/test_scheduler_chat.py (`test_a_failed_first_turn_never_strands_the_customer`, `test_three_interrupted_attempts_leave_the_same_fallback`). Fix: `scheduler.settle_failed_system_turn` writes a deterministic assistant message and closes the turn.
+
+### F-SCHED-004: The scheduler identity cannot be created at run time
+- Date: 2026-11-14   Track: 3   Status: verified
+- Finding: the runtime database role cannot write `identities` (`permissions.py`), so the per-buyer scheduler identity comes from the migration and `aimo seed`. A buyer created later has none until provisioning adds it; its runs fail closed (`SCHEDULER_NOT_CONFIGURED`). The boundary "the scheduler never creates or edits an authorization" is enforced in code and by triggers (terms immutable, final statuses final), not by database grants.
+- Evidence: tests/test_scheduler_migration.py, tests/test_scheduler_engine.py (`test_a_buyer_without_a_scheduler_identity_fails_closed`).
 ## Signed-in buyer settings simplification — 2026-11-14
 
 - Owner decision: every signed-in active human buyer can edit purchasing settings without a separate policy-manager grant. The money box is a shared account purchasing cap, not permission to increase a person's approval authority.
