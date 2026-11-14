@@ -289,3 +289,14 @@ Reused #179's persisted activity observer, reviewed draft-cart projection and UI
 plus the current develop attachment, settings and scheduler changes. Combined tests
 use the existing synthetic recipe/product fixtures and intercepted browser snapshots;
 no new source material, assets or dependencies beyond the integrated branches.
+
+
+## Minimal homepage — 2026-11-15
+
+Implemented the owner's selected AI-generated homepage mockup as React/CSS;
+no generated bitmap is shipped. Reused the existing Hanken Grotesk typography,
+brand colors, authenticated chat hook, retry keys, navigation and mobile menu.
+The three schedule entries are authored static demo placeholders, with disabled
+schedule navigation. The composer retains develop’s file attachment behavior.
+No scheduling service, new dependency or external data was added. New browser checks use authored API responses, without supplier or
+model calls.

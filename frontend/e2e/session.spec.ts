@@ -115,7 +115,7 @@ test("sign-in succeeds and yields a usable session", async ({ page }) => {
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
   await expect(
-    page.getByRole("heading", { name: "Welcome, demo-hotel" }),
+    page.getByRole("heading", { name: "What are we cooking?" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "User menu" }).click();
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
@@ -128,14 +128,14 @@ test("a valid session restores automatically on reload", async ({ page }) => {
   await mockSession(page, true);
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Welcome, demo-hotel" }),
+    page.getByRole("heading", { name: "What are we cooking?" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "User menu" }).click();
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
   await page.reload();
   await expect(page).toHaveURL(/\/$/);
   await expect(
-    page.getByRole("heading", { name: "Welcome, demo-hotel" }),
+    page.getByRole("heading", { name: "What are we cooking?" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "User menu" }).click();
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
