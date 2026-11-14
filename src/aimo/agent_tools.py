@@ -242,9 +242,12 @@ def contains_nul(value):
 class ToolSession:
     """Fresh per turn; persistent preparation deduplication belongs to Service."""
 
-    def __init__(self, identity, service, guard=None):
+    def __init__(self, identity, service, guard=None, constraints=None):
         self.identity = dict(identity)
         self.service = service
+        # POL-008: the customer's stated limits, supplied by the server and never by the model.
+        # No tool input accepts it; prepare forwards it so policy can stop a loosened request.
+        self.constraints = constraints
         # Optional semantic review; deterministic checks here and in Service always apply.
         self.guard = guard
         self.preparation_key = "chat-" + fingerprint({"turn": identity["_turn_id"]})
@@ -663,6 +666,7 @@ class ToolSession:
             self.service.prepare_order(
                 self.identity,
                 PrepareRequest(**request.model_dump(), idempotency_key=self.preparation_key),
+                **({"constraints": self.constraints} if self.constraints else {}),
             ),
         )
         self.proposal, self.prepared_digest = result, digest

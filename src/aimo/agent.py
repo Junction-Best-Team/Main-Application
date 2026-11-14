@@ -192,6 +192,7 @@ def run_turn(
     *,
     on_progress: Callable[[AgentProgress], None] | None = None,
     budget_seconds: float = 90,
+    constraints: list[dict] | None = None,
 ) -> AgentTurn:
     """Synchronous runner; product APIs own worker execution, persistence and leases.
 
@@ -204,7 +205,7 @@ def run_turn(
         raise ValueError("Agent time budget must be positive and at most 120 seconds")
     cfg = settings()
     progress = Progress(identity["_turn_id"], on_progress)
-    session = ToolSession(identity, service)
+    session = ToolSession(identity, service, constraints=constraints)
     today = datetime.now(ZoneInfo("Europe/Helsinki")).date().isoformat()
     instructions = system_prompt()
     history = [{"role": "system", "content": instructions + "\nHelsinki date: " + today}]

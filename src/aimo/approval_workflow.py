@@ -13,10 +13,21 @@ from aimo.db import Problem, connection, fingerprint, js, now
 from aimo.purchases import build_snapshot, context, material_fingerprint
 from aimo.schemas import (
     CommitRequest,
+    Constraint,
     DecisionRequest,
     PrepareRequest,
     PurchaseRequest,
 )
+
+
+def stored_constraints(request):
+    """The server-written POL-008 record inside a stored request; absent for most requests."""
+    return request.get("constraints")
+
+
+def public_request(request):
+    """What callers see: the stored request without the server-only constraint record."""
+    return {k: v for k, v in request.items() if k != "constraints"}
 
 
 def audit(c, pid, actor, event, detail):
@@ -47,7 +58,11 @@ def append_revision(
     c, pid, revision, identity, request, snapshot, expires, policy, actor, approvers, evaluated=None
 ):
     evaluated = evaluated or evaluate_purchase(
-        request, snapshot, policy["rules"], [a["authority"] for a in approvers]
+        request,
+        snapshot,
+        policy["rules"],
+        [a["authority"] for a in approvers],
+        stored_constraints(request),
     )
     fp = material_fingerprint(request, snapshot, policy["version"])
     c.execute(
@@ -126,6 +141,7 @@ def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, hi
                     r["snapshot"],
                     policy["rules"],
                     [x["authority"] for x in approvers],
+                    stored_constraints(r["request"]),
                 )
                 if evaluation_changed(r, evaluated):
                     status = "authority_changed"
@@ -197,7 +213,7 @@ def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, hi
         "order_id": str(order["id"]) if committed else None,
         "buyer_id": buyer["id"],
         "agent_id": p["agent_id"],
-        "request": r["request"],
+        "request": public_request(r["request"]),
         "snapshot": r["snapshot"],
         "can_decide": can_decide,
         "history": history
@@ -232,8 +248,15 @@ def prior_preparation(c, identity, key, payload_hash):
     return None
 
 
-def prepare_order(identity, request: PrepareRequest, connector):
+def prepare_order(identity, request: PrepareRequest, connector, constraints=None):
+    """`constraints` is the server-only POL-008 record (never a model or API field). It is stored
+    in the revision's request JSON under `constraints`, so the fingerprint and the retry hash
+    cover it; the key is omitted when there is none, leaving older requests unchanged."""
     payload = request.model_dump(mode="json", exclude={"idempotency_key"})
+    if constraints:
+        payload["constraints"] = [
+            Constraint.model_validate(entry).model_dump(mode="json") for entry in constraints
+        ]
     payload_hash = fingerprint(payload)
     with connection() as c:
         context(c, identity)
@@ -493,7 +516,7 @@ def commit_order(identity, request: CommitRequest, connector):
             raise Problem("ALREADY_COMMITTED", "Use the original idempotency key or get_order.")
         if r["expires_at"] <= now():
             raise Problem("PROPOSAL_EXPIRED", "Prepare a fresh proposal.")
-        purchase = PurchaseRequest.model_validate(r["request"])
+        purchase = PurchaseRequest.model_validate(public_request(r["request"]))
     snapshot, expires, version = build_snapshot(identity, purchase, connector)
     with connection() as c:
         _, policy, actor, approvers = context(c, identity, lock=True)
@@ -520,6 +543,7 @@ def commit_order(identity, request: CommitRequest, connector):
             snapshot,
             policy["rules"],
             [x["authority"] for x in approvers],
+            stored_constraints(r["request"]),
         )
         # Commercial terms can be identical while effective purchasing authority changes.
         # Persist the new decision and any approval in this same locked transaction.
