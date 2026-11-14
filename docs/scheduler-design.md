@@ -6,7 +6,7 @@
 > pause, `placed` orders, per-ingredient accepted substitutes with a percentage range, and restart by
 > `replace` were added; sections 1-5 were built as described otherwise. What exists and how it runs:
 > [scheduler.md](scheduler.md). O-7 (missed dates) became: a date missed by a short outage runs late within
-> `SCHEDULER_GRACE_HOURS` (default 6) after the end of that date, otherwise `RUN_MISSED` (owner Q-104); the first
+> `SCHEDULER_GRACE_HOURS` (default 6) after that date's run time (06:00, so until 12:00), otherwise `RUN_MISSED` (owner Q-104); the first
 > run date is tomorrow to a year ahead, today only in demo mode (Q-103).
 
 

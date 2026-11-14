@@ -373,11 +373,11 @@ def open_dates(c, auth, today, after_hour, now):
         run_id, late, delivery = uuid4(), False, day + timedelta(days=auth["delivery_offset_days"])
         if auth["status"] == "paused":
             state, code = "skipped", "PAUSED"
-        elif day < today and not within_grace(day, now):
+        elif not within_grace(day, now):
             state, code = "disrupted", "RUN_MISSED"
         else:
             state, code = "due", None
-            if day < today:  # CNF-039: a short outage runs the missed date late
+            if run_age(day, now) > LATE_AFTER:  # CNF-039: a short outage runs the date late
                 late = True
                 delivery = max(delivery, today + ONE_DAY)  # tomorrow at the earliest
         row = c.execute(
@@ -424,11 +424,22 @@ def open_dates(c, auth, today, after_hour, now):
     return made
 
 
+LATE_AFTER = timedelta(minutes=15)  # a run started later than this after its run time is "late"
+
+
+def run_age(day, now):
+    """How long after its run time (the run hour, Helsinki, on that date) `now` is."""
+    run_time = datetime.combine(
+        day, datetime.min.time().replace(hour=settings().scheduler_run_after_hour), HELSINKI
+    )
+    return now - run_time
+
+
 def within_grace(day, now):
-    """CNF-039: a date older than today still runs, late, until `scheduler_grace_hours` after the
-    end of that date (Helsinki), so a short outage around midnight is not a disruption."""
-    end = datetime.combine(day + ONE_DAY, datetime.min.time(), HELSINKI)
-    return now < end + timedelta(hours=settings().scheduler_grace_hours)
+    """CNF-039: a date still runs, late, while `now` is at most `scheduler_grace_hours` after its run
+    time. A short outage (under 6 hours by default) is therefore not a disruption; a longer one is
+    RUN_MISSED. Set SCHEDULER_GRACE_HOURS=30 to let an outage across midnight run late too."""
+    return run_age(day, now) <= timedelta(hours=settings().scheduler_grace_hours)
 
 
 def open_demo_run(c, auth, now):

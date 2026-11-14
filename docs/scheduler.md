@@ -41,10 +41,13 @@ request is recorded as cancelled, and a chat starts with a system-authored first
 that tells the agent what is wrong and which lines are still valid ingredients. If the first agent turn
 fails, a deterministic message closes it so the customer can still write.
 Transient supplier errors retry with backoff (5 attempts), then become a disruption.
-A date missed by a short outage runs **late**, without a disruption, until `SCHEDULER_GRACE_HOURS` (6) after the
-end of that date (Helsinki): the order is placed now, the delivery date stays if it is still tomorrow or later and
-otherwise moves to tomorrow, and the run (`reason.codes` `RAN_LATE`), its events and the order note say it ran late.
-Beyond the window the missed date is a `RUN_MISSED` disruption.
+A date missed by a short outage runs **late**, without a disruption, while `now` is at most
+`SCHEDULER_GRACE_HOURS` (6) after that date's run time (06:00 Helsinki), so until 12:00 the same day: the order is
+placed now, the delivery date stays if it is still tomorrow or later and otherwise moves to tomorrow, and the run
+(`reason.codes` `RAN_LATE`), its events and the order note say it ran late. A run started within 15 minutes of its run
+time is on time. After the window the missed date is a `RUN_MISSED` disruption. An owner who wants an outage across
+midnight to run late too sets `SCHEDULER_GRACE_HOURS=30`. In demo mode a schedule created after the window with a
+first run date of today would be missed at once: use "Run now (demo)" there.
 
 ## Rules that are easy to break
 

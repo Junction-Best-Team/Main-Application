@@ -236,19 +236,26 @@ def test_the_session_reports_whether_the_demo_switch_is_on(http, demo_mode, monk
     assert headers
 
 
-# --- CNF-039: a date missed by a short outage runs late ---------------------------------------
+# --- CNF-039: a short outage runs the date late ----------------------------------------------
+# Literal reading (b5): a date runs while now is at most SCHEDULER_GRACE_HOURS (6) after its run
+# time (06:00 Helsinki), so until 12:00 the same day; after that it is a RUN_MISSED disruption.
 
 
-def next_morning(hour):
-    return at(TODAY + timedelta(days=1), hour=hour)
+def test_a_run_started_on_time_is_not_flagged_late(buyer, service, placed_order, demo_mode):
+    s = scheduled(buyer, service, placed_order)
+    drive(service, at(hour=6, minute=5))
+    run = run_of(s)
+    assert run["status"] == "committed" and not (run["reason"] or {}).get("codes")
+    created = one("SELECT detail FROM scheduled_run_events WHERE event='created'")["detail"]
+    assert "late" not in created
 
 
 def test_a_date_missed_by_a_short_outage_runs_late_without_a_disruption(
     buyer, service, placed_order, demo_mode
 ):
-    s = scheduled(buyer, service, placed_order)  # due today 06:00; the worker was down all day
+    s = scheduled(buyer, service, placed_order)  # due 06:00; the worker is back at 09:00
     before = len(orders())
-    drive(service, next_morning(2))  # back at 02:00 the next day: inside the grace window
+    drive(service, at(hour=9))
     run = run_of(s)
     assert run["scheduled_date"] == TODAY and run["status"] == "committed"
     assert run["reason"]["codes"] == ["RAN_LATE"] and len(orders()) == before + 1
@@ -259,19 +266,53 @@ def test_a_date_missed_by_a_short_outage_runs_late_without_a_disruption(
         "scheduled_run"
     ]
     assert note["ran_late"] is True and note["scheduled_date"] == str(TODAY)
+    assert note["delivery_date"] == str(TODAY + timedelta(days=2))  # still tomorrow or later
 
 
-def test_a_late_run_keeps_its_delivery_date_while_it_is_still_tomorrow_or_later(
+def test_the_window_ends_six_hours_after_the_run_time(buyer, service, placed_order, demo_mode):
+    inside = scheduled(buyer, service, placed_order)
+    drive(service, at(hour=12, minute=0))  # exactly 6 hours: still inside
+    assert run_of(inside)["status"] == "committed"
+
+
+def test_beyond_the_grace_window_a_missed_date_is_a_disruption(
     buyer, service, placed_order, demo_mode
 ):
-    s = scheduled(buyer, service, placed_order)  # the past order was placed two days ahead
-    drive(service, next_morning(2))
-    assert run_of(s)["delivery_date"] == TODAY + timedelta(days=2)
+    s = scheduled(buyer, service, placed_order)
+    drive(service, at(hour=12, minute=1))
+    run = run_of(s)
+    assert run["status"] == "disrupted" and run["reason_code"] == "RUN_MISSED"
+    assert schedule_row(s)["status"] == "stopped"
+
+
+def test_a_date_from_a_past_day_is_missed_with_the_default_window(
+    buyer, service, placed_order, demo_mode
+):
+    s = scheduled(buyer, service, placed_order)
+    drive(service, at(TODAY + timedelta(days=1), hour=2))  # 20 hours after the run time
+    assert run_of(s)["reason_code"] == "RUN_MISSED"
+
+
+def test_the_grace_window_is_a_setting(buyer, service, placed_order, demo_mode, monkeypatch):
+    monkeypatch.setattr(settings(), "scheduler_grace_hours", 0)
+    s = scheduled(buyer, service, placed_order)
+    drive(service, at(hour=7))
+    assert run_of(s)["reason_code"] == "RUN_MISSED"
+
+
+def test_thirty_hours_reproduces_the_end_of_the_date_reading(
+    buyer, service, placed_order, demo_mode, monkeypatch
+):
+    monkeypatch.setattr(settings(), "scheduler_grace_hours", 30)
+    s = scheduled(buyer, service, placed_order)
+    drive(service, at(TODAY + timedelta(days=1), hour=2))
+    assert run_of(s)["status"] == "committed" and run_of(s)["reason"]["codes"] == ["RAN_LATE"]
 
 
 def test_a_late_run_moves_a_delivery_date_that_has_passed_to_tomorrow(
-    buyer, service, request_data, demo_mode
+    buyer, service, request_data, demo_mode, monkeypatch
 ):
+    monkeypatch.setattr(settings(), "scheduler_grace_hours", 30)
     request_data["delivery_date"] = str(TODAY + timedelta(days=1))  # a one-day lead order
     p = service.prepare_order(
         auth.internal_agent(buyer), PrepareRequest.model_validate(request_data)
@@ -283,7 +324,7 @@ def test_a_late_run_moves_a_delivery_date_that_has_passed_to_tomorrow(
         service,
     )
     s = scheduled(buyer, service, {"order_id": receipt["order_id"]})
-    drive(service, next_morning(2))  # the scheduled delivery date is now today
+    drive(service, at(TODAY + timedelta(days=1), hour=2))  # the scheduled delivery date is today
     run = run_of(s)
     assert run["status"] == "committed" and run["delivery_date"] == TODAY + timedelta(days=2)
     assert (
@@ -294,27 +335,10 @@ def test_a_late_run_moves_a_delivery_date_that_has_passed_to_tomorrow(
     )
 
 
-def test_beyond_the_grace_window_a_missed_date_is_still_a_disruption(
-    buyer, service, placed_order, demo_mode
-):
-    s = scheduled(buyer, service, placed_order)
-    drive(service, next_morning(7))  # 06:00 grace after the end of the date has passed
-    run = run_of(s)
-    assert run["status"] == "disrupted" and run["reason_code"] == "RUN_MISSED"
-    assert schedule_row(s)["status"] == "stopped"
-
-
-def test_the_grace_window_is_a_setting(buyer, service, placed_order, demo_mode, monkeypatch):
-    monkeypatch.setattr(settings(), "scheduler_grace_hours", 0)
-    s = scheduled(buyer, service, placed_order)
-    drive(service, next_morning(0))
-    assert run_of(s)["reason_code"] == "RUN_MISSED"
-
-
 def test_a_late_date_that_cannot_be_prepared_is_a_normal_disruption(
     buyer, service, connector, placed_order, demo_mode
 ):
     s = scheduled(buyer, service, placed_order)
     connector.stock = {"464306": "0"}
-    drive(service, next_morning(2))
+    drive(service, at(hour=9))
     assert run_of(s)["reason_code"] == "PRODUCT_UNAVAILABLE"
