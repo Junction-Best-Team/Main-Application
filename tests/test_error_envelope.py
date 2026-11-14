@@ -275,3 +275,44 @@ def test_openapi_declares_the_envelope_and_no_http_validation_error(service):
 def test_the_committed_openapi_json_matches_what_the_app_generates(service):
     committed = json.loads(Path("frontend/openapi.json").read_text())
     assert committed == create_app(service).openapi(), "run scripts/export_schema.py"
+
+
+# --- routes added after the envelope was built (policy settings, memory screens) -----------------
+
+
+def csrf_headers(login):
+    return ORIGIN | {"X-CSRF-Token": login.json()["csrf_token"]}
+
+
+@pytest.mark.parametrize(
+    "method,path",
+    [
+        ("get", "/api/settings/policy"),
+        ("put", "/api/settings/policy"),
+        ("get", "/api/memories"),
+        ("post", "/api/memories"),
+        ("get", "/api/purchases/00000000-0000-0000-0000-000000000000/receipt"),
+    ],
+)
+def test_newer_routes_refuse_an_anonymous_caller_in_the_envelope(client, method, path):
+    response = getattr(client, method)(path, headers=ORIGIN)
+    assert response.status_code in (401, 403), response.text
+    envelope(response, response.status_code)
+
+
+def test_the_policy_settings_route_reports_a_bad_body_in_the_envelope(client):
+    login = signed_in(client)
+    response = client.put("/api/settings/policy", headers=csrf_headers(login), json={"bogus": 1})
+    error = envelope(response, 422, "VALIDATION_ERROR")
+    assert error["details"]
+
+
+def test_the_memory_routes_report_validation_and_unknown_ids_in_the_envelope(client):
+    login = signed_in(client)
+    headers = csrf_headers(login)
+    envelope(client.post("/api/memories", headers=headers, json={}), 422, "VALIDATION_ERROR")
+    response = client.post(
+        "/api/memories/00000000-0000-0000-0000-000000000000/delete", headers=headers, json={}
+    )
+    assert response.status_code >= 400
+    envelope(response, response.status_code)
