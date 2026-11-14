@@ -23,23 +23,27 @@ See the [architecture diagrams](docs/architecture.md) for the system overview, p
 
 ## CI
 
-One workflow, `.github/workflows/ci.yml`, runs on PRs into `develop` and `main` and on pushes to either. Backend and frontend checks start in parallel:
+One workflow, `.github/workflows/ci.yml`, runs on PRs into `develop` and `main`, plus manual runs. Change detection starts the applicable backend and frontend jobs in parallel:
 
 | Job (GitHub name) | What it does |
 | --- | --- |
 | Python lint and tests | `ruff check`, then `pytest` against temporary PostgreSQL/pgvector, then the strict buyer-facing API sweep; uses fixture embeddings and supplier responses |
 | Frontend types and build | `npm ci`, TypeScript check and production build; formatting and browser tests stay local |
-| Detect application components | Only detects infrastructure/workflow changes; retains its existing name for required status checks |
+| Detect application components | Selects backend, frontend and infrastructure checks; retains its existing name for required status checks |
 | Terraform | Format, validate, mocked-provider plan tests and Helm render for `infra/` (only when it or the workflows changed) |
-| **CI gate** | Requires backend, frontend and change detection to succeed, plus Terraform when applicable |
+| **CI gate** | Requires change detection and every selected application/infrastructure check to succeed |
 
-The API sweep shares the backend job's Python environment and PostgreSQL service. Coverage is an optional local diagnostic, with no percentage requirement or coverage artifact jobs in CI. Dependencies are locked and cached; new commits cancel outdated PR runs. CI uses fixtures, without supplier keys, model downloads or full catalog imports. The live check is local: `tests/ci.sh --live`. See [tests/README.md](tests/README.md) and [tests/TEST-GUIDE.md](tests/TEST-GUIDE.md).
+Frontend-only PRs skip backend tests, except the shared OpenAPI contract; documentation-only PRs skip application checks. Python source changes run both application jobs; tests, migrations and Python dependencies run backend checks. Infrastructure changes run Terraform; workflow changes and unknown paths run conservative checks. The gate accepts a skip only when change detection explicitly marked that check unrelated. Manual CI runs every check.
+
+The API sweep shares the backend job's Python environment and temporary, memory-backed PostgreSQL service. Coverage is an optional local diagnostic, with no percentage requirement or coverage artifact jobs in CI. Dependencies are locked and cached; new commits cancel outdated PR runs. CI uses fixtures, without supplier keys, model downloads or full catalog imports. The live check is local: `tests/ci.sh --live`. See [tests/README.md](tests/README.md) and [tests/TEST-GUIDE.md](tests/TEST-GUIDE.md).
 
 Our workflow is **task PR → green CI → self-merge**. Repository rules require the CI gate plus the three existing application check names; reviews are optional and the `skip-review` label does not bypass CI. If adding a job, include its result in the gate.
 
 ## Build and deploy releases
 
-After a release PR reaches `main` and CI passes, GitHub builds the frontend, API and worker Docker images and pushes each to GHCR with a component/commit tag and immutable digest. Once the cluster is bootstrapped and `DEPLOY_ENABLED=true`, the same release updates all three apps and waits for readiness; a failed rollout restores every changed image. Human approval is not required.
+After the release PR passes CI and reaches protected `main`, GitHub immediately builds the frontend, API and worker Docker images and pushes each to GHCR with a component/commit tag and immutable digest. Once the cluster is bootstrapped and `DEPLOY_ENABLED=true`, the same release migrates first, starts all three app rollouts together and waits for readiness; a failed rollout restores every changed image. Human approval is not required.
+
+Merged pushes do not repeat PR tests on `develop` or `main`. The release workflow relies on the required PR checks and PR-only branch rules; retain those protections.
 
 Deployment is off until the one-time setup is complete. Terraform provisioning, database migrations, grants and secret provisioning remain explicit operator steps. Product-catalog ingestion then runs automatically as the scheduled `aimo-catalog-sync` Kubernetes Job, which skips unchanged snapshots ([catalog sync](docs/catalog-sync.md)). See [the release setup instructions](infra/README.md#simple-main-to-cluster-release-pipeline) for the cluster ID, deployment token, initial public image, and activation switch.
 
@@ -108,7 +112,7 @@ The CLI authenticates as the buyer and starts chat. Complete recipe clarificatio
 
 `/` is chat, `/conversations/{id}` is addressable chat, `/purchases` preserves purchase history, and `/purchases/{proposal_id}` reviews current terms. Legacy `/approvals/{approval_id}` remains an authenticated exact historical snapshot; superseded terms link explicitly to the current revision. `/approvals` redirects to purchases.
 
-Authenticated JSON routes are `/api/conversations`, `/api/conversations/{id}`, `/api/conversations/{id}/messages`, `/api/conversations/{id}/events`, `/api/purchases` and `/api/purchases/{id}/confirm`, plus existing session, approval-detail/decision and purchase-detail APIs. Writes require the buyer session, exact configured Origin and session-bound CSRF token. SSE replays persisted conversation state and sends heartbeats; it does not stream speculative model tokens. Interactive contracts are at `/docs`; generated browser types come from Python. [Credential-free examples](docs/examples/requests.json) show the request bodies.
+Authenticated JSON routes are `/api/conversations`, `/api/conversations/{id}`, `/api/conversations/{id}/messages`, `/api/conversations/{id}/events`, `/api/purchases` and `/api/purchases/{id}/confirm`, plus existing session, approval-detail/decision and purchase-detail APIs. Writes require the buyer session, exact configured Origin and session-bound CSRF token. SSE replays persisted conversation state and sends heartbeats; it does not stream speculative model tokens. The optional `activity` field carries the latest turn’s sanitized tool starts/completions/failures at the existing two-second SSE cadence. The chat shows an animated current action and expandable step history, restored on reconnect/refresh. Apply additive migrations `022_chat_activity.sql` and `023_chat_draft_cart.sql` before starting this version. The optional `draft_cart` contains selected ingredients and checked unit prices while the basket is built; prepared proposals alone enable confirmation. Activity contains fixed display labels, never tool arguments/results or model reasoning, and cannot authorize a purchase. Interactive contracts are at `/docs`; generated browser types come from Python. [Credential-free examples](docs/examples/requests.json) show the request bodies.
 
 `/mcp` and every `/api/agent/*` route are removed and return JSON 404. The internal typed agent calls `Service` directly with a server-controlled buyer identity. There is no external bearer-token provisioning or MCP client. A PostgreSQL-backed job queue connects the API to the independent worker.
 

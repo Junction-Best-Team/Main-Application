@@ -1,6 +1,6 @@
 # Tests and CI procedure
 
-One command runs the checks locally. GitHub Actions (`.github/workflows/ci.yml`) runs backend lint, pytest and the strict API sweep in one job alongside the frontend build on every PR into `develop` or `main`; the `CI gate` job waits for every applicable check. For a plain-language explanation of each test, see [TEST-GUIDE.md](TEST-GUIDE.md).
+One command runs the checks locally. GitHub Actions (`.github/workflows/ci.yml`) selects backend lint/pytest/strict API sweep and frontend builds by changed paths on PRs into `develop` or `main`; frontend-only and documentation-only changes skip unrelated jobs, while manual runs check everything. Merged pushes do not repeat these checks; the `CI gate` job waits for every applicable check. For a plain-language explanation of each test, see [TEST-GUIDE.md](TEST-GUIDE.md).
 
 ```sh
 tests/ci.sh                          # lint + pytest + tool sweep, hermetic (no API key needed)
@@ -30,7 +30,7 @@ Not covered by any CI: the Docker image build, Kubernetes manifests, the live Va
 
 ## pytest (`tests/test_*.py`)
 
-Fixture upstream and fixture embeddings only; never the live API. Descriptions are taken from the test names.
+Fixture upstream and fixture embeddings only; never the live API. Fixture setup reuses a real Argon2 hash for the repeated demo password; explicit seed/login tests still exercise the real hasher and verifier. Descriptions are taken from the test names.
 
 | File | Covers |
 | --- | --- |

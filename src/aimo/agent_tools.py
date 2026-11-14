@@ -275,6 +275,7 @@ class ToolSession:
         self.prepared_digest = None
         self.products = {}
         self.commercial = {}
+        self.commercial_dates = {}
         self.memory_changes = []
         self.image = None
         self.registry = {
@@ -601,6 +602,7 @@ class ToolSession:
             LookupResponse, self.service.check_price_and_availability(self.identity, request)
         )
         self.commercial.update(result["products"])
+        self.commercial_dates.update({pid: str(request.delivery_date) for pid in result["products"]})
         return result
 
     def publish(self, plan):

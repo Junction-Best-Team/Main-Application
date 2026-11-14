@@ -134,6 +134,9 @@ esac
         self.assertIn("rollout status", calls)
         self.assertLess(calls.index("create -f -"), calls.index("set image"))
         self.assertLess(calls.index("get job"), calls.index("set image"))
+        for component in ("worker", "api", "frontend"):
+            self.assertLess(calls.index(f"set image deployment/aimo-{component}"),
+                            calls.index("rollout status"))
         self.assertNotIn("rollout undo", calls)
 
     def test_catalog_sync_cronjob_follows_the_released_worker_digest(self):
