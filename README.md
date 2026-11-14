@@ -2,7 +2,7 @@
 
 Four-person team repository for [Junction 2026](https://2026.hackjunction.com/), November 13–15 in Espoo, Finland.
 
-Preparation and design files for Valio Aimo's [Trusted Trade Agents challenge](https://hackjunction.app/participate/45/challenges/327). The [implementation plan](docs/brief.md) defines one seller-side backend with HTTP/MCP access, catalog ingestion and hybrid search, a minimal buyer approval page served by that backend, and mock ordering. It supports conversational or mission-driven external agents. Kubernetes is the intended hosting target. Application code and deployment resources are not implemented yet.
+Preparation and design files for Valio Aimo's [Trusted Trade Agents challenge](https://hackjunction.app/participate/45/challenges/327). The [implementation plan](docs/brief.md) defines one seller-side backend with HTTP/MCP access, catalog ingestion and hybrid search, a React buyer approval inbox/review frontend served by that backend, and mock ordering. It supports conversational or mission-driven external agents. Use an available Kubernetes cluster as the hosting target, with Docker Compose for local development or an initial demo. Application code and deployment resources are not implemented yet.
 
 ## Get started
 
@@ -30,13 +30,14 @@ No required pipelines, approval gates, or special GitHub board. Use the team cha
 | --- | --- |
 | Backend | Python, FastAPI, Pydantic, Uvicorn; one application service shared by HTTP and MCP adapters |
 | MCP | Official Python MCP SDK; HTTP transport compatible with the selected client |
-| Dependencies and packaging | `uv` with committed lockfile; one Docker image with planned `serve` and `ingest` modes |
+| Dependencies and packaging | `uv` for Python and a Vite/TypeScript frontend build with committed lockfiles; one Docker image with planned `serve` and `ingest` modes |
 | Shared storage | PostgreSQL: separate tables for the derived product index and new proposals, approvals, orders, and receipts |
-| Customer rules and approval logic | One seeded demo customer policy/authority configuration in PostgreSQL; `approval_policy` and `approval_workflow` modules inside the backend enforce it |
+| Customer rules and approval logic | One seeded demo customer policy/authority configuration in PostgreSQL; read-only policy discovery plus `approval_policy` and `approval_workflow` modules with ready, approval-required, denied and needs-resolution outcomes |
 | Hybrid search | pgvector similarity plus PostgreSQL full-text search; reciprocal rank fusion and structured validation |
 | Embeddings | Sentence Transformers; evaluate `intfloat/multilingual-e5-small` on Finnish/English catalog queries before pinning a model revision |
-| Human interface | Minimal server-rendered approval page using FastAPI/Jinja2, served by the same backend; no standalone frontend service or React build |
-| Demo client | Existing MCP-capable agent receives an approval URL and checks proposal status; direct in-agent approval is optional |
+| Buyer frontend | React + TypeScript + Vite: login, pending-approvals inbox and purchase review/decision. FastAPI serves built assets and authenticated JSON from the same origin; no separate production frontend server |
+| MVP notification path | Buyer independently opens the inbox; bounded refresh while open. Email/SMS/push alerts when closed are deferred; no notifier service |
+| Demo client | Existing MCP-capable agent reads effective policy, pauses and checks proposal status; the buyer can approve without an active chat or agent-delivered link |
 | Runtime and dependency versions | TBD and pinned with the application skeleton |
 | Install command | TBD |
 | Local development command | TBD |
@@ -49,7 +50,9 @@ Commit the chosen runtime-version configuration and dependency lockfile with the
 
 The product has **one running custom service**, not separate search, MCP, approval, and ordering microservices. The importer runs to completion when invoked. PostgreSQL/pgvector is the proposed shared-storage choice for the Kubernetes direction; the earlier SQLite/file-index idea is only a single-instance alternative, not another required implementation. See the plan's [element inventory](docs/brief.md#2-elements-ownership-and-service-count), [ingestion flow](docs/brief.md#4-ingestion-where-the-searchable-data-comes-from), and [deployment diagram](docs/brief.md#10-kubernetes-deployment).
 
-The buying company owns its approval rules. For the MVP, seed one demo customer's spending limit, permitted destinations, substitution/overbuy rules, and agent/approver authority during setup. The approval page captures a decision for one proposal; backend modules evaluate policy and enforce authorization again before commitment. Customer settings screens and admin-only rule-management MCP tools are optional later additions. See [customer rules and the approval gate](docs/brief.md#8-customer-rules-backend-approval-gate-and-approval-page).
+The buying company owns its approval rules. For the MVP, seed one demo customer's spending limit, permitted destinations, substitution/overbuy rules, and agent/approver authority during privileged setup; ordinary serving code has no policy-edit operation. The read-only `get_purchase_policy` tool is included among eight agent tools. Backend modules evaluate policy and enforce authorization again before commitment. Customer settings screens and policy-editing tools are optional later additions. See [customer rules and the approval gate](docs/brief.md#8-customer-rules-backend-approval-gate-and-approval-page).
+
+The [buyer inbox](docs/brief.md#83-react-approval-inbox-and-agent-resume) lists persisted requests independently of the agent. React handles presentation; FastAPI authenticates users, authorizes list/detail/decision requests, and records decisions. Build the frontend in a Node build stage, copy its static output into the Python runtime image, and deploy that same image. Normal audit history stays in PostgreSQL; hash chaining and outbound notification infrastructure are deferred.
 
 ## Environment
 
@@ -58,7 +61,7 @@ The buying company owns its approval rules. For the MVP, seed one demo customer'
 ## Shared context
 
 - [AGENTS.md](AGENTS.md): short instructions shared by coding agents. [CLAUDE.md](CLAUDE.md) imports the same file for Claude Code.
-- [Implementation plan](docs/brief.md): core scope, element count, stack, ingestion and updates, tool schemas, customer rule ownership/setup, backend approval modules, the approval page and asynchronous agent resume, concurrency, data checks, Kubernetes diagrams, demo, milestones, and acceptance checks.
+- [Implementation plan](docs/brief.md): core scope, element count, stack, ingestion and updates, shared schemas/evidence, eight tool definitions, customer rules and four policy outcomes, React approval inbox and asynchronous agent resume, concurrency/audit, API findings, Kubernetes diagrams, demo, milestones, and acceptance checks.
 - [Pre-existing work](docs/pre-existing-work.md): preparation and reused material to disclose in the submission.
 
 Check the current event and challenge rules before preparing application code. Junction's [general terms](https://www.hackjunction.com/terms-of-service) require projects to be built primarily during the event and pre-existing material to be identified in the submission. Confirm the required project licence before submitting.
