@@ -537,7 +537,7 @@ test("session expiry signs out and the next sign-in reloads fresh lists", async 
   expect(stored).not.toContain("Personal instruction");
 });
 
-test("preferences are reachable from the sidebar, chat and /settings", async ({
+test("preferences are reachable from the sidebar and chat, beside Account Settings", async ({
   page,
 }) => {
   await mockApi(page);
@@ -558,8 +558,17 @@ test("preferences are reachable from the sidebar, chat and /settings", async ({
     .click();
   await expect(page).toHaveURL(/\/settings\/preferences$/);
 
-  await page.goto("/settings");
-  await expect(page).toHaveURL(/\/settings\/preferences$/);
+  // Purchasing policy settings stay a separate screen and link.
+  const sidebar = page.getByRole("complementary", { name: "Sidebar" });
+  await expect(
+    sidebar.getByRole("link", { name: "Account Settings" }),
+  ).toHaveAttribute("href", "/settings");
+  await expect(
+    sidebar.getByRole("link", { name: "Assistant preferences" }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(
+    sidebar.getByRole("link", { name: "Account Settings" }),
+  ).not.toHaveAttribute("aria-current", "page");
 });
 
 test("mobile layout fits the viewport and tabs work from the keyboard", async ({

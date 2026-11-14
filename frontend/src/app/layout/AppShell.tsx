@@ -219,10 +219,10 @@ function Avatar() {
   );
 }
 
-/** Account switcher (inert), assistant preferences and the real Sign out action. */
+/** Account switcher placeholder, policy settings, assistant preferences and the real Sign out action. */
 function AccountBlock({ onNavigate }: { onNavigate?: () => void }) {
-  const { session, logout } = useAuth();
   const { pathname } = useLocation();
+  const { session, logout } = useAuth();
   return (
     <div className="flex shrink-0 flex-col gap-space-xs bg-surface-container-low p-space-sm">
       <InertButton
@@ -246,13 +246,22 @@ function AccountBlock({ onNavigate }: { onNavigate?: () => void }) {
         />
       </InertButton>
       <Link
+        to="/settings"
+        onClick={onNavigate}
+        aria-current={pathname === "/settings" ? "page" : undefined}
+        className={`flex items-center gap-space-sm rounded-lg px-space-md py-space-sm font-label text-label-md no-underline hover:no-underline ${pathname === "/settings" ? "bg-secondary-container text-primary" : "text-on-surface-variant hover:bg-surface-container-high"}`}
+      >
+        <Icon name="manage_accounts" className="text-[18px]" />
+        Account Settings
+      </Link>
+      <Link
         to="/settings/preferences"
         onClick={onNavigate}
         aria-current={
           pathname.startsWith("/settings/preferences") ? "page" : undefined
         }
         className={`flex items-center gap-space-sm rounded-lg px-space-md py-space-sm font-label text-label-md no-underline hover:no-underline ${
-          pathname.startsWith("/settings")
+          pathname.startsWith("/settings/preferences")
             ? "bg-secondary-container text-primary"
             : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
         }`}

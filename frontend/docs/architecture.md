@@ -61,7 +61,6 @@ introduced for this refactor. Backend state remains authoritative.
 | `/approvals/:approvalId`         | Same detail page, historical approval lookup | Required                                             |
 | `/approvals`                     | Redirect to `/purchases`                     | Destination requires sign-in                         |
 | `/settings/preferences`          | `preferences/pages/PreferencesPage`          | Required                                             |
-| `/settings`                      | Redirect to `/settings/preferences`          | Destination requires sign-in                         |
 | Other paths                      | Not-found view                               | Public                                               |
 
 `RequireAuth` preserves the requested path through login. The route table is in
