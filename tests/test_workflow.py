@@ -220,6 +220,9 @@ def test_rejection_expiry_and_revocation(service, agent, buyer, mission, monkeyp
     monkeypatch.setattr(workflow, "now", lambda: now() + timedelta(hours=1))
     expect_code("PROPOSAL_EXPIRED", lambda: service.commit_order(agent, commit(p3)))
     assert service.get_proposal(agent, p3["proposal_id"])["approval_status"] == "expired"
+    rejected = service.get_proposal(agent, p["proposal_id"])
+    assert rejected["approval_status"] == "rejected"
+    assert rejected["next_action"] == {"type": "stop"}
 
 
 def test_policy_version_reauthorizes_and_seed_preserves(service, agent, buyer, mission):

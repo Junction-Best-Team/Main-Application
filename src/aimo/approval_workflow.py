@@ -95,6 +95,7 @@ def evaluation_changed(revision, evaluated):
 def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, history=None):
     current = now()
     status = a["status"] if a else "not_required"
+    recipe_basis = "saved_recipe" if r["request"].get("recipe_plan_id") else "free_form"
     buyer, policy, actor, approvers = auth_context or context(c, identity)
     historical = r["revision"] != p["current_revision"]
     order = (
@@ -156,7 +157,11 @@ def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, hi
     elif status in ("expired", "superseded", "policy_changed", "authority_changed"):
         action = {"type": "request_fresh_proposal", "tool": "prepare_order"}
     elif r["policy_outcome"] == "denied":
-        action = {"type": "stop"}
+        action = (
+            {"type": "revise_request", "tool": "prepare_order"}
+            if recipe_basis == "saved_recipe"
+            else {"type": "stop"}
+        )
     elif r["policy_outcome"] == "needs_resolution":
         action = {"type": "revise_request", "tool": "prepare_order"}
     elif eligible:
@@ -182,7 +187,7 @@ def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, hi
         "current_proposal_url": f"{settings().public_base_url}/purchases/{p['id']}",
         "policy_version": r["policy_version"],
         "policy_outcome": r["policy_outcome"],
-        "recipe_basis": "saved_recipe" if r["request"].get("recipe_plan_id") else "free_form",
+        "recipe_basis": recipe_basis,
         "approval_status": status,
         "order_status": "accepted_mock" if committed else "not_placed",
         "reasons": r["reasons"],

@@ -810,6 +810,16 @@ def test_closed_recipe_proposal_refreshes_in_place_without_rematching(
     assert first["recipe_basis"] == "saved_recipe"
     if closed in {"delivery_date", "destination", "budget", "policy"}:
         assert first["policy_outcome"] == "denied"
+        # A past delivery also has expired supplier terms; keep freshness precedence.
+        if closed == "delivery_date":
+            assert first["approval_status"] == "expired"
+        assert first["next_action"] == {
+            "type": "request_fresh_proposal" if closed == "delivery_date" else "revise_request",
+            "tool": "prepare_order",
+        }
+        assert (
+            service.get_proposal(actor, first["proposal_id"])["next_action"] == first["next_action"]
+        )
         expected_code = {
             "delivery_date": "DELIVERY_IN_PAST",
             "destination": "DESTINATION_NOT_ALLOWED",
@@ -900,7 +910,8 @@ def test_denied_recipe_refresh_does_not_bypass_purchase_checks(
     refreshed = service.prepare_order(later, request)
     assert refreshed["proposal_id"] == first["proposal_id"] and refreshed["revision"] == 2
     assert refreshed["policy_outcome"] == "denied"
-    assert refreshed["approval_id"] is None and refreshed["next_action"]["type"] == "stop"
+    assert refreshed["approval_id"] is None
+    assert refreshed["next_action"] == {"type": "revise_request", "tool": "prepare_order"}
     with pytest.raises(Problem) as error:
         service.commit_order(
             later,

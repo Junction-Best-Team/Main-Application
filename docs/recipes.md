@@ -149,7 +149,10 @@ policy changes; a new purchase requires a new customer request and saved plan.
 A policy denial can be retried after correcting its cause (date, destination,
 budget or buyer policy), retaining the matched ingredients. Every refresh rechecks
 recipe completeness, catalog/evidence, quantities, commercial facts and policy;
-an unchanged denial still blocks commitment. Recipe/product changes still require
+an unchanged denial still blocks commitment. A current denied recipe proposal
+returns `revise_request` so the agent asks for corrected terms; an ordinary current
+denial keeps `stop`. Approver rejection takes priority over either hint, including
+after expiry. Recipe/product changes still require
 a new plan. Ordinary denied proposals retain fresh-preparation guidance after
 expiry or policy/authority changes.
 Concurrent refreshes fence the prior proposal revision so only one can append;
