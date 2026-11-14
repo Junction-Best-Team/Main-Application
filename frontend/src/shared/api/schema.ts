@@ -994,6 +994,8 @@ export interface components {
             currency?: string | null;
             /** Line Count */
             line_count: number;
+            /** Line Names */
+            line_names?: string[];
             /** Cancel Reason */
             cancel_reason?: ("run_disrupted" | "run_retry" | "customer_revised" | "customer_cancelled") | null;
             /** Placed At */
@@ -2633,6 +2635,8 @@ export interface operations {
                 limit?: number;
                 /** @description Comma list of scheduled, pending, placed, cancelled; empty means all */
                 status?: string | null;
+                /** @description Search: trimmed, at most 80 characters, case-insensitive substring over titles, order and proposal ids, destination, delivery date, line names, product ids */
+                q?: string | null;
             };
             header?: never;
             path?: never;

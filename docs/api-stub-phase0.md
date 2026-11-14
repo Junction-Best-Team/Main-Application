@@ -38,7 +38,7 @@ returns a `Problem` (`ORIGIN_REJECTED` / `CSRF_REJECTED`, 403).
 | GET | `/api/purchases/{proposal_id}` | Proposal/purchase detail | `ProposalResponse` |
 | POST | `/api/purchases/{proposal_id}/confirm` | Revision-bound confirm (idempotent) | `CommitResponse` |
 | POST | `/api/purchases/{proposal_id}/cancel` | Cancel a pending order request (idempotent; a placed order is refused, 409 `ORDER_ALREADY_PLACED`) | `CancellationResponse` |
-| GET | `/api/orders` | Orders list, newest first: `scheduled` (with date, `paused`), `pending`, `placed` (with `placed_at`), `cancelled`; expired requests hidden. Optional `?status=` comma list; `total` counts every match | `OrdersResponse` |
+| GET | `/api/orders` | Orders list, newest first: `scheduled` (with date, `paused`), `pending`, `placed` (with `placed_at`), `cancelled`; expired requests hidden. Optional `?status=` comma list and `?q=` search (trimmed, at most 80 characters, case-insensitive substring over titles, order and proposal ids, destination, delivery date, line names, product ids); each item has `line_names` (at most 5, biggest line first); `total` counts every match | `OrdersResponse` |
 | GET | `/api/schedules` | Standing orders of the buyer | `ScheduleList` |
 | GET | `/api/schedules/{id}` | One standing order with its runs | `ScheduleDetail` |
 | GET | `/api/schedules/substitute-candidates?product_id=` | Substitutes the customer may accept | `SubstituteCandidates` |

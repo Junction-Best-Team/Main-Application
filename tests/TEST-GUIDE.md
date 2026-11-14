@@ -712,3 +712,7 @@ The derived orders list: pending, placed (with the order id), cancelled (with th
 #### `tests/test_schedule_routes.py` (CNF-022 to CNF-037 over HTTP): 28 passed
 
 Every schedule read needs a session and every POST needs the session, CSRF and a same-origin request; preview, create (idempotent), list, get, stale agreement 409, low ceiling 422, cancel, pause and resume, edit preview and replace (supersedes the old schedule), the literal substitute-candidates path, bounds and OpenAPI. The Service behaviour itself is in `test_schedules.py`.
+
+#### `tests/test_orders_search.py` (Past Orders search, person 1 PR #168): 16 passed
+
+`GET /api/orders?q=`: trimmed, case-insensitive substring over the row title, the standing order's title, order id, proposal id, destination, delivery date, line names and product ids (SQL wildcards stay literal); `line_names` lists at most five product names, biggest line first (agreed lines for a scheduled row); `q` combines with `?status=` and `total` counts every match, also past the last page; another buyer's rows are never found; a page of 19 rows costs the same number of statements as one row; a query over 80 characters after trimming is `INVALID_ORDER_QUERY` 422; an empty or blank `q` means everything; the parameter and field are in OpenAPI.

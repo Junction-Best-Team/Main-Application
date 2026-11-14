@@ -3,6 +3,8 @@
 from datetime import datetime
 from typing import Literal
 
+from pydantic import Field
+
 from aimo.schemas import Model
 
 
@@ -20,6 +22,7 @@ class OrderListItem(Model):
     gross_total: str | None = None
     currency: str | None = None
     line_count: int
+    line_names: list[str] = Field(default_factory=list, max_length=5)  # biggest line total first
     cancel_reason: (
         Literal["run_disrupted", "run_retry", "customer_revised", "customer_cancelled"] | None
     ) = None
