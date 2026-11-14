@@ -14,9 +14,9 @@ before rollout; recipe import remains an explicit operator action.
    For manual local setup use `aimo migrate` with the migration/setup role.
    Schema migration performs no download, seed, embedding or dataset import.
 2. With the worker image/code and the same embedding profile as serving, run the
-   explicit importer. For Qwen3 Embedding 8B + Reranker 8B, use the configured
-   OpenRouter provider merged in PR #34. This feature reuses that provider;
-   it does not add another credential, model service or ingestion daemon.
+   explicit importer. The default now uses Gemini Embedding 2 with the shared
+   server-side `GEMINI_API_KEY`. Existing installations must reimport both recipe
+   and product vectors during the [Google cutover](google-models.md).
 3. Add reviewed recipe-form/quantity overrides and matching product evidence for
    recipes intended for purchasing. Discovery alone does not establish readiness
    for an executable basket.
@@ -98,7 +98,9 @@ one exact product fact snapshot and ingredient/form. A catalog change invalidate
 it. A name or semantic score alone does not establish suitability. Current product
 scope, supported dietary checks, stock, price and policy are still enforced by the
 purchasing layer. Missing physical weight cannot be repaired by a suitability row.
-Variable/unknown-weight products remain blocked in the fixed-quantity MVP.
+Variable/unknown-weight products can be matched; the proposal carries a non-blocking
+`VARIABLE_WEIGHT_UNRESOLVED` warning (severity `warning`) because actual-weight settlement
+is outside the fixed-quantity MVP.
 
 `piece_per_sales` is the reviewed ingredient yield per purchasable sales unit, e.g.
 30 whole eggs per tray. Do not equate yolks with whole eggs without evidence.
@@ -110,7 +112,8 @@ pack counts. Revoked suitability blocks confirmation.
 ## Agent and persistence
 
 Tools: `search_recipes`, `get_recipe`, `scale_recipe`, `get_recipe_plan`,
-`match_ingredient`, plus the existing product discovery and purchasing tools.
+`match_ingredient`, `match_ingredients` (several ingredient and product pairs, one plan revision,
+all-or-nothing), plus the existing product discovery and purchasing tools.
 
 Scaling stores a buyer/agent-scoped plan and all source ingredients. One server
 turn fixes one recipe version/portion count; repeat scaling returns the saved plan.

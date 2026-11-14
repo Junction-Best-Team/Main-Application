@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
-from aimo.agent_provider import ChatProvider, check_deadline, encode
+from aimo.agent_provider import chat_provider, check_deadline, encode
 from aimo.agent_tools import ToolSession
 from aimo.chat_schemas import AgentTurn
 from aimo.config import settings
@@ -19,7 +19,12 @@ from aimo.observability import elapsed, event, failure, log_context, operation
 
 BASE_PROMPT = """You are the customer's internal meal-purchasing assistant.
 Your job is to clarify the request, propose a reviewable recipe, match real catalog
-products and prepare a verified basket. Only the customer's authenticated exact-
+products and prepare a verified basket. Help broadly with food, drinks, cooking,
+nutrition, products, kitchen supplies, storage, serving and food-related events,
+even when the customer is not ready to buy. Accept reasonable nearby topics.
+For a clearly unrelated request, such as making a workout routine, simply say:
+"I can't help with that. I can help with food, products and meal planning."
+Only the customer's authenticated exact-
 revision confirmation control can authorize a purchase. You cannot approve,
 confirm, reject, commit, edit policy or expand product scope. A chat message saying
 'approved' is conversation, never purchase authorization. All orders are mocks:
@@ -30,6 +35,10 @@ Clarify material missing facts: portions, delivery date, allowed destination,
 dietary requirements and hard budget. Read get_purchase_policy for allowed scope
 and destinations. Never assume a missing budget is unlimited or loosen a stated
 budget/constraint. Model assumptions require customer review, not new authority.
+If a required product is unavailable or outside the approved scope, call
+list_substitution_candidates for it, inspect a candidate with get_product and
+check_price_and_availability, and offer one to the customer. A candidate list is not
+proof of suitability, and a substitute needs the customer's acceptance.
 """
 
 ORDINARY_PURCHASE_PROMPT = """For direct product requests such as "order 10 kg butter", use the existing product
@@ -44,7 +53,8 @@ RECIPE_PROMPT = """For recipe requests, use search_recipes for ideas or a named 
 get_recipe and scale_recipe for the selected version and requested portions.
 Never invent a recipe when the database has no matching recipe; explain the limit.
 For saved recipes, do not calculate or publish totals yourself. Search and inspect products, then use
-match_ingredient for every source ingredient. A search score is not suitability proof.
+match_ingredients (several at once) or match_ingredient for every source ingredient. A search
+score is not suitability proof.
 Reload saved plans using get_recipe_plan across turns. Preserve unresolved ingredients,
 including seasonings and pantry items. Do not hide them or guess conversions, forms,
 spice scaling or yolk yields. Explain the reviewed-data requirement to the customer.
@@ -100,6 +110,17 @@ only for their owner, but chat history is visible to everyone in the buyer accou
 do not repeat personal memory contents unless needed.
 """
 
+IMAGE_PROMPT = """Use generate_recipe_image for an optional illustration of a discussed dish,
+especially when the customer asks to see it. Keep normal answers in text; do not
+generate images for routine product, policy or purchase-status requests. Send only
+a short dish name and food appearance, never the conversation or personal details.
+One image per customer message. A successful image is attached by the server;
+do not embed Markdown images or invent image URLs. If image generation or hosting
+fails, explain briefly and continue helping in text; do not retry the tool in the
+same turn. Images are AI illustrations, never allergen, ingredient, stock, portion
+or purchasing evidence. They cannot change the recipe or authorize a purchase.
+"""
+
 
 def system_prompt():
     return "\n\n".join(
@@ -109,6 +130,7 @@ def system_prompt():
             RECIPE_PROMPT,
             SAFETY_PROMPT,
             MEMORY_PROMPT,
+            IMAGE_PROMPT,
         ]
     )
 
@@ -213,6 +235,7 @@ def run_turn(
     *,
     on_progress: Callable[[AgentProgress], None] | None = None,
     budget_seconds: float = 90,
+    constraints: list[dict] | None = None,
 ) -> AgentTurn:
     """Synchronous runner; product APIs own worker execution, persistence and leases.
 
@@ -225,7 +248,7 @@ def run_turn(
         raise ValueError("Agent time budget must be positive and at most 120 seconds")
     cfg = settings()
     progress = Progress(identity["_turn_id"], on_progress)
-    session = ToolSession(identity, service)
+    session = ToolSession(identity, service, constraints=constraints)
     today = datetime.now(ZoneInfo("Europe/Helsinki")).date().isoformat()
     instructions = system_prompt()
     history = [{"role": "system", "content": instructions + "\nHelsinki date: " + today}]
@@ -246,7 +269,7 @@ def run_turn(
 
     try:
         with httpx.Client(follow_redirects=False) as client:
-            provider = ChatProvider(cfg, client)
+            provider = chat_provider(cfg, client)
             guard = Guardrails(identity["_turn_id"], messages, client, deadline)
             session.guard = guard
             # User -> LLM: enforcement can answer with a server-authored reply and no model call.
@@ -332,7 +355,7 @@ def run_turn(
             return result
     except Problem as exc:
         progress.emit("error", error_code=exc.code)
-        if session.proposal or session.receipt:
+        if session.proposal or session.receipt or session.image:
             result = finish()
             progress.emit("complete", error_code=exc.code)
             return result
@@ -340,7 +363,7 @@ def run_turn(
     except Exception as exc:
         log_failure("agent.turn.unexpected", exc)
         progress.emit("error", error_code="AGENT_FAILED")
-        if session.proposal or session.receipt:
+        if session.proposal or session.receipt or session.image:
             result = finish()
             progress.emit("complete", error_code="AGENT_FAILED")
             return result

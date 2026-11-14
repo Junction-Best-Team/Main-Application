@@ -105,6 +105,8 @@ run "catalog_sync_cronjob" {
       VALIO_AIMO_API_KEY  = "synthetic-supplier-key"
       LLM_API_KEY         = "synthetic-llm-key"
       SEARCH_API_KEY      = "synthetic-search-key"
+      GEMINI_API_KEY      = "synthetic-google-key"
+      CLOUDINARY_URL      = "cloudinary://synthetic:synthetic@demo"
     }
   }
   assert {
@@ -161,7 +163,8 @@ run "catalog_sync_cronjob" {
       kubernetes_secret_v1.catalog_sync[0].data.DATABASE_URL == var.catalog_sync_database_url &&
       kubernetes_secret_v1.catalog_sync[0].data.VALIO_AIMO_API_KEY == "synthetic-supplier-key" &&
       kubernetes_secret_v1.catalog_sync[0].data.SEARCH_API_KEY == "synthetic-search-key" &&
-      length(setintersection(toset(keys(kubernetes_secret_v1.catalog_sync[0].data)), toset(["LLM_API_KEY", "APPROVAL_SESSION_SECRET", "FORWARDED_ALLOW_IPS", "BOOTSTRAP_DATABASE_URL", "RUNTIME_DATABASE_USER"]))) == 0
+      kubernetes_secret_v1.catalog_sync[0].data.GEMINI_API_KEY == "synthetic-google-key" &&
+      length(setintersection(toset(keys(kubernetes_secret_v1.catalog_sync[0].data)), toset(["LLM_API_KEY", "CLOUDINARY_URL", "APPROVAL_SESSION_SECRET", "FORWARDED_ALLOW_IPS", "BOOTSTRAP_DATABASE_URL", "RUNTIME_DATABASE_USER"]))) == 0
     )
     error_message = "Catalog sync gets supplier, embedding and catalog-role database credentials only."
   }

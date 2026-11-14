@@ -15,6 +15,8 @@ from aimo.recipe_guard import ensure_no_unresolved_saved_plan, unresolved_saved_
 @pytest.fixture(autouse=True)
 def clean_recipes():
     with connection() as c:
+        # A recipe reset cascades into guarded history (PER-002): say it is deliberate.
+        c.execute("SET LOCAL aimo.allow_history_truncate = 'on'")
         c.execute("TRUNCATE recipes CASCADE")
     yield
 

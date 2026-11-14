@@ -131,10 +131,12 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
         if p["deleted"]:
             add("PRODUCT_DELETED", "Product has been withdrawn.", pid, "denied")
         if p["variable_weight"]:
+            # BAS-007: flagged for the buyer, never a blocker.
             add(
                 "VARIABLE_WEIGHT_UNRESOLVED",
                 "Actual-weight settlement is outside this fixed-quantity MVP.",
                 pid,
+                "warning",
             )
         q = quantity(
             p,

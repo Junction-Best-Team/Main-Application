@@ -62,10 +62,22 @@ def test_orders_use_the_same_guard_as_the_other_history_tables():
             JOIN pg_proc p ON p.oid=t.tgfoid
             WHERE NOT t.tgisinternal AND p.proname='immutable_record'"""
         ).fetchall()
-    assert "orders" in {r["table_name"] for r in rows}
-    assert {"proposal_revisions", "audit_events", "customer_confirmations"} <= {
-        r["table_name"] for r in rows
-    }
+    # Orders keep the plain guard (never purgeable); the per-proposal history tables carry the
+    # purge-aware variant of migration 018, which refuses the same things except an unfinished
+    # proposal's DELETE under the purge flag (see test_purge_unfinished.py).
+    plain = {r["table_name"] for r in rows}
+    assert "orders" in plain
+    with connection() as c:
+        aware = {
+            r["table_name"]
+            for r in c.execute(
+                """SELECT c.relname AS table_name FROM pg_trigger t
+                JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_proc p ON p.oid=t.tgfoid
+                WHERE NOT t.tgisinternal AND p.proname='immutable_unless_purging'"""
+            ).fetchall()
+        }
+    assert {"proposal_revisions", "audit_events", "customer_confirmations"} <= aware
+    assert "orders" not in aware
 
 
 def test_migration_is_safe_on_a_populated_database_and_can_be_reapplied(

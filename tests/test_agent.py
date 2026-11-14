@@ -129,6 +129,9 @@ def proposal(identity, pid=None, outcome="approval_required"):
 
 
 class FakeService:
+    def ensure_saved_plan_resolved(self, identity, title):
+        return None
+
     def __init__(self, identity):
         self.calls = []
         self.saved = proposal(identity)

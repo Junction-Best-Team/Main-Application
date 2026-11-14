@@ -1,5 +1,5 @@
 from aimo import approval_workflow as workflow
-from aimo import meal_authorization, search, upstream
+from aimo import meal_authorization, recipe_images, search, upstream
 from aimo.db import connection
 from aimo.observability import operation
 from aimo.purchases import context, load_products
@@ -9,6 +9,10 @@ from aimo.schemas import CommitRequest, LookupRequest, PrepareRequest, SearchReq
 class Service:
     def __init__(self, connector=None):
         self.connector = connector or upstream.client()
+
+    @operation("service.generate_recipe_image")
+    def generate_recipe_image(self, identity, request):
+        return recipe_images.generate(identity, request)
 
     @operation("service.search_products")
     def search_products(self, identity, request: SearchRequest):
@@ -56,14 +60,14 @@ class Service:
         }
 
     @operation("service.prepare_order")
-    def prepare_order(self, identity, request: PrepareRequest):
+    def prepare_order(self, identity, request: PrepareRequest, constraints=None):
         from aimo.db import Problem
 
         if request.recipe_plan_revision and not request.recipe_plan_id:
             raise Problem(
                 "RECIPE_PLAN_REQUIRED", "Prepare a complete saved recipe plan first.", 422
             )
-        return workflow.prepare_order(identity, request, self.connector)
+        return workflow.prepare_order(identity, request, self.connector, constraints)
 
     @operation("service.ensure_saved_plan_resolved")
     def ensure_saved_plan_resolved(self, identity, title):
@@ -104,8 +108,15 @@ class Service:
         return recipe_batch.match_ingredients(identity, request)
 
     @operation("service.get_proposal")
-    def get_proposal(self, identity, proposal_id):
-        return workflow.get_proposal(identity, proposal_id)
+    def get_proposal(self, identity, proposal_id, revision=None):
+        return workflow.get_proposal(identity, proposal_id, revision)
+
+    @operation("service.get_recipe_plan_revision")
+    def get_recipe_plan_revision(self, identity, plan_id, revision=None):
+        """A saved recipe plan by ID: the current revision, or an earlier one (PER-003)."""
+        from aimo import recipes
+
+        return recipes.get_plan_revision(identity, plan_id, revision)
 
     @operation("service.commit_order")
     def commit_order(self, identity, request: CommitRequest):

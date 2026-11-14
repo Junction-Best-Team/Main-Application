@@ -12,6 +12,10 @@ from aimo.schemas import SearchRequest
 
 def model_key():
     cfg = settings()
+    if cfg.embedding_backend == "google":
+        from aimo.google_search import DIMENSIONS, EMBEDDING_MODEL, PROFILE
+
+        return f"google:{EMBEDDING_MODEL}:{DIMENSIONS}:{PROFILE}"
     if cfg.embedding_backend == "openrouter":
         from aimo.search_provider import DIMENSIONS, EMBEDDING_MODEL, PROFILE
 
@@ -22,6 +26,10 @@ def model_key():
 
 
 def dimensions():
+    if settings().embedding_backend == "google":
+        from aimo.google_search import DIMENSIONS
+
+        return DIMENSIONS
     from aimo.search_provider import DIMENSIONS
 
     return DIMENSIONS if settings().embedding_backend == "openrouter" else 384
@@ -30,7 +38,7 @@ def dimensions():
 def document_text(facts):
     return (
         rich_search_text(facts)
-        if settings().embedding_backend == "openrouter"
+        if settings().embedding_backend in ("google", "openrouter")
         else search_text(facts)
     )
 
@@ -51,6 +59,10 @@ def model():
 
 
 def embed(texts: list[str], query=False):
+    if settings().embedding_backend == "google":
+        from aimo.google_search import embeddings
+
+        return embeddings(texts, query=query)
     if settings().embedding_backend == "openrouter":
         from aimo.search_provider import embeddings
 
@@ -171,11 +183,14 @@ def search_products(identity, request: SearchRequest, strategy="hybrid"):
     if (
         not exact
         and strategy == "hybrid"
-        and cfg.embedding_backend == "openrouter"
+        and cfg.embedding_backend in ("google", "openrouter")
         and cfg.rerank_enabled
         and ordered
     ):
-        from aimo.search_provider import rerank
+        if cfg.embedding_backend == "google":
+            from aimo.google_search import rerank
+        else:
+            from aimo.search_provider import rerank
 
         candidates = ordered[: cfg.rerank_candidates]
         try:

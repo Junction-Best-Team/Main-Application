@@ -1,8 +1,9 @@
 # Buyer and user memory
 
 The chat assistant remembers facts, defaults, preferences and workflow instructions
-that a customer **explicitly** asks it to keep. Memory is backend-only in this
-change (no settings page or chat buttons yet). Code: `src/aimo/memory.py` (the one
+that a customer **explicitly** asks it to keep. Customers manage it in chat or on
+the **Assistant preferences** screen (`/settings/preferences`, see
+[Browser screen](#browser-screen)). Code: `src/aimo/memory.py` (the one
 storage/validation service), `src/aimo/memory_schemas.py` (contracts), migration
 `012_buyer_user_memory.sql`, tools in `agent_tools.py`, prompt in `agent.py`, the
 semantic write check in `guardrails.py`, routes in `api.py`.
@@ -170,6 +171,29 @@ Response (`MemoryMutationResponse`): `status`, `memory_id`, `revision`, `memory`
 `MEMORY_REVISION_CONFLICT`, `MEMORY_LIMIT`, `IDEMPOTENCY_CONFLICT`, 422 validation,
 `MEMORY_VALUE_INVALID`, `MEMORY_SENSITIVE_DATA`. Generated browser types:
 `frontend/openapi.json`, `frontend/src/api-types.ts`.
+
+## Browser screen
+
+`/settings/preferences` (`frontend/src/features/preferences/`) lists *My
+preferences* (`scope=self`) and *Buyer preferences* (`scope=buyer`) in separate
+tabs, grouped as Defaults, Purchasing preferences and How the assistant
+responds. It offers only the keys above, as typed fields (portions, destination,
+dietary flags, reply length/language, pack size, product preference, note,
+instruction); family topics are derived from the ingredient or text, never typed
+by the customer. Writes use the session CSRF token, the item's revision and an
+idempotency key reused only for an identical retry. A conflict keeps the draft
+and offers *Load latest version*; an item leaves the list only after the server
+confirms. Lists live only in page state, keyed by the signed-in identity. Links
+are in the sidebar/mobile account menu and the chat header.
+
+Known contract gaps for the browser (deliberately not worked around):
+
+- `ChatMessage` has no structured memory-change metadata, so chat shows the
+  ordinary reply (including the server's "Memory: …" notice) without a badge.
+- `MemoryUpdate` keeps the stored description when none is sent, so a saved
+  description can be reworded but not removed.
+- Product preference `product_ids` hints are preserved on edit but not editable.
+- No reversible forget exists, so the screen offers no Undo.
 
 ## Concurrency, retries and forgetting
 

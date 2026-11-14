@@ -357,13 +357,6 @@ def test_batch_without_a_rejection_records_none(tmp_path, actor, meal_products):
     assert not any(item.get("rejected") for item in after["ingredients"])
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=ValidationError,
-    reason="The batch path writes `rejected` on a plan ingredient but chat_schemas.Ingredient "
-    "is extra=forbid, so tools returning MealPlan reject the stored plan. Needs the field "
-    "from person 1 (see evidence/ws-b/MEA-005-009-requests.md).",
-)
 def test_gap_meal_plan_accepts_a_rejected_selection_on_an_ingredient(
     tmp_path, actor, meal_products
 ):

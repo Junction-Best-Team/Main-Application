@@ -68,7 +68,7 @@ def detail(identity, cid):
         context(c, identity)
         row = owned(c, identity, cid)
         messages = c.execute(
-            """SELECT id,role,text,created_at,meal_plan,proposal_id FROM conversation_messages
+            """SELECT id,role,text,created_at,meal_plan,proposal_id,image FROM conversation_messages
             WHERE conversation_id=%s ORDER BY id""",
             (cid,),
         ).fetchall()
@@ -266,11 +266,10 @@ def execute_turn(turn, service, runner=None):
         # Purchasing tools keep the internal agent identity. Memory acts for the human who
         # wrote this message, fenced to this claimed attempt (memory.chat_actor). A retry by
         # a colleague runs without memory: their identity must not own the author's request.
-        actor = auth.internal_agent(identity) | {"_turn_id": str(tid)}
+        actor = auth.internal_agent(identity) | {"_turn_id": str(tid), "_attempt": str(attempt)}
         if turn.get("submitted_by") == identity["id"]:
             actor |= {
                 "_requested_by": identity["id"],
-                "_attempt": str(attempt),
                 "_conversation_id": str(cid),
             }
         else:
@@ -281,6 +280,10 @@ def execute_turn(turn, service, runner=None):
         for index, msg in enumerate(data["messages"]):
             if msg["meal_plan"]:
                 history[index]["content"] += "\nStored meal plan: " + str(msg["meal_plan"])
+            if msg["image"]:
+                history[index]["content"] += (
+                    "\nAn AI-generated recipe illustration was attached to this reply."
+                )
         if data["purchases"]:
             history.append(
                 {
@@ -313,6 +316,17 @@ def execute_turn(turn, service, runner=None):
             service.get_proposal(
                 actor, result.proposal_id
             )  # Never link another buyer/agent's proposal.
+        if result.image is None:
+            # Preserve an uploaded image after interruption, including basket recovery.
+            with connection() as c:
+                saved_image = c.execute(
+                    "SELECT image FROM recipe_image_jobs WHERE turn_id=%s AND state='complete'",
+                    (tid,),
+                ).fetchone()
+            if saved_image:
+                result = AgentTurn.model_validate(
+                    result.model_dump() | {"image": saved_image["image"]}
+                )
         with connection() as c:
             owned(c, identity, cid, lock=True)
             turn = c.execute(
@@ -327,14 +341,15 @@ def execute_turn(turn, service, runner=None):
                     "TURN_REPLACED", "This response was replaced; reload the conversation."
                 )
             c.execute(
-                """INSERT INTO conversation_messages(conversation_id,turn_id,role,text,meal_plan,proposal_id)
-                VALUES(%s,%s,'assistant',%s,%s,%s)""",
+                """INSERT INTO conversation_messages(conversation_id,turn_id,role,text,meal_plan,proposal_id,image)
+                VALUES(%s,%s,'assistant',%s,%s,%s,%s)""",
                 (
                     cid,
                     tid,
                     result.text,
                     js(result.meal_plan.model_dump()) if result.meal_plan else None,
                     result.proposal_id,
+                    js(result.image.model_dump()) if result.image else None,
                 ),
             )
             c.execute("UPDATE conversation_turns SET state='complete' WHERE id=%s", (tid,))

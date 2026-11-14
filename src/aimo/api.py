@@ -19,6 +19,7 @@ from aimo import (
     conversations,
     memory,
     orders_list,
+    policy_settings,
     schedules,
     schema_state,
     upstream,
@@ -67,7 +68,7 @@ from aimo.schemas import (
 from aimo.service import Service
 
 CONTENT_SECURITY_POLICY = (
-    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://res.cloudinary.com; "
     "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 )
 
@@ -271,13 +272,32 @@ def create_app(service=None):
     ):
         return workflow.list_approvals(identity, offset, limit)
 
+    @app.get("/api/settings/policy", response_model=policy_settings.PolicySettings)
+    def get_policy_settings(identity=Depends(buyer)):
+        return policy_settings.get(identity)
+
+    @app.put("/api/settings/policy", response_model=policy_settings.PolicySettings)
+    def save_policy_settings(
+        body: policy_settings.PolicyUpdate, request: Request, identity=Depends(buyer)
+    ):
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+        return policy_settings.update(identity, body)
+
     @app.get("/api/approvals/{approval_id}", response_model=ProposalResponse)
     def detail(approval_id: UUID, identity=Depends(buyer)):
         return workflow.approval_detail(identity, approval_id)
 
     @app.get("/api/purchases/{proposal_id}", response_model=ProposalResponse)
-    def current_purchase(proposal_id: UUID, identity=Depends(buyer)):
-        return workflow.get_proposal(identity, proposal_id)
+    def current_purchase(
+        proposal_id: UUID,
+        revision: int | None = Query(
+            None, ge=1, description="An earlier revision of this proposal; default the current one."
+        ),
+        identity=Depends(buyer),
+    ):
+        return workflow.get_proposal(identity, proposal_id, revision)
 
     @app.post("/api/approvals/{approval_id}/decision", response_model=ProposalResponse)
     def decision(

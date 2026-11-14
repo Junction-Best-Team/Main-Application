@@ -29,7 +29,7 @@ from aimo.db import Problem, connection, fingerprint
 from aimo.ingest import publish
 from aimo.recipe_import import import_product_evidence, ingest_recipes
 from aimo.recipe_schemas import MatchIngredient, Recipe, ScaleRecipe
-from aimo.recipes import match_ingredient, scale_recipe, scaled_plan
+from aimo.recipes import MAX_QUANTITY_PER_PORTION, match_ingredient, scale_recipe, scaled_plan
 from aimo.schemas import PrepareRequest
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "aimo"
@@ -110,54 +110,60 @@ UNIT_FACTOR = {
 
 
 def oracle(quantity_, unit, base, portions):
-    """Independent expectation: exact Fraction, None when not representable in 14 digits/4 dp."""
+    """Independent expectation (MEA-012): exact value rounded UP to four decimals, None above 14 digits."""
     factor, out_unit = UNIT_FACTOR[unit]
     value = Fraction(Decimal(quantity_)) * portions / base * factor
+    rounded = Fraction(-((-value.numerator * 10_000) // value.denominator), 10_000)  # ceiling
     for places in range(5):
-        scaled = value * 10**places
+        scaled = rounded * 10**places
         if scaled.denominator == 1:
             digits = len(str(scaled.numerator))
-            return (value, out_unit) if digits <= 14 else (None, out_unit)
-    return None, out_unit
+            return (rounded, out_unit) if digits <= 14 else (None, out_unit)
+    raise AssertionError("a four-decimal value always has at most four places")
 
 
-def test_property_every_amount_equals_the_exact_fraction_or_is_unresolved():
+def test_property_every_amount_is_the_exact_value_rounded_up_or_the_plan_is_refused():
     rng = random.Random(20261114)
     quantities = ["1", "2", "3", "7", "0.5", "12.25", "100", "150", "333", "0.0001", "99999.9999"]
-    checked = nulls = 0
+    checked = refused = 0
     for _ in range(1500):
         quantity_ = rng.choice(quantities)
         unit = rng.choice(list(UNIT_FACTOR))
         base = rng.choice([1, 2, 3, 4, 6, 7, 8, 12, 25, 100, 9999, 10000])
         portions = rng.choice([1, 2, 3, 7, 50, 100, 200, 1000, 9999, 10000])
         expected, out_unit = oracle(quantity_, unit, base, portions)
+        exact = Fraction(Decimal(quantity_)) * portions / base * UNIT_FACTOR[unit][0]
+        if exact > MAX_QUANTITY_PER_PORTION[out_unit] * portions:  # MEA-011: not plausible
+            with pytest.raises(Problem) as error:
+                one(quantity_, unit, base, portions)
+            assert error.value.code == "QUANTITY_PER_PORTION_EXCEEDED"
+            refused += 1
+            continue
         item = one(quantity_, unit, base, portions)
         assert item.unit == out_unit
-        if expected is None:
-            assert item.amount is None, (quantity_, unit, base, portions, item.amount)
-            assert "precision" in item.reason
-            nulls += 1
-        else:
-            assert Fraction(Decimal(item.amount)) == expected, (quantity_, unit, base, portions)
-            assert item.reason == "Match a suitable catalog product."
+        assert expected is not None, "within the per-portion bound a value always fits 14 digits"
+        assert Fraction(Decimal(item.amount)) == expected, (quantity_, unit, base, portions)
+        assert item.reason == "Match a suitable catalog product."
         checked += 1
-    assert checked == 1500 and 0 < nulls < checked  # both branches were exercised
+    assert checked > 0 and refused > 0  # both branches were exercised
 
 
-def test_non_terminating_results_are_unresolved_never_rounded():
-    # 100 g / 3 servings * 1 portion = 0.0333... KG: no 4-decimal representation exists.
+def test_non_terminating_results_are_rounded_up_never_down():
+    # MEA-012: 100 g / 3 servings * 1 portion = 0.0333... KG becomes 0.0334 (ceiling, not half-up).
     item = one(100, "g", 3, 1)
-    assert item.amount is None and item.unit == "KG"
-    assert item.reason == "Scaled quantity exceeds supported precision; review the recipe basis."
-    # Base 6 / 200 portions: 150 g is exact (5 KG), 200 g is 100/3 KG and is not rounded.
+    assert item.amount == "0.0334" and item.unit == "KG"
+    assert item.reason == "Match a suitable catalog product."
+    # Base 6 / 200 portions: 150 g is exact (5 KG) and untouched; 200 g is 100/3 KG, rounded up.
     assert one(150, "g", 6, 200).amount == "5"
-    assert one(200, "g", 6, 200).amount is None
+    assert one(200, "g", 6, 200).amount == "6.6667"
 
 
-def test_fifteen_digit_results_are_unresolved():
-    # Recipe.quantity is at most 14 digits (10 whole, 4 decimals); scaling can exceed that.
-    assert one("9999999999.9999", "kg", 1, 1).amount == "9999999999.9999"
-    assert one("9999999999.9999", "kg", 1, 3).amount is None  # 29999999999.9997 has 15 digits
+def test_a_fifteen_digit_quantity_is_refused_by_the_per_portion_bound_first():
+    # Recipe.quantity is at most 14 digits; scaling such a base quantity is not plausible per
+    # portion, so the plan is refused before any digit limit could apply (MEA-011).
+    with pytest.raises(Problem) as error:
+        one("9999999999.9999", "kg", 1, 1)
+    assert error.value.code == "QUANTITY_PER_PORTION_EXCEEDED"
 
 
 def test_scaled_plan_module_uses_no_float():
@@ -212,11 +218,13 @@ def test_missing_quantity_is_unresolved_with_a_reason():
     assert item.amount is None and "unspecified" in item.reason
 
 
-def test_thirty_ingredients_scale_and_thirty_one_are_refused():
-    ok = make_recipe([(1, "g", "linear")] * 30)
-    assert len(scaled_plan(ok, 10).ingredients) == 30
+def test_one_thousand_ingredients_scale_and_more_are_refused():
+    ok = make_recipe([(1, "g", "linear")] * 1000)
+    assert len(scaled_plan(ok, 10).ingredients) == 1000
+    # The Recipe model already refuses more than 1000; scaled_plan stays a second line of defence.
+    too_big = ok.model_copy(update={"ingredients": ok.ingredients + ok.ingredients[:1]})
     with pytest.raises(Problem) as error:
-        scaled_plan(make_recipe([(1, "g", "linear")] * 31), 10)
+        scaled_plan(too_big, 10)
     assert error.value.code == "RECIPE_TOO_LARGE"
 
 
@@ -259,6 +267,8 @@ def test_scaled_plan_has_exactly_one_caller_and_it_passes_a_stored_recipe_versio
 @pytest.fixture(autouse=True)
 def clean_recipes():
     with connection() as c:
+        # A recipe reset cascades into guarded history (PER-002): say it is deliberate.
+        c.execute("SET LOCAL aimo.allow_history_truncate = 'on'")
         c.execute(
             "TRUNCATE recipes,recipe_catalogs,recipe_embedding_cache,recipe_product_evidence CASCADE"
         )
@@ -618,11 +628,6 @@ def test_snapshot_line_names_the_ingredients_it_serves(tmp_path, actor, service,
     ]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="MEA-005 'selections' (plural): a product tried and rejected for an ingredient is not "
-    "recorded anywhere; the revision keeps only product_id=None and a reason.",
-)
 def test_gap_rejected_product_selection_is_recorded(tmp_path, actor, meal_products):
     versions = import_fixture(tmp_path)
     plan = scale_recipe(actor, ref(versions))
@@ -786,8 +791,10 @@ def test_agent_tool_refuses_prepare_while_the_saved_plan_is_unresolved(
     assert error.value.code == "INCOMPLETE_MEAL_PLAN"
 
 
-def free_form_session(tmp_path, actor, service):
-    """Earlier turn leaves an unresolved saved plan; a later turn sends a one-ingredient plan."""
+def free_form_session(tmp_path, actor, service, title=None):
+    """Earlier turn leaves an unresolved saved plan; a later turn sends a one-ingredient plan.
+
+    `title` defaults to the saved plan's own title (the same dish)."""
     versions = import_fixture(tmp_path, review=False)
     unresolved = scale_recipe(actor, ref(versions))
     assert all(i["status"] == "unresolved" for i in unresolved["ingredients"])
@@ -797,7 +804,7 @@ def free_form_session(tmp_path, actor, service):
         "publish_meal_plan",
         json.dumps(
             {
-                "title": unresolved["title"],
+                "title": title or unresolved["title"],
                 "portions": 200,
                 "ingredients": [
                     {
@@ -823,19 +830,12 @@ def free_form_session(tmp_path, actor, service):
 def test_free_form_basket_that_omits_ingredients_is_prepared_but_labelled_free_form(
     tmp_path, actor, service, meal_products
 ):
-    """Characterisation of the documented cross-turn limit (docs/recipes.md)."""
-    later, request = free_form_session(tmp_path, actor, service)
+    """A free-form plan for a differently titled dish is still prepared and labelled (docs/recipes.md)."""
+    later, request = free_form_session(tmp_path, actor, service, title="Spaghetti only")
     result = later.invoke("prepare_order", json.dumps(request))
     assert result["recipe_basis"] == "free_form" and result["request"]["recipe_plan_id"] is None
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="MEA-008 gap: a later-turn free-form plan that names the same dish as an earlier "
-    "unresolved saved plan is prepared (only labelled free_form); proposed contract: refuse it. "
-    "Backend half exists (aimo.recipe_guard, Service.ensure_saved_plan_resolved); remaining step: "
-    "ToolSession.prepare (agent_tools.py, person 2) must call it. See evidence MEA-008-requests.md.",
-)
 def test_gap_free_form_basket_for_a_dish_with_unresolved_saved_plan_is_refused(
     tmp_path, actor, service, meal_products
 ):
@@ -884,6 +884,16 @@ def test_purchase_amount_field_is_a_copy_of_the_required_amount_not_the_rounded_
         assert item["purchase_amount"] == item["amount"]
         assert item["purchase_unit"] == item["unit"]
         assert item["purchase_amount"] != item["conversion"]["proposed_amount"]
+
+
+def test_purchase_amount_fields_say_they_are_the_required_amount():
+    """Issue 99: the field names stay (a rename would break the API), the schema explains them."""
+    from aimo.chat_schemas import Ingredient
+
+    fields = Ingredient.model_json_schema()["properties"]
+    assert "proposed_amount" in fields["purchase_amount"]["description"]
+    assert "not the pack-rounded" in fields["purchase_amount"]["description"]
+    assert "Not the pack" in fields["purchase_unit"]["description"]
 
 
 def test_ingredient_purchased_amounts_add_up_to_the_basket_line(
