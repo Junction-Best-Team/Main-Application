@@ -1,5 +1,3 @@
-import importlib.util
-from pathlib import Path
 from uuid import uuid4
 
 import psycopg
@@ -7,13 +5,10 @@ import pytest
 from psycopg import sql
 
 from aimo.config import settings
+from aimo.permissions import configure_runtime_role
 
 
 def test_runtime_can_lock_buyers_and_identities_without_provisioning_rights():
-    path = Path(__file__).resolve().parents[1] / "infra/kubernetes/bootstrap.py"
-    spec = importlib.util.spec_from_file_location("runtime_bootstrap", path)
-    bootstrap = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(bootstrap)
     role_name = "runtime_permissions_test_" + uuid4().hex
     with psycopg.connect(settings().database_url) as conn:
         capabilities = conn.execute(
@@ -23,8 +18,20 @@ def test_runtime_can_lock_buyers_and_identities_without_provisioning_rights():
             pytest.skip("Restricted-role integration test requires CREATEROLE in the test database")
         try:
             conn.execute(sql.SQL("CREATE ROLE {} NOLOGIN").format(sql.Identifier(role_name)))
-            bootstrap.configure_runtime_role(conn, role_name)
+            # Repeated release grants cover newly created tables and sequences.
+            conn.execute("CREATE TABLE release_grants_test (id bigserial PRIMARY KEY, value text)")
+            configure_runtime_role(conn, role_name)
+            configure_runtime_role(conn, role_name)
             conn.execute(sql.SQL("SET LOCAL ROLE {}").format(sql.Identifier(role_name)))
+            assert (
+                conn.execute(
+                    "INSERT INTO release_grants_test(value) VALUES('runtime') RETURNING id"
+                ).fetchone()[0]
+                == 1
+            )
+            conn.execute("UPDATE release_grants_test SET value='updated'")
+            assert conn.execute("SELECT value FROM release_grants_test").fetchone()[0] == "updated"
+            conn.execute("DELETE FROM release_grants_test")
             assert conn.execute("SELECT id FROM buyers FOR UPDATE").fetchone()
             assert conn.execute("SELECT id FROM identities FOR SHARE").fetchone()
             for statement in (
@@ -36,6 +43,8 @@ def test_runtime_can_lock_buyers_and_identities_without_provisioning_rights():
                 "UPDATE internal_agents SET identity_id=identity_id",
                 "INSERT INTO buyers VALUES ('forbidden','123',1)",
                 "DELETE FROM identities",
+                "SELECT * FROM schema_migrations",
+                "CREATE TABLE forbidden_schema_change(id int)",
             ):
                 with pytest.raises(psycopg.errors.InsufficientPrivilege):
                     with conn.transaction():

@@ -83,7 +83,7 @@ jobs:
     needs: build
     if: inputs.deploy && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
       DIGITALOCEAN_CLUSTER_ID: ${{ vars.DIGITALOCEAN_CLUSTER_ID }}
@@ -102,9 +102,11 @@ jobs:
           path: release-images
       - name: Load the three immutable image references
         run: |
-          echo "IMAGE=$(cat release-images/api.image)" >> "$GITHUB_ENV"
-          echo "WORKER_IMAGE=$(cat release-images/worker.image)" >> "$GITHUB_ENV"
-          echo "FRONTEND_IMAGE=$(cat release-images/frontend.image)" >> "$GITHUB_ENV"
+          {
+            echo "IMAGE=$(cat release-images/api.image)"
+            echo "WORKER_IMAGE=$(cat release-images/worker.image)"
+            echo "FRONTEND_IMAGE=$(cat release-images/frontend.image)"
+          } >> "$GITHUB_ENV"
       - name: Check deployment configuration
         id: config
         run: |
@@ -120,7 +122,7 @@ jobs:
       - name: Configure the server-side conversational provider
         id: llm
         run: python3 infra/scripts/sync-llm-secret.py
-      - name: Update image and wait for readiness
+      - name: Migrate database, then update images and wait for readiness
         env:
           LLM_REFRESHED: ${{ steps.llm.outputs.changed }}
         run: bash infra/scripts/deploy-app.sh

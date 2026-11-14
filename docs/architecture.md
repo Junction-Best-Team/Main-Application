@@ -2,7 +2,10 @@
 
 This describes the implemented chat product. The [chat purchasing migration](chat-purchasing.md)
 supersedes the external-agent/MCP entry points in the [original brief](brief.md).
-GitHub renders both Mermaid diagrams directly; edit their text here when the architecture changes.
+GitHub renders the Mermaid diagrams directly; edit their text here when the architecture changes.
+
+The OpenRouter search profile requires an explicit staged import and coordinated cutover.
+Deploying the code alone retains the existing local E5 profile.
 
 ## System overview
 
@@ -14,18 +17,30 @@ flowchart TB
     API -->|Durable turns / sessions / purchases| DB[(Managed PostgreSQL + pgvector)]
     Worker[aimo-worker: queue consumer pod] -->|Claim jobs / save results| DB
     Worker --> Agent[Typed agent and purchasing tools]
-    Agent --> Search[Local embedding model and hybrid search]
+    Agent --> Search[Structured filters and hybrid catalog search]
+    Search --> Embeddings[Worker embedding adapter]
+    Embeddings -->|Existing local profile| LocalModel[Pinned E5: 384 dimensions]
+    subgraph HostedSearch[OpenRouter search APIs: opt-in]
+        RemoteEmbeddings[Qwen3 Embedding 8B: 4096 dimensions]
+        Reranker[Qwen3 Reranker 8B]
+    end
+    Embeddings <-->|Hosted profile: query or product text| RemoteEmbeddings
+    Search <-->|Up to 30 filtered candidates by default| Reranker
     Search --> DB
     Agent --> Provider[External conversational LLM]
     Agent --> Supplier[Supplier lookup or explicit fixtures]
     API -->|Customer confirmation and commercial revalidation| Supplier
+    Catalog[Verified private snapshot or authenticated Valio download] --> Importer
     Importer[Explicit worker-image ingestion Job] --> DB
+    Importer --> Embeddings
 ```
 
 Frontend, API and worker each have their own image, Deployment, pod and Service.
 API requests persist chat jobs; the worker consumes them independently, and SSE
-returns saved conversation snapshots. The worker owns the local embedding model
-and LLM key. The API owns browser session signing and exact customer confirmation.
+returns saved conversation snapshots. The worker owns the embedding backend,
+conversational LLM key and separate `SEARCH_API_KEY`. Hosted search needs no GPU or
+separate model server. The API owns browser session signing and exact customer confirmation;
+it checks catalog/profile compatibility without model loading or search credentials.
 The frontend receives no application credentials. PostgreSQL remains outside the
 cluster as the existing managed database.
 
@@ -33,6 +48,53 @@ The agent can plan, search and prepare; its tool registry has no approval or
 commit operation. Policy/identity provisioning remain privileged setup operations.
 Even with live price/availability, orders are persistent **mocks**, without supplier
 checkout or stock reservation. See [cutover and recovery](separate-apps.md).
+
+Exact product ID/GTIN matches stay local. Descriptive hosted searches combine keyword and
+exact cosine ranking in pgvector, then rerank a filtered shortlist. Dietary exclusions apply
+before reranking; model scores never prove suitability. Embedding failures return errors;
+reranker outages preserve filtered hybrid results with `rerank_status=unavailable`.
+
+## Hosted catalog ingestion and cutover
+
+PostgreSQL stores normalized product facts as JSONB, searchable text/`tsvector`, and one embedding
+per product and catalog generation. Migration 005 allows old 384-dimensional and new
+4096-dimensional generations to coexist, with a database dimension check. Search reads only the
+active generation. Exact vector ranking does not use an HNSW index; the old unused index is removed.
+
+```mermaid
+sequenceDiagram
+    actor Operator
+    participant App as API and worker
+    participant Importer as Explicit ingestion command / Job
+    participant Embeddings as OpenRouter / Qwen3 Embedding 8B
+    participant DB as PostgreSQL + pgvector
+
+    Operator->>DB: Apply migration 005 using schema-owner credentials
+    Operator->>App: Deploy new API and worker code with existing E5 profile
+    Operator->>Importer: Run ingest --stage with OpenRouter profile
+    Importer->>Importer: Verify snapshot hash, count and IDs, then normalize facts
+    Importer->>DB: Look up cached text hashes for the embedding profile
+    loop Missing embeddings: 32 texts per batch, at most 4 batches in flight
+        Importer->>Embeddings: Embed source-backed product text
+        Embeddings-->>Importer: 4096-dimensional vectors
+        Importer->>Importer: Validate model, indexes, dimensions and finite values
+        Importer->>DB: Commit completed batch to reusable embedding cache
+    end
+    Importer->>DB: Atomically store complete staged catalog generation
+    Note over App,DB: Existing active catalog stays available during staging<br/>Interrupted imports resume from completed cached batches
+    Operator->>App: Stop accepting turns, drain work and stop for cutover
+    Operator->>Importer: Run activate-catalog with new profile and generation ID
+    Importer->>DB: Validate generation, switch active pointer and retain previous catalog
+    Operator->>App: Configure matching API/worker profiles and worker key, then restart
+    Operator->>App: Verify readiness and real Finnish/English searches
+```
+
+The import is an operator action, never a deployment/startup hook or continuous sync. Only changed
+text needs new embeddings within the same profile; switching models requires a new compatible
+catalog. The reranker runs at search time, not during ingestion. Readiness checks the database,
+profile and worker key presence without making paid API calls. Rollback selects the retained previous
+generation and matching serving profile. See the [hosted search runbook](hosted-search.md) for
+commands, failure handling, measured quality/latency and rollout details.
 
 ## Purchase and confirmation sequence
 
@@ -108,6 +170,7 @@ constraints prevent duplicate acceptance; persisted conversations and receipts s
 | Provider loop and allowed typed tools | [agent.py](../src/aimo/agent.py), [chat_schemas.py](../src/aimo/chat_schemas.py) |
 | Shared purchasing entry points | [service.py](../src/aimo/service.py) |
 | Catalog normalization, ingestion and hybrid search | [catalog.py](../src/aimo/catalog.py), [ingest.py](../src/aimo/ingest.py), [search.py](../src/aimo/search.py) |
+| OpenRouter embeddings, reranking and response validation | [search_provider.py](../src/aimo/search_provider.py) |
 | Commercial evidence and quantity snapshots | [upstream.py](../src/aimo/upstream.py), [purchases.py](../src/aimo/purchases.py) |
 | Policy decisions and durable purchase workflow | [approval_policy.py](../src/aimo/approval_policy.py), [approval_workflow.py](../src/aimo/approval_workflow.py) |
 | Purchasing contracts and database schema | [schemas.py](../src/aimo/schemas.py), [migrations](../migrations) |

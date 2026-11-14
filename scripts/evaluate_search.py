@@ -1,13 +1,16 @@
 """Small curated evaluation, not a general retrieval benchmark. Uses the active full catalog."""
 
+import argparse
 import json
 import statistics
 import time
 from pathlib import Path
 
+from aimo.config import settings
 from aimo.db import connection
 from aimo.schemas import Requirements, SearchRequest
 from aimo.search import model_key, search_products
+from aimo.search_provider import RERANK_MODEL
 
 MILKS = {
     "464306",
@@ -68,15 +71,29 @@ CASES = [
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, default=Path("docs/search-evaluation.json"))
+    parser.add_argument(
+        "--strategies",
+        nargs="+",
+        choices=("keyword", "semantic", "hybrid"),
+        default=["keyword", "semantic", "hybrid"],
+    )
+    args = parser.parse_args()
     with connection() as c:
         identity = c.execute("SELECT * FROM identities WHERE id='demo-agent'").fetchone()
     report = {
         "model": model_key(),
+        "reranker": RERANK_MODEL
+        if settings().embedding_backend == "openrouter" and settings().rerank_enabled
+        else None,
+        "rerank_enabled": settings().embedding_backend == "openrouter"
+        and settings().rerank_enabled,
         "cases": len(CASES),
         "scope": "Curated challenge cases; labels are incomplete beyond top-five relevance. Not a held-out benchmark.",
         "strategies": {},
     }
-    for strategy in ("keyword", "semantic", "hybrid"):
+    for strategy in args.strategies:
         rows = []
         for query, relevant, requirements, kind in CASES:
             start = time.perf_counter()
@@ -104,6 +121,7 @@ def main():
                     "top5_hit": bool(set(ids) & relevant) if relevant else not ids,
                     "constraint_violations": violations,
                     "latency_ms": round(elapsed, 1),
+                    "rerank_status": result.get("rerank_status", "disabled"),
                 }
             )
         report["strategies"][strategy] = {
@@ -112,6 +130,10 @@ def main():
             "constraint_violations": sum(r["constraint_violations"] for r in rows),
             "warm_median_ms": round(statistics.median(r["latency_ms"] for r in rows[1:]), 1),
             "first_query_ms": rows[0]["latency_ms"],
+            "rerank_unavailable": sum(r["rerank_status"] == "unavailable" for r in rows),
+            "description_median_ms": round(
+                statistics.median(r["latency_ms"] for r in rows if r["kind"] == "description"), 1
+            ),
             "by_kind": {
                 kind: {
                     "count": sum(r["kind"] == kind for r in rows),
@@ -122,7 +144,7 @@ def main():
             },
             "details": rows,
         }
-    Path("docs/search-evaluation.json").write_text(json.dumps(report, indent=2) + "\n")
+    args.output.write_text(json.dumps(report, indent=2) + "\n")
     print(
         json.dumps(
             {

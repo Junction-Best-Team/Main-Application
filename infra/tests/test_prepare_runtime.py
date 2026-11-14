@@ -61,6 +61,9 @@ class PrivateRuntimeInputsTest(unittest.TestCase):
         inputs = json.loads((self.runtime / "runtime.auto.tfvars.json").read_text())
         self.assertEqual(inputs["app_replicas"], 0)
         self.assertIsNone(inputs["bootstrap_generation"])
+        self.assertEqual(inputs["migration_credentials"], {
+            "database_url": "synthetic-admin-url", "database_user": "synthetic-role",
+        })
         self.assertNotIn("agent_token", inputs["bootstrap_credentials"])
         self.assertGreaterEqual(len(inputs["bootstrap_credentials"]["buyer_password"]), 12)
 

@@ -11,18 +11,31 @@ from aimo.schemas import PolicyRules
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def migrate():
+def migrate(runtime_role=None):
     with connection() as c:
+        # Serialize ledger checks, DDL and grants in one atomic transaction.
+        # Keep this key stable across bootstrap, CLI and release Job callers.
         c.execute("SELECT pg_advisory_xact_lock(893018)")
         c.execute(
             "CREATE TABLE IF NOT EXISTS schema_migrations(version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())"
         )
-        for path in sorted((ROOT / "migrations").glob("*.sql")):
+        paths = sorted((ROOT / "migrations").glob("*.sql"))
+        if not paths:
+            raise RuntimeError("No packaged migration files found")
+        for path in paths:
             if not c.execute(
                 "SELECT 1 FROM schema_migrations WHERE version=%s", (path.name,)
             ).fetchone():
+                print(f"Applying migration {path.name}", flush=True)
                 c.execute(path.read_text())
                 c.execute("INSERT INTO schema_migrations(version) VALUES(%s)", (path.name,))
+            else:
+                print(f"Skipping applied migration {path.name}", flush=True)
+        if runtime_role:
+            from aimo.permissions import configure_runtime_role
+
+            configure_runtime_role(c, runtime_role)
+    print("Migrations committed" + (" with runtime grants." if runtime_role else "."), flush=True)
 
 
 def seed():
@@ -124,8 +137,10 @@ def configure():
 def main():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("configure", "migrate", "seed", "serve", "worker", "fixture-catalog", "cache-model"):
+    for name in ("configure", "seed", "serve", "worker", "fixture-catalog", "cache-model"):
         sub.add_parser(name)
+    migration = sub.add_parser("migrate")
+    migration.add_argument("--runtime-role", help="Reapply restricted runtime grants atomically")
     scope = sub.add_parser(
         "set-product-scope", help="Privileged provisioning: version a buyer's approved product IDs"
     )
@@ -134,6 +149,11 @@ def main():
     ing = sub.add_parser("ingest")
     ing.add_argument("--file", type=Path, required=True)
     ing.add_argument("--download", action="store_true")
+    ing.add_argument(
+        "--stage", action="store_true", help="Import without replacing the active catalog"
+    )
+    activation = sub.add_parser("activate-catalog", help="Explicit catalog cutover or rollback")
+    activation.add_argument("--generation", required=True)
     ing.add_argument("--expected-count", type=int, default=17546)
     from aimo.ingest import CATALOG_SHA256
 
@@ -142,7 +162,7 @@ def main():
     if args.command == "configure":
         configure()
     elif args.command == "migrate":
-        migrate()
+        migrate(runtime_role=args.runtime_role)
     elif args.command == "seed":
         seed()
     elif args.command == "set-product-scope":
@@ -154,6 +174,10 @@ def main():
                 }
             )
         )
+    elif args.command == "activate-catalog":
+        from aimo.ingest import activate_catalog
+
+        print(json.dumps(activate_catalog(args.generation)))
     elif args.command == "serve":
         import uvicorn
 
@@ -185,7 +209,13 @@ def main():
 
         if args.download:
             download(args.file)
-        print(json.dumps(ingest_file(args.file, args.expected_count, args.expected_sha256)))
+        print(
+            json.dumps(
+                ingest_file(
+                    args.file, args.expected_count, args.expected_sha256, activate=not args.stage
+                )
+            )
+        )
 
 
 if __name__ == "__main__":

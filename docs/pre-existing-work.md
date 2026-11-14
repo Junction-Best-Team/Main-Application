@@ -82,3 +82,14 @@ regressions and server-authored recipe notices, and split the previously prepare
 OpenRouter release code into PR #32 for runtime-owner review. The acceptance
 handoff in `internal-agent.md` records unresolved shared work; it is not a claim
 that recipe templates, deterministic scaling or trusted constraints were built.
+
+## Automatic release migrations — 2026-11-14
+
+Reused develop `b80a8bd`'s transaction-locked `aimo migrate`, SQL/ledger,
+API image packaging, bootstrap grant policy, and release recovery/cluster cleanup.
+Moved the existing grants into a shared helper; added a migration-only Job gate,
+dedicated Secret provisioning, operator guide and focused tests. PR #34 was
+inspected for concurrent schema changes; no numbered migration was added. Local
+PostgreSQL tests are real; kubectl/Job behavior and Terraform plans use mocks.
+No deployment, Terraform apply, production DB, seed/import or paid provider call
+was performed by this task.

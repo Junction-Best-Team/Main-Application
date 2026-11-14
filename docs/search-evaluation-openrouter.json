@@ -1,0 +1,1361 @@
+{
+  "model": "openrouter:qwen/qwen3-embedding-8b:4096:catalog-v2-query-v1",
+  "reranker": "qwen/qwen3-reranker-8b",
+  "rerank_enabled": true,
+  "cases": 30,
+  "scope": "Curated challenge cases; labels are incomplete beyond top-five relevance. Not a held-out benchmark.",
+  "strategies": {
+    "keyword": {
+      "top1": 18,
+      "top5": 23,
+      "constraint_violations": 0,
+      "warm_median_ms": 3.4,
+      "first_query_ms": 5.0,
+      "rerank_unavailable": 0,
+      "description_median_ms": 3.5,
+      "by_kind": {
+        "identifier": {
+          "count": 6,
+          "top1": 6,
+          "top5": 6
+        },
+        "description": {
+          "count": 21,
+          "top1": 9,
+          "top5": 14
+        },
+        "no_match": {
+          "count": 3,
+          "top1": 3,
+          "top5": 3
+        }
+      },
+      "details": [
+        {
+          "query": "464306",
+          "kind": "identifier",
+          "ids": [
+            "464306"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 5.0,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "465039",
+          "kind": "identifier",
+          "ids": [
+            "465039"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3.3,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "460123",
+          "kind": "identifier",
+          "ids": [
+            "460123"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3.2,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "460675",
+          "kind": "identifier",
+          "ids": [
+            "460675"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3.0,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "460035",
+          "kind": "identifier",
+          "ids": [
+            "460035"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2.8,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "6408430000487",
+          "kind": "identifier",
+          "ids": [
+            "464306"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 4.2,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "laktoositon kevytmaito",
+          "kind": "description",
+          "ids": [
+            "465149",
+            "464201",
+            "464440",
+            "466288",
+            "465042"
+          ],
+          "top1_relevant": false,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 5.0,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "lactose free milk",
+          "kind": "description",
+          "ids": [
+            "465149",
+            "469330",
+            "469386",
+            "474627",
+            "466215"
+          ],
+          "top1_relevant": false,
+          "top5_hit": false,
+          "constraint_violations": 0,
+          "latency_ms": 15.0,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "lactose free milk for hotel breakfast",
+          "kind": "description",
+          "ids": [],
+          "top1_relevant": false,
+          "top5_hit": false,
+          "constraint_violations": 0,
+          "latency_ms": 3.9,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "plain lactose free semi skimmed milk 1 litre",
+          "kind": "description",
+          "ids": [],
+          "top1_relevant": false,
+          "top5_hit": false,
+          "constraint_violations": 0,
+          "latency_ms": 3.7,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "Valio Eila kevytmaitojuoma 1 l",
+          "kind": "description",
+          "ids": [
+            "465039",
+            "464398",
+            "469287",
+            "462921",
+            "464306"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 4.0,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "Valio Eila semi skimmed milk drink 1 l",
+          "kind": "description",
+          "ids": [
+            "465039",
+            "464398",
+            "469287",
+            "462921",
+            "464306"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 4.2,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "Arki Eila maitojuoma",
+          "kind": "description",
+          "ids": [
+            "464401",
+            "464306"
+          ],
+          "top1_relevant": false,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3.5,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "Arki lactose free milk",
+          "kind": "description",
+          "ids": [
+            "464401",
+            "464306",
+            "464099",
+            "468464",
+            "463400"
+          ],
+          "top1_relevant": false,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3.9,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "UHT lactose free milk",
+          "kind": "description",
+          "ids": [
+            "464768",
+            "462775",
+            "464073",
+            "464119",
+            "469363"
+          ],
+          "top1_relevant": false,
+          "top5_hit": false,
+          "constraint_violations": 0,
+          "latency_ms": 5.3,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "laktoositon iskukuumennettu maito",
+          "kind": "description",
+          "ids": [
+            "463380",
+            "463779",
+            "464398",
+            "464201",
+            "464440"
+          ],
+          "top1_relevant": false,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3.5,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "Snellman flank steak",
+          "kind": "description",
+          "ids": [
+            "460675"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3.2,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "flank steak",
+          "kind": "description",
+          "ids": [
+            "460675",
+            "465133",
+            "469861",
+            "467050"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3.2,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "Snellman naudan kuve",
+          "kind": "description",
+          "ids": [],
+          "top1_relevant": false,
+          "top5_hit": false,
+          "constraint_violations": 0,
+          "latency_ms": 3.4,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "lettuce mix",
+          "kind": "description",
+          "ids": [
+            "473237",
+            "473739",
+            "460035",
+            "460253",
+            "463976"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3.6,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "salaattisekoitus",
+          "kind": "description",
+          "ids": [
+            "473237",
+            "473739",
+            "463976",
+            "472063",
+            "472850"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3.2,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "J\u00e4rvikyl\u00e4 Maukas salaatti",
+          "kind": "description",
+          "ids": [],
+          "top1_relevant": false,
+          "top5_hit": false,
+          "constraint_violations": 0,
+          "latency_ms": 3.2,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "J\u00e4rvikyl\u00e4 salad mix",
+          "kind": "description",
+          "ids": [
+            "472850",
+            "472063",
+            "473237",
+            "473739",
+            "463342"
+          ],
+          "top1_relevant": false,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3.4,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "Vitamin Well 500 ml",
+          "kind": "description",
+          "ids": [],
+          "top1_relevant": false,
+          "top5_hit": false,
+          "constraint_violations": 0,
+          "latency_ms": 3.2,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "Vitamin Well Antioxidant peach",
+          "kind": "description",
+          "ids": [
+            "476953"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3.3,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "Vitamin Well Awake raspberry",
+          "kind": "description",
+          "ids": [
+            "477138"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3.1,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "Vitamin Well Prepare",
+          "kind": "description",
+          "ids": [
+            "477289",
+            "460560",
+            "462902",
+            "460626",
+            "460652"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3.9,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "464306",
+          "kind": "no_match",
+          "ids": [],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2.6,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "468044",
+          "kind": "no_match",
+          "ids": [],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2.7,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "469429",
+          "kind": "no_match",
+          "ids": [],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2.8,
+          "rerank_status": "disabled"
+        }
+      ]
+    },
+    "semantic": {
+      "top1": 19,
+      "top5": 26,
+      "constraint_violations": 0,
+      "warm_median_ms": 1561.0,
+      "first_query_ms": 2.7,
+      "rerank_unavailable": 0,
+      "description_median_ms": 1640.4,
+      "by_kind": {
+        "identifier": {
+          "count": 6,
+          "top1": 6,
+          "top5": 6
+        },
+        "description": {
+          "count": 21,
+          "top1": 10,
+          "top5": 17
+        },
+        "no_match": {
+          "count": 3,
+          "top1": 3,
+          "top5": 3
+        }
+      },
+      "details": [
+        {
+          "query": "464306",
+          "kind": "identifier",
+          "ids": [
+            "464306"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2.7,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "465039",
+          "kind": "identifier",
+          "ids": [
+            "465039"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2.6,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "460123",
+          "kind": "identifier",
+          "ids": [
+            "460123"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2.9,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "460675",
+          "kind": "identifier",
+          "ids": [
+            "460675"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2.7,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "460035",
+          "kind": "identifier",
+          "ids": [
+            "460035"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2.6,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "6408430000487",
+          "kind": "identifier",
+          "ids": [
+            "464306"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2.7,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "laktoositon kevytmaito",
+          "kind": "description",
+          "ids": [
+            "464179",
+            "465149",
+            "469330",
+            "466288",
+            "469363"
+          ],
+          "top1_relevant": false,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 1130.9,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "lactose free milk",
+          "kind": "description",
+          "ids": [
+            "464073",
+            "464768",
+            "472492",
+            "463203",
+            "463254"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 1571.7,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "lactose free milk for hotel breakfast",
+          "kind": "description",
+          "ids": [
+            "463203",
+            "464073",
+            "464237",
+            "464768",
+            "469216"
+          ],
+          "top1_relevant": false,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 1838.1,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "plain lactose free semi skimmed milk 1 litre",
+          "kind": "description",
+          "ids": [
+            "465039",
+            "469287",
+            "464198",
+            "463038",
+            "464201"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 752.5,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "Valio Eila kevytmaitojuoma 1 l",
+          "kind": "description",
+          "ids": [
+            "469287",
+            "464306",
+            "464198",
+            "465039",
+            "469119"
+          ],
+          "top1_relevant": false,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3691.0,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "Valio Eila semi skimmed milk drink 1 l",
+          "kind": "description",
+          "ids": [
+            "469287",
+            "465039",
+            "464198",
+            "464306",
+            "464398"
+          ],
+          "top1_relevant": false,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 1640.4,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "Arki Eila maitojuoma",
+          "kind": "description",
+          "ids": [
+            "464401",
+            "464306",
+            "469178",
+            "463938",
+            "469198"
+          ],
+          "top1_relevant": false,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2939.1,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "Arki lactose free milk",
+          "kind": "description",
+          "ids": [
+            "464401",
+            "464768",
+            "463203",
+            "469386",
+            "464399"
+          ],
+          "top1_relevant": false,
+          "top5_hit": false,
+          "constraint_violations": 0,
+          "latency_ms": 1720.8,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "UHT lactose free milk",
+          "kind": "description",
+          "ids": [
+            "464073",
+            "464119",
+            "466288",
+            "464201",
+            "464768"
+          ],
+          "top1_relevant": false,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2075.6,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "laktoositon iskukuumennettu maito",
+          "kind": "description",
+          "ids": [
+            "464073",
+            "472492",
+            "464119",
+            "464201",
+            "466288"
+          ],
+          "top1_relevant": false,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 1116.6,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "Snellman flank steak",
+          "kind": "description",
+          "ids": [
+            "460675",
+            "470544",
+            "470421",
+            "470652",
+            "472412"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 1690.6,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "flank steak",
+          "kind": "description",
+          "ids": [
+            "460675",
+            "467050",
+            "464115",
+            "469861",
+            "467075"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 6217.0,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "Snellman naudan kuve",
+          "kind": "description",
+          "ids": [
+            "468788",
+            "470527",
+            "470418",
+            "469310",
+            "472154"
+          ],
+          "top1_relevant": false,
+          "top5_hit": false,
+          "constraint_violations": 0,
+          "latency_ms": 1595.6,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "lettuce mix",
+          "kind": "description",
+          "ids": [
+            "473134",
+            "463976",
+            "460253",
+            "475309",
+            "475532"
+          ],
+          "top1_relevant": false,
+          "top5_hit": false,
+          "constraint_violations": 0,
+          "latency_ms": 1920.7,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "salaattisekoitus",
+          "kind": "description",
+          "ids": [
+            "473134",
+            "475309",
+            "475532",
+            "467412",
+            "460751"
+          ],
+          "top1_relevant": false,
+          "top5_hit": false,
+          "constraint_violations": 0,
+          "latency_ms": 1288.0,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "J\u00e4rvikyl\u00e4 Maukas salaatti",
+          "kind": "description",
+          "ids": [
+            "473237",
+            "472063",
+            "473739",
+            "463342",
+            "472850"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 1572.1,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "J\u00e4rvikyl\u00e4 salad mix",
+          "kind": "description",
+          "ids": [
+            "473739",
+            "472850",
+            "472063",
+            "473237",
+            "463342"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 1561.0,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "Vitamin Well 500 ml",
+          "kind": "description",
+          "ids": [
+            "476953",
+            "477253",
+            "477106",
+            "477249",
+            "477138"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 1290.6,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "Vitamin Well Antioxidant peach",
+          "kind": "description",
+          "ids": [
+            "476953",
+            "477536",
+            "470530",
+            "461188",
+            "477436"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2175.2,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "Vitamin Well Awake raspberry",
+          "kind": "description",
+          "ids": [
+            "477138",
+            "477462",
+            "477318",
+            "477473",
+            "477249"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 1232.2,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "Vitamin Well Prepare",
+          "kind": "description",
+          "ids": [
+            "477289",
+            "477253",
+            "477249",
+            "477106",
+            "476953"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 1917.5,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "464306",
+          "kind": "no_match",
+          "ids": [],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 4.6,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "468044",
+          "kind": "no_match",
+          "ids": [],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3.8,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "469429",
+          "kind": "no_match",
+          "ids": [],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 4.5,
+          "rerank_status": "disabled"
+        }
+      ]
+    },
+    "hybrid": {
+      "top1": 21,
+      "top5": 29,
+      "constraint_violations": 0,
+      "warm_median_ms": 2185.5,
+      "first_query_ms": 3.3,
+      "rerank_unavailable": 0,
+      "description_median_ms": 2863.9,
+      "by_kind": {
+        "identifier": {
+          "count": 6,
+          "top1": 6,
+          "top5": 6
+        },
+        "description": {
+          "count": 21,
+          "top1": 12,
+          "top5": 20
+        },
+        "no_match": {
+          "count": 3,
+          "top1": 3,
+          "top5": 3
+        }
+      },
+      "details": [
+        {
+          "query": "464306",
+          "kind": "identifier",
+          "ids": [
+            "464306"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3.3,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "465039",
+          "kind": "identifier",
+          "ids": [
+            "465039"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3.3,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "460123",
+          "kind": "identifier",
+          "ids": [
+            "460123"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3.3,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "460675",
+          "kind": "identifier",
+          "ids": [
+            "460675"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3.1,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "460035",
+          "kind": "identifier",
+          "ids": [
+            "460035"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3.0,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "6408430000487",
+          "kind": "identifier",
+          "ids": [
+            "464306"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3.0,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "laktoositon kevytmaito",
+          "kind": "description",
+          "ids": [
+            "464201",
+            "465149",
+            "464440",
+            "464399",
+            "466288"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 4312.9,
+          "rerank_status": "applied"
+        },
+        {
+          "query": "lactose free milk",
+          "kind": "description",
+          "ids": [
+            "465149",
+            "464073",
+            "464119",
+            "463335",
+            "464201"
+          ],
+          "top1_relevant": false,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3271.6,
+          "rerank_status": "applied"
+        },
+        {
+          "query": "lactose free milk for hotel breakfast",
+          "kind": "description",
+          "ids": [
+            "463335",
+            "464073",
+            "472492",
+            "464398",
+            "465149"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3259.3,
+          "rerank_status": "applied"
+        },
+        {
+          "query": "plain lactose free semi skimmed milk 1 litre",
+          "kind": "description",
+          "ids": [
+            "464201",
+            "464306",
+            "465039",
+            "469363",
+            "464398"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2004.6,
+          "rerank_status": "applied"
+        },
+        {
+          "query": "Valio Eila kevytmaitojuoma 1 l",
+          "kind": "description",
+          "ids": [
+            "465039",
+            "464306",
+            "464398",
+            "462921",
+            "476240"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2450.6,
+          "rerank_status": "applied"
+        },
+        {
+          "query": "Valio Eila semi skimmed milk drink 1 l",
+          "kind": "description",
+          "ids": [
+            "465039",
+            "464398",
+            "464306",
+            "462921",
+            "476240"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2123.5,
+          "rerank_status": "applied"
+        },
+        {
+          "query": "Arki Eila maitojuoma",
+          "kind": "description",
+          "ids": [
+            "464401",
+            "464306",
+            "476240",
+            "465039",
+            "469119"
+          ],
+          "top1_relevant": false,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2990.7,
+          "rerank_status": "applied"
+        },
+        {
+          "query": "Arki lactose free milk",
+          "kind": "description",
+          "ids": [
+            "464401",
+            "464306",
+            "471405",
+            "467966",
+            "463400"
+          ],
+          "top1_relevant": false,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 1936.8,
+          "rerank_status": "applied"
+        },
+        {
+          "query": "UHT lactose free milk",
+          "kind": "description",
+          "ids": [
+            "464073",
+            "464768",
+            "464119",
+            "464201",
+            "466288"
+          ],
+          "top1_relevant": false,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 4367.5,
+          "rerank_status": "applied"
+        },
+        {
+          "query": "laktoositon iskukuumennettu maito",
+          "kind": "description",
+          "ids": [
+            "464119",
+            "464201",
+            "466288",
+            "464073",
+            "464440"
+          ],
+          "top1_relevant": false,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2813.7,
+          "rerank_status": "applied"
+        },
+        {
+          "query": "Snellman flank steak",
+          "kind": "description",
+          "ids": [
+            "460675",
+            "470544",
+            "470498",
+            "470421",
+            "470652"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3071.0,
+          "rerank_status": "applied"
+        },
+        {
+          "query": "flank steak",
+          "kind": "description",
+          "ids": [
+            "460675",
+            "469861",
+            "467050",
+            "465133",
+            "464115"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2023.0,
+          "rerank_status": "applied"
+        },
+        {
+          "query": "Snellman naudan kuve",
+          "kind": "description",
+          "ids": [
+            "470527",
+            "470418",
+            "465118",
+            "470544",
+            "467277"
+          ],
+          "top1_relevant": false,
+          "top5_hit": false,
+          "constraint_violations": 0,
+          "latency_ms": 4289.0,
+          "rerank_status": "applied"
+        },
+        {
+          "query": "lettuce mix",
+          "kind": "description",
+          "ids": [
+            "473134",
+            "473739",
+            "473237",
+            "467138",
+            "475309"
+          ],
+          "top1_relevant": false,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2174.7,
+          "rerank_status": "applied"
+        },
+        {
+          "query": "salaattisekoitus",
+          "kind": "description",
+          "ids": [
+            "475309",
+            "472850",
+            "472063",
+            "473134",
+            "460751"
+          ],
+          "top1_relevant": false,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2915.3,
+          "rerank_status": "applied"
+        },
+        {
+          "query": "J\u00e4rvikyl\u00e4 Maukas salaatti",
+          "kind": "description",
+          "ids": [
+            "473237",
+            "472063",
+            "463342",
+            "472850",
+            "473739"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 1622.3,
+          "rerank_status": "applied"
+        },
+        {
+          "query": "J\u00e4rvikyl\u00e4 salad mix",
+          "kind": "description",
+          "ids": [
+            "472850",
+            "473739",
+            "472063",
+            "473237",
+            "463342"
+          ],
+          "top1_relevant": false,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2185.5,
+          "rerank_status": "applied"
+        },
+        {
+          "query": "Vitamin Well 500 ml",
+          "kind": "description",
+          "ids": [
+            "476953",
+            "477119",
+            "477253",
+            "477106",
+            "477249"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 4033.1,
+          "rerank_status": "applied"
+        },
+        {
+          "query": "Vitamin Well Antioxidant peach",
+          "kind": "description",
+          "ids": [
+            "476953",
+            "477536",
+            "477119",
+            "477253",
+            "477249"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2718.3,
+          "rerank_status": "applied"
+        },
+        {
+          "query": "Vitamin Well Awake raspberry",
+          "kind": "description",
+          "ids": [
+            "477138",
+            "477249",
+            "477462",
+            "477473",
+            "477318"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3115.5,
+          "rerank_status": "applied"
+        },
+        {
+          "query": "Vitamin Well Prepare",
+          "kind": "description",
+          "ids": [
+            "477289",
+            "476953",
+            "477253",
+            "477249",
+            "477119"
+          ],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 2863.9,
+          "rerank_status": "applied"
+        },
+        {
+          "query": "464306",
+          "kind": "no_match",
+          "ids": [],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 4.5,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "468044",
+          "kind": "no_match",
+          "ids": [],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 4.0,
+          "rerank_status": "disabled"
+        },
+        {
+          "query": "469429",
+          "kind": "no_match",
+          "ids": [],
+          "top1_relevant": true,
+          "top5_hit": true,
+          "constraint_violations": 0,
+          "latency_ms": 3.9,
+          "rerank_status": "disabled"
+        }
+      ]
+    }
+  }
+}

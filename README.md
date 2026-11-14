@@ -64,6 +64,8 @@ uv run aimo serve                    # API terminal
 # In separate terminals: uv run aimo worker, and npm run dev --prefix frontend
 ```
 
+For hosted Qwen3 Embedding 8B and shortlist reranking through OpenRouter, follow the [hosted search migration and cutover](docs/hosted-search.md). Existing deployments keep the local model until explicitly migrated and reindexed.
+
 The first import downloads the pinned `intfloat/multilingual-e5-small` model and embeds the catalog on CPU. Subsequent imports reuse unchanged text embeddings. Publication is atomic: failures leave the old generation active. Updated snapshots require an explicitly verified `--expected-count` and `--expected-sha256`. There is no import on requests or startup. Imports retain withdrawal markers for explicit purchase denial while excluding withdrawn products from discovery. Publication retains the active and previous generation's product/vector rows by default (`CATALOG_GENERATIONS_TO_KEEP=2`). Generation metadata, reusable embedding cache and immutable purchase snapshots remain. Semantic retrieval ranks the filtered active generation exactly, avoiding filtered approximate-index recall loss at this MVP catalog size.
 
 For a quick authored-fixture catalog, use `uv run aimo fixture-catalog` instead of `ingest`. Set `EMBEDDING_BACKEND=fixture` in `.env` only when you also want deterministic fake embeddings; ingestion and serving must use the same setting. The default uses the real model, including for a small fixture catalog. `UPSTREAM_MODE=fixture` is independent: commercial prices/stock remain invented unless explicitly switched to `live` with private credentials. There is no silent live-to-fixture fallback.
@@ -141,5 +143,7 @@ model initialization and a recent successful database poll.
 cover independent Kubernetes Deployments, Services, path routing, migration 004,
 and rollback while preserving the existing managed database and purchase history.
 The separate-app rollout is not implied by a successful local build or PR check.
+[Release migration operations](docs/release-migrations.md) covers the automatic
+schema/grant Job, its one-time Secret provisioning, and image rollback limitations.
 
 [Preparation and third-party provenance](docs/pre-existing-work.md) must accompany the event submission. Restricted raw data, credentials, downloaded weights and generated browser test artifacts are ignored.

@@ -67,8 +67,8 @@ variable "runtime_secrets" {
   sensitive   = true
   default     = {}
   validation {
-    condition     = length(setintersection(toset(keys(var.runtime_secrets)), toset(["DEMO_AGENT_TOKEN", "DEMO_BUYER_PASSWORD"]))) == 0
-    error_message = "Seed credentials belong only in bootstrap_credentials."
+    condition     = length(setintersection(toset(keys(var.runtime_secrets)), toset(["DEMO_AGENT_TOKEN", "DEMO_BUYER_PASSWORD", "BOOTSTRAP_DATABASE_URL", "MIGRATION_DATABASE_URL", "RUNTIME_DATABASE_USER"]))) == 0
+    error_message = "Seed and schema-owner credentials belong only in dedicated bootstrap/migration inputs."
   }
 }
 
@@ -189,5 +189,23 @@ variable "frontend_image" {
   validation {
     condition     = !endswith(var.frontend_image, ":latest") && can(regex("(:[A-Za-z0-9_.-]+|@sha256:[a-f0-9]{64})$", var.frontend_image))
     error_message = "Pin the frontend image by commit tag or digest."
+  }
+}
+
+variable "migration_credentials" {
+  description = "Persistent schema-owner URL and restricted runtime username, supplied only to release Jobs. Separate from temporary bootstrap/seed credentials."
+  type = object({
+    database_url  = string
+    database_user = string
+  })
+  sensitive = true
+  default   = null
+  validation {
+    condition = var.migration_credentials == null ? true : (
+      strcontains(var.migration_credentials.database_url, "sslmode=verify-full") &&
+      strcontains(var.migration_credentials.database_url, "sslrootcert=/etc/aimo-db/ca.crt") &&
+      trimspace(var.migration_credentials.database_user) != ""
+    )
+    error_message = "Migration credentials require verified database TLS and the restricted runtime role name."
   }
 }

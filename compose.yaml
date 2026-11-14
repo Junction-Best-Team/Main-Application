@@ -40,6 +40,13 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://openrouter.ai/api/v1}
       LLM_MODEL: ${LLM_MODEL:-openai/gpt-4.1-mini}
+      SEARCH_API_KEY: ${SEARCH_API_KEY:-}
+      SEARCH_TIMEOUT_SECONDS: ${SEARCH_TIMEOUT_SECONDS:-15}
+      SEARCH_MAX_ATTEMPTS: ${SEARCH_MAX_ATTEMPTS:-2}
+      EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-32}
+      EMBEDDING_WORKERS: ${EMBEDDING_WORKERS:-4}
+      RERANK_ENABLED: ${RERANK_ENABLED:-true}
+      RERANK_CANDIDATES: ${RERANK_CANDIDATES:-30}
     depends_on:
       db: {condition: service_healthy}
     healthcheck:
