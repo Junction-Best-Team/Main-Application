@@ -12,6 +12,7 @@ Do not rename applied migrations or delete their ledger rows.
 | 006–007 | PR #38 recipe/proposal link and refresh retry keys |
 | **008–010** | **Reserved for Person 3**: policy edit history, per-meal authorization/revocation, spare |
 | **011** | **PR #38** proposal revision ordering |
+| **012** | Buyer and user memory (`docs/memory.md`) |
 
 Before allocating another number, check remote branch tips and open PRs and update
 this table with the agreed allocation. Reservations do not create migration files.

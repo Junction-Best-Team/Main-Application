@@ -2,10 +2,10 @@
 
 The chat agent has two layers of protection. **Deterministic controls** are the
 authority and run in every mode. **Semantic checks** (TypeSafe Jev) add a
-probabilistic opinion at four boundaries. A Jev "allow" never grants permission,
+probabilistic opinion at five boundaries. A Jev "allow" never grants permission,
 skips validation or replaces the customer's confirmation.
 
-Code: `src/aimo/guardrails.py` (policy `guard-2026-11-14.2`), wired in
+Code: `src/aimo/guardrails.py` (policy `guard-2026-11-14.3`), wired in
 `agent.py`, `agent_tools.py` and `conversations.py`.
 
 ## What is deterministic
@@ -13,7 +13,7 @@ Code: `src/aimo/guardrails.py` (policy `guard-2026-11-14.2`), wired in
 | Boundary | Control |
 | --- | --- |
 | User → LLM | Session cookie, exact Origin and CSRF on writes, buyer-scoped conversations; 4,000-character messages; one unfinished turn per conversation; **new:** at most 3 queued/running turns and 60 new messages per hour per buyer (HTTP 429; constants in `conversations.py`). The model only ever sees user/assistant roles; identity comes from the server. |
-| LLM → tool | Eight typed tools, no approve/confirm/commit/policy tool; `extra="forbid"` arguments (identity, authority or retry keys are rejected); products must be loaded with `get_product`; the basket must equal the published plan; server-generated idempotency key; Service enforces buyer scope, policy, commercial evidence and state transitions. |
+| LLM → tool | Typed purchasing and recipe tools plus two memory tools, no approve/confirm/commit/policy tool; memory writes act for the persisted turn's human, are fenced to the current attempt and need an expected revision ([memory](memory.md)); `extra="forbid"` arguments (identity, authority or retry keys are rejected); products must be loaded with `get_product`; the basket must equal the published plan; server-generated idempotency key; Service enforces buyer scope, policy, commercial evidence and state transitions. |
 | Tool → LLM | **New:** tool results are reduced to what the assistant needs. Proposals lose buyer/agent IDs, audit history and raw evidence; price lookups lose raw supplier payloads (normalised values, mode and timestamps stay); free text is length-bounded. External records are wrapped in `{"result": …, "data_handling": …}` and the prompt says that text is data. The saved purchase history added to each new turn uses the same projection **without product names**, because it is not screened in that turn; `get_proposal` returns screened names when needed. |
 | LLM → user | Proposal links and status notices come from saved, buyer-scoped records (`ToolSession.result`); a runner-supplied proposal ID is re-read as the buyer before it is linked. Plain-text rendering in React (no raw HTML). |
 | Confirmation | `POST /api/purchases/{id}/confirm`: session, Origin, CSRF, buyer ownership, exact revision, current authority/policy, persisted confirmation, idempotency key and one order per proposal. Unchanged by this work; regression tests in `test_guardrails_integration.py`. |
@@ -30,6 +30,7 @@ redefine the guard policy. A response from a different model is rejected.
 | User → LLM | Once per turn: latest customer message plus up to four earlier customer messages (multi-turn attacks) | `manipulation` (override rules, impersonation, secrets, chat purchasing authority, steering the classifier); `in_scope` | Blocked → server reply, no model call. Out of scope → short redirect. Uncertain → the turn runs but cannot prepare a basket. Unavailable → turn fails with `GUARDRAIL_UNAVAILABLE` (retryable). |
 | Tool → LLM | Catalog text in search/product/proposal results, batched once per model reply and cached by exact text | Does the text contain instructions aimed at an assistant/reviewer? | Flagged or unchecked text is withheld from the model, and that product cannot be prepared. |
 | LLM → tool | Before a new `prepare_order` only, after the deterministic checks. The current text of every selected product is screened first, because one reply can fetch new descriptions and prepare before that reply's tool results are screened | Destination/date, budget, lactose/milk-free requirements and items match what the **customer** said (assistant text and the model's meal plan are labelled as not evidence); the displayed basket label (`request_id`) is neutral | Blocked/uncertain/unavailable → no preparation; the model is told to ask the customer. Same arguments reuse the verdict, so retrying cannot fish for an allow. |
+| LLM → tool (memory) | Before each `manage_memory` write. State: the persisted customer messages, the immediately preceding assistant reply (marked model-authored), the proposed change and, for update/delete, the current item. No catalog, supplier or recipe text | `persistence_intent` (the latest customer message asks to keep, change or forget it for the future), `matches_request`, `scope` (shared vs personal is clear), `no_authority` (no credentials, payment data or purchasing authority) | Any failure, uncertainty, unavailability or an unpassed input screen → no write; the assistant is told to ask the customer. |
 | LLM → user | Everything the model wrote for display, the reply **and** the meal plan (title, ingredient names, notes), against trusted records (proposal, receipt, tool outcomes, product and commercial evidence). Text is never clipped into review: oversized output counts as uncertain | Unsupported purchase status, prices/stock, dietary safety, disclosure | The reply is replaced by a server-authored fallback and the plan is withheld. The proposal, its link and the trusted status notice are kept. Under enforcement a plan is also withheld when the turn ends before review (provider failure, step or error limit). |
 
 Read-only tools other than catalog text are not sent to Jev. A typical turn makes
