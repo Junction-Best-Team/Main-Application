@@ -144,12 +144,20 @@ def test_seed_stores_hashes_never_plaintext():
 # --- main() dispatch -----------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("command", ["configure", "migrate", "seed"])
+@pytest.mark.parametrize("command", ["configure", "seed"])
 def test_main_dispatches_simple_commands(monkeypatch, command):
     calls = []
     monkeypatch.setattr(cli, command, lambda: calls.append(command))
     run_main(monkeypatch, command)
     assert calls == [command]
+
+
+def test_main_migrate_passes_the_optional_runtime_role(monkeypatch):
+    calls = []
+    monkeypatch.setattr(cli, "migrate", lambda runtime_role=None: calls.append(runtime_role))
+    run_main(monkeypatch, "migrate")
+    run_main(monkeypatch, "migrate", "--runtime-role", "aimo_runtime")
+    assert calls == [None, "aimo_runtime"]
 
 
 def test_main_requires_a_command(monkeypatch, capsys):
