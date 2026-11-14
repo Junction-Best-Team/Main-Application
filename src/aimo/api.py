@@ -1,14 +1,19 @@
+import logging
 from contextlib import asynccontextmanager
 from secrets import token_urlsafe
 from typing import Literal
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Query, Request, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.exception_handlers import http_exception_handler as fastapi_http_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from aimo import approval_workflow as workflow
-from aimo import auth, conversations, memory, upstream
+from aimo import auth, conversations, memory, schema_state, upstream
 from aimo.chat_schemas import (
     ConversationCreate,
     ConversationList,
@@ -34,6 +39,7 @@ from aimo.schemas import (
     DecisionRequest,
     InboxResponse,
     LoginRequest,
+    OrderResponse,
     ProposalResponse,
     SessionResponse,
 )
@@ -95,12 +101,41 @@ def create_app(service=None):
             headers={"Retry-After": str(exc.retry_after)} if exc.retry_after is not None else None,
         )
 
+    @app.exception_handler(RequestValidationError)
+    async def validation_handler(request, exc):
+        # Same {"detail": [...]} shape and type/loc/msg as FastAPI's default, but never the
+        # submitted `input` (a password, or the whole body for a missing field) or `ctx`.
+        errors = [
+            {key: value for key, value in error.items() if key not in ("input", "ctx")}
+            for error in exc.errors()
+        ]
+        return JSONResponse({"detail": jsonable_encoder(errors)}, status_code=422)
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(request, exc):
+        # An unknown route or a wrong method answers in the application's own error shape.
+        # Anything else keeps FastAPI's default body and headers (for example a route's own detail).
+        codes = {
+            404: ("NOT_FOUND", "Not found."),
+            405: ("METHOD_NOT_ALLOWED", "Method not allowed."),
+        }
+        if exc.status_code not in codes:
+            return await fastapi_http_exception_handler(request, exc)
+        code, message = codes[exc.status_code]
+        return JSONResponse(
+            {"error": {"code": code, "message": message}},
+            status_code=exc.status_code,
+            headers=getattr(exc, "headers", None),
+        )
+
     @app.middleware("http")
     async def security_headers(request, call_next):
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Frame-Options"] = "DENY"
+        if settings().secure_cookies:  # an HTTPS deployment; local HTTP development sends no HSTS
+            response.headers["Strict-Transport-Security"] = "max-age=31536000"
         if request.url.path != "/docs" or response.status_code != 200:
             response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
         if request.url.path.startswith("/api"):
@@ -115,6 +150,11 @@ def create_app(service=None):
     @app.get("/health/live")
     async def live():
         return {"status": "ok"}
+
+    # Monitors often probe with HEAD. Not part of the published contract.
+    @app.head("/health/live", include_in_schema=False)
+    async def live_head():
+        return Response(status_code=200)
 
     @app.get("/health/ready")
     def ready():
@@ -134,11 +174,25 @@ def create_app(service=None):
             )
         with connection() as c:
             c.execute("SELECT requested_by FROM conversation_turns LIMIT 0")
+        pending = schema_state.missing_migrations()
+        if pending:
+            # The names go to the server log only; the response says nothing internal.
+            logging.getLogger(__name__).error("Database is missing migrations: %s", pending)
+            raise Problem(
+                "SCHEMA_NOT_READY",
+                "The database schema is not up to date; run the migrations.",
+                503,
+            )
         return {
             "status": "ready",
             "model": active["model_key"],
             "upstream_mode": upstream.effective_mode(),
         }
+
+    @app.head("/health/ready", include_in_schema=False)
+    def ready_head():
+        ready()  # same checks and same 503 as GET; only the body is dropped
+        return Response(status_code=200)
 
     @app.post("/api/login", response_model=SessionResponse)
     def login(body: LoginRequest, request: Request, response: Response):
@@ -178,7 +232,13 @@ def create_app(service=None):
         _, data = auth.browser_identity(request.cookies.get("aimo_session"))
         with connection() as c:
             c.execute("DELETE FROM sessions WHERE token_hash=%s", (auth.digest(data["token"]),))
-        response.delete_cookie("aimo_session", path="/")
+        response.delete_cookie(
+            "aimo_session",
+            path="/",
+            httponly=True,
+            secure=settings().secure_cookies,
+            samesite="strict",
+        )
 
     @app.get("/api/approvals", response_model=InboxResponse)
     def inbox(
@@ -221,6 +281,11 @@ def create_app(service=None):
             identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
         )
         return conversations.confirm(identity, proposal_id, body, service)
+
+    @app.get("/api/purchases/{proposal_id}/receipt", response_model=OrderResponse)
+    def purchase_receipt(proposal_id: UUID, identity=Depends(buyer)):
+        # The stored mock receipt of this buyer's own proposal; 404 NO_RECEIPT until it is ordered.
+        return workflow.get_receipt(identity, proposal_id)
 
     @app.get("/api/memories", response_model=MemoryList)
     def memory_list(

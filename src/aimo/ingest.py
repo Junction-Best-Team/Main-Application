@@ -542,8 +542,27 @@ def activate_catalog(generation):
         ).fetchone()["n"]
         if actual == 0 or actual != row["product_count"]:
             raise ValueError("Target catalog is incomplete or has been pruned; reimport it")
+        current = c.execute(
+            "SELECT g.id, g.created_at FROM active_catalog a JOIN catalog_generations g "
+            "ON g.id=a.generation"
+        ).fetchone()
+        # A forward cutover goes to a generation newer than the active one. Activating an older
+        # generation is a rollback and activating the active one is a retry: neither may delete data.
+        forward = (
+            current is None
+            or str(current["id"]) != str(generation)
+            and row["created_at"] > current["created_at"]
+        )
         _activate(c, generation)
-    return {"generation": str(generation), "products": actual, "model": model_key()}
+        # DIS-012: a staged generation is published inactive (no trim then), so trim on a forward
+        # cutover.
+        trimmed = _cleanup(c, WITHDRAWN_LIMIT)["removed"] if forward else 0
+    return {
+        "generation": str(generation),
+        "products": actual - trimmed,
+        "trimmed_withdrawn": trimmed,
+        "model": model_key(),
+    }
 
 
 # --- unattended sync -------------------------------------------------------------------------

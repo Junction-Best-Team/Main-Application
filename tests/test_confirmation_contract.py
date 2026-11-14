@@ -434,13 +434,7 @@ def test_confirmation_racing_a_repricing_never_orders_another_revision(
 # --- JNP3-CNF-011 (Draft wording, owner 2026-11-14): a repeat returns the receipt whatever its key ---
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=Problem,
-    reason="CNF-011 Draft: today confirm() answers a second key with DECISION_CLOSED "
-    "(conversations.py, p['order_id'] check) instead of the saved receipt. Remove this mark "
-    "when workflow.prior_result / conversations.confirm return the receipt for any key.",
-)
+# CNF-011 (Approved): any repeated confirmation of an ordered proposal returns the saved receipt.
 def test_repeated_confirmation_with_another_key_returns_the_saved_receipt(
     service, connector, buyer, actor, request_data, monkeypatch
 ):

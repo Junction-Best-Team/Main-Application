@@ -24,6 +24,7 @@ const proposal: Proposal = {
   recipe_basis: "free_form",
   proposal_id: proposalId,
   revision: 1,
+  fingerprint: "a".repeat(64),
   current_revision: 1,
   committed_revision: null,
   current_proposal_url: `/purchases/${proposalId}`,
