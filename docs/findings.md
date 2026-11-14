@@ -34,6 +34,12 @@ Owner decisions use `D-<nnn>` and quote the owner's words verbatim.
 - Evidence: Ruff, 79 deterministic agent tests and the full 188-test PostgreSQL suite passed after review. Runtime wiring is separately reviewed in PR #32 (28 helper tests, actionlint, Kubernetes Terraform validation and seven mocked plans); no cluster mutation ran. The review decisions are in PR #19's owner comment.
 - Impact: #19 is canonical, superseding #12/#16. Persons 1 and 3 must settle and implement the shared context, recipe template and quantity bounds before claiming the affected acceptance checks pass. No shared schema is invented by the agent PR.
 
+### F-AGENT-004: Guardrails separate deterministic controls from Jev verdicts
+- Date: 2026-11-14   Track: 2   Status: verified (deterministic and fake-provider tests); live Jev accuracy unmeasured
+- Finding: OpenRouter's Decisions API (`POST /api/alpha/decisions`, `typesafe/jev-1.14` listed under `/api/v1/models?output_modalities=decisions`) returns typed `noul` probabilities or `refusal`, not text. `typesafe/jev-router` is a separate routing product. Guardrails screen the customer message, catalog text, new preparations and the final narrative, with `off`/`shadow`/`enforce` modes. Enforcement fails closed for new baskets only; confirmation and purchase reads stay independent. Tool results given to the model are minimised; per-buyer active-turn and hourly message limits were missing and are added.
+- Evidence: Official Decisions OpenAPI schema and Jev guide read on 2026-11-14; `tests/test_guardrails.py` and `tests/test_guardrails_integration.py`; full backend suite. `scripts/evaluate_guardrails.py` reported `skipped` because no OpenRouter key was configured in this checkout.
+- Impact: Thresholds (0.2/0.8) are provisional until a labelled live run. Shadow/enforce send chat text to TypeSafe, so the code default is `off`. See `docs/guardrails.md`.
+
 ## Infrastructure
 
 ### F-INFRA-001: Optional Terraform hosting and portable deployment

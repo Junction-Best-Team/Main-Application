@@ -62,15 +62,18 @@ class ToolSpec:
 class ToolSession:
     """Fresh per turn; persistent preparation deduplication belongs to Service."""
 
-    def __init__(self, identity, service):
+    def __init__(self, identity, service, guard=None):
         self.identity = dict(identity)
         self.service = service
+        # Optional semantic review; deterministic checks here and in Service always apply.
+        self.guard = guard
         self.preparation_key = "chat-" + fingerprint({"turn": identity["_turn_id"]})
         self.plan = None
         self.proposal = None
         self.receipt = None
         self.prepared_digest = None
         self.products = {}
+        self.commercial = {}
         self.registry = {
             "search_products": ToolSpec(
                 SearchRequest, "Find candidates, not suitability guarantees.", self.search
@@ -164,9 +167,11 @@ class ToolSession:
         return self.scoped(PolicyResponse, self.service.get_purchase_policy(self.identity))
 
     def lookup(self, request):
-        return self.checked(
+        result = self.checked(
             LookupResponse, self.service.check_price_and_availability(self.identity, request)
         )
+        self.commercial.update(result["products"])
+        return result
 
     def publish(self, plan):
         if self.prepared_digest is not None and plan != self.plan:
@@ -222,6 +227,8 @@ class ToolSession:
         digest = fingerprint(request.model_dump(mode="json"))
         if self.prepared_digest is not None and self.prepared_digest != digest:
             raise Problem("IDEMPOTENCY_CONFLICT", "This turn already prepared different terms.")
+        if self.guard is not None and self.prepared_digest != digest:
+            self.guard.check_prepare(self, request)
         result = self.scoped(
             ProposalResponse,
             self.service.prepare_order(
