@@ -86,6 +86,12 @@ pagination, visible-tab refresh, SSE events, expiry and reconnect messaging.
 Changing routes or unmounting closes the active event stream. Persisted backend
 snapshots drive updates; the browser does not invent assistant results.
 
+`MessageMarkdown` renders persisted customer and assistant text with
+`react-markdown` and `remark-gfm`. Scoped chat styles restore headings, lists,
+code and tables after preflight; wide code/tables scroll within the message.
+Raw HTML stays inert, unsafe link protocols are filtered, and Markdown images
+show their alt text only. Recipe images still use the validated image field.
+
 A stable creation key protects conversation creation. Pending message text/key
 are stored in buyer/conversation-scoped session storage before sending. Retries
 reuse that key, and server `retry_message` data can restore unfinished requests

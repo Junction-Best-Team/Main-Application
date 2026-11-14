@@ -99,3 +99,12 @@ class Problem(Exception):
         self.code, self.message, self.status = code, message, status
         self.retry_after = retry_after
         super().__init__(message)
+
+    details = None  # structured, client-safe extra fields; a subclass may set an instance value
+
+    def body(self) -> dict:
+        """The `error` object sent to the browser and to the model: code, message, details."""
+        error = {"code": self.code, "message": self.message}
+        if self.details is not None:
+            error["details"] = self.details
+        return error

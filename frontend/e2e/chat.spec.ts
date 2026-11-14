@@ -129,6 +129,171 @@ async function mockSession(page: Page, signedIn = true) {
   );
 }
 
+for (const width of [1440, 320]) {
+  test(`chat renders Markdown without page overflow at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await mockSession(page);
+    const markdown = [
+      "## Kitchen plan",
+      "",
+      "Use **tomatoes**, *basil* and ~~cream~~ with `pasta`.",
+      "Keep this second line.",
+      "",
+      "- Ingredients",
+      "  - Tomatoes",
+      "  - Basil",
+      "",
+      "1. Boil water",
+      "2. Cook pasta",
+      "",
+      "> Check the quantities before purchasing.",
+      "",
+      "[Recipe guide](https://example.com/recipe)",
+      "",
+      "```text",
+      `SKU: ${"1234567890".repeat(30)}`,
+      "```",
+      "",
+      "| Ingredient | Quantity | Unit | Preparation | Storage | Notes |",
+      "| --- | --- | --- | --- | --- | --- |",
+      "| Tomatoes | 20 | KG | Chopped | Chilled | Review quantity |",
+      "",
+      "- [x] Plan drafted",
+      "- [ ] Buyer review",
+    ].join("\n");
+    await page.route(`**/api/conversations/${conversationId}`, (route) =>
+      route.fulfill({
+        json: {
+          ...blankConversation,
+          messages: [
+            {
+              id: 1,
+              role: "user",
+              text: "Use **tomatoes**.\nNo cream.",
+              created_at: timestamp,
+            },
+            { id: 2, role: "assistant", text: markdown, created_at: timestamp },
+          ],
+        },
+      }),
+    );
+    await page.goto(`/conversations/${conversationId}`);
+    const messages = page.getByRole("log", { name: "Conversation messages" });
+    const customer = messages.locator("article").nth(0);
+    const assistant = messages.locator("article").nth(1);
+    await expect(customer.locator("strong")).toHaveText("tomatoes");
+    await expect(customer.locator("p")).toHaveCSS("white-space", "pre-wrap");
+    await expect(
+      assistant.getByRole("heading", { name: "Kitchen plan" }),
+    ).toBeVisible();
+    await expect(assistant.locator("strong")).toHaveText("tomatoes");
+    await expect(assistant.locator("em")).toHaveText("basil");
+    await expect(assistant.locator("del")).toHaveText("cream");
+    await expect(assistant.locator("li li")).toHaveText(["Tomatoes", "Basil"]);
+    await expect(assistant.locator("ol > li")).toHaveText([
+      "Boil water",
+      "Cook pasta",
+    ]);
+    await expect(assistant.locator("blockquote")).toContainText(
+      "Check the quantities",
+    );
+    await expect(assistant.locator("pre code")).toContainText("SKU:");
+    await expect(assistant.getByRole("columnheader")).toHaveCount(6);
+    await expect(
+      assistant.getByRole("cell", { name: "Tomatoes", exact: true }),
+    ).toBeVisible();
+    await expect(assistant.getByRole("checkbox").first()).toBeChecked();
+    await expect(assistant.getByRole("checkbox").last()).toBeDisabled();
+    const link = assistant.getByRole("link", { name: "Recipe guide" });
+    await expect(link).toHaveAttribute("href", "https://example.com/recipe");
+    await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    await expect(link).toHaveAttribute("target", "_blank");
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    expect(
+      await assistant
+        .locator("pre")
+        .evaluate((node) => node.scrollWidth > node.clientWidth),
+    ).toBe(true);
+    await page.reload();
+    await expect(
+      assistant.getByRole("heading", { name: "Kitchen plan" }),
+    ).toBeVisible();
+    await assistant
+      .getByRole("heading", { name: "Kitchen plan" })
+      .scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: testInfo.outputPath("chat-markdown.png"),
+      fullPage: true,
+    });
+  });
+}
+
+for (const role of ["user", "assistant"] as const) {
+  test(`Markdown in ${role} messages keeps HTML and unsafe URLs inert`, async ({
+    page,
+  }) => {
+    await mockSession(page);
+    const imageRequests: string[] = [];
+    await page.route("https://example.com/tracking.png", (route) => {
+      imageRequests.push(route.request().url());
+      return route.abort();
+    });
+    await page.route(`**/api/conversations/${conversationId}`, (route) =>
+      route.fulfill({
+        json: {
+          ...blankConversation,
+          messages: [
+            {
+              id: 1,
+              role,
+              created_at: timestamp,
+              text: [
+                '<img src="https://example.com/tracking.png" onerror="window.__markdownXss=1">',
+                "",
+                "<script>window.__markdownXss=1</script>",
+                "",
+                "[Unsafe script](javascript:alert%281%29)",
+                "",
+                "[Unsafe data](data:text/html,test)",
+                "",
+                "![Image description](https://example.com/tracking.png)",
+                "",
+                "```html",
+                '<button onclick="window.__markdownXss=1">Confirm purchase</button>',
+                "```",
+              ].join("\n"),
+            },
+          ],
+        },
+      }),
+    );
+    await page.goto(`/conversations/${conversationId}`);
+    const messages = page.getByRole("log", { name: "Conversation messages" });
+    await expect(
+      messages.getByText("Unsafe script", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      messages.getByText("Unsafe data", { exact: true }),
+    ).toBeVisible();
+    await expect(messages.getByRole("link")).toHaveCount(0);
+    await expect(messages.locator("img, script, button")).toHaveCount(0);
+    await expect(
+      messages.getByText("Image description", { exact: true }),
+    ).toBeVisible();
+    await expect(messages.locator("pre code")).toContainText(
+      "<button onclick=",
+    );
+    expect(await page.evaluate(() => "__markdownXss" in window)).toBe(false);
+    expect(imageRequests).toEqual([]);
+  });
+}
+
 for (const width of [1440, 1024, 390, 320]) {
   test(`recipe illustration persists beside text at ${width}px`, async ({
     page,
@@ -437,7 +602,10 @@ test("a lost message response reuses its idempotency key after refresh", async (
         await route.fulfill({
           status: 503,
           json: {
-            error: { message: "Provider timed out. Retry this request." },
+            error: {
+              code: "PROVIDER_TIMEOUT",
+              message: "Provider timed out. Retry this request.",
+            },
           },
         });
       else
@@ -612,6 +780,7 @@ test("history retains completed purchases and reports an actionable refresh erro
             status: 503,
             json: {
               error: {
+                code: "HISTORY_UNAVAILABLE",
                 message:
                   "History is temporarily unavailable. Refresh to retry.",
               },

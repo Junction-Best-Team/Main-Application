@@ -216,3 +216,11 @@ feature on develop. Reused Nordic theme tokens, typed memory forms, authenticate
 API hooks and revision/idempotency handling. Example memories remain confined to
 the mockup and authored browser fixtures; no example content is seeded into the app.
 No new dependency, asset, API or schema change.
+
+## Chat Markdown — 2026-11-14
+
+Added the MIT-licensed `react-markdown` and `remark-gfm` packages using their
+upstream documentation, with locked dependencies. Reused the existing message
+transcript, design tokens and Playwright route fixtures. Markdown and unsafe
+content examples are authored synthetic fixtures; no supplier or model calls,
+external images or customer messages were used.
