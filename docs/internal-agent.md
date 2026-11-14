@@ -39,8 +39,9 @@ four boundaries; deterministic controls below remain authoritative. See
 The agent clarifies missing delivery/budget/dietary facts and reuses known
 constraints. It proposes a recipe basis, total quantities and scaling assumptions
 in plan notes for customer review. Carbonara includes pasta, eggs, cured pork,
-hard cheese and pepper. Quantities remain recipe estimates; this does not add a
-recipe database or deterministic recipe-scaling service.
+hard cheese and pepper. Quantities are recipe estimates for customer review. For
+saved recipes the server scales them (`scale_recipe`, exact fractions, rounded up to
+four decimals), so the model does no arithmetic; see [recipes](recipes.md).
 
 Canonical Pydantic models validate tool inputs and outputs. Search is not product
 verification: every selected ID must be loaded through `get_product`. Every
@@ -49,6 +50,29 @@ ingredient totals/units, aggregating contributions for duplicate SKUs. Service
 handles evidence-backed conversion, pack rounding, supplier evidence, scope and
 policy. Unknown conversions, shortages and unsupported dietary facts need
 resolution; confirmation cannot repair missing facts.
+
+Limits and error details (what the model and the browser see):
+
+- The ingredient and basket-line limits are `MAX_BASKET_LINES` (`schemas.py`) and the
+  recipe/meal-plan limits in `recipe_schemas.py` and `recipes.py`; the owner's decision
+  (Q-67) is 100 everywhere, applied by the cap change tracked separately. A plan or recipe
+  over the limit is refused with a code that names the limit and the count.
+- `match_ingredients` matches several ingredients in one call: one plan revision,
+  all-or-nothing; one product not read with `get_product` refuses the whole batch. A
+  refused product is kept on its ingredient as `rejected`.
+- A basket that does not equal the plan returns `MEAL_BASKET_MISMATCH`; the same product
+  in two units is combined into the priority unit (kg, then L) when catalog evidence
+  allows, otherwise `UNIT_CONVERSION_UNKNOWN`. Both errors carry `error.details` with the
+  required lines (`required`, `missing`, `unexpected`, `wrong_amount_or_unit`), so the
+  model is told exactly what to send.
+- Every HTTP error is `{"error": {"code", "message", "details"?}}`, including validation
+  errors (code `VALIDATION_ERROR`, `details` = `type`/`loc`/`msg`, never the submitted
+  input), unknown routes and wrong methods; it is declared in the OpenAPI document.
+- A free-form basket line lists the plan ingredients it combines (`contributions`); a
+  saved-recipe line takes them from the saved plan. A line short of stock carries
+  `quantity.shortfall`, the missing sales units.
+- A hosted deployment (`SECURE_COOKIES=true`) with `UPSTREAM_MODE` `live` or `auto` and no
+  `VALIO_AIMO_API_KEY` does not start (API startup and the worker readiness check).
 
 There is no model approval, confirmation, policy editing or commit operation.
 Typing “approved” cannot buy. Preparation keys use `chat-` plus the persisted turn
