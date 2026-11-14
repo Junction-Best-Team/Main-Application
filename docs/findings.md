@@ -958,6 +958,12 @@ Add new findings below, under your track heading.
 - Date: 2026-11-14   Track: 3   Status: verified
 - Finding: the runtime database role cannot write `identities` (`permissions.py`), so the per-buyer scheduler identity comes from the migration and `aimo seed`. A buyer created later has none until provisioning adds it; its runs fail closed (`SCHEDULER_NOT_CONFIGURED`). The boundary "the scheduler never creates or edits an authorization" is enforced in code and by triggers (terms immutable, final statuses final), not by database grants.
 - Evidence: tests/test_scheduler_migration.py, tests/test_scheduler_engine.py (`test_a_buyer_without_a_scheduler_identity_fails_closed`).
+## Signed-in buyer settings simplification — 2026-11-14
+
+- Owner decision: every signed-in active human buyer can edit purchasing settings without a separate policy-manager grant. The money box is a shared account purchasing cap, not permission to increase a person's approval authority.
+- Finding: Settings now separates account cap from basket rules, keeps pack rounding under Advanced, and removes product-code/delivery editors, history/version labels and permission/admin notes. The browser PUT accepts only those controls; the restricted SQL function merges the current policy so hidden scopes and personal permissions stay intact. Above-cap baskets are denied on preparation and commit revalidation; blank preserves the legacy uncapped-account behavior, and every purchase still needs exact customer confirmation.
+- Evidence: the full local `tests/ci.sh` passes after rebasing onto current integration changes (2,213 pytest checks and 11 strict HTTP sweep checks), using isolated fixture databases. Frontend formatting/lint/types/build pass; 11 fixture-backed Playwright cases pass, including save/reload, discard, conflicts, session expiry and five responsive widths. Desktop and 320px screenshots were inspected. The focused PostgreSQL settings suite passes all 22 cases, including editing without manager grants, immutable attribution, scope preservation, personal-authority preservation, stale writes, cap clearing/negative-zero normalization and cap changes blocking old confirmed baskets. Fixtures do not establish live supplier behavior.
+- Operations: apply additive migration `022_buyer_settings.sql` and runtime grants before the new API. No existing policy/identity/history row is rewritten by the migration. No cluster migration, deployment, Terraform apply or merge was performed.
 
 ### F-FE-FONTS-001: Bundle UI fonts for reliable local preview
 

@@ -191,6 +191,11 @@ def scan_all():
 # Every flagged statement in the current migrations, with the reason it is acceptable. Key is
 # (file, kind, table, detail). A change to the migrations must update this table on purpose.
 REVIEWED = {
+    ("022_buyer_settings.sql", "UPDATE", "buyers", "current_policy"): (
+        "Only inside the new callable save_buyer_settings function: append a version and actor/time, "
+        "then move the buyer pointer under its lock. The migration itself rewrites no data. "
+        "The owner requested signed-in buyer editing; scope and personal authority are preserved."
+    ),
     (
         "004_worker_queue.sql",
         "DROP_CONSTRAINT",
@@ -274,6 +279,7 @@ ALLOWED_INSERTS = {
     "003_chat_purchasing.sql": {"identities", "internal_agents"},
     "014_policy_settings.sql": {"policy_managers", "policies", "policy_changes"},
     "020_scheduled_orders.sql": {"identities", "scheduler_identities"},
+    "022_buyer_settings.sql": {"policies", "policy_changes"},
 }
 
 

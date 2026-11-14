@@ -21,6 +21,7 @@ MAX_BASKET_LINES = 100
 MAX_LOOKUP_IDS = 1000
 Amount = Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)]
 Money = Annotated[Decimal, Field(ge=0, max_digits=16, decimal_places=4)]
+OrderCap = Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=2)]
 
 
 class Model(BaseModel):
@@ -315,6 +316,10 @@ class SessionResponse(Model):
 
 
 class PolicyRules(Model):
+    max_order_gross: OrderCap | None = Field(
+        default=None,
+        description="Optional account-wide gross cap per order. Never grants personal approval authority.",
+    )
     currency: Literal["EUR"]
     destinations: list[str] = Field(min_length=1)
     substitution: Literal["allowed", "requires_approval", "forbidden"]
@@ -322,7 +327,7 @@ class PolicyRules(Model):
     whole_sales_units: bool
     approved_product_ids: list[str] | None = Field(
         default=None,
-        description="Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope always blocks a purchase until a policy manager configures it in Settings.",
+        description="Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope always blocks a purchase until an operator configures it.",
     )
 
     @model_validator(mode="before")

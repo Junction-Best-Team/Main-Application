@@ -69,6 +69,16 @@ def configure_runtime_role(conn, role_name):
             role
         )
     )
+    # Older migration checkpoints do not have the simplified buyer settings function yet.
+    row = conn.execute(
+        "SELECT to_regprocedure('save_buyer_settings(text,integer,jsonb)') IS NOT NULL AS ok"
+    ).fetchone()
+    if row["ok"] if isinstance(row, dict) else row[0]:
+        conn.execute(
+            sql.SQL(
+                "GRANT EXECUTE ON FUNCTION save_buyer_settings(text,integer,jsonb) TO {}"
+            ).format(role)
+        )
     # PostgreSQL requires UPDATE privilege on at least one column for SELECT
     # FOR UPDATE/FOR SHARE. Grant only the identifier column, then reject actual
     # runtime updates before they happen; locks do not fire UPDATE triggers.
