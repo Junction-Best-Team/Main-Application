@@ -12,7 +12,9 @@ export function LoginPage() {
   const destination =
     typeof next === "string" &&
     (next === "/" ||
-      /^\/(request|approvals|purchases|conversations)(\/|$)/.test(next))
+      /^\/(request|approvals|purchases|conversations|settings)(\/|$)/.test(
+        next,
+      ))
       ? next
       : "/";
   if (session) return <Navigate to={destination} replace />;

@@ -104,5 +104,12 @@ def test_truncate_check_is_discriminating(runtime_role_conn):
     role = sql.Identifier(role_name)
     conn.execute(sql.SQL("GRANT TRUNCATE ON audit_events TO {}").format(role))
     conn.execute(sql.SQL("SET LOCAL ROLE {}").format(role))
+    # Even a granted role is stopped by the statement-level guard unless the reset is deliberate
+    # (PER-002, migration 019): two independent layers.
+    conn.execute("SAVEPOINT granted")
+    with pytest.raises(psycopg.errors.RaiseException, match="immutable history"):
+        conn.execute("TRUNCATE audit_events")
+    conn.execute("ROLLBACK TO SAVEPOINT granted")
+    conn.execute("SET LOCAL aimo.allow_history_truncate = 'on'")
     conn.execute("TRUNCATE audit_events")  # succeeds because it was granted; rolled back
     assert conn.execute("SELECT count(*) FROM audit_events").fetchone()[0] == 0

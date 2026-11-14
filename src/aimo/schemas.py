@@ -148,6 +148,28 @@ class PurchaseRequest(Model):
         return self
 
 
+class Constraint(Model):
+    """One customer-stated hard limit (POL-008). Server-written only: it is never a field of
+    PurchaseRequest, PrepareRequest or any tool input, so the model and API callers cannot set it."""
+
+    name: str = Field(min_length=1, max_length=120)
+    value: Money | bool
+    source: Literal["user_request", "reviewed_plan", "stated_assumption", "scheduled_request"]
+    confirmed: bool
+
+    @model_validator(mode="after")
+    def name_matches_value(self):
+        if self.name == "budget_gross":
+            ok = not isinstance(self.value, bool)
+        elif self.name in ("lactose_free", "milk_free") or self.name.startswith("unsupported:"):
+            ok = isinstance(self.value, bool)
+        else:
+            ok = False
+        if not ok:
+            raise ValueError(f"Unsupported constraint '{self.name}' or value type")
+        return self
+
+
 class CommitRequest(Model):
     proposal_id: UUID
     revision: int = Field(ge=1)
@@ -176,7 +198,7 @@ class Reason(Model):
     code: str
     message: str
     product_id: str | None = None
-    severity: Literal["denied", "unresolved", "exception"]
+    severity: Literal["denied", "unresolved", "exception", "warning"]
 
 
 class NextAction(Model):
@@ -287,7 +309,7 @@ class PolicyRules(Model):
     whole_sales_units: bool
     approved_product_ids: list[str] | None = Field(
         default=None,
-        description="Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope always blocks a purchase until privileged setup supplies it.",
+        description="Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope always blocks a purchase until a policy manager configures it in Settings.",
     )
 
     @model_validator(mode="before")

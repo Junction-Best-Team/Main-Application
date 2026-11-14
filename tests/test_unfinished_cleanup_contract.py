@@ -1,10 +1,9 @@
 """CNF-021 (Approved): remove proposals and approvals that never became orders after a configured
 period. Orders, their proposals and their audit history are never removed (CNF-017, CNF-020).
 
-There is no implementation yet. `test_..._are_removed...` is a strict xfail against the PROPOSED
-interface `aimo.approval_workflow.purge_unfinished_proposals(older_than, *, as_of=None)`, which
-returns counts; the interface is a suggestion from the design in
-Assistant/projects/junction/evidence/ws-d/cnf-021-design.md, not an agreed API. The guard test
+`test_..._are_removed...` runs `aimo.approval_workflow.purge_unfinished_proposals(older_than, *,
+as_of=None)` (migration 018), which returns counts; design in
+Assistant/projects/junction/evidence/ws-d/cnf-021-design.md. The guard test
 `test_every_table_referencing_proposals_is_known_to_the_cleanup_design` passes today and fails if a
 new table starts referencing proposals without the cleanup design covering it.
 
@@ -33,6 +32,10 @@ CLEANUP_DESIGN = {
     "conversation_messages": "set proposal_id NULL (the chat text stays)",
     "meal_authorization_withdrawals": "delete (exists once migration 010 is applied)",
     "orders": "never touched: an ordered proposal is not unfinished",
+    # Scheduler tables (not on every branch): history that must stay, so the purge skips any
+    # proposal they reference. See workflow.PROTECTED_TABLES.
+    "scheduled_runs": "protected, not purged: a run record stays, so does its proposal",
+    "order_request_cancellations": "protected, not purged: a cancellation stays, so does its proposal",
 }
 
 
@@ -83,15 +86,7 @@ def counts(proposal_id):
     return result
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AttributeError,
-    reason="CNF-021 not implemented: no purge_unfinished_proposals exists, the immutable triggers "
-    "on proposal_revisions, audit_events and customer_confirmations reject any DELETE, and there "
-    "is no purged_proposals table. Owner: default period 30 days from the current revision's "
-    "expiry (Q-56), append-only purged_proposals table (Q-57), migration 012 (not yet reserved). "
-    "Design: Assistant/projects/junction/evidence/ws-d/cnf-021-design.md.",
-)
+# CNF-021 (Approved): implemented by migration 018 and workflow.purge_unfinished_proposals.
 def test_unfinished_proposals_and_approvals_are_removed_after_the_period_and_orders_are_kept(
     service, buyer, request_data, monkeypatch
 ):

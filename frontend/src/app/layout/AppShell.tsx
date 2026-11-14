@@ -3,13 +3,8 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import { DESIGN_PLACEHOLDERS as MOCK } from "../../shared/lib/designPlaceholders";
 import { useAuth } from "../../features/auth/useAuth";
 import { useConversationNavigation } from "../../features/chat/hooks/useConversationNavigation";
-import { NoticeBar } from "../../shared/components/NoticeBar";
 import { Wordmark } from "../../shared/components/Wordmark";
-import {
-  Icon,
-  InertButton,
-  InertInput,
-} from "../../shared/components/DesignPrimitives";
+import { Icon, InertButton } from "../../shared/components/DesignPrimitives";
 
 import type { ConversationList } from "../../shared/api/types";
 type ConversationListItem = ConversationList["items"][number];
@@ -219,8 +214,9 @@ function Avatar() {
   );
 }
 
-/** Account switcher + settings (inert) and the real Sign out action. */
-function AccountBlock() {
+/** Account switcher placeholder, policy settings, assistant preferences and the real Sign out action. */
+function AccountBlock({ onNavigate }: { onNavigate?: () => void }) {
+  const { pathname } = useLocation();
   const { session, logout } = useAuth();
   return (
     <div className="flex shrink-0 flex-col gap-space-xs bg-surface-container-low p-space-sm">
@@ -244,13 +240,30 @@ function AccountBlock() {
           className="text-[18px] text-on-surface-variant"
         />
       </InertButton>
-      <InertButton
-        label="Account Settings"
-        className="flex items-center gap-space-sm px-space-md py-space-sm font-label text-label-md text-on-surface-variant"
+      <Link
+        to="/settings"
+        onClick={onNavigate}
+        aria-current={pathname === "/settings" ? "page" : undefined}
+        className={`flex items-center gap-space-sm rounded-lg px-space-md py-space-sm font-label text-label-md no-underline hover:no-underline ${pathname === "/settings" ? "bg-secondary-container text-primary" : "text-on-surface-variant hover:bg-surface-container-high"}`}
       >
         <Icon name="manage_accounts" className="text-[18px]" />
         Account Settings
-      </InertButton>
+      </Link>
+      <Link
+        to="/settings/preferences"
+        onClick={onNavigate}
+        aria-current={
+          pathname.startsWith("/settings/preferences") ? "page" : undefined
+        }
+        className={`flex items-center gap-space-sm rounded-lg px-space-md py-space-sm font-label text-label-md no-underline hover:no-underline ${
+          pathname.startsWith("/settings/preferences")
+            ? "bg-secondary-container text-primary"
+            : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+        }`}
+      >
+        <Icon name="tune" className="text-[18px]" />
+        Assistant preferences
+      </Link>
       <button
         type="button"
         onClick={logout}
@@ -260,23 +273,6 @@ function AccountBlock() {
         Sign out
       </button>
     </div>
-  );
-}
-
-function NotificationsButton() {
-  return (
-    <InertButton
-      label="Notifications"
-      className="relative flex h-11 w-11 items-center justify-center text-on-surface-variant"
-    >
-      <Icon name="notifications" className="text-[22px]" />
-      {MOCK.shell.hasUnreadNotifications && (
-        <span
-          aria-hidden="true"
-          className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-status-fresh-green"
-        />
-      )}
-    </InertButton>
   );
 }
 
@@ -307,34 +303,8 @@ function Sidebar({ conversations }: { conversations: ConversationNav }) {
 
 function DesktopHeader() {
   return (
-    <header className="sticky top-0 z-40 hidden h-16 items-center justify-between gap-space-md border-b border-border-subtle bg-surface/80 px-margin backdrop-blur-xl md:flex">
-      <div className="relative w-full max-w-xl">
-        <Icon
-          name="search"
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-outline"
-        />
-        <InertInput
-          label="Search products"
-          placeholder={MOCK.shell.searchPlaceholder}
-          className="w-full rounded-lg border border-border-subtle bg-surface-pure py-2 pl-9 pr-space-md font-body text-body-sm text-on-surface placeholder:text-outline"
-        />
-      </div>
-      <div className="flex items-center gap-space-md">
-        <div className="flex items-center">
-          <NotificationsButton />
-          <InertButton
-            label="Help"
-            className="flex h-11 w-11 items-center justify-center text-on-surface-variant"
-          >
-            <Icon name="help_outline" className="text-[22px]" />
-          </InertButton>
-        </div>
-        <span
-          aria-hidden="true"
-          className="h-5 w-px bg-surface-container-high"
-        />
-        <Avatar />
-      </div>
+    <header className="sticky top-0 z-40 hidden h-16 shrink-0 items-center justify-end gap-space-md border-b border-border-subtle bg-surface/80 px-margin backdrop-blur-xl md:flex">
+      <Avatar />
     </header>
   );
 }
@@ -347,7 +317,7 @@ function MobileTopBar({
   onOpenMenu: () => void;
 }) {
   return (
-    <header className="sticky top-0 z-40 flex h-16 items-center justify-between gap-space-sm border-b border-border-subtle bg-surface/85 px-margin-sm backdrop-blur-xl md:hidden">
+    <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center justify-between gap-space-sm border-b border-border-subtle bg-surface/85 px-margin-sm backdrop-blur-xl md:hidden">
       <div className="flex items-center gap-space-sm">
         <button
           type="button"
@@ -370,10 +340,7 @@ function MobileTopBar({
           </span>
         </Link>
       </div>
-      <div className="flex items-center gap-space-xs">
-        <NotificationsButton />
-        <Avatar />
-      </div>
+      <Avatar />
     </header>
   );
 }
@@ -447,7 +414,7 @@ function MobileMenu({
           <HubBadge />
           <NavLinks conversations={conversations} onNavigate={onClose} />
         </div>
-        <AccountBlock />
+        <AccountBlock onNavigate={onClose} />
       </div>
     </div>
   );
@@ -458,6 +425,8 @@ export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const { pathname } = useLocation();
+  const isChat =
+    pathname === "/request" || pathname.startsWith("/conversations/");
   useEffect(() => setMenuOpen(false), [pathname]);
   const [expanded, setExpanded] = useState(true);
   const navigation = useConversationNavigation(pathname);
@@ -473,8 +442,9 @@ export function AppShell() {
   return (
     <div className="min-h-screen bg-canvas font-body text-on-surface">
       <Sidebar conversations={conversations} />
-      <div className="flex min-w-0 flex-col md:pl-72">
-        <NoticeBar />
+      <div
+        className={`flex min-w-0 flex-col md:pl-72 ${isChat ? "h-dvh overflow-hidden" : ""}`}
+      >
         <DesktopHeader />
         <MobileTopBar
           menuOpen={menuOpen}

@@ -34,6 +34,8 @@ IDS = ["spaghetti", "egg", "pepper"]
 @pytest.fixture(autouse=True)
 def clean_recipes():
     with connection() as c:
+        # A recipe reset cascades into guarded history (PER-002): say it is deliberate.
+        c.execute("SET LOCAL aimo.allow_history_truncate = 'on'")
         c.execute(
             "TRUNCATE recipes,recipe_catalogs,recipe_embedding_cache,recipe_product_evidence CASCADE"
         )
@@ -274,13 +276,15 @@ def test_wrong_product_leaves_only_that_ingredient_unresolved(tmp_path, actor, m
     # Same outcome as matching that same wrong pair on its own.
     second = another_plan(actor)
     single = single_match_all(actor, second, pairs(spaghetti="recipe-egg"))
-    # The batch also records the refused product (MEA-005 "selections"); single matching will
-    # once person 2 applies the patch in MEA-005-009-requests.md. Everything else is identical.
+    # Both paths record the refused product (MEA-005 "selections"); everything else is identical.
     rejected = status["spaghetti"].pop("rejected")
     assert [r["product_id"] for r in rejected] == ["recipe-egg"] and rejected[0]["reason"]
-    assert result["ingredients"] == [
-        {k: v for k, v in i.items() if k != "rejected"} for i in single["ingredients"]
-    ]
+    assert [r["product_id"] for r in single["ingredients"][0]["rejected"]] == ["recipe-egg"]
+
+    def bare(items):
+        return [{k: v for k, v in i.items() if k != "rejected"} for i in items]
+
+    assert bare(result["ingredients"]) == bare(single["ingredients"])
 
 
 def test_absent_product_is_unresolved_not_an_error(tmp_path, actor, meal_products):

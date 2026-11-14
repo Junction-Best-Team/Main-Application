@@ -2,6 +2,7 @@
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme" layer(theme);
 @import "tailwindcss/preflight" layer(base);
+@import "./settings.css" layer(components);
 @import "tailwindcss/utilities" layer(utilities);
 
 /* All tokens from ui/DESIGN.md (source of truth over per-screen HTML configs). */

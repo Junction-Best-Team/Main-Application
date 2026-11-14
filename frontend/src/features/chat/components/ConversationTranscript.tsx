@@ -1,17 +1,15 @@
-import type { Ref } from "react";
 import type { Conversation } from "../../../shared/api/types";
 import { Icon } from "../../../shared/components/DesignPrimitives";
 import { dateTime } from "../../../shared/lib/format";
 import { MealPlanCard } from "./MealPlanCard";
+import { RecipeIllustration } from "./RecipeIllustration";
 import { SkuCards } from "./SkuCards";
 export function ConversationTranscript({
   conversation,
   busy,
-  transcript,
 }: {
   conversation: Conversation | null;
   busy: boolean;
-  transcript: Ref<HTMLDivElement>;
 }) {
   return (
     <div
@@ -50,6 +48,12 @@ export function ConversationTranscript({
                 <p className="whitespace-pre-wrap wrap-anywhere text-body-md text-on-surface">
                   {message.text}
                 </p>
+                {message.image && (
+                  <RecipeIllustration
+                    key={message.image.url}
+                    image={message.image}
+                  />
+                )}
                 {message.meal_plan && <MealPlanCard plan={message.meal_plan} />}
                 {message.proposal_id && (
                   <SkuCards
@@ -69,7 +73,6 @@ export function ConversationTranscript({
           Aimo is checking your request… You can return to this conversation.
         </p>
       )}
-      <div ref={transcript} />
     </div>
   );
 }

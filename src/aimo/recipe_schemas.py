@@ -50,7 +50,7 @@ class Recipe(Model):
     summary: str = Field(max_length=4000)
     base_servings: int = Field(ge=1, le=10000)
     category: str = Field(max_length=80)
-    ingredients: list[RecipeIngredient] = Field(min_length=1, max_length=100)
+    ingredients: list[RecipeIngredient] = Field(min_length=1, max_length=1000)
     instructions: list[str] = Field(max_length=100)
 
 
