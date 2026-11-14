@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from aimo import approval_workflow as workflow
 from aimo import auth
 from aimo.config import settings
-from aimo.db import Problem, connection
+from aimo.db import Problem, close_pools, connection
 from aimo.mcp_adapter import build_mcp
 from aimo.schemas import (
     CommitRequest,
@@ -23,9 +23,9 @@ from aimo.schemas import (
     LookupResponse,
     OrderResponse,
     PolicyResponse,
+    PrepareRequest,
     ProductResponse,
     ProposalResponse,
-    PurchaseRequest,
     SearchRequest,
     SearchResponse,
     SessionResponse,
@@ -45,8 +45,13 @@ def create_app(service=None):
 
     @asynccontextmanager
     async def lifespan(app):
-        async with mcp.session_manager.run():
-            yield
+        import anyio
+
+        try:
+            async with mcp.session_manager.run():
+                yield
+        finally:
+            await anyio.to_thread.run_sync(close_pools)
 
     app = FastAPI(
         title="Valio Aimo purchasing gateway",
@@ -77,7 +82,9 @@ def create_app(service=None):
     @app.exception_handler(Problem)
     async def problem_handler(request, exc):
         return JSONResponse(
-            {"error": {"code": exc.code, "message": exc.message}}, status_code=exc.status
+            {"error": {"code": exc.code, "message": exc.message}},
+            status_code=exc.status,
+            headers={"Retry-After": str(exc.retry_after)} if exc.retry_after is not None else None,
         )
 
     @app.middleware("http")
@@ -87,7 +94,7 @@ def create_app(service=None):
             try:
                 import anyio
 
-                await anyio.to_thread.run_sync(
+                request.state.agent_identity = await anyio.to_thread.run_sync(
                     auth.agent_identity, request.headers.get("authorization")
                 )
             except Problem as exc:
@@ -109,7 +116,7 @@ def create_app(service=None):
         return auth.browser_identity(request.cookies.get("aimo_session"))[0]
 
     @app.get("/health/live")
-    def live():
+    async def live():
         return {"status": "ok"}
 
     @app.get("/health/ready")
@@ -210,7 +217,7 @@ def create_app(service=None):
         return service.check_price_and_availability(identity, body)
 
     @app.post("/api/agent/prepare_order", response_model=ProposalResponse)
-    def prepare(body: PurchaseRequest, identity=Depends(agent)):
+    def prepare(body: PrepareRequest, identity=Depends(agent)):
         return service.prepare_order(identity, body)
 
     @app.get("/api/agent/proposals/{proposal_id}", response_model=ProposalResponse)

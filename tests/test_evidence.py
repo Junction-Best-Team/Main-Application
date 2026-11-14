@@ -144,6 +144,7 @@ def test_gross_boundary(total, outcome):
         "currency": "EUR",
         "autonomous_limit": "1500",
         "destinations": ["hotel"],
+        "approved_product_ids": [],
         "substitution": "requires_approval",
         "overbuy": "requires_approval",
     }

@@ -4,7 +4,6 @@ from uuid import UUID
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
-from aimo.auth import agent_identity
 from aimo.config import settings
 from aimo.db import Problem
 from aimo.schemas import (
@@ -14,9 +13,9 @@ from aimo.schemas import (
     LookupResponse,
     OrderResponse,
     PolicyResponse,
+    PrepareRequest,
     ProductResponse,
     ProposalResponse,
-    PurchaseRequest,
     SearchRequest,
     SearchResponse,
 )
@@ -41,7 +40,10 @@ def build_mcp(service: Service):
         request = ctx.request_context.request
         if request is None:
             raise ValueError("Authenticated HTTP transport is required")
-        return agent_identity(request.headers.get("authorization"))
+        actor = getattr(request.state, "agent_identity", None)
+        if actor is None:
+            raise ValueError("Authenticated HTTP transport is required")
+        return actor
 
     async def call(ctx, operation, *args):
         try:
@@ -75,7 +77,7 @@ def build_mcp(service: Service):
         )
 
     @mcp.tool(structured_output=True)
-    async def prepare_order(request: PurchaseRequest, ctx: Context) -> ProposalResponse:
+    async def prepare_order(request: PrepareRequest, ctx: Context) -> ProposalResponse:
         """Prepare an immutable revision; evaluate policy, quantities, price, tax and fulfillment. No order is placed."""
         return ProposalResponse.model_validate(await call(ctx, "prepare_order", request))
 

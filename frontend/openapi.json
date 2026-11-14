@@ -528,7 +528,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PurchaseRequest-Input"
+                "$ref": "#/components/schemas/PrepareRequest"
               }
             }
           }
@@ -1442,6 +1442,21 @@
           "whole_sales_units": {
             "type": "boolean",
             "title": "Whole Sales Units"
+          },
+          "approved_product_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved Product Ids",
+            "description": "Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope blocks regulated substitutions until privileged setup supplies it."
           }
         },
         "additionalProperties": false,
@@ -1455,6 +1470,81 @@
           "whole_sales_units"
         ],
         "title": "PolicyRules"
+      },
+      "PrepareRequest": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Request Id"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/LineRequest-Input"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "minItems": 1,
+            "title": "Lines"
+          },
+          "destination": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Destination"
+          },
+          "delivery_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Delivery Date"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/Requirements"
+          },
+          "budget_gross": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget Gross"
+          },
+          "allow_substitution": {
+            "type": "boolean",
+            "title": "Allow Substitution",
+            "default": true
+          },
+          "allow_overbuy": {
+            "type": "boolean",
+            "title": "Allow Overbuy",
+            "default": true
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 8,
+            "title": "Idempotency Key",
+            "description": "Stable key for retries of this preparation, scoped to buyer and agent. Use a new key for a new purchase or fresh proposal after expiry."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "request_id",
+          "lines",
+          "destination",
+          "delivery_date",
+          "idempotency_key"
+        ],
+        "title": "PrepareRequest"
       },
       "ProductResponse": {
         "properties": {
@@ -1741,7 +1831,7 @@
             "title": "Agent Id"
           },
           "request": {
-            "$ref": "#/components/schemas/PurchaseRequest-Output"
+            "$ref": "#/components/schemas/PurchaseRequest"
           },
           "snapshot": {
             "$ref": "#/components/schemas/PurchaseSnapshot"
@@ -1801,74 +1891,7 @@
         ],
         "title": "Provenance"
       },
-      "PurchaseRequest-Input": {
-        "properties": {
-          "request_id": {
-            "type": "string",
-            "maxLength": 100,
-            "minLength": 1,
-            "title": "Request Id"
-          },
-          "lines": {
-            "items": {
-              "$ref": "#/components/schemas/LineRequest-Input"
-            },
-            "type": "array",
-            "maxItems": 30,
-            "minItems": 1,
-            "title": "Lines"
-          },
-          "destination": {
-            "type": "string",
-            "maxLength": 120,
-            "minLength": 1,
-            "title": "Destination"
-          },
-          "delivery_date": {
-            "type": "string",
-            "format": "date",
-            "title": "Delivery Date"
-          },
-          "requirements": {
-            "$ref": "#/components/schemas/Requirements"
-          },
-          "budget_gross": {
-            "anyOf": [
-              {
-                "type": "number",
-                "minimum": 0.0
-              },
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Budget Gross"
-          },
-          "allow_substitution": {
-            "type": "boolean",
-            "title": "Allow Substitution",
-            "default": true
-          },
-          "allow_overbuy": {
-            "type": "boolean",
-            "title": "Allow Overbuy",
-            "default": true
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "request_id",
-          "lines",
-          "destination",
-          "delivery_date"
-        ],
-        "title": "PurchaseRequest"
-      },
-      "PurchaseRequest-Output": {
+      "PurchaseRequest": {
         "properties": {
           "request_id": {
             "type": "string",
@@ -2290,7 +2313,7 @@
             "title": "Agent Id"
           },
           "request": {
-            "$ref": "#/components/schemas/PurchaseRequest-Output"
+            "$ref": "#/components/schemas/PurchaseRequest"
           },
           "snapshot": {
             "$ref": "#/components/schemas/PurchaseSnapshot"

@@ -2,7 +2,7 @@ from aimo import approval_workflow as workflow
 from aimo import search, upstream
 from aimo.db import connection
 from aimo.purchases import context, load_products
-from aimo.schemas import CommitRequest, LookupRequest, PurchaseRequest, SearchRequest
+from aimo.schemas import CommitRequest, LookupRequest, PrepareRequest, SearchRequest
 
 
 class Service:
@@ -52,7 +52,7 @@ class Service:
             ),
         }
 
-    def prepare_order(self, identity, request: PurchaseRequest):
+    def prepare_order(self, identity, request: PrepareRequest):
         return workflow.prepare_order(identity, request, self.connector)
 
     def get_proposal(self, identity, proposal_id):

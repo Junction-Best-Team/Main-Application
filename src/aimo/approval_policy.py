@@ -31,8 +31,24 @@ def evaluate_purchase(
             "Gross payable exceeds the mission budget; revise the request.",
             "denied",
         )
+    approved_ids = rules.get("approved_product_ids")
+    substitution_rule = rules.get("substitution", "forbidden")
+    if approved_ids is None and (
+        substitution_rule != "allowed" or not request.get("allow_substitution", True)
+    ):
+        add(
+            "PRODUCT_SCOPE_UNCONFIGURED",
+            "A buyer-approved product scope must be configured before substitution rules can be enforced.",
+            "unresolved",
+        )
+    outside_scope = approved_ids is not None and any(
+        line["product_id"] not in approved_ids for line in request["lines"]
+    )
     for kind, present in [
-        ("substitution", any(line.get("substitutes_for") for line in request["lines"])),
+        (
+            "substitution",
+            outside_scope or any(line.get("substitutes_for") for line in request["lines"]),
+        ),
         (
             "overbuy",
             any(Decimal(line["quantity"].get("excess") or "0") > 0 for line in snapshot["lines"]),
@@ -51,7 +67,9 @@ def evaluate_purchase(
             exceptions.append(kind)
             add(
                 f"{kind.upper()}_REQUIRES_APPROVAL",
-                f"{kind.title()} needs a buyer decision.",
+                "Product selection is outside the buyer-approved scope or declares a substitution."
+                if kind == "substitution"
+                else f"{kind.title()} needs a buyer decision.",
                 "exception",
             )
     limit = min(

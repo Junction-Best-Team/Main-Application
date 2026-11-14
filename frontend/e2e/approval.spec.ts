@@ -101,6 +101,7 @@ test("independent buyer inbox, exact-revision approval, agent resume and retry",
   const delivery = new Date();
   delivery.setDate(delivery.getDate() + 2);
   const purchase = {
+    idempotency_key: `prepare-breakfast-${Date.now()}`,
     request_id: `Breakfast mission ${Date.now()}`,
     destination: "hotel-helsinki",
     delivery_date: delivery.toISOString().slice(0, 10),
@@ -250,6 +251,7 @@ test("competing buyer tabs preserve the first decision and refresh the stale pag
   const prepared = await request.post("/api/agent/prepare_order", {
     headers: { authorization },
     data: {
+      idempotency_key: `prepare-two-tabs-${Date.now()}`,
       request_id: `Two tabs ${Date.now()}`,
       destination: "hotel-helsinki",
       delivery_date: d.toISOString().slice(0, 10),

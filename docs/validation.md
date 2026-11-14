@@ -2,6 +2,27 @@
 
 Implemented on `codex/valio-aimo-mvp` in an isolated worktree, originally based on main `76296c1`. The original checkout remained clean on `codex/valio-aimo-plan` during implementation. PR #2 was closed **without merging**; this implementation includes the agreed brief while preserving PR #3's reference work. PR #4 now targets the shared integration branch, `develop`.
 
+## Second PR #4 review — correctness and runtime hardening
+
+Implemented on top of `ea8e9aa`. The review's underlying issues were addressed with these qualifications: withdrawn products were already blocked as unknown, but now receive the correct denial; transient HTTP responses already had a short backoff, but permanent errors were retried incorrectly; filtered HNSW recall loss was a risk, not a reproduced loss in the existing catalog query plan.
+
+- Substitution enforcement now uses a trusted, versioned buyer-approved product scope, not solely an agent-supplied flag. The scope is standing product authority; it does not prove compliance with arbitrary external mission text. Existing restricted policies without scope fail closed until privileged provisioning supplies it.
+- Prepare retries use a required buyer/agent-scoped idempotency key and an atomic database record. Pack ceilings use exact fractions. File ingestion preserves withdrawn products. Commit reuses its locked policy evaluation; numeric conversion and the runtime/image model pin are shared.
+- Login counts failed passwords separately, bounds total per-client requests, cleans expired rows, and uses explicitly trusted ingress addressing. MCP reuses middleware authentication and keeps database/business work off the event loop. A bounded PostgreSQL pool and batched inbox reads replace connection churn and per-item lookups.
+- Supplier retries are limited to transient failures, with jitter and `Retry-After`. Long waits return a retry hint instead of retrying early. Exact filtered catalog ranking avoids approximate scan limits; imports retain a bounded number of product/vector generations.
+
+| Check | Actual result |
+| --- | --- |
+| Backend suite | **97 passed**, PostgreSQL/pgvector in isolated `aimo_hardening_test`. New coverage includes undeclared substitution, privileged scope versioning, six exact pack cases, eight concurrent prepare retries, atomic rollback/retry, conflicting/scoped keys, current identity revocation/role checks, login success/failure/spray/cleanup, trusted versus spoofed proxy headers, MCP worker/auth behavior, pool reuse/rollback/exhaustion, file withdrawal markers, bounded generations, concurrent search/ingest, and transient/permanent/Retry-After behavior. |
+| Inbox queries | A 20-item pending page uses **6 SQL statements**, down from the reproduced **164**, excluding outer HTTP authentication and pool health checks. Returned item details match the detail endpoint. |
+| Production artifact | Docker image rebuilt with the shared model pin and `psycopg-pool` dependency. Read-only-root container `aimo-hardening-verify` passed readiness against a fresh isolated `aimo_hardening_browser` database, using fixture embeddings and commerce. |
+| Browser | **6 Chromium/Playwright flows passed** against that container and compiled frontend, including historical/current terms and Swagger CSP. |
+| Agent/demo/restart | Official SDK invoked all eight MCP tools and returned an identical commit receipt on retry. HTTP demo covered autonomous, denied, unresolved and buyer-pending purchases. An actual container restart preserved the session and approval, after which the agent committed one mock order and recovered the same receipt. |
+| Full-catalog retrieval | Read-only rerun of the existing 30 curated cases against all **17,546 products**, using the pinned real model offline: keyword top-one/top-five **20/21**, semantic **21/26**, hybrid **21/26**, all out of 30; zero supported filter violations. Median latencies **3.7 / 91.1 / 90.6 ms** respectively on this machine; first semantic query including load about **3.95 s**. No catalog reimport or embedding generation; relevance counts match the earlier run. This is not a load test or held-out benchmark. |
+| Build/contracts/lint | Ruff, formatting, generated OpenAPI/TypeScript contracts and production TypeScript/Vite build passed. |
+
+Migration `002_review_hardening.sql`, required prepare keys, explicit product-scope provisioning for existing buyers, and trusted proxy setup are documented in README/deploy instructions. One backend and one database remain the architecture; no new service was added. Live supplier authentication, fresh live stock and Kubernetes deployment remain unverified.
+
 ## PR #4 review fixes — 14 November 2026
 
 Fixed the four findings against `6acfe89`, starting from the current PR head `cd16b09`:
@@ -55,7 +76,7 @@ Snapshot SHA-256: `50651aae31ca842112afdc16fcce92f9858d7f5d05e9928a3748aef16b22e
 | Semantic | 21 | 26 | 0 | 76.5 ms |
 | Hybrid RRF | 21 | 26 | 0 | 77.2 ms |
 
-Six cases are exact identifiers, 21 descriptive queries, and three exact-ID dietary exclusions. Hybrid descriptive top-five is **17/21**. Labels are curated and not exhaustive; this is not a held-out benchmark or a claim that this is the best model. The first semantic query including model load took about **4.5 seconds**. HNSW iterative scanning is enabled so generation/dietary filters do not prematurely exhaust the candidate list.
+Six cases are exact identifiers, 21 descriptive queries, and three exact-ID dietary exclusions. Hybrid descriptive top-five is **17/21**. Labels are curated and not exhaustive; this is not a held-out benchmark or a claim that this is the best model. The first semantic query including model load took about **4.5 seconds**. This initial run used HNSW iterative scanning; the second review changed retrieval to exact filtered ranking, with the fresh results above.
 
 Broad English milk queries can rank flavored drinks, coffee products or sweets too highly. The explicit mandatory filters are only lactose-free and milk-free. Unsupported structured filters are rejected. Discovery returns candidates and evidence; semantic relevance is never treated as dietary, physical-quantity or fulfillment proof. Agents must inspect the shortlist and choose explicit products. Exact identifiers excluded by requirements return no substitute result silently.
 
@@ -66,4 +87,4 @@ Broad English milk queries can rank flavored drinks, coffee products or sweets t
 - Variable-weight settlement, unknown supplier stock, passed cutoffs, missing deposit-unit/price evidence and conflicting requirements remain unresolved. A buyer decision cannot repair them. Source price validity is conservatively required for both current order time and requested delivery date until sponsor semantics are clarified.
 - Demo identity/password/bearer auth is implemented, not identity federation or MCP OAuth discovery. Seed runs are privileged and preserve existing settings. No policy-editing endpoint or autonomous approval tool exists.
 - Kubernetes resources are templates for an existing environment; cluster, registry, ingress/TLS and deployment resource adequacy have not been verified. No paid infrastructure or live deployment was created.
-- Existing policies/revisions/audit records are immutable by database trigger. Old catalog generations and model-cache entries are retained; retention and production operations remain an operator concern.
+- Existing policies/revisions/audit records are immutable by database trigger. Product/vector generation retention is now bounded at publication; generation metadata, reusable embeddings and audit/history retention remain operator concerns.

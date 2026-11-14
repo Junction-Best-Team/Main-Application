@@ -1,12 +1,14 @@
+import atexit
 import hashlib
 import json
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from threading import Lock
 from typing import Any
 
-import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+from psycopg_pool import ConnectionPool, PoolTimeout, TooManyRequests
 
 from aimo.config import settings
 
@@ -23,13 +25,53 @@ def js(value: Any) -> Jsonb:
     return Jsonb(json.loads(json.dumps(value, default=str)))
 
 
+_pools = {}
+_pool_lock = Lock()
+
+
+def pool():
+    cfg = settings()
+    key = (cfg.database_url, cfg.db_pool_max_size, cfg.db_pool_timeout_seconds)
+    with _pool_lock:
+        if key not in _pools:
+            _pools[key] = ConnectionPool(
+                cfg.database_url,
+                min_size=0,
+                max_size=cfg.db_pool_max_size,
+                timeout=cfg.db_pool_timeout_seconds,
+                max_waiting=50,
+                max_idle=60,
+                kwargs={"row_factory": dict_row, "connect_timeout": 5},
+                check=ConnectionPool.check_connection,
+                open=True,
+            )
+        return _pools[key]
+
+
+def close_pools():
+    with _pool_lock:
+        old = list(_pools.values())
+        _pools.clear()
+    for item in old:
+        item.close()
+
+
+atexit.register(close_pools)
+
+
 @contextmanager
 def connection():
-    with psycopg.connect(settings().database_url, row_factory=dict_row) as conn:
-        yield conn
+    try:
+        with pool().connection() as conn:
+            yield conn
+    except (PoolTimeout, TooManyRequests):
+        raise Problem(
+            "DATABASE_BUSY", "Database capacity is temporarily unavailable; retry later.", 503
+        ) from None
 
 
 class Problem(Exception):
-    def __init__(self, code: str, message: str, status: int = 409):
+    def __init__(self, code: str, message: str, status: int = 409, retry_after: int | None = None):
         self.code, self.message, self.status = code, message, status
+        self.retry_after = retry_after
         super().__init__(message)

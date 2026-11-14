@@ -25,6 +25,12 @@ spec:
           env:
             - {name: SECURE_COOKIES, value: "true"}
             - {name: HF_HUB_OFFLINE, value: "1"}
+            # Must identify the actual ingress proxy IPs/CIDRs; do not use '*'.
+            - name: FORWARDED_ALLOW_IPS
+              valueFrom:
+                secretKeyRef:
+                  name: aimo-runtime
+                  key: FORWARDED_ALLOW_IPS
           resources:
             requests: {cpu: "500m", memory: "1Gi"}
             limits: {cpu: "2", memory: "3Gi"}

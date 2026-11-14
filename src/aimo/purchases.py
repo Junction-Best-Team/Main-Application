@@ -1,5 +1,5 @@
 from datetime import timedelta
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP
 
 from pydantic import ValidationError
 
@@ -7,11 +7,8 @@ from aimo import upstream
 from aimo.catalog import quantity, requirement_reasons
 from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, now
+from aimo.numeric import D
 from aimo.schemas import AgentAuthority, ApproverAuthority, PolicyRules, PurchaseRequest
-
-
-def D(value):
-    return Decimal(str(value))
 
 
 def money(value):
@@ -27,9 +24,18 @@ def context(c, identity, lock=False):
         "SELECT * FROM identities WHERE buyer_id=%s ORDER BY id" + (" FOR SHARE" if lock else ""),
         (identity["buyer_id"],),
     ).fetchall()
-    actor = next((a for a in actors if a["id"] == identity["id"] and a["active"]), None)
+    actor = next(
+        (
+            a
+            for a in actors
+            if a["id"] == identity["id"] and a["active"] and a["role"] == identity["role"]
+        ),
+        None,
+    )
     if not actor:
-        raise Problem("AUTHORITY_REVOKED", "The identity is no longer active.", 403)
+        raise Problem(
+            "AUTHORITY_REVOKED", "The identity is inactive or no longer holds this role.", 403
+        )
     policy = c.execute(
         "SELECT * FROM policies WHERE buyer_id=%s AND version=%s",
         (buyer["id"], buyer["current_policy"]),

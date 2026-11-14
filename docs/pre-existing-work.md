@@ -43,6 +43,7 @@ Reference: [Junction general terms](https://www.hackjunction.com/terms-of-servic
 | Authored miniature fixture projections and invented commercial responses | 2026-11-14 | `src/aimo/fixtures.py` and `FixtureClient`; selected known product shapes exercise reported cases, but are not full catalog records or captured live responses. `demo-deposit` is a wholly fictional material. Real source records are verified privately by `scripts/verify_catalog.py`. |
 | Buyer UI | 2026-11-14 | Original React/CSS interface; system fonts, no third-party photos or downloaded visual assets. Styled text marks this as the challenge demo; it is not an official supplier checkout. |
 | PR #4 review fixes | 2026-11-14 | Codex changes to authority reevaluation, historical/current purchase views, documentation CSP and shared response contracts, with regression tests. Built on PR head `cd16b09`; no new services or dependencies. Swagger continues using FastAPI's jsDelivr assets, with nonced scripts on the documentation route. |
+| PR #4 second review | 2026-11-14 | Codex fixes on `ea8e9aa`: trusted product scope, prepare idempotency, exact pack arithmetic, withdrawal retention, bounded login and supplier retries, worker-only MCP database work, connection pooling, batched inbox, exact filtered retrieval and bounded product generations. Added migration 002 and psycopg-pool 3.3.3 (LGPL-3.0-only, per installed package metadata); no new service. Regression and container/browser/retrieval results are in `docs/validation.md`. |
 
 ### Integrated dependencies and model
 

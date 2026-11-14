@@ -33,6 +33,7 @@ def main():
         prepared = agent.post(
             "/api/agent/prepare_order",
             json={
+                "idempotency_key": str(uuid4()),
                 "request_id": "Restart verification",
                 "destination": "hotel-helsinki",
                 "delivery_date": str(date.today() + timedelta(days=2)),

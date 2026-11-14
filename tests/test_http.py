@@ -105,6 +105,18 @@ def test_cross_account_and_agent_isolation(http, service, agent, mission):
 
 def test_input_validation_and_api_errors(http, request_data):
     headers = {"Authorization": "Bearer " + os.environ["DEMO_AGENT_TOKEN"]}
+    missing_key = {key: value for key, value in request_data.items() if key != "idempotency_key"}
+    assert (
+        http.post("/api/agent/prepare_order", json=missing_key, headers=headers).status_code == 422
+    )
+    assert (
+        http.post(
+            "/api/agent/prepare_order",
+            json=request_data | {"approved_product_ids": ["464398"]},
+            headers=headers,
+        ).status_code
+        == 422
+    )
     request_data["approved"] = True
     assert (
         http.post("/api/agent/prepare_order", json=request_data, headers=headers).status_code == 422
@@ -131,6 +143,14 @@ def test_login_rate_limit_and_wrong_origin(http):
         for _ in range(11)
     ]
     assert responses[:10] == [401] * 10 and responses[-1] == 429
+    assert (
+        int(
+            http.post("/api/login", headers={"Origin": "http://testserver"}, json=body).headers[
+                "Retry-After"
+            ]
+        )
+        > 0
+    )
 
 
 def test_documentation_nonce_and_scoped_csp(http):
@@ -234,6 +254,16 @@ def test_historical_approval_links_current_autonomous_revision(
     http, service, connector, agent, mission
 ):
     # Repricing can remove the need for approval; the current-terms link must still work.
+    with connection() as c:
+        c.execute("SELECT id FROM buyers WHERE id='demo-hotel' FOR UPDATE")
+        rules = c.execute(
+            "SELECT rules FROM policies WHERE buyer_id='demo-hotel' AND version=1"
+        ).fetchone()["rules"]
+        rules["approved_product_ids"] = ["464306", "464398"]
+        c.execute(
+            "INSERT INTO policies(buyer_id,version,rules) VALUES('demo-hotel',2,%s)", (js(rules),)
+        )
+        c.execute("UPDATE buyers SET current_policy=2 WHERE id='demo-hotel'")
     for line in mission.lines:
         line.substitutes_for = None
     p = service.prepare_order(agent, mission)

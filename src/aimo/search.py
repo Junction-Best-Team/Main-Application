@@ -6,16 +6,15 @@ from functools import lru_cache
 from aimo.catalog import requirement_reasons
 from aimo.config import settings
 from aimo.db import Problem, connection
+from aimo.model_spec import EMBEDDING_REVISION
 from aimo.schemas import SearchRequest
-
-PINNED_REVISION = "614241f622f53c4eeff9890bdc4f31cfecc418b3"
 
 
 def model_key():
     cfg = settings()
     if cfg.embedding_backend == "fixture":
         return "fixture-hash-v1:384"
-    return f"{cfg.embedding_model}@{cfg.embedding_model_revision or PINNED_REVISION}"
+    return f"{cfg.embedding_model}@{cfg.embedding_model_revision or EMBEDDING_REVISION}"
 
 
 @lru_cache(maxsize=1)
@@ -27,7 +26,7 @@ def model():
     cfg = settings()
     return SentenceTransformer(
         cfg.embedding_model,
-        revision=cfg.embedding_model_revision or PINNED_REVISION,
+        revision=cfg.embedding_model_revision or EMBEDDING_REVISION,
         device="cpu",
         trust_remote_code=False,
     )
@@ -76,6 +75,8 @@ def search_products(identity, request: SearchRequest, strategy="hybrid"):
     from aimo.purchases import context
 
     with connection() as c:
+        # Keep the generation stable across discovery reads while ingestion publishes/prunes.
+        c.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         context(c, identity)
         active = c.execute(
             "SELECT g.* FROM active_catalog a JOIN catalog_generations g ON a.generation=g.id"
@@ -86,7 +87,7 @@ def search_products(identity, request: SearchRequest, strategy="hybrid"):
             raise Problem(
                 "MODEL_MISMATCH", "Serving model differs from the active catalog generation.", 503
             )
-        where = "generation=%s AND jsonb_array_length(facts->'allergen_conflicts')=0"
+        where = "generation=%s AND facts->'deleted' = 'false'::jsonb AND jsonb_array_length(facts->'allergen_conflicts')=0"
         params = [active["id"]]
         if request.requirements.lactose_free:
             where += " AND facts->'claims' ? 'FREE_FROM_LACTOSE'"
@@ -104,8 +105,6 @@ def search_products(identity, request: SearchRequest, strategy="hybrid"):
                 "strategy": strategy,
                 "note": "Exact identifier absent or excluded by mandatory requirements.",
             }
-        c.execute("SET LOCAL hnsw.iterative_scan = 'strict_order'")
-        c.execute("SET LOCAL hnsw.ef_search = 200")
         keyword, semantic = [], []
         if strategy in ("keyword", "hybrid"):
             keyword = c.execute(
@@ -117,8 +116,13 @@ def search_products(identity, request: SearchRequest, strategy="hybrid"):
         if strategy in ("semantic", "hybrid"):
             v = vector(embed([request.query], query=True)[0])
             semantic = c.execute(
-                f"SELECT id,facts,1-(embedding <=> %s::vector) AS similarity FROM products WHERE {where} ORDER BY embedding <=> %s::vector,id LIMIT 80",
-                (v, *params, v),
+                # At the 17.5k-product MVP scale, rank the filtered generation exactly.
+                # A materialized candidate set prevents old HNSW entries/scan limits
+                # from reducing recall. Measure before enabling ANN at a larger scale.
+                f"""WITH candidates AS MATERIALIZED (SELECT id,facts,embedding FROM products WHERE {where})
+                SELECT id,facts,1-(embedding <=> %s::vector) AS similarity FROM candidates
+                ORDER BY embedding <=> %s::vector,id LIMIT 80""",
+                (*params, v, v),
             ).fetchall()
         scores, facts = {}, {}
         for ranking in (keyword, semantic):

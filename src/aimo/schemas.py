@@ -64,6 +64,14 @@ class CommitRequest(Model):
     idempotency_key: str = Field(min_length=8, max_length=120)
 
 
+class PrepareRequest(PurchaseRequest):
+    idempotency_key: str = Field(
+        min_length=8,
+        max_length=120,
+        description="Stable key for retries of this preparation, scoped to buyer and agent. Use a new key for a new purchase or fresh proposal after expiry.",
+    )
+
+
 class DecisionRequest(Model):
     revision: int = Field(ge=1)
     decision: Literal["approve", "reject"]
@@ -178,6 +186,10 @@ class PolicyRules(Model):
     substitution: Literal["allowed", "requires_approval", "forbidden"]
     overbuy: Literal["allowed", "requires_approval", "forbidden"]
     whole_sales_units: bool
+    approved_product_ids: list[str] | None = Field(
+        default=None,
+        description="Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope blocks regulated substitutions until privileged setup supplies it.",
+    )
 
 
 class AgentAuthority(Model):

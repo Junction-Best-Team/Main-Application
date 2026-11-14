@@ -47,7 +47,8 @@ def ingest_file(path: Path, expected_count=17546, expected_sha=CATALOG_SHA256):
     if len({p["id"] for p in records}) != len(records):
         raise ValueError("Duplicate product identifiers")
     source = f"{path.name}; sha256:{actual}"
-    facts = [normalize(p, source) for p in records if not p.get("deleted", False)]
+    # Retain withdrawal facts for exact lookup/denial; discovery filters them out.
+    facts = [normalize(p, source) for p in records]
     return publish(facts, source, actual)
 
 
@@ -104,9 +105,18 @@ def publish(facts, source, source_hash):
             "INSERT INTO active_catalog(singleton,generation) VALUES(true,%s) ON CONFLICT(singleton) DO UPDATE SET generation=excluded.generation",
             (generation,),
         )
+        # Bound the live product/vector table. Historical proposals carry their own
+        # complete evidence snapshots; generation metadata and reusable embeddings remain.
+        c.execute(
+            """DELETE FROM products WHERE generation <> %s AND generation NOT IN (
+            SELECT id FROM catalog_generations WHERE id <> %s
+            ORDER BY created_at DESC,id DESC LIMIT %s)""",
+            (generation, generation, settings().catalog_generations_to_keep - 1),
+        )
     return {
         "generation": str(generation),
         "products": len(facts),
+        "withdrawn_products": sum(bool(p["deleted"]) for p in facts),
         "new_embeddings": len(generated),
         "reused_embeddings": len(text_by_hash) - len(generated),
         "volume_evidence": dict(Counter(p["measures"]["L"]["status"] for p in facts)),
