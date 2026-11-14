@@ -742,13 +742,39 @@ def basket(auth, run, plan):
     }
 
 
+def run_constraints(auth):
+    """POL-008 (owner Q-97): what the customer agreed for a scheduled run, as trusted constraints.
+
+    The price ceiling is the hard budget of the run's proposal, and a dietary requirement of the
+    authorized request stays required, so the policy engine itself refuses a basket that loosens
+    either, in addition to `compare`. Accepted substitutes and price ranges are not constraints
+    in POL-008's sense; they stay in `compare`."""
+    records = [
+        {
+            "name": "budget_gross",
+            "value": str(auth["price_ceiling_gross"]),
+            "source": "scheduled_request",
+            "confirmed": True,
+        }
+    ]
+    requirements = (auth["request"] or {}).get("requirements") or {}
+    for flag in ("lactose_free", "milk_free"):
+        if requirements.get(flag):
+            records.append(
+                {"name": flag, "value": True, "source": "scheduled_request", "confirmed": True}
+            )
+    return records
+
+
 def prepare(service, run, auth, sched, now):
     plan = run["substitutions"] or []
     agent = auth_module.internal_agent({"buyer_id": run["buyer_id"]})
     request = basket(auth, run, plan) | {
         "idempotency_key": f"sched-{run['id']}-{run['attempts']}-{'plan' if plan else 'agreed'}"
     }
-    proposal = service.prepare_order(agent, PrepareRequest.model_validate(request))
+    proposal = service.prepare_order(
+        agent, PrepareRequest.model_validate(request), constraints=run_constraints(auth)
+    )
     verdict = compare(
         auth, proposal["request"], proposal["snapshot"], proposal["policy_outcome"], plan
     )
