@@ -6,6 +6,7 @@ No network call or human wait occurs while these locks are held.
 from decimal import Decimal
 from uuid import uuid4
 
+from aimo import cancellations
 from aimo import meal_authorization as meals
 from aimo.approval_policy import can_approve, evaluate_purchase
 from aimo.config import settings
@@ -90,7 +91,9 @@ def evaluation_changed(revision, evaluated):
     return any(revision[key] != evaluated[key] for key in evaluated)
 
 
-def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, history=None):
+def render(
+    c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, history=None, cancelled=None
+):
     current = now()
     status = a["status"] if a else "not_required"
     recipe_basis = "saved_recipe" if r["request"].get("recipe_plan_id") else "free_form"
@@ -104,6 +107,10 @@ def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, hi
     committed = order is not None and order["revision"] == r["revision"]
     if historical:
         status = "superseded"
+    elif not committed and (
+        cancelled if cancelled is not None else cancellations.is_cancelled(c, p["id"])
+    ):
+        status = "cancelled"  # CNF-035: an append-only record next to the request
     elif not committed and status != "rejected":
         if (a is None or a["status"] == "superseded") and meals.is_withdrawn(c, p["id"]):
             status = "authorization_withdrawn"  # POL-010; withdrawal supersedes open approvals
@@ -145,7 +152,7 @@ def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, hi
         action = {"type": "view_current_proposal", "tool": "get_proposal"}
     elif committed:
         action = {"type": "complete", "tool": "get_order"}
-    elif status == "rejected":
+    elif status in ("rejected", "cancelled"):
         action = {"type": "stop"}
     elif status in (
         "expired",
@@ -325,6 +332,7 @@ def list_approvals(identity, offset=0, limit=20):
           JOIN buyers b ON b.id=p.buyer_id
           JOIN identities i ON i.id=p.agent_id AND i.buyer_id=p.buyer_id
           WHERE p.buyer_id=%s AND a.status='pending' AND p.order_id IS NULL AND r.expires_at>%s AND r.policy_version=b.current_policy
+          AND NOT EXISTS (SELECT 1 FROM order_request_cancellations x WHERE x.proposal_id=p.id)
           ORDER BY r.expires_at,p.id LIMIT %s OFFSET %s""",
             (identity["buyer_id"], now(), limit + 1, offset),
         ).fetchall()
@@ -355,6 +363,7 @@ def list_approvals(identity, offset=0, limit=20):
                         "active": row["agent_active"],
                     },
                     history=histories[row["id"]],
+                    cancelled=False,  # cancelled requests are filtered out of the inbox above
                 )
                 for row in page
             ],
@@ -549,6 +558,7 @@ def commit_order(identity, request: CommitRequest, connector):
         if p["order_id"]:
             raise Problem("ALREADY_COMMITTED", "One order already exists for this proposal.")
         meals.ensure_active(c, p["id"])  # POL-010: a withdrawn authorization never commits
+        cancellations.ensure_not_cancelled(c, p["id"])  # CNF-035: a cancelled request never commits
         if version != policy["version"]:
             raise Problem(
                 "POLICY_CHANGED", "Policy changed during lookup; retry with fresh evidence."

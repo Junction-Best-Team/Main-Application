@@ -5,7 +5,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 from aimo import approval_workflow as workflow
-from aimo import auth
+from aimo import auth, cancellations
 from aimo.approval_policy import can_approve
 from aimo.chat_schemas import AgentTurn
 from aimo.db import Problem, connection, fingerprint, js, now
@@ -387,6 +387,7 @@ def confirm(identity, pid, body, service):
         old = workflow.prior_result(c, identity, body, any_key=True)
         if old:
             return old
+        cancellations.ensure_not_cancelled(c, p["id"])  # CNF-035
         if r["revision"] != body.revision:
             raise Problem("STALE_REVISION", "Terms changed. Review and confirm the new revision.")
         if p["order_id"] or r["expires_at"] <= now() or r["policy_version"] != policy["version"]:
