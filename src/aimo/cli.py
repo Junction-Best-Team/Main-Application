@@ -224,6 +224,8 @@ def main():
         from aimo import approval_workflow
         from aimo.config import settings
 
+        if args.older_than_days is not None and args.older_than_days < 1:
+            parser.error("--older-than-days must be at least 1")
         days = args.older_than_days or settings().unfinished_proposal_retention_days
         print(
             json.dumps(

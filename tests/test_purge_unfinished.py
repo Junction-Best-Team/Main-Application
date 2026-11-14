@@ -190,3 +190,15 @@ def test_the_cli_command_purges_and_a_dry_run_does_not(
     cli.main()
     assert json.loads(capsys.readouterr().out.strip().splitlines()[-1])["proposals"] == 1
     assert count("proposals") == 0 and count("purged_proposals") == 1
+
+
+@pytest.mark.parametrize("days", ["0", "-2"])
+def test_the_cli_refuses_a_period_below_one_day(
+    service, buyer, actor, request_data, monkeypatch, days
+):
+    """A non-positive period would purge proposals that have not even expired yet."""
+    prepare(service, actor, request_data)
+    monkeypatch.setattr(sys, "argv", ["aimo", "purge-proposals", "--older-than-days", days])
+    with pytest.raises(SystemExit) as error:
+        cli.main()
+    assert error.value.code == 2 and count("proposals") == 1 and count("purged_proposals") == 0
