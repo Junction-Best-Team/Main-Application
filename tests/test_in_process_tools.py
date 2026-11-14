@@ -37,9 +37,10 @@ HTTP_LIBRARIES = {
     "subprocess",
 }
 URL_TEXT = re.compile(r"https?://|wss?://|localhost|127\.0\.0\.1|0\.0\.0\.0", re.IGNORECASE)
-# Modules that may start a listening server: the API app, the worker's internal health probe
-# and the `aimo serve` command. Nothing else may import a server framework.
-SERVER_MODULES = {"api.py", "cli.py", "worker.py"}
+# Modules that may start a listening server or define HTTP handlers: the API app, its error
+# handlers (errors.py, TCT-008), the worker's internal health probe and the `aimo serve` command.
+# Nothing else may import a server framework.
+SERVER_MODULES = {"api.py", "errors.py", "cli.py", "worker.py"}
 SERVER_IMPORTS = {"uvicorn", "fastapi", "starlette", "socketserver", "http.server", "aiohttp"}
 
 
@@ -100,7 +101,11 @@ def test_first_party_modules_used_by_agent_tools_do_no_networking():
         for name in imported_names(parse("agent_tools.py"))
         if name.startswith("aimo.")
     }
-    assert first_party >= {"db.py", "schemas.py", "recipe_schemas.py"}  # config.py left with the flag (PR #103)
+    assert first_party >= {
+        "db.py",
+        "schemas.py",
+        "recipe_schemas.py",
+    }  # config.py left with the flag (PR #103)
     offenders = {m: imported_roots(parse(m)) & HTTP_LIBRARIES for m in first_party}
     assert {m: libs for m, libs in offenders.items() if libs} == {}
 
