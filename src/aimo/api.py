@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from aimo import approval_workflow as workflow
-from aimo import auth, conversations, memory, schema_state, upstream
+from aimo import auth, conversations, memory, policy_settings, schema_state, upstream
 from aimo.chat_schemas import (
     ConversationCreate,
     ConversationList,
@@ -247,6 +247,19 @@ def create_app(service=None):
         identity=Depends(buyer),
     ):
         return workflow.list_approvals(identity, offset, limit)
+
+    @app.get("/api/settings/policy", response_model=policy_settings.PolicySettings)
+    def get_policy_settings(identity=Depends(buyer)):
+        return policy_settings.get(identity)
+
+    @app.put("/api/settings/policy", response_model=policy_settings.PolicySettings)
+    def save_policy_settings(
+        body: policy_settings.PolicyUpdate, request: Request, identity=Depends(buyer)
+    ):
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+        return policy_settings.update(identity, body)
 
     @app.get("/api/approvals/{approval_id}", response_model=ProposalResponse)
     def detail(approval_id: UUID, identity=Depends(buyer)):

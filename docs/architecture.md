@@ -149,7 +149,7 @@ or services. `pgvector` is an extension in that database.
 
 | Stored state | Main tables |
 | --- | --- |
-| Buyer identity, sessions and versioned policy | `buyers`, `identities`, `internal_agents`, `sessions`, `login_attempts`, `policies` |
+| Buyer identity, sessions and versioned policy | `buyers`, `identities`, `internal_agents`, `sessions`, `login_attempts`, `policies`, `policy_managers`, `policy_changes` |
 | Chat history and durable work queue | `conversations`, `conversation_messages`, `conversation_turns` |
 | Product facts, keyword search and vectors | `products`, `catalog_generations`, `active_catalog`, `embedding_cache` |
 | Purchase revisions, decisions and receipts | `proposals`, `proposal_revisions`, `approvals`, `customer_confirmations`, `orders` |
@@ -309,3 +309,5 @@ constraints prevent duplicate acceptance; persisted conversations and receipts s
 | Purchasing contracts and database schema | [schemas.py](../src/aimo/schemas.py), [migrations](../migrations) |
 | Workloads, ingress and cloud/database provisioning | [deploy/kubernetes.yaml](../deploy/kubernetes.yaml), [infra/kubernetes](../infra/kubernetes), [infra/digitalocean](../infra/digitalocean) |
 | Image release and migration gate | [deploy.yml](../.github/workflows/deploy.yml), [migrate-release.py](../infra/scripts/migrate-release.py) |
+
+Buyer policy managers can edit purchasing rules through the authenticated [Settings page](policy-settings.md). This is a browser-only capability, separate from the agent tool allowlist.

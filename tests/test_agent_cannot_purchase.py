@@ -84,6 +84,7 @@ def test_registry_exposes_only_read_and_prepare_operations():
         "decide",
         "set_product_scope",
         "update_purchase_policy",
+        "save_buyer_policy",
         "withdraw_meal_authorization",
     ],
 )

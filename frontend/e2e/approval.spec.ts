@@ -36,21 +36,19 @@ test("historical approval stays superseded and links to committed terms", async 
     .getByLabel("Password", { exact: true })
     .fill(env.DEMO_BUYER_PASSWORD || "");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.locator(".decision-total")).toContainText("1,700.00");
+  await expect(page.locator(".purchase-sheet")).toContainText("1,700.00");
   await expect(page.locator(".status-note")).toContainText("Superseded");
   await expect(
-    page.getByRole("button", { name: "Confirm this purchase" }),
+    page.getByRole("button", { name: "Approve & Push to Dispatch" }),
   ).toHaveCount(0);
   await page.getByRole("link", { name: "View current revision 2" }).click();
   await expect(page).toHaveURL(
     new RegExp(`/purchases/${fixture.proposal_id}$`),
   );
-  await expect(page.locator(".decision-total")).toContainText("1,870.00");
-  await expect(page.locator(".status-note")).toContainText(
-    "Accepted by demo order service",
-  );
+  await expect(page.locator(".purchase-sheet")).toContainText("1,870.00");
+  await expect(page.locator(".purchase-row")).toContainText("Accepted (demo)");
   await page.reload();
-  await expect(page.locator(".decision-total")).toContainText("1,870.00");
+  await expect(page.locator(".purchase-sheet")).toContainText("1,870.00");
 });
 
 test("removed external interfaces return API errors instead of frontend HTML", async ({

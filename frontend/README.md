@@ -30,6 +30,7 @@ src/
   features/
     auth/                        Session provider, login, route guard
     chat/                        Conversations, messages, meal plans, SSE
+    home/pages/                  Home with real recent orders and placeholder schedules
     purchases/                   History, exact-revision review and decisions
       api/                       Typed endpoint calls
       components/                Props-driven feature UI
@@ -41,7 +42,7 @@ src/
     components/                  Cross-feature UI
     hooks/                       Cross-feature hooks
     lib/                         Formatting
-  styles/                        Tailwind theme and layered legacy CSS
+  styles/                        Tailwind tokens, preflight and base styles
 e2e/                             Playwright behavior regressions
 docs/                            Architecture, development and testing
 AGENTS.md                        Instructions for coding agents
@@ -88,10 +89,12 @@ backend contract changes. `shared/api/types.ts` provides readable aliases;
 ## Design and prototype reference
 
 Use `../ui/DESIGN.md` plus the desktop/mobile references in `../ui/`.
-`src/styles/theme.css` reuses PR #107's tokens and fonts, without preflight.
-Legacy CSS is in a lower cascade layer, so utilities can override it as screens
-migrate. API behavior and existing routes are retained by this structural pass;
-new Home/Request layouts are subsequent visual work.
+The complete #102 design runs through the production feature structure:
+Home, sidebar/mobile navigation, Request with SKU cards and Overview, expandable
+Past Orders and login. `src/styles/theme.css` includes preflight and design tokens;
+legacy CSS is removed. Actual data and decisions retain generated API contracts,
+cookie/CSRF authentication, SSE/retry recovery and exact-revision confirmation.
+Disabled design controls and schedule examples are labelled placeholders.
 
 `prototypes/chat-ui/` is a standalone fake-data reference, excluded from this
 package's lint, TypeScript and formatting checks. It is not the production

@@ -26,8 +26,13 @@ def configure_runtime_role(conn, role_name):
     # Provisioning authority never belongs to ordinary serving/agent code.
     conn.execute(
         sql.SQL(
-            "REVOKE INSERT, UPDATE, DELETE ON buyers,identities,policies,internal_agents FROM {}"
+            "REVOKE INSERT, UPDATE, DELETE ON buyers,identities,policies,internal_agents,policy_managers,policy_changes FROM {}"
         ).format(role)
+    )
+    conn.execute(
+        sql.SQL("GRANT EXECUTE ON FUNCTION save_buyer_policy(text,integer,jsonb) TO {}").format(
+            role
+        )
     )
     # PostgreSQL requires UPDATE privilege on at least one column for SELECT
     # FOR UPDATE/FOR SHARE. Grant only the identifier column, then reject actual
