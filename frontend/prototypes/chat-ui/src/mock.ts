@@ -16,4 +16,10 @@ export const MOCK = {
     account: { name: "Ravintola Aarni", number: "Acc #94821-FI" },
     hasUnreadNotifications: true,
   },
+  /** Request screen Overview panel. */
+  overview: {
+    substitutionsLabel: "Substitutions allowed",
+    substitutionsOn: true,
+    accountManager: { initials: "MV", name: "Mikael Virtanen", phone: "+358 10 381 00" },
+  },
 } as const;

@@ -140,3 +140,12 @@
   font-feature-settings: "liga";
   -webkit-font-smoothing: antialiased;
 }
+
+/* Request screen: the Overview panel is fixed to the right edge on desktop;
+   reserve its width so the chat is never hidden behind it. */
+@media (min-width: 768px) {
+  main:has(> [data-overview-panel]) {
+    box-sizing: border-box;
+    padding-right: 380px;
+  }
+}

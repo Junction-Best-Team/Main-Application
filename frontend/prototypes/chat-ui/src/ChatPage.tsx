@@ -4,6 +4,7 @@ import type { Conversation, ConversationList } from "./types";
 import { Badge, ErrorMessage, currency, dateTime, purchaseStatus } from "./shared";
 import { store, FakeApiError } from "./store";
 import { useStoreState } from "./useStoreState";
+import { OverviewPanel } from "./OverviewPanel";
 
 export function ChatPage() {
   const { conversationId } = useParams();
@@ -237,6 +238,7 @@ export function ChatPage() {
           Demo ordering only. No real supplier orders or stock reservations. Signed in as {session?.buyer_id}.
         </p>
       </section>
+      <OverviewPanel conversation={conversation} />
     </main>
   );
 }

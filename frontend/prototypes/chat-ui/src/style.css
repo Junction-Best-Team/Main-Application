@@ -338,50 +338,6 @@ td span {
   padding-top: 18px;
   font-size: 1.2rem;
 }
-.decision-panel {
-  background: #fff;
-  border-top: 5px solid #003d59;
-  border-radius: 6px;
-  padding: 24px;
-  position: sticky;
-  top: 24px;
-}
-.decision-total {
-  font-size: 2.1rem;
-  font-weight: 700;
-  margin-bottom: 24px;
-}
-.reasons {
-  padding-left: 20px;
-  font-size: 0.9rem;
-}
-.reasons li {
-  margin-bottom: 18px;
-}
-.reason-code {
-  display: block;
-  font-size: 0.67rem;
-  overflow-wrap: anywhere;
-  color: #526b78;
-  margin-top: 6px;
-}
-.action-note {
-  font-size: 0.88rem;
-  padding: 16px 0;
-  border-top: 1px solid #d1dfe6;
-  color: #526b78;
-}
-.status-note {
-  padding-top: 16px;
-  border-top: 1px solid #d1dfe6;
-}
-.status-note p {
-  font-size: 0.9rem;
-  margin-top: 16px;
-}
-.order-reference {
-  overflow-wrap: anywhere;
-}
 .history {
   border-top: 1px solid #d1dfe6;
   padding-top: 26px;
@@ -435,9 +391,6 @@ pre {
 @media (max-width: 1000px) {
   .review-layout {
     grid-template-columns: 1fr;
-  }
-  .decision-panel {
-    position: static;
   }
 }
 @media (max-width: 650px) {
@@ -897,66 +850,8 @@ body {
 }
 
 /* Sticky confirmation bar on the basket page. */
-.sticky-bar-placeholder {
-  margin-bottom: 0;
-}
-.sticky-confirm-bar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 56px;
-  z-index: 55;
-  background: #fff;
-  border-top: 3px solid #005b79;
-  box-shadow: 0 -6px 16px rgba(0, 0, 0, 0.12);
-  padding: 14px 5vw;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 20px;
-  max-width: 1320px;
-  margin: 0 auto;
-}
-.sticky-confirm-bar-total {
-  display: flex;
-  flex-direction: column;
-  font-size: 0.8rem;
-  color: #526b78;
-}
-.sticky-confirm-bar-total strong {
-  font-size: 1.6rem;
-  color: #12384b;
-}
-.sticky-confirm-bar-actions {
-  display: flex;
-  gap: 12px;
-  margin-left: auto;
-}
-.sticky-confirm-bar-actions button {
-  margin: 0;
-}
-.sticky-confirm-bar .error,
-.sticky-confirm-bar .success {
-  flex-basis: 100%;
-  margin: 0;
-}
 
-button.text-button.inline {
-  display: inline;
-  margin: 0;
-  padding: 0;
-  font-weight: inherit;
-  text-decoration: underline;
-}
 @media (max-width: 650px) {
-  .sticky-confirm-bar {
-    bottom: 96px;
-    padding: 12px 16px;
-  }
-  .sticky-confirm-bar-actions {
-    width: 100%;
-    margin-left: 0;
-  }
   .demo-bar {
     padding: 8px 14px;
   }
