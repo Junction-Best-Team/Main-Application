@@ -559,6 +559,12 @@ export interface components {
              * @enum {string}
              */
             policy_outcome: "ready_to_commit" | "approval_required" | "denied" | "needs_resolution";
+            /**
+             * Recipe Basis
+             * @default free_form
+             * @enum {string}
+             */
+            recipe_basis: "saved_recipe" | "free_form";
             /** Approval Status */
             approval_status: string;
             /** Order Status */
@@ -718,6 +724,12 @@ export interface components {
              * @enum {string}
              */
             policy_outcome: "ready_to_commit" | "approval_required" | "denied" | "needs_resolution";
+            /**
+             * Recipe Basis
+             * @default free_form
+             * @enum {string}
+             */
+            recipe_basis: "saved_recipe" | "free_form";
             /** Approval Status */
             approval_status: string;
             /** Order Status */

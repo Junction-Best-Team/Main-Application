@@ -115,3 +115,42 @@ def test_missing_packaged_migrations_fail_closed(migration_area):
         cli.migrate()
     with connection() as conn:
         assert conn.execute("SELECT to_regclass('schema_migrations')").fetchone()[0] is None
+
+
+@pytest.mark.parametrize("duplicate", [False, True])
+def test_recipe_proposal_link_backfills_or_rejects_ambiguous_history(migration_area, duplicate):
+    from pathlib import Path
+
+    directory, connection, _ = migration_area
+    (directory / "001_prior.sql").write_text("""
+        CREATE TABLE proposals (id uuid PRIMARY KEY, buyer_id text, agent_id text, current_revision int);
+        CREATE TABLE recipe_plans (id uuid PRIMARY KEY, buyer_id text, agent_id text, locked boolean);
+        CREATE TABLE proposal_revisions (proposal_id uuid, revision int, request jsonb);
+    """)
+    cli.migrate()
+    plan_id, proposal_id = uuid4(), uuid4()
+    with connection() as c:
+        c.execute("INSERT INTO recipe_plans VALUES(%s,'buyer','agent',false)", (plan_id,))
+        for pid in [proposal_id] + ([uuid4()] if duplicate else []):
+            c.execute("INSERT INTO proposals VALUES(%s,'buyer','agent',1)", (pid,))
+            c.execute(
+                "INSERT INTO proposal_revisions VALUES(%s,1,jsonb_build_object('recipe_plan_id',%s::text))",
+                (pid, str(plan_id)),
+            )
+    source = Path(__file__).resolve().parents[1] / "migrations/006_recipe_proposal_link.sql"
+    (directory / source.name).write_text(source.read_text())
+    if duplicate:
+        with pytest.raises(psycopg.errors.RaiseException, match="multiple proposals"):
+            cli.migrate()
+        with connection() as c:
+            assert not c.execute(
+                "SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='recipe_plans' AND column_name='proposal_id'"
+            ).fetchone()
+    else:
+        cli.migrate()
+        cli.migrate()
+        with connection() as c:
+            assert c.execute("SELECT proposal_id,locked FROM recipe_plans").fetchone() == (
+                proposal_id,
+                True,
+            )

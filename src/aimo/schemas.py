@@ -154,6 +154,7 @@ class ProposalResponse(Model):
     current_proposal_url: str
     policy_version: int
     policy_outcome: Literal["ready_to_commit", "approval_required", "denied", "needs_resolution"]
+    recipe_basis: Literal["saved_recipe", "free_form"] = "free_form"
     approval_status: str
     order_status: str
     reasons: list[Reason]

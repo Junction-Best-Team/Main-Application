@@ -178,6 +178,7 @@ def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, hi
         "current_proposal_url": f"{settings().public_base_url}/purchases/{p['id']}",
         "policy_version": r["policy_version"],
         "policy_outcome": r["policy_outcome"],
+        "recipe_basis": "saved_recipe" if r["request"].get("recipe_plan_id") else "free_form",
         "approval_status": status,
         "order_status": "accepted_mock" if committed else "not_placed",
         "reasons": r["reasons"],
@@ -234,7 +235,7 @@ def prepare_order(identity, request: PrepareRequest, connector):
         if request.recipe_plan_id:
             from aimo.recipes import validate_basket
 
-            validate_basket(c, identity, request)
+            recipe_proposal = validate_basket(c, identity, request)
     snapshot, expires, version = build_snapshot(identity, request, connector)
     with connection() as c:
         _, policy, actor, approvers = context(c, identity, lock=True)
@@ -244,18 +245,24 @@ def prepare_order(identity, request: PrepareRequest, connector):
         if request.recipe_plan_id:
             # Recheck after supplier I/O. Serialize only this short persistence
             # transaction; proposal creation and the plan lock commit together.
-            validate_basket(c, identity, request)
+            if validate_basket(c, identity, request) != recipe_proposal:
+                raise Problem(
+                    "RECIPE_PROPOSAL_CHANGED", "Another request refreshed this basket; reload it."
+                )
         if version != policy["version"]:
             raise Problem("POLICY_CHANGED", "Policy changed during lookup; prepare again.")
-        pid = uuid4()
-        c.execute(
-            "INSERT INTO proposals(id,buyer_id,agent_id,current_revision) VALUES(%s,%s,%s,1)",
-            (pid, identity["buyer_id"], identity["id"]),
-        )
+        previous = recipe_proposal if request.recipe_plan_id else None
+        pid = previous["id"] if previous else uuid4()
+        revision = previous["revision"] + 1 if previous else 1
+        if not previous:
+            c.execute(
+                "INSERT INTO proposals(id,buyer_id,agent_id,current_revision) VALUES(%s,%s,%s,1)",
+                (pid, identity["buyer_id"], identity["id"]),
+            )
         append_revision(
             c,
             pid,
-            1,
+            revision,
             identity,
             payload,
             snapshot,
@@ -269,7 +276,10 @@ def prepare_order(identity, request: PrepareRequest, connector):
             (identity["buyer_id"], identity["id"], request.idempotency_key, payload_hash, pid),
         )
         if request.recipe_plan_id:
-            c.execute("UPDATE recipe_plans SET locked=true WHERE id=%s", (request.recipe_plan_id,))
+            c.execute(
+                "UPDATE recipe_plans SET locked=true,proposal_id=%s WHERE id=%s",
+                (pid, request.recipe_plan_id),
+            )
         return render(c, *proposal(c, pid, identity), identity)
 
 

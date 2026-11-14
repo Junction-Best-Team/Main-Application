@@ -4,6 +4,7 @@ import hashlib
 import json
 from copy import deepcopy
 from datetime import date, timedelta
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
@@ -397,6 +398,17 @@ def test_tools_use_persisted_plan_and_cannot_publish_edited_totals(
         recipe = found["recipes"][0]
         invoke("get_recipe", {"recipe_id": recipe["recipe_id"], "version": recipe["version"]})
         plan = invoke("scale_recipe", dict(versions[0], portions=200))["meal_plan"]
+        with pytest.raises(Problem) as error:
+            invoke(
+                "match_ingredient",
+                dict(
+                    plan_id=plan["recipe_plan_id"],
+                    revision=plan["recipe_plan_revision"],
+                    ingredient_id="spaghetti",
+                    product_id="recipe-spaghetti",
+                ),
+            )
+        assert error.value.code == "PRODUCT_NOT_VERIFIED"
         for item in list(plan["ingredients"]):
             invoke("get_product", {"product_id": "recipe-" + item["ingredient_id"]})
             plan = invoke(
@@ -415,8 +427,30 @@ def test_tools_use_persisted_plan_and_cannot_publish_edited_totals(
         assert error.value.code == "RECIPE_PLAN_REQUIRED"
         request = request_for(plan).model_dump(mode="json")
         request.pop("idempotency_key")
+        for altered, code in [
+            (request | {"recipe_plan_id": str(uuid4())}, "MEAL_BASKET_MISMATCH"),
+            (request | {"recipe_plan_revision": 999}, "RECIPE_PLAN_CHANGED"),
+        ]:
+            with pytest.raises(Problem) as error:
+                invoke("prepare_order", altered)
+            assert error.value.code == code
         prepared = invoke("prepare_order", request)
         assert prepared["proposal_id"]
+        for name, args in [
+            ("scale_recipe", dict(versions[0], portions=200)),
+            (
+                "match_ingredient",
+                dict(
+                    plan_id=plan["recipe_plan_id"],
+                    revision=plan["recipe_plan_revision"],
+                    ingredient_id="spaghetti",
+                    product_id="recipe-spaghetti",
+                ),
+            ),
+        ]:
+            with pytest.raises(Problem) as error:
+                invoke(name, args)
+            assert error.value.code == "MEAL_PLAN_LOCKED"
         # Reading after preparation is allowed and cannot replace the prepared plan.
         assert invoke("get_recipe_plan", {"plan_id": plan["recipe_plan_id"]})["meal_plan"] == plan
         other_actor = actor | {"_turn_id": str(uuid4())}
@@ -499,6 +533,9 @@ def test_real_purchasing_confirmation_and_receipt_keep_recipe_reference(
             json=commit.model_dump(mode="json"),
         )
         assert repeated.json() == confirmed.json()
+    with pytest.raises(Problem) as error:
+        service.prepare_order(actor, request_for(plan))
+    assert error.value.code == "RECIPE_PLAN_LOCKED"
     with connection() as c:
         saved = c.execute(
             "SELECT request FROM proposal_revisions WHERE proposal_id=%s",
@@ -744,3 +781,243 @@ def test_recipe_flag_keeps_direct_product_purchases_available(
     assert prepared["request"]["lines"][0]["amount"] == "10"
     # Service remains additive for callers outside the chat tool harness too.
     assert service.prepare_order(actor, PrepareRequest(**request_data))["proposal_id"]
+
+
+@pytest.mark.parametrize("closed", ["expired", "rejected", "denied", "needs_resolution"])
+def test_closed_recipe_proposal_refreshes_in_place_without_rematching(
+    tmp_path, actor, buyer, service, meal_products, closed, monkeypatch
+):
+    from aimo import approval_workflow
+    from aimo.schemas import CommitRequest, DecisionRequest
+
+    *_, versions = import_fixture(tmp_path)
+    plan = match_all(actor, scale_recipe(actor, ref(versions)))
+    original_request = request_for(plan)
+    if closed == "expired":
+        monkeypatch.setattr(settings(), "proposal_ttl_seconds", -1)
+    elif closed == "denied":
+        original_request.budget_gross = Decimal("0.01")
+    elif closed == "needs_resolution":
+        with connection() as c:
+            c.execute("UPDATE identities SET active=false WHERE id='buyer'")
+    first = service.prepare_order(actor, original_request)
+    assert first["recipe_basis"] == "saved_recipe"
+    monkeypatch.setattr(settings(), "proposal_ttl_seconds", 900)
+    if closed in {"denied", "needs_resolution"}:
+        assert first["policy_outcome"] == closed
+    if closed == "rejected":
+        approval_workflow.record_human_decision(
+            buyer, first["approval_id"], DecisionRequest(revision=1, decision="reject")
+        )
+    elif closed == "needs_resolution":
+        with connection() as c:
+            c.execute("UPDATE identities SET active=true WHERE id='buyer'")
+
+    # Old preparation keys retain their retry meaning; new turns can refresh.
+    assert service.prepare_order(actor, original_request)["revision"] == 1
+    close_pools()
+    later = actor | {"_turn_id": str(uuid4())}
+    saved = get_plan(later, PlanReference(plan_id=plan["recipe_plan_id"]))
+    assert saved == plan
+    fresh_request = request_for(saved)
+    fresh = service.prepare_order(later, fresh_request)
+    assert fresh["proposal_id"] == first["proposal_id"] and fresh["revision"] == 2
+    assert fresh["recipe_basis"] == "saved_recipe"
+    assert fresh["approval_status"] == "pending"
+    assert fresh["approval_id"] != first["approval_id"]
+    assert service.prepare_order(later, fresh_request)["revision"] == 2
+    assert get_plan(later, PlanReference(plan_id=plan["recipe_plan_id"])) == plan
+    with connection() as c:
+        assert c.execute("SELECT count(*) AS n FROM proposals").fetchone()["n"] == 1
+        assert (
+            str(c.execute("SELECT proposal_id FROM recipe_plans").fetchone()["proposal_id"])
+            == first["proposal_id"]
+        )
+    with pytest.raises(Problem) as error:
+        service.commit_order(
+            actor,
+            CommitRequest(
+                proposal_id=first["proposal_id"], revision=1, idempotency_key=str(uuid4())
+            ),
+        )
+    assert error.value.code == "STALE_REVISION"
+
+
+@pytest.mark.parametrize("still_blocked", [False, True])
+def test_concurrent_recipe_refreshes_cannot_both_append_a_revision(
+    tmp_path, actor, service, meal_products, monkeypatch, still_blocked
+):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    *_, versions = import_fixture(tmp_path)
+    plan = match_all(actor, scale_recipe(actor, ref(versions)))
+    monkeypatch.setattr(settings(), "proposal_ttl_seconds", -1)
+    service.prepare_order(actor, request_for(plan))
+    monkeypatch.setattr(settings(), "proposal_ttl_seconds", 900)
+    barrier = Barrier(2)
+    lookup = service.connector.lookup
+
+    def supplier_lookup(*args):
+        barrier.wait(timeout=5)
+        return lookup(*args)
+
+    monkeypatch.setattr(service.connector, "lookup", supplier_lookup)
+
+    def refresh(_):
+        request = request_for(plan)
+        if still_blocked:
+            request.budget_gross = Decimal("0.01")
+        try:
+            return service.prepare_order(actor, request)
+        except Problem as exc:
+            return exc.code
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(refresh, range(2)))
+    success = [r for r in results if isinstance(r, dict)]
+    assert len(success) == 1 and success[0]["revision"] == 2
+    assert [r for r in results if isinstance(r, str)] == [
+        "RECIPE_PROPOSAL_CHANGED" if still_blocked else "RECIPE_PLAN_LOCKED"
+    ]
+    with connection() as c:
+        assert c.execute("SELECT count(*) AS n FROM proposal_revisions").fetchone()["n"] == 2
+        assert c.execute("SELECT count(*) AS n FROM proposals").fetchone()["n"] == 1
+
+
+def test_new_turn_free_form_basket_is_labeled_without_recipe_completeness_claim(
+    tmp_path, actor, service, meal_products, monkeypatch
+):
+    monkeypatch.setattr(settings(), "recipe_planning_enabled", True)
+    *_, versions = import_fixture(tmp_path, review=False)
+    unresolved = scale_recipe(actor, ref(versions))
+    assert all(i["status"] == "unresolved" for i in unresolved["ingredients"])
+    later = ToolSession(actor | {"_turn_id": str(uuid4())}, service)
+    later.invoke("get_product", json.dumps({"product_id": "recipe-spaghetti"}))
+    later.invoke(
+        "publish_meal_plan",
+        json.dumps(
+            {
+                "title": unresolved["title"],
+                "portions": 200,
+                "ingredients": [
+                    {
+                        "name": "Spaghetti",
+                        "amount": "20",
+                        "unit": "KG",
+                        "product_id": "recipe-spaghetti",
+                    }
+                ],
+            }
+        ),
+    )
+    request = {
+        "request_id": "Free-form basket",
+        "destination": "hotel-helsinki",
+        "delivery_date": str(date.today() + timedelta(days=2)),
+        "budget_gross": "1000",
+        "lines": [{"product_id": "recipe-spaghetti", "amount": "20", "unit": "KG"}],
+    }
+    with pytest.raises(Problem) as error:
+        later.invoke("prepare_order", json.dumps(request | {"recipe_basis": "saved_recipe"}))
+    assert error.value.code == "INVALID_TOOL_ARGUMENTS"
+    result = later.invoke("prepare_order", json.dumps(request))
+    assert result["recipe_basis"] == "free_form" and result["request"]["recipe_plan_id"] is None
+
+
+@pytest.mark.parametrize(
+    "invalidate",
+    [
+        lambda data, reviews: data.update(license="CC0"),
+        lambda data, reviews: data.pop("attribution"),
+        lambda data, reviews: data.pop("version"),
+        lambda data, reviews: data.update(recipes=[]),
+        lambda data, reviews: data["recipes"].append(deepcopy(data["recipes"][0])),
+        lambda data, reviews: data["recipes"][0]["ingredients"].append(
+            deepcopy(data["recipes"][0]["ingredients"][0])
+        ),
+        lambda data, reviews: reviews["recipes"].update(unknown={"ingredients": {}}),
+        lambda data, reviews: reviews["recipes"]["carbonara"]["ingredients"].update(
+            unknown={"quantity": "1"}
+        ),
+        lambda data, reviews: reviews["recipes"]["carbonara"].update(unknown=True),
+        lambda data, reviews: reviews["recipes"]["carbonara"]["ingredients"]["egg"].update(
+            unknown=True
+        ),
+        lambda data, reviews: reviews.pop("source"),
+        lambda data, reviews: reviews.update(unknown=True),
+    ],
+    ids=[
+        "license",
+        "attribution",
+        "version",
+        "empty",
+        "duplicate-recipe",
+        "duplicate-ingredient",
+        "unknown-recipe",
+        "unknown-ingredient",
+        "recipe-field",
+        "ingredient-field",
+        "review-source",
+        "review-field",
+    ],
+)
+def test_malformed_recipe_import_never_pays_for_embeddings_or_replaces_corpus(
+    tmp_path, actor, monkeypatch, invalidate
+):
+    path, _, review_path, original, _ = import_fixture(tmp_path)
+    data, reviews = json.loads(path.read_text()), json.loads(review_path.read_text())
+    invalidate(data, reviews)
+    sha = write(path, data)
+    write(review_path, reviews)
+
+    def no_paid_work(*args, **kwargs):
+        pytest.fail("Invalid source/review must be rejected before embedding")
+
+    monkeypatch.setattr(recipe_search, "embeddings", no_paid_work)
+    with pytest.raises(ValueError):
+        ingest_recipes(path, sha, review_path)
+    with connection() as c:
+        assert (
+            str(c.execute("SELECT catalog_id FROM active_recipe_catalog").fetchone()["catalog_id"])
+            == original["catalog_id"]
+        )
+
+
+@pytest.mark.parametrize("vectors", [[], [[1.0]], [[0.0] * 384], [[float("nan")] + [0.0] * 383]])
+def test_invalid_recipe_embeddings_are_not_accepted(monkeypatch, vectors):
+    monkeypatch.setattr(recipe_search.search, "embed", lambda *args, **kwargs: vectors)
+    with pytest.raises(Problem) as error:
+        recipe_search.embeddings(["meal request"])
+    assert error.value.code == "RECIPE_EMBEDDING_INVALID"
+
+
+def test_recipe_creation_requires_turn_known_version_and_supported_size(tmp_path, actor):
+    *_, versions = import_fixture(tmp_path)
+    with pytest.raises(Problem) as error:
+        scale_recipe(actor | {"_turn_id": None}, ref(versions))
+    assert error.value.code == "TURN_CONTEXT_REQUIRED"
+    with pytest.raises(Problem) as error:
+        get_recipe(actor, RecipeReference(recipe_id="unitools:carbonara", version="unknown"))
+    assert error.value.code == "NOT_FOUND"
+    with pytest.raises(Problem) as error:
+        get_plan(actor, PlanReference(plan_id=uuid4()))
+    assert error.value.code == "NOT_FOUND"
+    raw = source_recipe()
+    raw["ingredients"] = [raw["ingredients"][0] | {"id": "ingredient-" + str(i)} for i in range(31)]
+    *_, versions = import_fixture(tmp_path, [raw])
+    with pytest.raises(Problem) as error:
+        scale_recipe(actor, ref(versions))
+    assert error.value.code == "RECIPE_TOO_LARGE"
+
+
+def test_disabled_recipe_service_and_partial_reference_fail_closed(
+    actor, service, request_data, monkeypatch
+):
+    monkeypatch.setattr(settings(), "recipe_planning_enabled", False)
+    with pytest.raises(Problem) as error:
+        service.search_recipes(actor, RecipeSearch(query="carbonara"))
+    assert error.value.code == "RECIPES_DISABLED"
+    with pytest.raises(Problem) as error:
+        service.prepare_order(actor, PrepareRequest(**request_data, recipe_plan_revision=1))
+    assert error.value.code == "RECIPE_PLAN_REQUIRED"

@@ -489,3 +489,20 @@ test("recipe plan keeps unresolved ingredients visible beside matched packs", as
   await expect(plan.getByText("UniTools", { exact: false })).toBeVisible();
   await expect(page.getByRole("link", { name: "Review basket and purchasing checks" })).toHaveCount(0);
 });
+
+for (const basis of ["free_form", "saved_recipe"] as const) {
+  test(`purchase review identifies ${basis} basket before confirmation`, async ({ page }) => {
+    await mockSession(page);
+    await page.route(`**/api/purchases/${proposalId}`, (route) =>
+      route.fulfill({ json: { ...proposal, recipe_basis: basis } }),
+    );
+    await page.goto(`/purchases/${proposalId}`);
+    await expect(page.getByText(
+      basis === "saved_recipe"
+        ? "Recipe-backed basket — includes every ingredient from the saved recipe plan."
+        : "Free-form basket — recipe completeness and ingredient conversions are not checked against a saved recipe.",
+      { exact: true },
+    )).toBeVisible();
+    await expect(page.getByRole("button", { name: "Confirm this purchase" })).toBeVisible();
+  });
+}

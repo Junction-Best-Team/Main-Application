@@ -316,11 +316,28 @@ def match_ingredient(identity, request):
 
 def validate_basket(c, identity, request):
     row, plan = read_plan(c, identity, request.recipe_plan_id, lock=True)
-    if row["locked"]:
-        raise Problem(
-            "RECIPE_PLAN_LOCKED",
-            "This plan already has a prepared basket; read the existing proposal.",
-        )
+    previous = None
+    if row["locked"] or row["proposal_id"]:
+        from aimo.approval_workflow import proposal, render
+
+        if not row["proposal_id"]:
+            raise Problem(
+                "RECIPE_PLAN_LOCKED", "Prepared plan has no linked proposal; request support."
+            )
+        p, r, a = proposal(c, row["proposal_id"], identity)
+        current = render(c, p, r, a, identity, history=[])
+        closed = current["approval_status"] in {
+            "expired",
+            "rejected",
+            "policy_changed",
+            "authority_changed",
+        } or current["policy_outcome"] in {"denied", "needs_resolution"}
+        if p["order_id"] or not closed:
+            raise Problem(
+                "RECIPE_PLAN_LOCKED",
+                "This plan already has an active or completed basket; read the existing proposal.",
+            )
+        previous = {"id": p["id"], "revision": r["revision"]}
     if row["revision"] != request.recipe_plan_revision:
         raise Problem("RECIPE_PLAN_CHANGED", "Prepare the current recipe plan revision.")
     if any(i["status"] != "matched" for i in plan["ingredients"]):
@@ -344,7 +361,7 @@ def validate_basket(c, identity, request):
             422,
         )
     purchase_count_evidence(c, identity, request, products)
-    return row
+    return previous
 
 
 def purchase_count_evidence(c, identity, request, products):

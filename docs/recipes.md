@@ -8,7 +8,8 @@ recipe import and feature activation remain explicit operator actions.
 ## Enablement and import
 
 1. After the migration credential bootstrap, the release pipeline applies
-   `005_recipe_planning.sql` and restricted runtime grants before app rollout.
+   the recipe migrations (`005_recipe_planning.sql`, `006_recipe_proposal_link.sql`,
+   `007_recipe_refresh_keys.sql`) and runtime grants before app rollout.
    For manual local setup use `aimo migrate` with the migration/setup role.
    Schema migration performs no download, seed, embedding or dataset import.
 2. With the worker image/code and the same embedding profile as serving, run the
@@ -122,12 +123,35 @@ free-form `publish_meal_plan` or prepared without its reference. Enabling recipe
 tools is additive: direct product requests retain the ordinary publish/prepare
 workflow without a recipe reference.
 
+This has a cross-turn enforcement limit: the server does not recognize that a new
+free-form plan names the same dish as an earlier unresolved saved recipe. Such a
+basket can be prepared without source-recipe coverage or recipe-specific quantity
+validation. Its catalog, pack, commercial, policy and customer-confirmation checks
+still apply. The server derives `recipe_basis` (`saved_recipe` or `free_form`) from
+the persisted, validated recipe reference; the model cannot set this response field.
+Chat labels free-form plans and the purchase review explicitly states **recipe
+completeness and ingredient conversions are not checked against a saved recipe**.
+A free-form label must never be interpreted as an executable saved recipe.
+
 Preparation validates in short database transactions before and after supplier I/O.
 No connection or plan lock is retained during that I/O. Proposal creation, retry
 key and the prepared-plan lock commit together. A concurrent edit invalidates the
 in-flight preparation; concurrent prepares of one plan can create only one proposal.
-The same retry key returns the existing proposal; a different key/turn cannot
-prepare the locked plan again. Failed persistence leaves the plan unlocked.
+The same retry key returns the existing proposal. An active basket or completed
+order cannot be prepared again with a different key. When an unordered proposal
+expires, is rejected, is denied/needs resolution, or requires policy/authority
+refresh, a new customer turn may reload the same plan and refresh commercial terms.
+This appends a revision to the **same proposal**, preserving matched ingredients.
+Old revisions/decisions stay in history; approval/confirmation is required again.
+A rejection is never retried automatically. Concurrent refreshes fence the prior
+proposal revision so only one can append; failed persistence rolls everything back.
+Recipe/product changes still need a new plan and matching evidence. Unprepared
+plans remain unlocked after a failed first preparation.
+
+Migration 006 adds a unique plan-to-proposal link and backfills old prepared plans;
+it fails if legacy history ambiguously contains multiple proposals for one plan.
+Migration 007 allows multiple preparation retry keys to reference one proposal;
+the buyer/agent/key primary key and payload conflict checks remain unchanged.
 Prepared plans remain readable in the same or a new turn; changed recipes require
 a new plan/customer turn. Reading another plan after preparation does not replace
 the already prepared plan in the agent's result. Browser messages persist plan IDs,
@@ -156,10 +180,12 @@ Qwen retrieval benchmark or live supplier test. Public carbonara still needs rev
 for forms, yolk/count yields, pepper scaling, salt quantity and missing product facts
 before it can produce a complete executable real-catalog basket.
 
-Local verification after the review fixes and integrating PRs #34/#36: 245 backend
-tests, Python lint, TypeScript/production build, two focused Playwright flows,
-37 infrastructure helper tests and 11 mocked Kubernetes Terraform plans passed.
-Regressions cover pools of one/two connections, concurrent distinct/same-plan
-preparations, exact-key retries, edits during supplier I/O, persistence rollback,
-ordinary purchases with recipe tools enabled and reading a prepared plan. No production import, rollout,
-paid model call or real supplier purchase was performed for this feature.
+Local verification after the re-review fixes and integration with current develop:
+462 backend tests, Python lint, TypeScript/production build, four focused browser
+flows, all 10 API sweep checks and the combined 95% coverage gate passed (95.21%).
+Earlier infrastructure checks passed: 37 helper tests and 11 mocked Kubernetes
+Terraform plans. Regressions include one/two-connection pools, simultaneous prepares
+and refreshes, stale confirmations, immutable history, migration backfill/ambiguity,
+blocked-proposal recovery without rematching, import rejection before paid work,
+and the documented cross-turn free-form distinction. No production import,
+rollout, paid model call or real supplier purchase was performed for this feature.

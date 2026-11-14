@@ -1466,6 +1466,15 @@
             ],
             "title": "Policy Outcome"
           },
+          "recipe_basis": {
+            "type": "string",
+            "enum": [
+              "saved_recipe",
+              "free_form"
+            ],
+            "title": "Recipe Basis",
+            "default": "free_form"
+          },
           "approval_status": {
             "type": "string",
             "title": "Approval Status"
@@ -1952,6 +1961,15 @@
               "needs_resolution"
             ],
             "title": "Policy Outcome"
+          },
+          "recipe_basis": {
+            "type": "string",
+            "enum": [
+              "saved_recipe",
+              "free_form"
+            ],
+            "title": "Recipe Basis",
+            "default": "free_form"
           },
           "approval_status": {
             "type": "string",
