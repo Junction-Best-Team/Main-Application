@@ -62,7 +62,11 @@ WITH label AS (
   WHERE p.buyer_id=%(buyer)s
     AND (o.id IS NOT NULL
          OR (x.proposal_id IS NOT NULL AND x.reason <> 'run_retry')
-         OR (x.proposal_id IS NULL AND r.expires_at > %(now)s))
+         OR (x.proposal_id IS NULL AND r.expires_at > %(now)s
+             -- a request that can never be confirmed is not "being processed and placed"
+             AND r.policy_outcome NOT IN ('denied', 'needs_resolution')
+             AND NOT EXISTS (SELECT 1 FROM approvals ap WHERE ap.proposal_id=p.id
+                             AND ap.revision=p.current_revision AND ap.status='rejected')))
   UNION ALL
   SELECT 'scheduled', l.title, a.next_run_date, NULL, NULL, a.id::text, l.title,
          a.status = 'paused', a.agreed_gross_total::text, a.currency,
@@ -119,7 +123,7 @@ def orders_page(identity, offset=0, limit=20, now=None, statuses=None, query=Non
             422,
         )
     query = (query or "").strip()
-    if len(query) > MAX_QUERY_LENGTH:
+    if len(query) > MAX_QUERY_LENGTH or "\x00" in query:
         raise Problem(
             "INVALID_ORDER_QUERY",
             f"The search text is at most {MAX_QUERY_LENGTH} characters.",

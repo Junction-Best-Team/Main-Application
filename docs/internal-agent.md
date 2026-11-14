@@ -36,12 +36,19 @@ four boundaries; deterministic controls below remain authoritative. See
 [guardrails](guardrails.md).
 
 
-The agent clarifies missing delivery/budget/dietary facts and reuses known
-constraints. It proposes a recipe basis, total quantities and scaling assumptions
+The agent reuses known constraints, chooses ordinary serving sizes and asks only
+for facts it cannot derive (normally guest count and delivery details). It does not
+ask the customer for ingredient weights or calculations. Budget may remain unset;
+stated hard limits and dietary needs remain enforced. It proposes a recipe basis,
+total quantities and scaling assumptions
 in plan notes for customer review. Carbonara includes pasta, eggs, cured pork,
 hard cheese and pepper. Quantities are recipe estimates for customer review. For
 saved recipes the server scales them (`scale_recipe`, exact fractions, rounded up to
 four decimals), so the model does no arithmetic; see [recipes](recipes.md).
+When no suitable saved recipe is available, `draft_recipe` accepts a complete
+assistant-authored base recipe and server-scales it to the guest count. Drafts are
+labelled estimates, retain the free-form completeness warning and appear in
+Overview before preparation. They cannot replace a selected unresolved saved plan.
 
 Canonical Pydantic models validate tool inputs and outputs. Search is not product
 verification: every selected ID must be loaded through `get_product`. Every

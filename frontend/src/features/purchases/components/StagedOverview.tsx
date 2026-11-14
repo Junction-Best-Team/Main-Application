@@ -10,9 +10,21 @@ export function StagedOverview({
   conversation: Conversation | null;
   selectedId?: string;
 }) {
+  const lastPlan = conversation?.messages
+    .slice()
+    .reverse()
+    .find(
+      (message) =>
+        message.role === "assistant" &&
+        (message.meal_plan || message.proposal_id),
+    );
+  const recipeDraft =
+    !selectedId && lastPlan?.meal_plan && !lastPlan.proposal_id
+      ? lastPlan.meal_plan
+      : undefined;
   const latest =
     conversation?.purchases.find((p) => p.proposal_id === selectedId) ??
-    conversation?.purchases.at(-1);
+    (recipeDraft ? undefined : conversation?.purchases.at(-1));
   const flow = usePurchaseDetail({ proposalId: latest?.proposal_id });
   const { load } = flow;
   useEffect(() => {
@@ -26,7 +38,11 @@ export function StagedOverview({
   ) {
     return <DraftCartPanel key={conversation?.id} cart={draft} />;
   }
-  return latest ? (
-    <OverviewPanel key={conversation?.id ?? "new"} flow={flow} />
+  return latest || recipeDraft ? (
+    <OverviewPanel
+      key={conversation?.id ?? "new"}
+      flow={flow}
+      draft={recipeDraft}
+    />
   ) : null;
 }

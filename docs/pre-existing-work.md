@@ -185,6 +185,9 @@ modules/hooks and generated types. Static schedule/hub/account-manager examples
 and disabled controls are labelled placeholders. No prototype store, fake login,
 scenario switcher, dependencies or backend/schema changes were imported.
 
+## Scheduler UI (standing orders) — 2026-11-14
+
+Built on the production frontend after PR #131. The designer mockups of PR #102 (`ui/**/code.html`, schedule list and edit pages) were read as a visual reference only; no markup, store, fixtures or assets were copied, and the mockup fields the backend does not have (unload window, hub, SKU manifest editing, shipment tracking) were left out by the owner. Types come from the generated schema of the unmerged backend branches (`p3/scheduler-design`, `p3/scheduler-orders`). Everything the scheduler places is a MOCK order ("Accepted by demo order service"). The Playwright specs mock every `/api` call with invented values and are labelled as mocked coverage; nothing was run against a live backend. Details in `docs/scheduler-ui.md`.
 On 2026-11-14, the owner requested buyer policy settings. Reused the production
 React feature structure, Nordic Wholesale Commerce tokens/fonts, browser session
 and CSRF handling, immutable policy versions and purchasing revalidation. Added
@@ -259,6 +262,14 @@ All three distributed packages include SIL OFL 1.1 notices, copied intact to
 `frontend/public/font-licenses/` for distribution with the bundled font assets.
 The earlier ignored preview font cache and example-memory database remain local.
 
+## Meal planning without customer arithmetic — 2026-11-15
+
+Reused saved-recipe exact scaling and upward rounding, typed internal tools,
+conversation meal-plan persistence, product inspection, basket validation and the
+existing Overview design. Assistant-authored recipe bases remain labelled estimates,
+separate from imported saved recipes. Calculation and browser fixtures are authored
+synthetic examples, not verified recipes or live supplier records. No new external
+recipe source, dataset, visual asset or dependency was introduced.
 ## Header user dropdown — 2026-11-14
 
 Reused the existing account settings/preferences routes, session logout action,
@@ -275,6 +286,13 @@ defusedxml and an explicit Pillow dependency for bounded file parsing; lockfile 
 small authored text, Office archives, PDF pages and image bytes, with mocked model responses;
 no challenge documents, user files, credentials or remote material are committed.
 
+## Seamless meal-planning integration — 2026-11-15
+
+Reused #179's persisted activity observer, reviewed draft-cart projection and UI,
+plus the current develop attachment, settings and scheduler changes. Combined tests
+use the existing synthetic recipe/product fixtures and intercepted browser snapshots;
+no new source material, assets or dependencies beyond the integrated branches.
+
 
 ## Minimal homepage — 2026-11-15
 
@@ -285,3 +303,6 @@ The three schedule entries are authored static demo placeholders, with disabled
 schedule navigation. The composer retains develop’s file attachment behavior.
 No scheduling service, new dependency or external data was added. New browser checks use authored API responses, without supplier or
 model calls.
+
+Homepage paperclip follow-up (2026-11-15): reused the existing shared composer and
+fixture content; only the homepage picker presentation changed. No new assets or external material.

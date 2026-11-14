@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Icon } from "../../../shared/components/DesignPrimitives";
+import { useDebounced } from "../../../shared/hooks/useDebounced";
 import { DESIGN_PLACEHOLDERS as MOCK } from "../../../shared/lib/designPlaceholders";
 import { useAuth } from "../../auth/useAuth";
-import { useAcceptedOrders } from "../hooks/useAcceptedOrders";
+import { useOrders } from "../hooks/useOrders";
 import { usePurchaseDetail } from "../hooks/usePurchaseDetail";
 import { isAccepted } from "../model/acceptedOrders";
+import { placedItemFromProposal } from "../model/orders";
 import {
   DEFAULT_PAST_ORDER_FILTERS,
   filterAndSortPastOrders,
+  orderApiFilters,
   PAST_ORDER_PERIODS,
   PAST_ORDER_SORTS,
   PAST_ORDER_STATUSES,
@@ -17,7 +20,7 @@ import {
   type PastOrderSort,
   type PastOrderStatus,
 } from "../model/pastOrderFilters";
-import { PurchaseList } from "../components/PurchaseList";
+import { OrdersList } from "../components/OrdersList";
 import { PurchaseReview } from "../components/PurchaseReview";
 import { ErrorMessage } from "../../../shared/components/ErrorMessage";
 
@@ -27,34 +30,57 @@ const filterSelectClass =
 export function PurchasesPage() {
   const { proposalId } = useParams();
   const { session } = useAuth();
+  const [filters, setFilters] = useState<PastOrderFilters>(
+    DEFAULT_PAST_ORDER_FILTERS,
+  );
+  // Search and status are asked of the server; the typed text is sent once typing pauses.
+  const asked = orderApiFilters({
+    ...filters,
+    query: useDebounced(filters.query),
+  });
   const {
-    orders: fetched,
+    items: fetched,
     loading,
     error,
     nextOffset,
     refresh,
     showMore,
-  } = useAcceptedOrders();
+    cancel,
+    cancelling,
+    notices,
+    dismissNotice,
+  } = useOrders(asked);
   const detail = usePurchaseDetail({ proposalId });
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [filters, setFilters] = useState<PastOrderFilters>(
-    DEFAULT_PAST_ORDER_FILTERS,
-  );
   const scrolled = useRef<string | null>(null);
+  const placedTarget = detail.p && isAccepted(detail.p) ? detail.p : null;
+  // A deep link to a placed order older than the loaded pages still shows its row.
   const orders = useMemo(
     () =>
-      detail.p &&
-      isAccepted(detail.p) &&
-      !fetched.some((p) => p.proposal_id === detail.p?.proposal_id)
-        ? [detail.p, ...fetched]
+      placedTarget &&
+      !fetched.some(
+        (o) =>
+          o.status === "placed" && o.proposal_id === placedTarget.proposal_id,
+      )
+        ? [placedItemFromProposal(placedTarget), ...fetched]
         : fetched,
-    [detail.p, fetched],
+    [placedTarget, fetched],
   );
-  const visible = useMemo(
-    () => filterAndSortPastOrders(orders, filters),
-    [orders, filters],
+  // Period and sort run over the loaded rows; the row a deep link points at is never hidden.
+  const shown = useMemo(
+    () => filterAndSortPastOrders(orders, filters, Date.now(), proposalId),
+    [orders, filters, proposalId],
   );
-  const targetAccepted = detail.p && isAccepted(detail.p);
+  // Keep loading pages while the filters leave the visible list sparse.
+  useEffect(() => {
+    if (loading || nextOffset === null || shown.length >= 5) return;
+    void showMore();
+  }, [loading, nextOffset, shown.length, showMore, filters]);
+  // A cancellation notice belongs on its row; when the row is gone it is shown above the list.
+  const strayNotices = Object.entries(notices).filter(
+    ([id]) => !orders.some((o) => o.proposal_id === id),
+  );
+  const targetAccepted = Boolean(placedTarget);
   useEffect(() => {
     if (proposalId && targetAccepted)
       setExpanded((prev) => new Set([...prev, proposalId]));
@@ -68,11 +94,6 @@ export function PurchasesPage() {
       scrolled.current = proposalId;
     }
   }, [proposalId, targetAccepted, expanded]);
-  // Keep loading accepted pages while filters leave the visible list sparse.
-  useEffect(() => {
-    if (loading || nextOffset === null || visible.length >= 5) return;
-    void showMore();
-  }, [loading, nextOffset, visible.length, showMore, filters]);
   const toggle = (id: string) =>
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -94,9 +115,7 @@ export function PurchasesPage() {
       />
     );
   const m = MOCK.pastOrders;
-  const emptyLoaded = !loading && !error && orders.length === 0;
-  const emptyFiltered =
-    !loading && !error && orders.length > 0 && visible.length === 0;
+  const hasFilter = filters.query.trim() !== "" || filters.status !== "all";
   return (
     <main>
       <section className="border-b border-border-subtle bg-surface-pure px-margin-sm py-space-lg md:px-margin md:py-space-xl">
@@ -218,35 +237,62 @@ export function PurchasesPage() {
               {error}
             </div>
           )}
-          <PurchaseList orders={visible} expanded={expanded} toggle={toggle} />
+          {strayNotices.map(([id, message]) => (
+            <div
+              key={id}
+              role="alert"
+              className="flex items-center justify-between gap-space-md rounded-lg bg-error-container p-space-md text-on-error-container"
+            >
+              <span>{message}</span>
+              <button
+                type="button"
+                onClick={() => dismissNotice(id)}
+                className="cursor-pointer border-0 bg-transparent font-label text-label-md text-on-error-container underline"
+              >
+                Dismiss
+              </button>
+            </div>
+          ))}
+          <OrdersList
+            items={shown}
+            expanded={expanded}
+            toggle={toggle}
+            known={placedTarget}
+            cancelling={cancelling}
+            notices={notices}
+            onCancel={cancel}
+          />
           {loading && (
             <p
               role="status"
               className="m-0 py-space-lg text-center text-secondary"
             >
-              Loading past orders…
+              Loading orders…
             </p>
           )}
-          {emptyLoaded && (
+          {!loading && !error && orders.length === 0 && !hasFilter && (
             <section className="rounded-xl bg-surface-pure p-space-xl text-center">
               <h2 className="m-0 font-headline text-headline-sm text-primary">
-                No past orders yet
+                No orders yet
               </h2>
               <p className="text-secondary">
-                Orders you approve in a request will appear here.
+                Orders you request, place or schedule will appear here.
               </p>
             </section>
           )}
-          {emptyFiltered && (
-            <section className="rounded-xl bg-surface-pure p-space-xl text-center">
-              <h2 className="m-0 font-headline text-headline-sm text-primary">
-                No matching past orders
-              </h2>
-              <p className="text-secondary">
-                Try a different search, period, or status filter.
-              </p>
-            </section>
-          )}
+          {!loading &&
+            !error &&
+            shown.length === 0 &&
+            (orders.length > 0 || hasFilter) && (
+              <section className="rounded-xl bg-surface-pure p-space-xl text-center">
+                <h2 className="m-0 font-headline text-headline-sm text-primary">
+                  No matching past orders
+                </h2>
+                <p className="text-secondary">
+                  Try a different search, period, or status filter.
+                </p>
+              </section>
+            )}
           {!loading && nextOffset !== null && (
             <button
               type="button"

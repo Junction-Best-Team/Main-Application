@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     proposal_ttl_seconds: int = 900
     # Scheduled (standing) orders: runs start from this Helsinki hour on the scheduled date.
     scheduler_run_after_hour: int = Field(default=6, ge=0, le=23)
-    scheduler_max_active_schedules: int = Field(default=20, ge=1, le=200)
+    scheduler_max_active_schedules: int = Field(default=20, ge=1, le=20)
     scheduler_max_attempts: int = Field(default=5, ge=1, le=10)
     scheduler_pass_interval_seconds: float = Field(default=30, ge=1, le=3600)
     scheduler_max_runs_per_pass: int = Field(default=50, ge=1, le=500)

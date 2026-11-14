@@ -1,5 +1,5 @@
 -- WS-E scheduled (standing) re-orders. Additive. Every order it places is a MOCK order.
--- Number 020: after WS-D's 018 (purge unfinished proposals) and 019 (history immutability); 014 and 015 are other branches.
+-- Number 023: shares the prefix with 023_chat_draft_cart (the runner keys on the full file name); 024 is message_notice, 025 is reserved for the demo clock.
 
 -- 1. A separate scheduler identity per buyer: no login, no model, no authority.
 ALTER TABLE identities DROP CONSTRAINT identities_role_check;
@@ -15,14 +15,19 @@ CREATE TABLE scheduler_identities (
 INSERT INTO scheduler_identities SELECT buyer_id,id FROM identities WHERE role='scheduler'
 ON CONFLICT DO NOTHING;
 
+-- Composite keys (as migration 012 did for identities and conversations) let the scheduler tables
+-- prove that every row they point at belongs to the same buyer.
+ALTER TABLE orders ADD CONSTRAINT orders_id_buyer UNIQUE (id, buyer_id);
+ALTER TABLE proposals ADD CONSTRAINT proposals_id_buyer UNIQUE (id, buyer_id);
+
 -- 2. The customer's standing authorization. Terms never change; only the status moves.
 --    line_rules: per product_id {"accepted_substitutes": [ids], "price_range_pct": "5"} (CNF-036, POL-012).
 CREATE TABLE scheduled_authorizations (
  id uuid PRIMARY KEY,
  buyer_id text NOT NULL REFERENCES buyers(id),
  created_by text NOT NULL,
- source_order_id uuid NOT NULL REFERENCES orders(id),
- supersedes_id uuid REFERENCES scheduled_authorizations(id),
+ source_order_id uuid NOT NULL,
+ supersedes_id uuid,
  create_key text NOT NULL,
  create_hash text NOT NULL,
  title text,
@@ -50,7 +55,13 @@ CREATE TABLE scheduled_authorizations (
  CONSTRAINT sched_auth_one_year CHECK (valid_until <= first_run_date + 365),
  CONSTRAINT sched_auth_stop_reason CHECK (status <> 'stopped' OR stop_reason IS NOT NULL),
  CONSTRAINT sched_auth_paused_at CHECK ((status = 'paused') = (paused_at IS NOT NULL)),
- FOREIGN KEY (created_by, buyer_id) REFERENCES identities(id, buyer_id)
+ CONSTRAINT sched_auth_window CHECK (valid_until >= first_run_date),
+ CONSTRAINT sched_auth_next_run CHECK (
+  next_run_date IS NULL OR (next_run_date >= first_run_date AND next_run_date <= valid_until)),
+ CONSTRAINT sched_auth_id_buyer UNIQUE (id, buyer_id),
+ FOREIGN KEY (created_by, buyer_id) REFERENCES identities(id, buyer_id),
+ FOREIGN KEY (source_order_id, buyer_id) REFERENCES orders(id, buyer_id),
+ FOREIGN KEY (supersedes_id, buyer_id) REFERENCES scheduled_authorizations(id, buyer_id)
 );
 CREATE INDEX sched_auth_due ON scheduled_authorizations(next_run_date)
  WHERE status IN ('active','paused');
@@ -79,6 +90,22 @@ BEGIN
 END; $$;
 CREATE TRIGGER sched_auth_guard BEFORE UPDATE OR DELETE ON scheduled_authorizations
  FOR EACH ROW EXECUTE FUNCTION scheduled_authorization_guard();
+-- Only a customer creates a standing order, and a buyer never holds more than 20 open ones (owner Q-87).
+CREATE FUNCTION scheduled_authorization_insert_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF NOT EXISTS (SELECT 1 FROM identities
+                WHERE id = NEW.created_by AND buyer_id = NEW.buyer_id AND role = 'approver') THEN
+  RAISE EXCEPTION 'only a customer can create a standing order';
+ END IF;
+ IF NEW.status IN ('active','paused') AND
+    (SELECT count(*) FROM scheduled_authorizations
+     WHERE buyer_id = NEW.buyer_id AND status IN ('active','paused')) >= 20 THEN
+  RAISE EXCEPTION 'a buyer holds at most 20 open standing orders';
+ END IF;
+ RETURN NEW;
+END; $$;
+CREATE TRIGGER sched_auth_insert_guard BEFORE INSERT ON scheduled_authorizations
+ FOR EACH ROW EXECUTE FUNCTION scheduled_authorization_insert_guard();
 CREATE TABLE scheduled_authorization_events (
  id bigserial PRIMARY KEY,
  authorization_id uuid NOT NULL REFERENCES scheduled_authorizations(id),
@@ -105,9 +132,9 @@ CREATE TABLE scheduled_runs (
   CHECK (status IN ('due','prepared','committed','disrupted','skipped')),
  attempts integer NOT NULL DEFAULT 0,
  lease_until timestamptz,
- proposal_id uuid UNIQUE REFERENCES proposals(id),
- order_id uuid UNIQUE REFERENCES orders(id),
- conversation_id uuid UNIQUE REFERENCES conversations(id),
+ proposal_id uuid UNIQUE,
+ order_id uuid UNIQUE,
+ conversation_id uuid UNIQUE,
  reason_code text,
  reason jsonb,
  substitutions jsonb NOT NULL DEFAULT '[]'::jsonb,
@@ -115,10 +142,58 @@ CREATE TABLE scheduled_runs (
  updated_at timestamptz NOT NULL DEFAULT now(),
  CONSTRAINT scheduled_runs_once UNIQUE (authorization_id, scheduled_date),
  CONSTRAINT scheduled_runs_reason CHECK (
-  status NOT IN ('disrupted','skipped') OR reason_code IS NOT NULL)
+  status NOT IN ('disrupted','skipped') OR reason_code IS NOT NULL),
+ CONSTRAINT scheduled_runs_committed CHECK (status <> 'committed' OR order_id IS NOT NULL),
+ CONSTRAINT scheduled_runs_prepared CHECK (status <> 'prepared' OR proposal_id IS NOT NULL),
+ CONSTRAINT scheduled_runs_attempts CHECK (attempts >= 0),
+ CONSTRAINT scheduled_runs_id_buyer UNIQUE (id, buyer_id),
+ FOREIGN KEY (authorization_id, buyer_id) REFERENCES scheduled_authorizations(id, buyer_id),
+ FOREIGN KEY (proposal_id, buyer_id) REFERENCES proposals(id, buyer_id),
+ FOREIGN KEY (order_id, buyer_id) REFERENCES orders(id, buyer_id),
+ FOREIGN KEY (conversation_id, buyer_id) REFERENCES conversations(id, buyer_id)
 );
 CREATE INDEX scheduled_runs_claim ON scheduled_runs(lease_until) WHERE status IN ('due','prepared');
 CREATE INDEX scheduled_runs_buyer ON scheduled_runs(buyer_id, scheduled_date DESC);
+-- A run is the record that a date was handled (the idempotency of CNF-025): it is never deleted, its
+-- identity never moves, a handled run never changes (only a disrupted one may receive its chat, once),
+-- and an order of a run belongs to the proposal of that run.
+CREATE FUNCTION scheduled_run_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'immutable history; append a new record instead'; END IF;
+ IF (NEW.id, NEW.authorization_id, NEW.buyer_id, NEW.scheduled_date, NEW.delivery_date, NEW.created_at)
+    IS DISTINCT FROM
+    (OLD.id, OLD.authorization_id, OLD.buyer_id, OLD.scheduled_date, OLD.delivery_date, OLD.created_at) THEN
+  RAISE EXCEPTION 'a run keeps its authorization, buyer and dates';
+ END IF;
+ IF OLD.status IN ('committed','disrupted','skipped') THEN
+  IF (NEW.status, NEW.order_id, NEW.proposal_id, NEW.attempts, NEW.reason_code, NEW.reason,
+      NEW.substitutions)
+     IS DISTINCT FROM
+     (OLD.status, OLD.order_id, OLD.proposal_id, OLD.attempts, OLD.reason_code, OLD.reason,
+      OLD.substitutions)
+     OR (NEW.conversation_id IS DISTINCT FROM OLD.conversation_id
+         AND (OLD.conversation_id IS NOT NULL OR OLD.status <> 'disrupted')) THEN
+   RAISE EXCEPTION 'a handled run never changes';
+  END IF;
+ END IF;
+ IF NEW.order_id IS NOT NULL AND NEW.proposal_id IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM orders WHERE id = NEW.order_id AND proposal_id = NEW.proposal_id) THEN
+  RAISE EXCEPTION 'the order of a run must belong to the proposal of that run';
+ END IF;
+ RETURN NEW;
+END; $$;
+CREATE TRIGGER scheduled_run_guard BEFORE UPDATE OR DELETE ON scheduled_runs
+ FOR EACH ROW EXECUTE FUNCTION scheduled_run_guard();
+CREATE FUNCTION scheduled_run_order_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF NEW.order_id IS NOT NULL AND NEW.proposal_id IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM orders WHERE id = NEW.order_id AND proposal_id = NEW.proposal_id) THEN
+  RAISE EXCEPTION 'the order of a run must belong to the proposal of that run';
+ END IF;
+ RETURN NEW;
+END; $$;
+CREATE TRIGGER scheduled_run_order BEFORE INSERT ON scheduled_runs
+ FOR EACH ROW EXECUTE FUNCTION scheduled_run_order_guard();
 CREATE TABLE scheduled_run_events (
  id bigserial PRIMARY KEY,
  run_id uuid NOT NULL REFERENCES scheduled_runs(id),
@@ -140,13 +215,15 @@ BEGIN
  RETURN NEW;
 END; $$;
 CREATE TABLE order_request_cancellations (
- proposal_id uuid PRIMARY KEY REFERENCES proposals(id),
+ proposal_id uuid PRIMARY KEY,
  buyer_id text NOT NULL REFERENCES buyers(id),
  reason text NOT NULL
   CHECK (reason IN ('run_disrupted','run_retry','customer_revised','customer_cancelled')),
- run_id uuid REFERENCES scheduled_runs(id),
+ run_id uuid,
  cancelled_by text NOT NULL REFERENCES identities(id),
- created_at timestamptz NOT NULL DEFAULT now()
+ created_at timestamptz NOT NULL DEFAULT now(),
+ FOREIGN KEY (proposal_id, buyer_id) REFERENCES proposals(id, buyer_id),
+ FOREIGN KEY (run_id, buyer_id) REFERENCES scheduled_runs(id, buyer_id)
 );
 CREATE INDEX order_request_cancellations_buyer ON order_request_cancellations(buyer_id, created_at DESC);
 CREATE TRIGGER cancellation_no_order BEFORE INSERT ON order_request_cancellations

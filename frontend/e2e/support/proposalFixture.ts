@@ -1,0 +1,81 @@
+import type { Proposal } from "../../src/shared/api/types";
+import { ids } from "./schedulerFixtures";
+
+// A typed purchase proposal (mock data) for the Orders page and chat specs.
+const timestamp = "2026-11-14T12:00:00Z";
+export const proposal: Proposal = {
+  recipe_basis: "free_form",
+  proposal_id: ids.proposal,
+  revision: 1,
+  fingerprint: "a".repeat(64),
+  current_revision: 1,
+  committed_revision: null,
+  current_proposal_url: `/purchases/${ids.proposal}`,
+  policy_version: 1,
+  policy_outcome: "approval_required",
+  approval_status: "pending",
+  order_status: "not_placed",
+  reasons: [],
+  expires_at: "2099-11-15T12:00:00Z",
+  next_action: { type: "wait" },
+  approval_id: "9d42774c-5c59-4eb2-881d-c5e487f6a52d",
+  approval_url: "/approvals/9d42774c-5c59-4eb2-881d-c5e487f6a52d",
+  order_id: null,
+  buyer_id: "demo-hotel",
+  agent_id: "internal-demo-hotel",
+  request: {
+    request_id: "Hotel breakfast",
+    lines: [{ product_id: "pasta", amount: "20", unit: "KG" }],
+    destination: "hotel-helsinki",
+    delivery_date: "2026-11-16",
+    requirements: { lactose_free: false, milk_free: false },
+    allow_substitution: true,
+    allow_overbuy: true,
+  },
+  snapshot: {
+    lines: [
+      {
+        product_id: "pasta",
+        name: "Spaghetti 5 kg",
+        quantity: {
+          requested_amount: "20",
+          requested_unit: "KG",
+          sales_unit: "BAG",
+          sales_quantity: "4",
+          proposed_amount: "20",
+          excess: "0",
+          status: "known",
+          basis: ["catalog"],
+          source_step: "1",
+        },
+        substitutes_for: null,
+        net: "100.00",
+        gross: "114.00",
+        tax: "14.00",
+        deposits_gross: "0",
+        deposit_lines: [],
+        product_evidence: {},
+        commercial_evidence: {},
+      },
+    ],
+    currency: "EUR",
+    net_total: "100.00",
+    gross_total: "114.00",
+    tax_total: "14.00",
+    deposits_gross: "0",
+    charges_gross: "0",
+    charges_basis: "demo",
+    mode: "fixture",
+    observed_at: timestamp,
+    reasons: [],
+  },
+  history: [],
+  can_decide: false,
+};
+// The same proposal after the demo order service accepted it.
+export const placedProposal: Proposal = {
+  ...proposal,
+  approval_status: "approved",
+  order_status: "accepted_mock",
+  order_id: ids.sourceOrder,
+};

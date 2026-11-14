@@ -17,11 +17,19 @@ from uuid import UUID
 
 from pydantic import Field, StringConstraints
 
-from aimo.schemas import Model, Money
+from aimo.schemas import Model
 
 MAX_SUBSTITUTES_PER_LINE = 5
 
-Title = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+# A NUL character cannot be stored in text; refuse it with the rest of the input check.
+Title = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=80, pattern=r"^[^\x00]+$"),
+]
+NoNul = Annotated[str, StringConstraints(max_length=40, pattern=r"^[^\x00]*$")]
+Key = Annotated[str, StringConstraints(min_length=8, max_length=120, pattern=r"^[^\x00]+$")]
+# numeric(14,2): at most 999999999999.99
+Ceiling = Annotated[Decimal, Field(ge=0, le=Decimal("999999999999.99"))]
 Percent = Annotated[Decimal, Field(ge=0, le=100, max_digits=6, decimal_places=2)]
 ScheduleStatus = Literal["active", "paused", "stopped", "cancelled", "expired", "superseded"]
 RunStatus = Literal["due", "prepared", "committed", "disrupted", "skipped"]
@@ -49,7 +57,7 @@ class LineRule(Model):
     """Per ingredient (CNF-036, POL-012): the customer's accepted substitutes, chosen from the
     candidates the product page offers, and the price range around the agreed unit price."""
 
-    accepted_substitutes: list[str] = Field(
+    accepted_substitutes: list[NoNul] = Field(
         default_factory=list, max_length=MAX_SUBSTITUTES_PER_LINE
     )
     price_range_pct: Percent = Decimal("0")
@@ -62,13 +70,13 @@ class SchedulePreviewRequest(Model):
     )
     recurrence: Recurrence
     first_run_date: date
-    line_rules: dict[str, LineRule] = Field(default_factory=dict, description="Key: product_id")
+    line_rules: dict[NoNul, LineRule] = Field(default_factory=dict, description="Key: product_id")
 
 
 class ScheduleCreateRequest(SchedulePreviewRequest):
-    price_ceiling_gross: Money
+    price_ceiling_gross: Ceiling
     agreed_terms_fingerprint: str = Field(min_length=64, max_length=64)
-    idempotency_key: str = Field(min_length=8, max_length=120)
+    idempotency_key: Key
 
 
 class ScheduleEditPreviewRequest(Model):
@@ -77,16 +85,16 @@ class ScheduleEditPreviewRequest(Model):
     title: Title | None = Field(default=None, description="Omitted: the schedule keeps its name")
     recurrence: Recurrence | None = None
     first_run_date: date | None = None
-    line_rules: dict[str, LineRule] | None = None
+    line_rules: dict[NoNul, LineRule] | None = None
     source_order_id: UUID | None = None
 
 
 class ScheduleReplaceRequest(ScheduleEditPreviewRequest):
     """Edit or restart: a new authorization that supersedes the old one."""
 
-    price_ceiling_gross: Money | None = None
+    price_ceiling_gross: Ceiling | None = None
     agreed_terms_fingerprint: str = Field(min_length=64, max_length=64)
-    idempotency_key: str = Field(min_length=8, max_length=120)
+    idempotency_key: Key
 
 
 class SubstituteCandidate(Model):

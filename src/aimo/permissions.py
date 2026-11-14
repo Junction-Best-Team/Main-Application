@@ -60,6 +60,13 @@ def configure_runtime_role(conn, role_name):
         )
         if sql.Identifier("purged_proposals") in existing:
             conn.execute(sql.SQL("REVOKE INSERT ON purged_proposals FROM {}").format(role))
+    # A standing order and its runs are updated but never deleted by the app (triggers also refuse).
+    for table_name in ("scheduled_authorizations", "scheduled_runs"):
+        row = conn.execute("SELECT to_regclass(%s) IS NOT NULL AS ok", (table_name,)).fetchone()
+        if row["ok"] if isinstance(row, dict) else row[0]:
+            conn.execute(
+                sql.SQL("REVOKE DELETE ON {} FROM {}").format(sql.Identifier(table_name), role)
+            )
     # Provisioning authority never belongs to ordinary serving/agent code.
     conn.execute(
         sql.SQL(

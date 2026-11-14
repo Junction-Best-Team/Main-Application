@@ -14,6 +14,7 @@ from aimo.basket_errors import mismatch_problem, required_basket
 from aimo.chat_schemas import AgentTurn, MealPlan
 from aimo.db import Problem, fingerprint
 from aimo.image_schemas import RecipeImage, RecipeImageRequest
+from aimo.meal_draft import DraftRecipe, draft_plan
 from aimo.memory_schemas import MemoryChange, MemoryToolSearch
 from aimo.observability import event, operation
 from aimo.recipe_batch import MatchIngredients
@@ -155,6 +156,19 @@ ScaleToPortions = with_examples(
         "portions": 200,
     },
 )
+DraftToPortions = with_examples(
+    DraftRecipe,
+    {
+        "title": "Tomato pasta",
+        "base_servings": 4,
+        "portions": 200,
+        "ingredients": [
+            {"name": "Dry pasta", "amount": "400", "unit": "g"},
+            {"name": "Tomato sauce", "amount": "600", "unit": "ml"},
+        ],
+        "notes": ["Illustrative basis only; include all ingredients in an actual recipe."],
+    },
+)
 ReadRecipePlan = with_examples(PlanReference, {"plan_id": EXAMPLE_PLAN})
 MatchOne = with_examples(
     MatchIngredient,
@@ -270,6 +284,8 @@ class ToolSession:
         self.guard = guard
         self.preparation_key = "chat-" + fingerprint({"turn": identity["_turn_id"]})
         self.plan = None
+        self.draft_basis = None
+        self.draft_totals = None
         self.proposal = None
         self.receipt = None
         self.prepared_digest = None
@@ -384,6 +400,16 @@ class ToolSession:
                     self.scale_recipe,
                     MealPlanResult,
                 ),
+                "draft_recipe": ToolSpec(
+                    DraftToPortions,
+                    "When no suitable saved recipe exists, propose a complete recipe estimate "
+                    "for base_servings. Supply BASE ingredient amounts, not scaled totals; "
+                    "the server scales to portions and publishes the draft. No purchase authority. "
+                    "Then inspect products and publish_meal_plan with these exact returned totals "
+                    "and product IDs. Never use to bypass an unresolved saved recipe plan.",
+                    self.draft_recipe,
+                    MealPlanResult,
+                ),
                 "get_recipe_plan": ToolSpec(
                     ReadRecipePlan,
                     "Reload a saved scoped recipe plan and its current revision.",
@@ -426,6 +452,17 @@ class ToolSession:
         if self.prepared_digest is not None:
             raise Problem("MEAL_PLAN_LOCKED", "Request recipe changes in a new customer message.")
         return self.save_recipe_result(self.service.scale_recipe(self.identity, request))
+
+    def draft_recipe(self, request):
+        if self.draft_basis is not None:
+            if request != self.draft_basis:
+                raise Problem("MEAL_PLAN_LOCKED", "Change the recipe in a new customer message.")
+            return {"meal_plan": self.plan.model_dump(mode="json"), "purchase_authorized": False}
+        plan = draft_plan(request)
+        result = self.publish(plan)
+        self.draft_basis = request.model_copy(deep=True)
+        self.draft_totals = plan.model_copy(deep=True)
+        return result
 
     def get_recipe_plan(self, request):
         return self.save_recipe_result(
@@ -616,6 +653,23 @@ class ToolSession:
             )
         if self.prepared_digest is not None and plan != self.plan:
             raise Problem("MEAL_PLAN_LOCKED", "Request recipe changes in a new customer message.")
+        if self.draft_totals is not None:
+            basis = self.draft_totals
+
+            def amounts(p):
+                return Counter((i.name, i.amount, i.unit) for i in p.ingredients)
+
+            if (plan.title, plan.portions, plan.base_servings, amounts(plan)) != (
+                basis.title, basis.portions, basis.base_servings, amounts(basis)
+            ):
+                raise Problem(
+                    "DRAFT_QUANTITY_MISMATCH",
+                    "Keep the server-scaled draft quantities, units and portions; only match "
+                    "products. Change the recipe in a new customer message.",
+                    422,
+                )
+            # Matching cannot remove the server's provenance and estimate labels.
+            plan.notes = list(dict.fromkeys([*basis.notes, *plan.notes]))[:20]
         if self.plan:
             previous = Counter(i.name.strip().casefold() for i in self.plan.ingredients)
             current = Counter(i.name.strip().casefold() for i in plan.ingredients)
@@ -781,7 +835,10 @@ class ToolSession:
             recipe_notice = "Recipe quantities are estimates for customer review."
             unresolved = [item.name for item in plan.ingredients if not item.product_id]
             if unresolved:
-                recipe_notice += " Unresolved ingredients: " + ", ".join(unresolved) + "."
+                if self.draft_basis is not None:
+                    recipe_notice += f" {len(unresolved)} ingredients still need catalog matches."
+                else:
+                    recipe_notice += " Unresolved ingredients: " + ", ".join(unresolved) + "."
             notice = "\n\n".join(part for part in (recipe_notice, notice) if part)
         if self.memory_changes:
             notice = "\n\n".join(p for p in (memory_notice(self.memory_changes), notice) if p)

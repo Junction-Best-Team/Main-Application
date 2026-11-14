@@ -31,12 +31,4 @@ export const DESIGN_PLACEHOLDERS = {
     sortLabel: "Sort: Most recent",
     statusLabel: "Status: All",
   },
-  /** Static demo schedules; no supplier delivery or scheduling integration. */
-  home: {
-    schedules: [
-      { title: "Vegetables & pantry", date: "2026-11-16", next: "Mon, 16 Nov" },
-      { title: "Dairy & bakery", date: "2026-11-20", next: "Fri, 20 Nov" },
-      { title: "Tasting menu", date: "2026-11-26", next: "Thu, 26 Nov" },
-    ],
-  },
 } as const;

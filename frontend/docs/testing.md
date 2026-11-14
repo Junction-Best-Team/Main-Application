@@ -36,8 +36,18 @@ To test an already running frontend at another origin:
 BASE_URL=http://localhost:5174 npm run test:ui
 ```
 
+Agents working in parallel must not share port 5173: Playwright reuses an existing server
+outside CI, so a second worktree would test the first one's code. Start your own
+`npx vite --host 127.0.0.1 --port <free port> --strictPort` and run
+`BASE_URL=http://127.0.0.1:<port> npx playwright test`.
+
 Supplying `BASE_URL` disables automatic Vite startup. Never point fixture-based
 checks at a production customer session.
+
+Standing-order screens (`schedules.spec.ts`, `schedule-create.spec.ts`, `schedule-edit.spec.ts`,
+`orders.spec.ts`, `home-schedules.spec.ts`, `system-message.spec.ts`) use typed fixtures from
+`e2e/support/` and cover loading, empty, error and 401 states, the exact request bodies of
+create and replace, idempotency-key reuse, the scheduler error codes and 390px layouts.
 
 UI regressions cover Home, desktop/mobile navigation, SKU cards, Overview
 confirmation/drawer, blocked states and sparse accepted-order pagination, plus conversation creation/refresh, lost-response retry

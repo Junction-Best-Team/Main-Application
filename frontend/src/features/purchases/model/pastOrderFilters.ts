@@ -1,9 +1,8 @@
-import type { Proposal } from "../../../shared/api/types";
-import { placedAt } from "./acceptedOrders";
+import type { OrderListItem } from "../../../shared/api/types";
 
 export type PastOrderPeriod = "7d" | "30d" | "90d" | "all";
 export type PastOrderSort = "newest" | "oldest" | "total_desc" | "total_asc";
-export type PastOrderStatus = "all" | "accepted_mock";
+export type PastOrderStatus = "all" | OrderListItem["status"];
 
 export const PAST_ORDER_PERIODS: { value: PastOrderPeriod; label: string }[] = [
   { value: "7d", label: "Last 7 days" },
@@ -24,7 +23,10 @@ export const PAST_ORDER_STATUSES: {
   label: string;
 }[] = [
   { value: "all", label: "Status: All" },
-  { value: "accepted_mock", label: "Status: Accepted" },
+  { value: "scheduled", label: "Status: Scheduled" },
+  { value: "pending", label: "Status: Pending" },
+  { value: "placed", label: "Status: Placed" },
+  { value: "cancelled", label: "Status: Cancelled" },
 ];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -35,54 +37,39 @@ function periodCutoff(period: PastOrderPeriod, now: number): number | null {
   return now - days * DAY_MS;
 }
 
-function matchesSearch(order: Proposal, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  const haystack = [
-    order.order_id,
-    order.proposal_id,
-    order.request.request_id,
-    order.request.destination,
-    order.request.delivery_date,
-    ...order.snapshot.lines.map((line) => line.name),
-    ...order.snapshot.lines.map((line) => line.product_id),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-  return haystack.includes(q);
+// The moment an order row belongs to: when it was placed, the date a scheduled row runs, or the
+// last update. A scheduled row is in the future, so a "last N days" period never hides it.
+export function orderTime(order: OrderListItem): number {
+  const value = order.placed_at ?? order.scheduled_for ?? order.updated_at;
+  const time = Date.parse(value);
+  return Number.isNaN(time) ? 0 : time;
 }
 
 function withinPeriod(
-  order: Proposal,
+  order: OrderListItem,
   period: PastOrderPeriod,
   now: number,
 ): boolean {
   const cutoff = periodCutoff(period, now);
   if (cutoff === null) return true;
-  const placed = Date.parse(placedAt(order));
-  if (Number.isNaN(placed)) return false;
-  return placed >= cutoff;
+  return orderTime(order) >= cutoff;
 }
 
-function matchesStatus(order: Proposal, status: PastOrderStatus): boolean {
-  if (status === "all") return true;
-  return order.order_status === status;
+function total(order: OrderListItem): number {
+  const value = Number(order.gross_total);
+  return Number.isFinite(value) ? value : 0;
 }
 
-function compareOrders(a: Proposal, b: Proposal, sort: PastOrderSort): number {
-  if (sort === "total_desc" || sort === "total_asc") {
-    const left = Number(a.snapshot.gross_total);
-    const right = Number(b.snapshot.gross_total);
-    const safeLeft = Number.isFinite(left) ? left : 0;
-    const safeRight = Number.isFinite(right) ? right : 0;
-    return sort === "total_desc" ? safeRight - safeLeft : safeLeft - safeRight;
-  }
-  const left = Date.parse(placedAt(a));
-  const right = Date.parse(placedAt(b));
-  const safeLeft = Number.isNaN(left) ? 0 : left;
-  const safeRight = Number.isNaN(right) ? 0 : right;
-  return sort === "oldest" ? safeLeft - safeRight : safeRight - safeLeft;
+function compareOrders(
+  a: OrderListItem,
+  b: OrderListItem,
+  sort: PastOrderSort,
+): number {
+  if (sort === "total_desc") return total(b) - total(a);
+  if (sort === "total_asc") return total(a) - total(b);
+  return sort === "oldest"
+    ? orderTime(a) - orderTime(b)
+    : orderTime(b) - orderTime(a);
 }
 
 export type PastOrderFilters = {
@@ -99,17 +86,38 @@ export const DEFAULT_PAST_ORDER_FILTERS: PastOrderFilters = {
   status: "all",
 };
 
+/**
+ * What the server filters. Search and status are asked of GET /api/orders (`q` matches the title,
+ * schedule title, ids, destination, delivery date, line names and product ids; `status` is a
+ * status). Keeping this in one place makes a change of the server contract a one-line change.
+ */
+export function orderApiFilters(filters: PastOrderFilters): {
+  status?: Exclude<PastOrderStatus, "all">;
+  q?: string;
+} {
+  const q = filters.query.trim();
+  return {
+    ...(filters.status === "all" ? {} : { status: filters.status }),
+    ...(q ? { q } : {}),
+  };
+}
+
+/**
+ * Period and sort run over the loaded rows (the server answers newest first). A row the page is
+ * deep-linked to is never hidden by the period.
+ */
 export function filterAndSortPastOrders(
-  orders: Proposal[],
+  orders: OrderListItem[],
   filters: PastOrderFilters,
   now = Date.now(),
-): Proposal[] {
+  pinnedProposalId?: string,
+): OrderListItem[] {
   return orders
     .filter(
       (order) =>
-        matchesSearch(order, filters.query) &&
-        withinPeriod(order, filters.period, now) &&
-        matchesStatus(order, filters.status),
+        (pinnedProposalId && order.proposal_id === pinnedProposalId) ||
+        ((filters.status === "all" || order.status === filters.status) &&
+          withinPeriod(order, filters.period, now)),
     )
     .sort((a, b) => compareOrders(a, b, filters.sort));
 }

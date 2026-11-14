@@ -1,11 +1,19 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { components } from "../src/shared/api/schema";
-import type { Conversation, Proposal } from "../src/shared/api/types";
+import type {
+  Conversation,
+  OrderListItem,
+  Proposal,
+  Session,
+} from "../src/shared/api/types";
+import { ordersPage, schedule } from "./support/schedulerFixtures";
 
-const session = {
+const session: Session = {
   username: "buyer",
   buyer_id: "demo-hotel",
   csrf_token: "test-csrf",
+  role: "approver",
+  scheduler_demo_mode: false,
 };
 const conversationId = "fa0d5e73-f5a5-4594-a1c5-e4c1a24eebae";
 const proposalId = "b7b7dc8d-8e75-4f79-ac23-649ed1e5fd96";
@@ -95,6 +103,17 @@ const proposal: Proposal = {
   history: [],
   can_decide: true,
 };
+const placedOrder: OrderListItem = {
+  status: "placed",
+  title: "Carbonara for 200",
+  proposal_id: proposalId,
+  order_id: "accepted-order",
+  paused: false,
+  line_count: 1,
+  gross_total: "114.00",
+  currency: "EUR",
+  updated_at: timestamp,
+};
 async function mockSession(page: Page, signedIn = true) {
   const currentSession = session;
   let authenticated = signedIn;
@@ -118,6 +137,12 @@ async function mockSession(page: Page, signedIn = true) {
   await page.route("**/api/purchases?*", (route) =>
     route.fulfill({ json: { items: [], next_offset: null } }),
   );
+  await page.route("**/api/orders?*", (route) =>
+    route.fulfill({ json: ordersPage([]) }),
+  );
+  await page.route("**/api/schedules?*", (route) =>
+    route.fulfill({ json: { items: [], next_offset: null } }),
+  );
   await page.route("**/api/conversations?*", (route) =>
     route.fulfill({ json: { items: [blankConversation], next_offset: null } }),
   );
@@ -127,6 +152,109 @@ async function mockSession(page: Page, signedIn = true) {
       body: ": heartbeat\n\n",
     }),
   );
+}
+
+for (const width of [1440, 320]) {
+  test(`recipe draft appears in Overview before a basket at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await mockSession(page);
+    const plan = {
+      title: "Vegan lasagna estimate",
+      portions: 500,
+      base_servings: 4,
+      ingredients: [
+        {
+          name: "Dry lasagna sheets",
+          amount: "50",
+          unit: "KG",
+          status: "proposed" as const,
+        },
+        {
+          name: "Plant mince",
+          amount: "75",
+          unit: "KG",
+          status: "proposed" as const,
+        },
+        {
+          name: "Tomato sauce",
+          amount: "125",
+          unit: "L",
+          status: "proposed" as const,
+        },
+      ],
+      notes: [
+        "Assistant-drafted recipe estimate; ingredient quantities need review.",
+      ],
+    };
+    let prepared = false;
+    await page.route(`**/api/conversations/${conversationId}`, (route) =>
+      route.fulfill({
+        json: {
+          ...blankConversation,
+          // A newer draft must replace an earlier purchase in Overview, without deleting history.
+          purchases: [proposal],
+          messages: [
+            {
+              id: 1,
+              role: "assistant",
+              text: "Earlier basket",
+              proposal_id: proposalId,
+              created_at: timestamp,
+            },
+            {
+              id: 2,
+              role: "user",
+              text: "Now plan vegan lasagna for 500 people.",
+              created_at: timestamp,
+            },
+            {
+              id: 3,
+              role: "assistant",
+              text: "Here is the recipe estimate for 500 portions.",
+              meal_plan: plan,
+              proposal_id: prepared ? proposalId : null,
+              created_at: timestamp,
+            },
+          ],
+        },
+      }),
+    );
+    await page.goto(`/conversations/${conversationId}`);
+    const overview = page.getByRole("complementary", { name: "Overview" });
+    if (width < 1024)
+      await overview.getByRole("button", { name: "Expand overview" }).click();
+    await expect(overview).toContainText("3 draft ingredients");
+    await expect(overview).toContainText("500 portions");
+    await expect(overview).toContainText("50 KG");
+    await expect(overview).toContainText("125 L");
+    await expect(overview).not.toContainText("Nothing staged");
+    await expect(
+      overview.getByRole("button", { name: "Approve & Push to Dispatch" }),
+    ).toHaveCount(0);
+    await expect(overview).not.toContainText("Total estimated");
+    await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
+    await page.screenshot({
+      path: testInfo.outputPath(`recipe-draft-${width}.png`),
+      fullPage: true,
+    });
+    await page.reload();
+    if (width < 1024)
+      await overview.getByRole("button", { name: "Expand overview" }).click();
+    await expect(overview).toContainText("3 draft ingredients");
+    // A real proposal takes over; only then are price and confirmation controls displayed.
+    prepared = true;
+    await page.reload();
+    if (width < 1024)
+      await overview.getByRole("button", { name: "Expand overview" }).click();
+    await expect(overview).toContainText("1 items staged");
+    await expect(overview).toContainText("Total estimated");
+    await expect(
+      overview.getByRole("button", { name: "Approve & Push to Dispatch" }),
+    ).toBeVisible();
+    await expect(overview).not.toContainText("3 draft ingredients");
+  });
 }
 
 for (const width of [1440, 320]) {
@@ -783,7 +911,7 @@ test("history retains completed purchases and reports an actionable refresh erro
 }) => {
   await mockSession(page);
   let fail = false;
-  await page.route("**/api/purchases?*", (route) =>
+  await page.route("**/api/orders?*", (route) =>
     route.fulfill(
       fail
         ? {
@@ -796,19 +924,7 @@ test("history retains completed purchases and reports an actionable refresh erro
               },
             },
           }
-        : {
-            json: {
-              items: [
-                {
-                  ...proposal,
-                  approval_status: "approved",
-                  order_status: "accepted_mock",
-                  order_id: "saved-order",
-                },
-              ],
-              next_offset: null,
-            },
-          },
+        : { json: ordersPage([placedOrder]) },
     ),
   );
   await page.goto("/approvals");
@@ -816,10 +932,11 @@ test("history retains completed purchases and reports an actionable refresh erro
   await expect(
     page.getByRole("heading", { name: "Past Orders" }),
   ).toBeVisible();
-  await expect(page.locator(".purchase-row")).toContainText("Accepted (demo)");
+  await expect(page.locator(".purchase-row")).toContainText("Placed");
   fail = true;
   await page.getByRole("button", { name: "Refresh purchases" }).click();
   await expect(page.getByRole("alert")).toContainText("Refresh to retry");
+  await expect(page.locator(".purchase-row")).toContainText("Placed");
 });
 
 test("unfinished server turns restore the request and retry key on another browser", async ({
@@ -1040,16 +1157,21 @@ for (const width of [1440, 390]) {
   }, testInfo) => {
     await page.setViewportSize({ width, height: 1000 });
     await mockSession(page);
+    await page.route("**/api/schedules?*", (route) =>
+      route.fulfill({ json: { items: [schedule], next_offset: null } }),
+    );
     await page.goto("/");
     await expect(
       page.getByRole("heading", { name: "What are we cooking?" }),
     ).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: "Scheduled deliveries" }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "View all schedules" }),
-    ).toBeDisabled();
+    // The strip under the chat box lists the customer's real standing orders.
+    const strip = page.getByRole("region", { name: "Scheduled deliveries" });
+    await expect(strip).toContainText("Breakfast dairy");
+    await expect(strip).not.toContainText("Placeholder");
+    await expect(strip.getByRole("link", { name: "View all" })).toHaveAttribute(
+      "href",
+      "/schedules",
+    );
     if (width < 768) {
       await page.getByRole("button", { name: "Open menu" }).click();
       const menu = page.getByRole("dialog", { name: "Menu", exact: true });
@@ -1199,7 +1321,7 @@ for (const width of [1440, 390]) {
   });
 }
 
-test("Past Orders fills sparse API pages, expands rows and resolves an older deep link", async ({
+test("Past Orders pages the order list, expands placed rows and resolves an older deep link", async ({
   page,
 }) => {
   await mockSession(page);
@@ -1210,7 +1332,7 @@ test("Past Orders fills sparse API pages, expands rows and resolves an older dee
     can_decide: false,
   };
   const offsets: number[] = [];
-  await page.route("**/api/purchases?*", (route) => {
+  await page.route("**/api/orders?*", (route) => {
     const offset = Number(
       new URL(route.request().url()).searchParams.get("offset"),
     );
@@ -1218,18 +1340,23 @@ test("Past Orders fills sparse API pages, expands rows and resolves an older dee
     return route.fulfill({
       json:
         offset === 0
-          ? { items: [proposal], next_offset: 20 }
-          : { items: [accepted], next_offset: null },
+          ? ordersPage(
+              [{ ...placedOrder, status: "pending", order_id: null }],
+              20,
+            )
+          : ordersPage([placedOrder], null),
     });
   });
   await page.route(`**/api/purchases/${proposalId}`, (route) =>
     route.fulfill({ json: accepted }),
   );
   await page.goto("/purchases");
-  await expect(page.locator(".purchase-row")).toHaveCount(1);
-  expect(offsets).toContain(20);
-  const row = page.locator(".purchase-row");
-  await expect(row).toContainText("Accepted (demo)");
+  // Fewer than five rows are visible, so the page keeps reading pages by next_offset itself.
+  await expect(page.locator(".purchase-row")).toHaveCount(2);
+  // React StrictMode may repeat the first request in development.
+  expect([...new Set(offsets)]).toEqual([0, 20]);
+  const row = page.locator(".purchase-row").nth(1);
+  await expect(row).toContainText("Placed");
   await row
     .getByRole("button", { name: "Order details: Carbonara for 200" })
     .click();
@@ -1359,6 +1486,23 @@ for (const width of [1440, 390, 320]) {
     ).toHaveCount(0);
     snapshot = {
       ...snapshot,
+      messages: [
+        {
+          id: 1,
+          role: "assistant",
+          text: "Recipe estimate for 200 portions.",
+          created_at: timestamp,
+          meal_plan: {
+            title: "Pasta lunch",
+            portions: 200,
+            ingredients: [
+              { name: "Pasta", amount: "20", unit: "KG", status: "proposed" },
+              { name: "Salt", amount: null, unit: "g", status: "unresolved" },
+            ],
+            notes: ["Assistant-drafted recipe estimate."],
+          },
+        },
+      ],
       draft_cart: {
         turn_id: turnId,
         title: "Pasta lunch",
@@ -1371,6 +1515,9 @@ for (const width of [1440, 390, 320]) {
     publish();
     const draft = page.getByRole("complementary", { name: "Draft cart" });
     await expect(draft.getByRole("status")).toHaveText("0 of 2 items matched");
+    await expect(
+      page.getByRole("complementary", { name: "Overview" }),
+    ).toHaveCount(0); // The live cart takes precedence over the saved recipe draft.
     if (width < 1024)
       await draft.getByRole("button", { name: "Expand draft cart" }).click();
     await expect(
@@ -1439,6 +1586,16 @@ for (const width of [1440, 390, 320]) {
       ...snapshot,
       busy: false,
       purchases: [proposal],
+      messages: [
+        ...snapshot.messages,
+        {
+          id: 2,
+          role: "assistant",
+          text: "Review the prepared basket.",
+          created_at: timestamp,
+          proposal_id: proposalId,
+        },
+      ],
       draft_cart: { ...snapshot.draft_cart!, proposal_id: proposalId },
       activity: { turn_id: turnId, state: "complete", events: [] },
     };
@@ -1728,6 +1885,9 @@ for (const width of [1440, 320]) {
     );
     await page.goto("/");
     const input = page.getByLabel("Your meal or purchasing request");
+    await expect(page.getByRole("button", { name: "Attach file" })).toHaveCount(
+      0,
+    );
     await expect(
       page.getByRole("button", { name: "Send Order Request" }),
     ).toHaveCount(0);
@@ -1747,7 +1907,8 @@ for (const width of [1440, 320]) {
     ).toBeEnabled();
     await input.fill("");
     const schedule = page.getByRole("region", { name: "Scheduled deliveries" });
-    await expect(schedule.getByRole("listitem")).toHaveCount(3);
+    // This test mocks no standing orders, so the strip shows its empty state.
+    await expect(schedule).toContainText("No standing orders yet.");
     await expect(
       page.getByText("Demo schedule · No supplier orders are placed."),
     ).toBeVisible();
@@ -1761,12 +1922,24 @@ for (const width of [1440, 320]) {
       path: testInfo.outputPath(`home-${width}.png`),
       fullPage: true,
     });
-    await page.getByLabel("Choose attachments").setInputFiles({
-      name: "restock.txt",
-      mimeType: "text/plain",
-      buffer: Buffer.from("Milk and eggs"),
+    await input.evaluate((field) => {
+      const data = new DataTransfer();
+      data.items.add(
+        new File(["Milk and eggs"], "restock.txt", { type: "text/plain" }),
+      );
+      field.dispatchEvent(
+        new ClipboardEvent("paste", {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: data,
+        }),
+      );
     });
     await expect(page.getByText("restock.txt", { exact: true })).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath(`home-attachment-${width}.png`),
+      fullPage: true,
+    });
     await expect(
       page.getByRole("button", { name: "Send Order Request" }),
     ).toBeEnabled();
