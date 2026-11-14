@@ -228,7 +228,7 @@ def test_the_cli_refuses_a_period_below_one_day(
     assert error.value.code == 2 and count("proposals") == 1 and count("purged_proposals") == 0
 
 
-# The scheduler's own tables (migration 025) keep a foreign key to the proposal they concern.
+# The scheduler's own tables (migration 023) keep a foreign key to the proposal they concern.
 REFERENCING = {
     "order_request_cancellations": (
         "INSERT INTO order_request_cancellations(proposal_id,buyer_id,reason,cancelled_by) "

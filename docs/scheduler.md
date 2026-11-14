@@ -75,5 +75,5 @@ first run date of today would be missed at once: use "Run now (demo)" there.
 - Cancelled means an order **request** (append-only `order_request_cancellations`); placed orders stay immutable.
   The unfinished-proposal purge must skip proposals referenced by `scheduled_runs` or the cancellations.
 
-Migration `025_scheduled_orders.sql`; tests `tests/test_schedul*.py`, `test_worker_scheduler.py`,
+Migration `023_scheduled_orders.sql`; tests `tests/test_schedul*.py`, `test_worker_scheduler.py`,
 `test_commit_role_gate.py`, `test_confirm_role.py`. Local runs in fixture mode, not CI.

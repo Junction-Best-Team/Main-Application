@@ -1,5 +1,5 @@
 -- WS-E scheduled (standing) re-orders. Additive. Every order it places is a MOCK order.
--- Number 025: the next free one after 023_chat_draft_cart and the in-flight 024_message_notice (earlier files: 018, 019 WS-D; 020 to 022 Otto).
+-- Number 023: shares the prefix with 023_chat_draft_cart (the runner keys on the full file name); 024 is message_notice, 025 is reserved for the demo clock.
 
 -- 1. A separate scheduler identity per buyer: no login, no model, no authority.
 ALTER TABLE identities DROP CONSTRAINT identities_role_check;
