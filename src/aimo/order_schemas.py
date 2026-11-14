@@ -12,7 +12,11 @@ class OrderListItem(Model):
     scheduled_for: str | None = None  # ISO date of the next run, for `scheduled` only
     proposal_id: str | None = None
     order_id: str | None = None  # the mock order, for `placed` only
-    schedule_id: str | None = None  # the standing order, for `scheduled` only
+    schedule_id: str | None = (
+        None  # the standing order: the row itself, or the one whose run made it
+    )
+    schedule_title: str | None = None  # the standing order's label, for "from standing order ..."
+    paused: bool = False  # a paused standing order (`scheduled` rows only)
     gross_total: str | None = None
     currency: str | None = None
     line_count: int

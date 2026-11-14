@@ -42,7 +42,7 @@ def place(service, buyer):
     return lambda p: service.commit_order(buyer, commit_request(p))
 
 
-def authorization(buyer, order_id, *, next_run=None, status="active", request_id="Standing milk"):
+def authorization(buyer, order_id, *, next_run=None, status="active"):
     """Insert a standing authorization the way schedules.create stores it (authored row)."""
     aid = uuid4()
     first = date.today() + timedelta(days=2)
@@ -51,24 +51,36 @@ def authorization(buyer, order_id, *, next_run=None, status="active", request_id
             """INSERT INTO scheduled_authorizations(id,buyer_id,created_by,source_order_id,
             create_key,create_hash,request,agreed_lines,terms_fingerprint,currency,
             agreed_gross_total,price_ceiling_gross,delivery_offset_days,recurrence,first_run_date,
-            valid_until,status,stop_reason,next_run_date)
-            VALUES(%s,%s,%s,%s,%s,'h',%s,'[]','fp','EUR',17,20,2,%s,%s,%s,%s,%s,%s)""",
+            valid_until,status,stop_reason,next_run_date,paused_at)
+            VALUES(%s,%s,%s,%s,%s,'h',%s,'[]','fp','EUR',17,20,2,%s,%s,%s,%s,%s,%s,%s)""",
             (
                 aid,
                 buyer["buyer_id"],
                 buyer["id"],
                 order_id,
                 str(aid),
-                js({"request_id": request_id, "destination": "hotel-helsinki", "lines": []}),
-                js({"every_days": 7}),
+                js({"destination": "hotel-helsinki", "lines": [{"product_id": "464306"}]}),
+                js({"kind": "days", "interval": 7}),
                 first,
                 first + timedelta(days=300),
                 status,
-                None if status in ("active", "cancelled") else "test",
-                next_run if status == "active" else None,
+                "test" if status == "stopped" else None,
+                next_run if status in ("active", "paused") else None,
+                NOW if status == "paused" else None,
             ),
         )
     return str(aid)
+
+
+def scheduled_run(aid, buyer, proposal_id, day=None):
+    """A run of the authorization that produced this proposal (authored row)."""
+    day = day or date.today()
+    with connection() as c:
+        c.execute(
+            """INSERT INTO scheduled_runs(id,authorization_id,buyer_id,scheduled_date,delivery_date,
+            status,proposal_id) VALUES(%s,%s,%s,%s,%s,'prepared',%s)""",
+            (uuid4(), aid, buyer["buyer_id"], day, day + timedelta(days=1), proposal_id),
+        )
 
 
 def page(identity, offset=0, limit=20, now=None):
@@ -161,7 +173,39 @@ def test_an_active_authorization_is_scheduled_with_its_next_run_date(buyer, prep
     row = scheduled[0]
     assert row["schedule_id"] == aid and row["scheduled_for"] == soon.isoformat()
     assert row["proposal_id"] is None and row["order_id"] is None
-    assert row["title"] == "Standing milk" and row["gross_total"] == "17.00"
+    # The label is the source order's request label, like ScheduleResponse.title.
+    assert row["title"] == "Source" and row["schedule_title"] == "Source"
+    assert row["gross_total"] == "17.00" and row["paused"] is False and row["line_count"] == 1
+
+
+def test_a_paused_authorization_is_scheduled_and_marked_paused(buyer, prepare, place):
+    order = place(prepare("Source"))
+    soon = date.today() + timedelta(days=4)
+    aid = authorization(buyer, order["order_id"], next_run=soon, status="paused")
+    row = by_status(page(buyer))["scheduled"][0]
+    assert row["schedule_id"] == aid and row["paused"] is True
+    assert row["scheduled_for"] == soon.isoformat() and row["order_id"] is None
+
+
+def test_requests_of_a_run_carry_the_schedule_and_ordinary_ones_do_not(buyer, prepare, place):
+    source = place(prepare("Source"))
+    aid = authorization(buyer, source["order_id"], next_run=date.today() + timedelta(days=7))
+    from_run = prepare("Run request")
+    place(from_run)
+    waiting = prepare("Run waiting")
+    scheduled_run(aid, buyer, from_run["proposal_id"])
+    scheduled_run(aid, buyer, waiting["proposal_id"], day=date.today() + timedelta(days=1))
+    ordinary = prepare("Ordinary")
+    rows = {i["proposal_id"]: i for i in page(buyer)["items"] if i["proposal_id"]}
+    for p in (from_run, waiting):
+        assert rows[p["proposal_id"]]["schedule_id"] == aid
+        assert rows[p["proposal_id"]]["schedule_title"] == "Source"
+    assert rows[from_run["proposal_id"]]["status"] == "placed"
+    assert rows[waiting["proposal_id"]]["status"] == "pending"
+    assert rows[ordinary["proposal_id"]]["schedule_id"] is None
+    assert rows[ordinary["proposal_id"]]["schedule_title"] is None
+    assert rows[ordinary["proposal_id"]]["paused"] is False
+    assert len(rows) == 4  # one row per request even with a run attached
 
 
 @pytest.mark.parametrize("status", ["stopped", "cancelled", "expired", "superseded"])

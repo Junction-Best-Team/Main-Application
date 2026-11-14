@@ -46,6 +46,8 @@ def test_the_orders_list_shows_the_pending_request_in_the_declared_shape(http, p
         "currency",
         "line_count",
         "cancel_reason",
+        "paused",
+        "schedule_title",
         "updated_at",
     }
 
