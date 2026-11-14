@@ -213,9 +213,27 @@ def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, hi
     }
 
 
-def get_proposal(identity, pid):
+def get_proposal(identity, pid, revision=None):
+    """A proposal by ID: the current revision, or an earlier one by number (PER-003).
+
+    Scoped like every read (another buyer or an agent that did not prepare it gets 404). An
+    earlier revision renders as superseded with its own totals, approval row (if any) and a
+    pointer to the current revision; an unknown revision is 404.
+    """
     with connection() as c:
-        return render(c, *proposal(c, pid, identity), identity)
+        p, r, a = proposal(c, pid, identity)
+        if revision is not None and revision != p["current_revision"]:
+            r = c.execute(
+                "SELECT * FROM proposal_revisions WHERE proposal_id=%s AND revision=%s",
+                (p["id"], revision),
+            ).fetchone()
+            if not r:
+                raise Problem("NOT_FOUND", "Revision not found.", 404)
+            a = c.execute(
+                "SELECT * FROM approvals WHERE proposal_id=%s AND revision=%s",
+                (p["id"], revision),
+            ).fetchone()
+        return render(c, p, r, a, identity)
 
 
 def prior_preparation(c, identity, key, payload_hash):

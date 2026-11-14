@@ -212,6 +212,25 @@
               "format": "uuid",
               "title": "Proposal Id"
             }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "An earlier revision of this proposal; default the current one.",
+              "title": "Revision"
+            },
+            "description": "An earlier revision of this proposal; default the current one."
           }
         ],
         "responses": {

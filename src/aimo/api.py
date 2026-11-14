@@ -253,8 +253,14 @@ def create_app(service=None):
         return workflow.approval_detail(identity, approval_id)
 
     @app.get("/api/purchases/{proposal_id}", response_model=ProposalResponse)
-    def current_purchase(proposal_id: UUID, identity=Depends(buyer)):
-        return workflow.get_proposal(identity, proposal_id)
+    def current_purchase(
+        proposal_id: UUID,
+        revision: int | None = Query(
+            None, ge=1, description="An earlier revision of this proposal; default the current one."
+        ),
+        identity=Depends(buyer),
+    ):
+        return workflow.get_proposal(identity, proposal_id, revision)
 
     @app.post("/api/approvals/{approval_id}/decision", response_model=ProposalResponse)
     def decision(
