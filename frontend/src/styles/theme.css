@@ -3,6 +3,7 @@
 @import "tailwindcss/theme" layer(theme);
 @import "tailwindcss/preflight" layer(base);
 @import "./settings.css" layer(components);
+@import "./chat-markdown.css" layer(components);
 @import "tailwindcss/utilities" layer(utilities);
 
 /* All tokens from ui/DESIGN.md (source of truth over per-screen HTML configs). */
@@ -138,10 +139,10 @@
   [role="button"]:not(:disabled) {
     cursor: pointer;
   }
-  /* Material Symbols icon font (Google Fonts), set up as the font's docs ask;
+  /* Bundled Material Symbols icon font, set up as the font's docs ask;
      in the base layer so utilities (size, colour, display) override it. */
   .material-symbols-outlined {
-    font-family: "Material Symbols Outlined";
+    font-family: "Material Symbols Outlined Variable";
     font-weight: normal;
     font-style: normal;
     line-height: 1;

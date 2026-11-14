@@ -208,3 +208,37 @@ The owner clarified the product scope and refusal style: accept food, products a
 nearby topics; decline clearly unrelated requests in simple language. Extended the
 same synthetic evaluation with workout, food-before-exercise, storage, kitchen-supply
 and community-serving cases. No new external material was used.
+
+## Simplified memory screen — 2026-11-14
+
+Adapted the owner-approved in-chat Memory mockup into the existing preferences
+feature on develop. Reused Nordic theme tokens, typed memory forms, authenticated
+API hooks and revision/idempotency handling. Example memories remain confined to
+the mockup and authored browser fixtures; no example content is seeded into the app.
+No new dependency, asset, API or schema change.
+
+## Chat Markdown — 2026-11-14
+
+Added the MIT-licensed `react-markdown` and `remark-gfm` packages using their
+upstream documentation, with locked dependencies. Reused the existing message
+transcript, design tokens and Playwright route fixtures. Markdown and unsafe
+content examples are authored synthetic fixtures; no supplier or model calls,
+external images or customer messages were used.
+
+## Self-hosted UI fonts — 2026-11-14
+
+At the owner's request, replaced the Google Fonts stylesheet with locked
+Fontsource packages: Hanken Grotesk 5.3.0, Space Grotesk 5.3.0 and Material Symbols
+Outlined Variable 5.3.9. Reused the existing typefaces, icon ligatures and design
+tokens. Setup follows [Fontsource's installation guide](https://fontsource.org/docs/getting-started/install)
+and [Material Symbols guide](https://fontsource.org/docs/getting-started/material-symbols).
+All three distributed packages include SIL OFL 1.1 notices, copied intact to
+`frontend/public/font-licenses/` for distribution with the bundled font assets.
+The earlier ignored preview font cache and example-memory database remain local.
+## Chat attachments — 2026-11-14
+
+Reused the existing composer, generated Python/OpenAPI contracts, authenticated conversation API,
+PostgreSQL queue, retry fencing and native Google/OpenRouter adapters. Added pypdf, openpyxl,
+defusedxml and an explicit Pillow dependency for bounded file parsing; lockfile updated. Tests use
+small authored text, Office archives, PDF pages and image bytes, with mocked model responses;
+no challenge documents, user files, credentials or remote material are committed.

@@ -2,18 +2,17 @@ import logging
 from contextlib import asynccontextmanager
 from secrets import token_urlsafe
 from typing import Literal
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
-from fastapi.exception_handlers import http_exception_handler as fastapi_http_exception_handler
-from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
-from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.responses import HTMLResponse, StreamingResponse
 
 from aimo import approval_workflow as workflow
-from aimo import auth, conversations, memory, policy_settings, schema_state, upstream, voice
+from aimo import auth, conversations, errors, memory, policy_settings, schema_state, upstream, voice
+from aimo.attachments import raw_file
 from aimo.chat_schemas import (
     ConversationCreate,
     ConversationList,
@@ -33,6 +32,7 @@ from aimo.memory_schemas import (
     MemoryUpdate,
 )
 from aimo.observability import RequestLoggingMiddleware, configure_logging, event
+from aimo.request_limits import MessageBodyLimitMiddleware
 from aimo.schemas import (
     CommitRequest,
     CommitResponse,
@@ -59,6 +59,7 @@ def create_app(service=None):
         import anyio
 
         configure_logging()
+        upstream.check_supplier_startup()  # a hosted deployment must not start without the key
         event("api.started", upstream_mode=upstream.effective_mode())
         try:
             yield
@@ -72,61 +73,34 @@ def create_app(service=None):
         lifespan=lifespan,
         docs_url=None,
         redoc_url=None,
+        # Q-72: no /openapi.json unless API_DOCS_ENABLED. app.openapi() still builds the contract
+        # for scripts/export_schema.py, which generates the committed file the typed client uses.
+        openapi_url="/openapi.json" if settings().api_docs_enabled else None,
     )
     app.state.service = service
 
-    @app.get("/docs", include_in_schema=False)
-    def docs():
-        nonce = token_urlsafe(32)
-        html = get_swagger_ui_html(
-            openapi_url=app.openapi_url,
-            title=f"{app.title} — API documentation",
-            swagger_favicon_url="data:,",
-            swagger_ui_parameters={"validatorUrl": None},
-        ).body.decode()
-        policy = CONTENT_SECURITY_POLICY.replace(
-            "script-src 'self'", f"script-src 'self' 'nonce-{nonce}'"
-        ).replace("style-src 'self'", "style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'")
-        return HTMLResponse(
-            html.replace("<script", f'<script nonce="{nonce}"'),
-            headers={"Content-Security-Policy": policy, "Cache-Control": "no-store"},
-        )
+    if settings().api_docs_enabled:
 
-    @app.exception_handler(Problem)
-    async def problem_handler(request, exc):
-        event("http.problem", error_code=exc.code, status=exc.status, retry_after=exc.retry_after)
-        return JSONResponse(
-            {"error": {"code": exc.code, "message": exc.message}},
-            status_code=exc.status,
-            headers={"Retry-After": str(exc.retry_after)} if exc.retry_after is not None else None,
-        )
+        @app.get("/docs", include_in_schema=False)
+        def docs():
+            nonce = token_urlsafe(32)
+            html = get_swagger_ui_html(
+                openapi_url=app.openapi_url,
+                title=f"{app.title} — API documentation",
+                swagger_favicon_url="data:,",
+                swagger_ui_parameters={"validatorUrl": None},
+            ).body.decode()
+            policy = CONTENT_SECURITY_POLICY.replace(
+                "script-src 'self'", f"script-src 'self' 'nonce-{nonce}'"
+            ).replace(
+                "style-src 'self'", "style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'"
+            )
+            return HTMLResponse(
+                html.replace("<script", f'<script nonce="{nonce}"'),
+                headers={"Content-Security-Policy": policy, "Cache-Control": "no-store"},
+            )
 
-    @app.exception_handler(RequestValidationError)
-    async def validation_handler(request, exc):
-        # Same {"detail": [...]} shape and type/loc/msg as FastAPI's default, but never the
-        # submitted `input` (a password, or the whole body for a missing field) or `ctx`.
-        errors = [
-            {key: value for key, value in error.items() if key not in ("input", "ctx")}
-            for error in exc.errors()
-        ]
-        return JSONResponse({"detail": jsonable_encoder(errors)}, status_code=422)
-
-    @app.exception_handler(StarletteHTTPException)
-    async def http_exception_handler(request, exc):
-        # An unknown route or a wrong method answers in the application's own error shape.
-        # Anything else keeps FastAPI's default body and headers (for example a route's own detail).
-        codes = {
-            404: ("NOT_FOUND", "Not found."),
-            405: ("METHOD_NOT_ALLOWED", "Method not allowed."),
-        }
-        if exc.status_code not in codes:
-            return await fastapi_http_exception_handler(request, exc)
-        code, message = codes[exc.status_code]
-        return JSONResponse(
-            {"error": {"code": code, "message": message}},
-            status_code=exc.status_code,
-            headers=getattr(exc, "headers", None),
-        )
+    errors.install(app)  # one error body for every failure (TCT-008)
 
     @app.middleware("http")
     async def security_headers(request, call_next):
@@ -142,6 +116,7 @@ def create_app(service=None):
             response.headers["Cache-Control"] = "no-store"
         return response
 
+    app.add_middleware(MessageBodyLimitMiddleware)
     app.add_middleware(RequestLoggingMiddleware)
 
     def buyer(request: Request):
@@ -183,11 +158,9 @@ def create_app(service=None):
                 "The database schema is not up to date; run the migrations.",
                 503,
             )
-        return {
-            "status": "ready",
-            "model": active["model_key"],
-            "upstream_mode": upstream.effective_mode(),
-        }
+        # A bare status (Q-72): the embedding model and the supplier mode are in the startup log
+        # (api.started), not in a public response.
+        return {"status": "ready"}
 
     @app.head("/health/ready", include_in_schema=False)
     def ready_head():
@@ -379,6 +352,21 @@ def create_app(service=None):
     def conversation_detail(conversation_id: UUID, identity=Depends(buyer)):
         return conversations.detail(identity, conversation_id)
 
+    @app.get("/api/conversations/{conversation_id}/attachments/{message_id}/{index}")
+    def conversation_attachment(
+        conversation_id: UUID, message_id: int, index: int, identity=Depends(buyer)
+    ):
+        item = conversations.attachment(identity, conversation_id, message_id, index)
+        disposition = "inline" if item["media_type"].startswith("image/") else "attachment"
+        return Response(
+            raw_file(item),
+            media_type=item["media_type"],
+            headers={
+                "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(item['name'], safe='')}",
+                "Cache-Control": "no-store",
+            },
+        )
+
     @app.post("/api/conversations/{conversation_id}/messages", response_model=ConversationResponse)
     def send_message(
         conversation_id: UUID, body: MessageRequest, request: Request, identity=Depends(buyer)
@@ -388,7 +376,9 @@ def create_app(service=None):
         )
         return conversations.enqueue(identity, conversation_id, body)
 
-    @app.post("/api/conversations/{conversation_id}/voice-session", response_model=voice.VoiceSession)
+    @app.post(
+        "/api/conversations/{conversation_id}/voice-session", response_model=voice.VoiceSession
+    )
     def voice_session(conversation_id: UUID, request: Request, identity=Depends(buyer)):
         auth.csrf_check(
             identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
@@ -415,7 +405,6 @@ def create_app(service=None):
             import time
 
             import anyio
-            from fastapi.encoders import jsonable_encoder
 
             deadline, previous = time.monotonic() + 25, None
             while time.monotonic() < deadline and not await request.is_disconnected():

@@ -6,12 +6,14 @@ from math import ceil
 from uuid import uuid4
 
 from aimo import recipe_search
+from aimo.basket_errors import mismatch_problem, required_basket, unit_conversion_problem
 from aimo.catalog import combine_in_priority_unit, quantity
-from aimo.chat_schemas import MealPlan
+from aimo.chat_schemas import MAX_REJECTED, MealPlan
 from aimo.db import Problem, connection, fingerprint, js
 from aimo.numeric import fraction_text
 from aimo.purchases import context, load_products
 from aimo.recipe_schemas import Recipe
+from aimo.schemas import MAX_BASKET_LINES
 from aimo.search import vector
 
 
@@ -115,17 +117,12 @@ def get_recipe(identity, request):
     }
 
 
-# MEA-011: the most one portion of a recipe may need, in the unit the plan uses. These are
-# deliberately generous sanity bounds (a corrupt base quantity, not a menu rule); the owner may
-# retune them. They apply to recipe-scaled plans only: a direct order such as 600 L of milk is
-# not a recipe and carries no per-portion meaning.
-MAX_QUANTITY_PER_PORTION = {"KG": Fraction(5), "L": Fraction(5), "piece": Fraction(50)}
-
-
 def scaled_plan(recipe, portions):
-    if len(recipe.ingredients) > 1000:
+    if len(recipe.ingredients) > MAX_BASKET_LINES:
         raise Problem(
-            "RECIPE_TOO_LARGE", "This recipe exceeds the 1000-ingredient purchasing limit.", 422
+            "RECIPE_TOO_LARGE",
+            f"This recipe exceeds the {MAX_BASKET_LINES}-ingredient purchasing limit.",
+            422,
         )
     ingredients = []
     for item in recipe.ingredients:
@@ -146,14 +143,6 @@ def scaled_plan(recipe, portions):
             if unit in factors:
                 factor, unit = factors[unit]
                 value *= factor
-                if value > MAX_QUANTITY_PER_PORTION[unit] * portions:
-                    raise Problem(
-                        "QUANTITY_PER_PORTION_EXCEEDED",
-                        f"{item.name} needs more than {MAX_QUANTITY_PER_PORTION[unit]} {unit} per "
-                        "portion, which is not plausible. Review the recipe quantity and base "
-                        "servings.",
-                        422,
-                    )
                 # MEA-012: round UP to four decimal places (never down); exact values are unchanged.
                 value = Fraction(ceil(value * 10_000), 10_000)
                 amount = fraction_text(value)
@@ -278,6 +267,16 @@ def get_plan(identity, request):
         return read_plan(c, identity, request.plan_id)[1]
 
 
+def record_rejection(item, product_id):
+    """MEA-005: keep a refused product choice with its reason, appended in order. Only the newest
+    MAX_REJECTED are kept (the plan schema's cap), so a long dialogue cannot make the plan unreadable.
+    Every path that refuses a choice (single and batch matching) uses this."""
+    if item["status"] == "unresolved" and item["amount"] and item.get("reason"):
+        rejected = item.setdefault("rejected", [])
+        rejected.append({"product_id": product_id, "reason": item["reason"]})
+        del rejected[:-MAX_REJECTED]
+
+
 def match_ingredient(identity, request):
     with connection() as c:
         _, policy, _, _ = context(c, identity)
@@ -344,11 +343,7 @@ def match_ingredient(identity, request):
                 item["reason"] = (
                     "Structured product data cannot convert the ingredient quantity into sales units."
                 )
-        if item["status"] == "unresolved" and item["amount"] and item.get("reason"):
-            # MEA-005: keep a refused product choice (appended, never removed) with its reason.
-            item.setdefault("rejected", []).append(
-                {"product_id": request.product_id, "reason": item["reason"]}
-            )
+        record_rejection(item, request.product_id)
         plan["recipe_plan_revision"] = row["revision"] + 1
         c.execute(
             "INSERT INTO recipe_plan_revisions VALUES(%s,%s,%s,now())",
@@ -380,12 +375,13 @@ def combine_by_product(contributions, products):
             else {"status": "unknown", "reason": "The product facts are not loaded."}
         )
         if result["status"] != "derived":
-            raise Problem(
-                "UNIT_CONVERSION_UNKNOWN",
-                f"Product {product_id} is needed in {', '.join(sorted(units))}: "
-                f"{result['reason']} Order it in one unit.",
-                422,
-            )
+            entry = {
+                "product_id": product_id,
+                "amount": None,
+                "unit": None,
+                "reason": result["reason"],
+            }
+            raise unit_conversion_problem(product_id, entry, needed=items)
         combined[product_id] = (Decimal(result["amount"]), result["unit"])
     return combined
 
@@ -427,10 +423,18 @@ def validate_basket(c, identity, request):
             422,
         )
     products = load_products(c, [i["product_id"] for i in plan["ingredients"]])
-    contributions, offered = {}, {}
+    contributions, offered, rows = {}, {}, []
     for item in plan["ingredients"]:
         if fingerprint(products.get(item["product_id"])) != item["product_fingerprint"]:
             raise Problem("RECIPE_PRODUCT_CHANGED", "Catalog facts changed; rematch ingredients.")
+        rows.append(
+            {
+                "product_id": item["product_id"],
+                "amount": item["purchase_amount"],
+                "unit": item["purchase_unit"],
+                "name": item.get("name"),
+            }
+        )
         contributions.setdefault(item["product_id"], []).append(
             (Decimal(item["purchase_amount"]), item["purchase_unit"])
         )
@@ -439,11 +443,7 @@ def validate_basket(c, identity, request):
     required = combine_by_product(contributions, products)
     actual = combine_by_product(offered, products)
     if required != actual:
-        raise Problem(
-            "MEAL_BASKET_MISMATCH",
-            "Basket must cover exactly the saved recipe ingredient quantities.",
-            422,
-        )
+        raise mismatch_problem(required_basket(rows, products), request.lines, products)
     purchase_count_evidence(c, identity, request, products)
     return previous
 

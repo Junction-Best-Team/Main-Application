@@ -212,7 +212,7 @@ def test_batch_match_request_takes_several_ingredient_product_pairs():
 
 def test_batch_match_request_rejects_empty_oversized_malformed_and_extra_fields():
     pair = {"ingredient_id": "egg", "product_id": "p"}
-    assert MAX_BATCH_MATCHES == 1000
+    assert MAX_BATCH_MATCHES == 100
     with pytest.raises(ValidationError):
         MatchIngredients(plan_id=PLAN, revision=1, matches=[])
     MatchIngredients(plan_id=PLAN, revision=1, matches=[pair] * MAX_BATCH_MATCHES)

@@ -22,6 +22,8 @@ export function ChatPage() {
     conversation,
     text,
     setText,
+    attachments,
+    setAttachments,
     error,
     loading,
     reconnecting,
@@ -69,7 +71,7 @@ export function ChatPage() {
                 className="flex items-center gap-space-xs text-wholesale-teal"
               >
                 <Icon name="tune" className="text-[16px]" />
-                Assistant preferences
+                Memory
               </Link>
             </div>
           </div>
@@ -167,9 +169,12 @@ export function ChatPage() {
           </div>
 
           <ChatComposer
+            key={conversationId ?? "new"}
             conversationId={conversationId}
             text={text}
             onTextChange={setText}
+            attachments={attachments}
+            onAttachmentsChange={setAttachments}
             error={error}
             busy={busy}
             onSubmit={send}

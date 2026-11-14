@@ -10,6 +10,7 @@ from uuid import UUID
 from pydantic import ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 
 from aimo import memory
+from aimo.basket_errors import mismatch_problem, required_basket
 from aimo.chat_schemas import AgentTurn, MealPlan
 from aimo.db import Problem, fingerprint
 from aimo.image_schemas import RecipeImage, RecipeImageRequest
@@ -184,6 +185,13 @@ class MealPlanResult(Model):
     purchase_authorized: Literal[False]
 
 
+class RecipeImageResult(Model):
+    """The hosted illustration: its address and size, never dietary, product or purchase evidence."""
+
+    image: RecipeImage
+    illustration_only: Literal[True]
+
+
 class SubstitutionResult(Model):
     """Supplier-rule substitutes: candidates only, never a suitability claim."""
 
@@ -278,6 +286,7 @@ class ToolSession:
                 "One image per message; never dietary, product or purchase evidence. "
                 "On failure continue with text and do not call again in the same message.",
                 self.generate_recipe_image,
+                RecipeImageResult,
             ),
             "search_products": ToolSpec(
                 SearchProducts,
@@ -310,7 +319,9 @@ class ToolSession:
             "prepare_order": ToolSpec(
                 PrepareOrderInput,
                 "Prepare the complete published plan through purchasing validation. "
-                "Server assigns the retry key. Does not authorize or commit a purchase.",
+                "Server assigns the retry key. Does not authorize or commit a purchase. "
+                "List every requirement the catalog cannot verify (for example gluten-free) in "
+                "requirements.unsupported; each one makes the basket needs_resolution.",
                 self.prepare,
                 ProposalResponse,
             ),
@@ -639,7 +650,7 @@ class ToolSession:
                 "Match every ingredient before preparing a meal basket.",
                 422,
             )
-        contributions, offered = {}, {}
+        contributions, offered, rows = {}, {}, []
         for item in self.plan.ingredients:
             if self.plan.recipe_plan_id and item.status != "matched":
                 raise Problem(
@@ -648,16 +659,23 @@ class ToolSession:
             unit = item.purchase_unit if self.plan.recipe_plan_id else item.unit
             amount = item.purchase_amount if self.plan.recipe_plan_id else item.amount
             contributions.setdefault(item.product_id, []).append((Decimal(amount), unit))
+            rows.append(
+                {"product_id": item.product_id, "amount": amount, "unit": unit, "name": item.name}
+            )
         for line in request.lines:
             offered.setdefault(line.product_id, []).append((line.amount, line.unit))
         required = combine_by_product(contributions, self.products)
-        actual = combine_by_product(offered, self.products)
+        try:
+            actual = combine_by_product(offered, self.products)
+        except Problem as exc:  # the request's own units cannot be combined: say what to send
+            if exc.code != "UNIT_CONVERSION_UNKNOWN":
+                raise
+            raise mismatch_problem(
+                required_basket(rows, self.products), request.lines, self.products
+            ) from None
         if required != actual:
-            raise Problem(
-                "MEAL_BASKET_MISMATCH",
-                "Include exactly the published ingredient totals and units. "
-                "Combine duplicate SKUs; purchasing tools perform pack rounding.",
-                422,
+            raise mismatch_problem(
+                required_basket(rows, self.products), request.lines, self.products
             )
         merged = []
         for product_id, (amount, unit) in actual.items():
@@ -745,8 +763,14 @@ class ToolSession:
                     reason["message"] for reason in self.proposal["reasons"]
                 )
             else:
+                warnings = [
+                    reason["message"]
+                    for reason in self.proposal["reasons"]
+                    if reason.get("severity") == "warning"
+                ]
                 notice = (
-                    "Review the verified basket and exact revision, then use the Confirm "
+                    " ".join(dict.fromkeys(warnings)) + (" " if warnings else "")
+                    + "Review the verified basket and exact revision, then use the Confirm "
                     "purchase button. No supplier order has been placed."
                 )
         elif self.receipt:

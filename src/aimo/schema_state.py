@@ -26,6 +26,7 @@ log = logging.getLogger(__name__)
 # or function (full signature).
 # A new migration must add its entry (tests/test_readiness_migrations.py fails until it does).
 MANIFEST: dict[str, list[tuple[str, ...]]] = {
+    "020_chat_attachments.sql": [("column", "conversation_messages", "attachments")],
     "008_orders_immutable.sql": [("trigger", "orders", "immutable_orders")],
     "009_product_withdrawn_since.sql": [("column", "products", "withdrawn_since")],
     "010_meal_authorization_withdrawals.sql": [("table", "meal_authorization_withdrawals")],
@@ -63,6 +64,7 @@ MANIFEST: dict[str, list[tuple[str, ...]]] = {
         ("trigger", "recipe_versions", "immutable_recipe_versions"),
         ("trigger", "orders", "immutable_truncate"),
     ],
+    "021_turn_constraints.sql": [("column", "conversation_turns", "constraints")],
 }
 
 _RELATION = "SELECT to_regclass(%s) IS NOT NULL"

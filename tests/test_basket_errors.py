@@ -272,3 +272,28 @@ def test_unit_conversion_problem():
     assert MILK in error.message and required[0]["reason"] in error.message
     # a single entry works as well as the whole list
     assert unit_conversion_problem(MILK, required[0]).details["reason"] == required[0]["reason"]
+
+
+def test_http_error_body_carries_details_and_a_plain_problem_does_not(service):
+    """The browser gets `error.details` for a BasketProblem; other errors keep code and message."""
+    from fastapi.testclient import TestClient
+
+    from aimo.api import create_app
+
+    required = required_basket([row(MILK, "2", "KG", "a")], milk())
+    app = create_app(service)
+
+    @app.get("/boom-basket")
+    def boom_basket():
+        raise unit_conversion_problem(MILK, required[0])
+
+    @app.get("/boom-plain")
+    def boom_plain():
+        raise Problem("PLAIN", "Nothing structured.", 409)
+
+    with TestClient(app) as client:
+        body = client.get("/boom-basket").json()["error"]
+        assert body["code"] == "UNIT_CONVERSION_UNKNOWN" and body["details"]["product_id"] == MILK
+        assert client.get("/boom-plain").json() == {
+            "error": {"code": "PLAIN", "message": "Nothing structured."}
+        }

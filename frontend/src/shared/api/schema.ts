@@ -313,6 +313,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/conversations/{conversation_id}/attachments/{message_id}/{index}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Conversation Attachment */
+        get: operations["conversation_attachment_api_conversations__conversation_id__attachments__message_id___index__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/conversations/{conversation_id}/messages": {
         parameters: {
             query?: never;
@@ -383,6 +400,26 @@ export interface components {
             /** Exceptions */
             exceptions: ("substitution" | "overbuy")[];
         };
+        /** AttachmentInfo */
+        AttachmentInfo: {
+            /** Name */
+            name: string;
+            /** Media Type */
+            media_type: string;
+            /** Size */
+            size: number;
+            /** Url */
+            url: string;
+        };
+        /** AttachmentInput */
+        AttachmentInput: {
+            /** Name */
+            name: string;
+            /** Media Type */
+            media_type: string;
+            /** Data */
+            data: string;
+        };
         /** ChatMessage */
         ChatMessage: {
             /** Id */
@@ -403,6 +440,8 @@ export interface components {
             /** Proposal Id */
             proposal_id?: string | null;
             image?: components["schemas"]["RecipeImage"] | null;
+            /** Attachments */
+            attachments?: components["schemas"]["AttachmentInfo"][];
         };
         /** CommitRequest */
         CommitRequest: {
@@ -474,7 +513,7 @@ export interface components {
              * @default false
              */
             busy: boolean;
-            retry_message?: components["schemas"]["MessageRequest"] | null;
+            retry_message?: components["schemas"]["RetryMessage"] | null;
         };
         /** ConversationSummary */
         ConversationSummary: {
@@ -527,10 +566,38 @@ export interface components {
             /** Approved Product Ids */
             approved_product_ids: string[];
         };
-        /** HTTPValidationError */
-        HTTPValidationError: {
-            /** Detail */
-            detail?: components["schemas"]["ValidationError"][];
+        /**
+         * ErrorBody
+         * @description `details` is the list of ErrorDetail for VALIDATION_ERROR; some application errors send an object.
+         */
+        ErrorBody: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Details */
+            details?: components["schemas"]["ErrorDetail"][] | {
+                [key: string]: components["schemas"]["JsonValue"];
+            } | null;
+        };
+        /**
+         * ErrorDetail
+         * @description One validation failure. The submitted value is never included.
+         */
+        ErrorDetail: {
+            /** Type */
+            type: string;
+            /** Loc */
+            loc: (string | number)[];
+            /** Msg */
+            msg: string;
+        };
+        /**
+         * ErrorResponse
+         * @description The one body of every HTTP error response (TCT-008).
+         */
+        ErrorResponse: {
+            error: components["schemas"]["ErrorBody"];
         };
         /** InboxResponse */
         InboxResponse: {
@@ -743,12 +810,40 @@ export interface components {
             /** Idempotency Key */
             idempotency_key: string;
         };
+        /**
+         * MessageConstraints
+         * @description Hard limits the customer sets on a message (POL-008); false withdraws an earlier toggle.
+         */
+        MessageConstraints: {
+            /**
+             * Budget Gross
+             * @description Hard budget in euros, gross; the basket may not exceed it.
+             */
+            budget_gross?: number | string | null;
+            /**
+             * Lactose Free
+             * @description Require lactose-free products.
+             */
+            lactose_free?: boolean | null;
+            /**
+             * Milk Free
+             * @description Require milk-free products.
+             */
+            milk_free?: boolean | null;
+        };
         /** MessageRequest */
         MessageRequest: {
-            /** Text */
+            /**
+             * Text
+             * @default
+             */
             text: string;
             /** Idempotency Key */
             idempotency_key: string;
+            /** @description Optional hard limits set by the customer (budget, dietary toggles). They stay in force for the rest of the conversation until a later message changes them. */
+            constraints?: components["schemas"]["MessageConstraints"] | null;
+            /** Attachments */
+            attachments?: components["schemas"]["AttachmentInput"][];
         };
         /** NextAction */
         NextAction: {
@@ -1002,6 +1097,11 @@ export interface components {
             observed_at: string;
             /** Reasons */
             reasons: components["schemas"]["Reason"][];
+            /**
+             * Totals Are Estimates
+             * @description True when any line is priced by variable weight, so the totals are estimates. Absent otherwise.
+             */
+            totals_are_estimates?: boolean | null;
         };
         /** QuantityCalculation */
         QuantityCalculation: {
@@ -1078,6 +1178,31 @@ export interface components {
              * @description Customer requirements the catalog cannot verify (for example gluten-free). Each entry blocks readiness: the basket needs the customer's decision (POL-009).
              */
             unsupported?: string[];
+        };
+        /**
+         * RetryConstraints
+         * @description The limits of an unfinished message, in the shape the client sends them back.
+         */
+        RetryConstraints: {
+            /** Budget Gross */
+            budget_gross?: string | null;
+            /** Lactose Free */
+            lactose_free?: boolean | null;
+            /** Milk Free */
+            milk_free?: boolean | null;
+        };
+        /**
+         * RetryMessage
+         * @description An unfinished message, including the same limits and files for an exact retry.
+         */
+        RetryMessage: {
+            /** Text */
+            text: string;
+            /** Idempotency Key */
+            idempotency_key: string;
+            constraints?: components["schemas"]["RetryConstraints"] | null;
+            /** Attachments */
+            attachments?: components["schemas"]["AttachmentInput"][];
         };
         /** RevisedProposalResponse */
         RevisedProposalResponse: {
@@ -1190,19 +1315,11 @@ export interface components {
             contributions?: {
                 [key: string]: unknown;
             }[] | null;
-        };
-        /** ValidationError */
-        ValidationError: {
-            /** Location */
-            loc: (string | number)[];
-            /** Message */
-            msg: string;
-            /** Error Type */
-            type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: Record<string, never>;
+            /**
+             * Price Is Estimate
+             * @description True for a variable-weight product: the final weight and price settle at delivery (BAS-007). Absent otherwise.
+             */
+            price_is_estimate?: boolean | null;
         };
         /** VoiceSession */
         VoiceSession: {
@@ -1247,6 +1364,24 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     ready_health_ready_get: {
@@ -1265,6 +1400,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1291,13 +1444,31 @@ export interface operations {
                     "application/json": components["schemas"]["SessionResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Validation error. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1320,6 +1491,24 @@ export interface operations {
                     "application/json": components["schemas"]["SessionResponse"];
                 };
             };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     logout_api_logout_post: {
@@ -1337,6 +1526,24 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
         };
     };
@@ -1361,13 +1568,31 @@ export interface operations {
                     "application/json": components["schemas"]["InboxResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Validation error. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1388,6 +1613,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PolicySettings"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1414,13 +1657,31 @@ export interface operations {
                     "application/json": components["schemas"]["PolicySettings"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Validation error. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1445,13 +1706,31 @@ export interface operations {
                     "application/json": components["schemas"]["ProposalResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Validation error. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1479,13 +1758,31 @@ export interface operations {
                     "application/json": components["schemas"]["ProposalResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Validation error. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1514,13 +1811,31 @@ export interface operations {
                     "application/json": components["schemas"]["ProposalResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Validation error. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1546,13 +1861,31 @@ export interface operations {
                     "application/json": components["schemas"]["InboxResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Validation error. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1581,13 +1914,31 @@ export interface operations {
                     "application/json": components["schemas"]["CommitResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Validation error. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1612,13 +1963,31 @@ export interface operations {
                     "application/json": components["schemas"]["OrderResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Validation error. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1647,13 +2016,31 @@ export interface operations {
                     "application/json": components["schemas"]["MemoryList"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Validation error. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1680,13 +2067,31 @@ export interface operations {
                     "application/json": components["schemas"]["MemoryMutationResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Validation error. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1715,13 +2120,31 @@ export interface operations {
                     "application/json": components["schemas"]["MemoryMutationResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Validation error. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1750,13 +2173,31 @@ export interface operations {
                     "application/json": components["schemas"]["MemoryMutationResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Validation error. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1782,13 +2223,31 @@ export interface operations {
                     "application/json": components["schemas"]["ConversationList"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Validation error. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1815,13 +2274,31 @@ export interface operations {
                     "application/json": components["schemas"]["ConversationResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Validation error. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1846,13 +2323,82 @@ export interface operations {
                     "application/json": components["schemas"]["ConversationResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Validation error. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    conversation_attachment_api_conversations__conversation_id__attachments__message_id___index__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                message_id: number;
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation error. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1881,13 +2427,31 @@ export interface operations {
                     "application/json": components["schemas"]["ConversationResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Validation error. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1912,13 +2476,31 @@ export interface operations {
                     "application/json": components["schemas"]["VoiceSession"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Validation error. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -1943,13 +2525,31 @@ export interface operations {
                     "text/event-stream": string;
                 };
             };
-            /** @description Validation Error */
+            /** @description Validation error. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

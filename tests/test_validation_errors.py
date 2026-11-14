@@ -1,8 +1,9 @@
 """A 422 validation error must not echo what the client submitted (a password, a message).
 
 FastAPI's default handler returns every error with its `input` (and sometimes `ctx`), which for a
-missing field is the whole request body. The handler keeps the response shape ({"detail": [...]}
-with type, loc, msg) and removes those values everywhere. Local app only.
+missing field is the whole request body. The handler answers in the common error envelope
+({"error": {"code": "VALIDATION_ERROR", "message", "details": [type, loc, msg]}}, TCT-008) and
+never sends those values. The envelope itself is covered in test_error_envelope.py. Local app only.
 """
 
 import os
@@ -21,7 +22,10 @@ def post(client, path, body, headers=None):
 
 def shape(response):
     assert response.status_code == 422
-    detail = response.json()["detail"]
+    assert set(response.json()) == {"error"}
+    error = response.json()["error"]
+    assert error["code"] == "VALIDATION_ERROR" and error["message"]
+    detail = error["details"]
     assert isinstance(detail, list) and detail
     for error in detail:
         assert {"type", "loc", "msg"} <= set(error)
@@ -74,19 +78,11 @@ def test_every_validation_error_is_stripped_not_just_login(service):
         shape(short_key)
 
 
-def test_application_errors_and_the_openapi_422_schema_are_unchanged(service):
-    import json
-    from pathlib import Path
-
-    app = create_app(service)
-    with TestClient(app) as client:
+def test_application_errors_keep_their_envelope(service):
+    with TestClient(create_app(service)) as client:
         wrong = post(client, "/api/login", {"username": "buyer", "password": "wrong-password"})
         assert wrong.status_code == 401
         assert set(wrong.json()) == {"error"} and set(wrong.json()["error"]) == {"code", "message"}
-    stored = json.loads(Path("frontend/openapi.json").read_text())["components"]["schemas"]
-    live = app.openapi()["components"]["schemas"]
-    for name in ("HTTPValidationError", "ValidationError"):
-        assert live[name] == stored[name]
 
 
 def test_logout_clears_the_cookie_with_the_same_attributes_as_login(service):

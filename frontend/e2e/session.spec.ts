@@ -70,6 +70,37 @@ test("bad credentials show a clear error and keep the buyer on sign-in", async (
   ).toBeVisible();
 });
 
+test("a validation error envelope shows plain text, not field names", async ({
+  page,
+}) => {
+  await mockSession(page);
+  await page.route("**/api/login", async (route) => {
+    await route.fulfill({
+      status: 422,
+      json: {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "password is required.",
+          details: [
+            {
+              type: "missing",
+              loc: ["body", "password"],
+              msg: "Field required",
+            },
+          ],
+        },
+      },
+    });
+  });
+  await page.goto("/");
+  await page.getByLabel("Username").fill("buyer");
+  await page.getByLabel("Password", { exact: true }).fill("x");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Check the submitted values.",
+  );
+});
+
 test("sign-in succeeds and yields a usable session", async ({ page }) => {
   await mockSession(page);
   const loginBodies: Array<Record<string, unknown>> = [];

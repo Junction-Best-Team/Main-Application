@@ -39,8 +39,9 @@ four boundaries; deterministic controls below remain authoritative. See
 The agent clarifies missing delivery/budget/dietary facts and reuses known
 constraints. It proposes a recipe basis, total quantities and scaling assumptions
 in plan notes for customer review. Carbonara includes pasta, eggs, cured pork,
-hard cheese and pepper. Quantities remain recipe estimates; this does not add a
-recipe database or deterministic recipe-scaling service.
+hard cheese and pepper. Quantities are recipe estimates for customer review. For
+saved recipes the server scales them (`scale_recipe`, exact fractions, rounded up to
+four decimals), so the model does no arithmetic; see [recipes](recipes.md).
 
 Canonical Pydantic models validate tool inputs and outputs. Search is not product
 verification: every selected ID must be loaded through `get_product`. Every
@@ -49,6 +50,29 @@ ingredient totals/units, aggregating contributions for duplicate SKUs. Service
 handles evidence-backed conversion, pack rounding, supplier evidence, scope and
 policy. Unknown conversions, shortages and unsupported dietary facts need
 resolution; confirmation cannot repair missing facts.
+
+Limits and error details (what the model and the browser see):
+
+- The ingredient and basket-line limits are `MAX_BASKET_LINES` (`schemas.py`) and the
+  recipe/meal-plan limits in `recipe_schemas.py` and `recipes.py`; the owner's decision
+  (Q-67) is 100 everywhere, applied by the cap change tracked separately. A plan or recipe
+  over the limit is refused with a code that names the limit and the count.
+- `match_ingredients` matches several ingredients in one call: one plan revision,
+  all-or-nothing; one product not read with `get_product` refuses the whole batch. A
+  refused product is kept on its ingredient as `rejected`.
+- A basket that does not equal the plan returns `MEAL_BASKET_MISMATCH`; the same product
+  in two units is combined into the priority unit (kg, then L) when catalog evidence
+  allows, otherwise `UNIT_CONVERSION_UNKNOWN`. Both errors carry `error.details` with the
+  required lines (`required`, `missing`, `unexpected`, `wrong_amount_or_unit`), so the
+  model is told exactly what to send.
+- Every HTTP error is `{"error": {"code", "message", "details"?}}`, including validation
+  errors (code `VALIDATION_ERROR`, `details` = `type`/`loc`/`msg`, never the submitted
+  input), unknown routes and wrong methods; it is declared in the OpenAPI document.
+- A free-form basket line lists the plan ingredients it combines (`contributions`); a
+  saved-recipe line takes them from the saved plan. A line short of stock carries
+  `quantity.shortfall`, the missing sales units.
+- A hosted deployment (`SECURE_COOKIES=true`) with `UPSTREAM_MODE` `live` or `auto` and no
+  `VALIO_AIMO_API_KEY` does not start (API startup and the worker readiness check).
 
 There is no model approval, confirmation, policy editing or commit operation.
 Typing “approved” cannot buy. Preparation keys use `chat-` plus the persisted turn
@@ -138,8 +162,34 @@ request JSON under `constraints` (key omitted when empty; no new table), so the 
 and refresh and commit re-evaluate with the stored record; callers never see the key. Entries with
 source `stated_assumption` and `confirmed` false are ignored; trusted values set the stricter limit.
 A looser request value or a dropped flag adds `CONSTRAINT_LOOSENED` (unresolved, so `needs_resolution`),
-and a looser budget is enforced at the customer's number (`HARD_BUDGET_EXCEEDED`, denied). Nothing fills
-the record yet: extraction from the conversation (#75) is person 1's work, so production passes `None`.
+and a looser budget is enforced at the customer's number (`HARD_BUDGET_EXCEEDED`, denied). The model fills
+nothing in the record: the customer does (owner Q-97), see below.
+
+**Producer (owner Q-97).** `POST /api/conversations/{id}/messages` takes an optional `constraints`
+object, `{budget_gross, lactose_free, milk_free}`; only the signed-in customer can send it. The
+server stores it as records `{name, value, source: "user_request", confirmed: true}` in the turn's
+`constraints` column (migration 021, additive, never in a field the UI shows as content), covers it
+in the turn's idempotency hash (the same key with another record is `IDEMPOTENCY_CONFLICT`), and the
+worker hands the limits in force to `run_turn(constraints=)`, which reaches `prepare_order`
+through `ToolSession`. The limits in force are the latest value per name over the conversation's
+turns up to this one; a toggle sent as `false` withdraws that requirement. Without any limit the
+runner is called exactly as before. The reply's `retry_message` carries the fields back so the
+client can retry the unfinished message with the same key. The UI must add the fields later.
+Scheduled runs (`scheduled_request`) are the scheduler's change: see
+`evidence/ws-c/scheduler-constraints-patch.md`.
+
+**Limits (MEA-013, owner Q-67: "raise the limit to 100, not 1000, and apply this everywhere").** A
+meal plan, a saved recipe, a purchase request and a `match_ingredients` batch hold at most 100
+ingredients or lines (`MAX_BASKET_LINES`); `scale_recipe` refuses a larger recipe
+(`RECIPE_TOO_LARGE`). The supplier lookup keeps the supplier's own limit of 1000 product ids per
+request (`MAX_LOOKUP_IDS`, `MAX_MATERIALS`); larger lookups are split into batches (SUP-007). The
+guardrail limits were raised with the cap (`MAX_STATE_BYTES` 28,000 to 120,000, `MAX_NARRATIVE_CHARS`
+12,000 to 30,000). Measured offline with realistic Finnish product names: the output-review state
+is 27,944 bytes at 30 lines and 86,772 bytes at 100 lines (683 bytes per proposal line), the
+displayed plan 16,917 characters, and the check that gates preparation only 16,535 bytes (below
+TypeSafe's long-context threshold of about 32,000 bytes). The classifier's latency above that
+threshold is not measured (no key here); a timeout fails closed (reply replaced, plan withheld,
+proposal and link kept).
 
 The current UI renders ingredient names/amounts and plan notes; it does not show
 a per-row unresolved status. The agent now supplies an explicit unresolved list

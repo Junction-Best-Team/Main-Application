@@ -129,6 +129,171 @@ async function mockSession(page: Page, signedIn = true) {
   );
 }
 
+for (const width of [1440, 320]) {
+  test(`chat renders Markdown without page overflow at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await mockSession(page);
+    const markdown = [
+      "## Kitchen plan",
+      "",
+      "Use **tomatoes**, *basil* and ~~cream~~ with `pasta`.",
+      "Keep this second line.",
+      "",
+      "- Ingredients",
+      "  - Tomatoes",
+      "  - Basil",
+      "",
+      "1. Boil water",
+      "2. Cook pasta",
+      "",
+      "> Check the quantities before purchasing.",
+      "",
+      "[Recipe guide](https://example.com/recipe)",
+      "",
+      "```text",
+      `SKU: ${"1234567890".repeat(30)}`,
+      "```",
+      "",
+      "| Ingredient | Quantity | Unit | Preparation | Storage | Notes |",
+      "| --- | --- | --- | --- | --- | --- |",
+      "| Tomatoes | 20 | KG | Chopped | Chilled | Review quantity |",
+      "",
+      "- [x] Plan drafted",
+      "- [ ] Buyer review",
+    ].join("\n");
+    await page.route(`**/api/conversations/${conversationId}`, (route) =>
+      route.fulfill({
+        json: {
+          ...blankConversation,
+          messages: [
+            {
+              id: 1,
+              role: "user",
+              text: "Use **tomatoes**.\nNo cream.",
+              created_at: timestamp,
+            },
+            { id: 2, role: "assistant", text: markdown, created_at: timestamp },
+          ],
+        },
+      }),
+    );
+    await page.goto(`/conversations/${conversationId}`);
+    const messages = page.getByRole("log", { name: "Conversation messages" });
+    const customer = messages.locator("article").nth(0);
+    const assistant = messages.locator("article").nth(1);
+    await expect(customer.locator("strong")).toHaveText("tomatoes");
+    await expect(customer.locator("p")).toHaveCSS("white-space", "pre-wrap");
+    await expect(
+      assistant.getByRole("heading", { name: "Kitchen plan" }),
+    ).toBeVisible();
+    await expect(assistant.locator("strong")).toHaveText("tomatoes");
+    await expect(assistant.locator("em")).toHaveText("basil");
+    await expect(assistant.locator("del")).toHaveText("cream");
+    await expect(assistant.locator("li li")).toHaveText(["Tomatoes", "Basil"]);
+    await expect(assistant.locator("ol > li")).toHaveText([
+      "Boil water",
+      "Cook pasta",
+    ]);
+    await expect(assistant.locator("blockquote")).toContainText(
+      "Check the quantities",
+    );
+    await expect(assistant.locator("pre code")).toContainText("SKU:");
+    await expect(assistant.getByRole("columnheader")).toHaveCount(6);
+    await expect(
+      assistant.getByRole("cell", { name: "Tomatoes", exact: true }),
+    ).toBeVisible();
+    await expect(assistant.getByRole("checkbox").first()).toBeChecked();
+    await expect(assistant.getByRole("checkbox").last()).toBeDisabled();
+    const link = assistant.getByRole("link", { name: "Recipe guide" });
+    await expect(link).toHaveAttribute("href", "https://example.com/recipe");
+    await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    await expect(link).toHaveAttribute("target", "_blank");
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    expect(
+      await assistant
+        .locator("pre")
+        .evaluate((node) => node.scrollWidth > node.clientWidth),
+    ).toBe(true);
+    await page.reload();
+    await expect(
+      assistant.getByRole("heading", { name: "Kitchen plan" }),
+    ).toBeVisible();
+    await assistant
+      .getByRole("heading", { name: "Kitchen plan" })
+      .scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: testInfo.outputPath("chat-markdown.png"),
+      fullPage: true,
+    });
+  });
+}
+
+for (const role of ["user", "assistant"] as const) {
+  test(`Markdown in ${role} messages keeps HTML and unsafe URLs inert`, async ({
+    page,
+  }) => {
+    await mockSession(page);
+    const imageRequests: string[] = [];
+    await page.route("https://example.com/tracking.png", (route) => {
+      imageRequests.push(route.request().url());
+      return route.abort();
+    });
+    await page.route(`**/api/conversations/${conversationId}`, (route) =>
+      route.fulfill({
+        json: {
+          ...blankConversation,
+          messages: [
+            {
+              id: 1,
+              role,
+              created_at: timestamp,
+              text: [
+                '<img src="https://example.com/tracking.png" onerror="window.__markdownXss=1">',
+                "",
+                "<script>window.__markdownXss=1</script>",
+                "",
+                "[Unsafe script](javascript:alert%281%29)",
+                "",
+                "[Unsafe data](data:text/html,test)",
+                "",
+                "![Image description](https://example.com/tracking.png)",
+                "",
+                "```html",
+                '<button onclick="window.__markdownXss=1">Confirm purchase</button>',
+                "```",
+              ].join("\n"),
+            },
+          ],
+        },
+      }),
+    );
+    await page.goto(`/conversations/${conversationId}`);
+    const messages = page.getByRole("log", { name: "Conversation messages" });
+    await expect(
+      messages.getByText("Unsafe script", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      messages.getByText("Unsafe data", { exact: true }),
+    ).toBeVisible();
+    await expect(messages.getByRole("link")).toHaveCount(0);
+    await expect(messages.locator("img, script, button")).toHaveCount(0);
+    await expect(
+      messages.getByText("Image description", { exact: true }),
+    ).toBeVisible();
+    await expect(messages.locator("pre code")).toContainText(
+      "<button onclick=",
+    );
+    expect(await page.evaluate(() => "__markdownXss" in window)).toBe(false);
+    expect(imageRequests).toEqual([]);
+  });
+}
+
 for (const width of [1440, 1024, 390, 320]) {
   test(`recipe illustration persists beside text at ${width}px`, async ({
     page,
@@ -437,7 +602,10 @@ test("a lost message response reuses its idempotency key after refresh", async (
         await route.fulfill({
           status: 503,
           json: {
-            error: { message: "Provider timed out. Retry this request." },
+            error: {
+              code: "PROVIDER_TIMEOUT",
+              message: "Provider timed out. Retry this request.",
+            },
           },
         });
       else
@@ -612,6 +780,7 @@ test("history retains completed purchases and reports an actionable refresh erro
             status: 503,
             json: {
               error: {
+                code: "HISTORY_UNAVAILABLE",
                 message:
                   "History is temporarily unavailable. Refresh to retry.",
               },
@@ -898,7 +1067,7 @@ for (const width of [1440, 390]) {
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Attach file" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
     await expect(
       page.getByRole("complementary", { name: "Overview" }),
     ).toContainText("Nothing staged");
@@ -1117,4 +1286,223 @@ test("Overview rejection retains the server decision without placing an order", 
     panel.getByRole("button", { name: "Approve & Push to Dispatch" }),
   ).toHaveCount(0);
   expect(confirmations).toBe(0);
+});
+
+const attachmentPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7VYAAAAASUVORK5CYII=",
+  "base64",
+);
+for (const width of [1440, 320]) {
+  test(`attachments preview, remove and send a file-only request at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await mockSession(page);
+    let current = { ...blankConversation };
+    let posted: components["schemas"]["MessageRequest"] | undefined;
+    await page.route(`**/api/conversations/${conversationId}`, (route) =>
+      route.fulfill({ json: current }),
+    );
+    await page.route(
+      `**/api/conversations/${conversationId}/messages`,
+      async (route) => {
+        posted = route.request().postDataJSON();
+        current = {
+          ...blankConversation,
+          messages: [
+            {
+              id: 1,
+              role: "user",
+              text: posted?.text ?? "",
+              created_at: timestamp,
+              attachments: [
+                {
+                  name: "menu.csv",
+                  media_type: "text/csv",
+                  size: 20,
+                  url: `/api/conversations/${conversationId}/attachments/1/0`,
+                },
+              ],
+            },
+          ],
+        };
+        await route.fulfill({ json: current });
+      },
+    );
+    await page.goto(`/conversations/${conversationId}`);
+    const picker = page.getByLabel("Choose attachments");
+    await picker.setInputFiles([
+      { name: "photo.png", mimeType: "image/png", buffer: attachmentPng },
+      {
+        name: "menu.csv",
+        mimeType: "text/csv",
+        buffer: Buffer.from("Ingredient,KG\nTomato,5"),
+      },
+    ]);
+    const files = page.getByRole("list", {
+      name: "Attached files",
+      exact: true,
+    });
+    await expect(files.getByText("photo.png")).toBeVisible();
+    await expect(
+      files.getByRole("img", { name: "Preview of photo.png" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Start voice mode" }),
+    ).toBeDisabled();
+    await page.screenshot({
+      path: testInfo.outputPath(`attachment-preview-${width}.png`),
+    });
+    await page.getByRole("button", { name: "Remove photo.png" }).click();
+    await expect(files.getByText("photo.png")).toHaveCount(0);
+    await page.getByRole("button", { name: "Send Order Request" }).click();
+    await expect.poll(() => posted?.attachments?.length).toBe(1);
+    expect(posted?.text).toBe("");
+    expect(posted?.attachments?.[0].data).toBe(
+      Buffer.from("Ingredient,KG\nTomato,5").toString("base64"),
+    );
+    await expect(
+      page
+        .getByRole("list", { name: "Message attachments", exact: true })
+        .getByRole("link", { name: "menu.csv" }),
+    ).toBeVisible();
+    await expect(files).toHaveCount(0);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await page.reload();
+    await expect(
+      page.getByRole("link", { name: "menu.csv", exact: true }),
+    ).toBeVisible();
+  });
+}
+
+test("drop and clipboard files produce removable composer previews", async ({
+  page,
+}) => {
+  await mockSession(page);
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: blankConversation }),
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  await page.getByRole("form", { name: "Chat message" }).evaluate((form) => {
+    const data = new DataTransfer();
+    data.items.add(
+      new File(["Tomato soup"], "dropped.txt", { type: "text/plain" }),
+    );
+    form.dispatchEvent(
+      new DragEvent("drop", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: data,
+      }),
+    );
+  });
+  await expect(page.getByText("dropped.txt", { exact: true })).toBeVisible();
+  await page.getByLabel("Continue the conversation").evaluate((input) => {
+    const data = new DataTransfer();
+    data.items.add(
+      new File(["Ingredient,KG\nTomato,5"], "pasted.csv", { type: "text/csv" }),
+    );
+    input.dispatchEvent(
+      new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: data,
+      }),
+    );
+  });
+  await expect(page.getByText("pasted.csv", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Remove dropped.txt" }).click();
+  await expect(page.getByText("dropped.txt", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("pasted.csv", { exact: true })).toBeVisible();
+});
+
+test("unsupported, empty, oversized and excessive files are rejected without losing the draft", async ({
+  page,
+}) => {
+  await mockSession(page);
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: blankConversation }),
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  await page.getByLabel("Continue the conversation").fill("Soup menu");
+  const picker = page.getByLabel("Choose attachments");
+  await picker.setInputFiles({
+    name: "script.exe",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from("abc"),
+  });
+  await expect(page.getByRole("alert")).toContainText("Use PDF");
+  await picker.setInputFiles({
+    name: "large.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.alloc(2 * 1024 * 1024 + 1),
+  });
+  await expect(page.getByRole("alert")).toContainText("at most 2 MB");
+  await picker.setInputFiles({
+    name: "empty.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.alloc(0),
+  });
+  await expect(page.getByRole("alert")).toContainText("nonempty");
+  await picker.setInputFiles(
+    ["a", "b", "c", "d"].map((name) => ({
+      name: `${name}.txt`,
+      mimeType: "text/plain",
+      buffer: Buffer.from(name),
+    })),
+  );
+  await expect(page.getByRole("alert")).toContainText("up to 3 files");
+  await picker.setInputFiles(
+    ["a", "b", "c"].map((name) => ({
+      name: `${name}.txt`,
+      mimeType: "text/plain",
+      buffer: Buffer.alloc(1500000, "x"),
+    })),
+  );
+  await expect(page.getByRole("alert")).toContainText("at most 4 MB");
+  await expect(page.getByLabel("Continue the conversation")).toHaveValue(
+    "Soup menu",
+  );
+  await expect(
+    page.getByRole("list", { name: "Attached files", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("failed worker retry restores attachments after refresh and retains the exact key", async ({
+  page,
+}) => {
+  await mockSession(page);
+  const retry = {
+    text: "Read this menu",
+    idempotency_key: "saved-file-turn-key",
+    constraints: { budget_gross: "150", lactose_free: true, milk_free: null },
+    attachments: [
+      {
+        name: "menu.txt",
+        media_type: "text/plain",
+        data: Buffer.from("Tomato soup").toString("base64"),
+      },
+    ],
+  };
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: { ...blankConversation, retry_message: retry } }),
+  );
+  let posted: unknown;
+  await page.route(
+    `**/api/conversations/${conversationId}/messages`,
+    async (route) => {
+      posted = route.request().postDataJSON();
+      await route.fulfill({ json: { ...blankConversation, busy: true } });
+    },
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  await expect(page.getByText("menu.txt", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("menu.txt", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Retry request" }).click();
+  await expect.poll(() => posted).toEqual(retry);
 });

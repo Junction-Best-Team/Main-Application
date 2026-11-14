@@ -38,7 +38,10 @@ Read-only tools other than catalog text do not trigger separate classifier calls
 bounded recipe discovery context accompanies output review. A typical turn makes
 2 calls (input and output); a basket turn adds about one per batch of tool calls
 plus one for preparation. Bounds: 5 seconds per call, no automatic Google retries,
-16 calls per turn, 28 KB of state per request, and the turn's own deadline.
+16 calls per turn, 120 KB of state per request (a 100-line basket needs about 87 KB for the output
+review; the preparation check stays near 17 KB, below the ~32 KB where the TypeSafe/OpenRouter
+path turns to slower long-context processing; the Google model's own threshold is not known here),
+30,000 displayed characters per review, and the turn's own deadline.
 The native endpoint, model (`gemini-decision-1`) and bounds are fixed in code.
 
 The classifier cannot prove arithmetic or an allergen claim. It only flags narrative
