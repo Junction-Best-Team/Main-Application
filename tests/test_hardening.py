@@ -338,7 +338,10 @@ def test_file_ingestion_preserves_withdrawal_markers(service, agent, request_dat
     path.write_text(json.dumps(records))
     try:
         result = ingest_file(
-            path, expected_count=2, expected_sha=hashlib.sha256(path.read_bytes()).hexdigest()
+            path,
+            expected_count=2,
+            expected_sha=hashlib.sha256(path.read_bytes()).hexdigest(),
+            carry_withdrawn=False,
         )
         assert result["products"] == 2 and result["withdrawn_products"] == 1
         assert service.get_product(agent, "464306")["deleted"] is True

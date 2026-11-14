@@ -10,9 +10,14 @@ from pydantic import (
     JsonValue,
     RootModel,
     field_validator,
+    model_serializer,
     model_validator,
 )
 
+# MEA-013: up to 1000 ingredients/lines. 1000 is also the supplier's per-request product limit,
+# so a lookup needs no batching until SUP-007 (WS-A) lands.
+MAX_BASKET_LINES = 1000
+MAX_LOOKUP_IDS = 1000
 Amount = Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=4)]
 Money = Annotated[Decimal, Field(ge=0, max_digits=16, decimal_places=4)]
 
@@ -24,12 +29,47 @@ class Model(BaseModel):
 class Requirements(Model):
     lactose_free: bool = False
     milk_free: bool = False
+    free_from: list[Annotated[str, Field(pattern=r"^[A-Za-z][A-Za-z0-9]{0,3}$")]] = Field(
+        default_factory=list,
+        max_length=8,
+        description=(
+            "Allergen codes (for example AM milk, AE, AW) the product must explicitly declare "
+            "free from. A product with no declaration is excluded, not assumed safe."
+        ),
+    )
+    country_of_origin: list[Annotated[str, Field(pattern=r"^[A-Za-z]{2}$")]] = Field(
+        default_factory=list,
+        max_length=8,
+        description=(
+            "Two-letter origin codes (for example fi, se); the product must match one. "
+            "A product with no recorded origin is excluded."
+        ),
+    )
     unsupported: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(
         default_factory=list,
         max_length=10,
         description="Customer requirements the catalog cannot verify (for example gluten-free). "
         "Each entry blocks readiness: the basket needs the customer's decision (POL-009).",
     )
+
+    @field_validator("free_from")
+    @classmethod
+    def _upper_codes(cls, codes):
+        return list(dict.fromkeys(code.upper() for code in codes))
+
+    @field_validator("country_of_origin")
+    @classmethod
+    def _lower_codes(cls, codes):
+        return list(dict.fromkeys(code.lower() for code in codes))
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_filters(self, handler):
+        # Keeps stored request fingerprints from before these fields existed unchanged.
+        data = handler(self)
+        for name in ("free_from", "country_of_origin"):
+            if not data.get(name):
+                data.pop(name, None)
+        return data
 
 
 class SearchRequest(Model):
@@ -39,8 +79,18 @@ class SearchRequest(Model):
 
 
 class LookupRequest(Model):
-    product_ids: list[str] = Field(min_length=1, max_length=50)
-    delivery_date: date
+    product_ids: list[str] = Field(min_length=1, max_length=MAX_LOOKUP_IDS)
+    # Engineering guard, not an owner rule: 0001-01-01 is valid ISO but broke the supplier call path.
+    delivery_date: date = Field(ge=date(2000, 1, 1), le=date(2100, 12, 31))
+
+
+class Contribution(Model):
+    """One ingredient's required quantity inside a basket line (BAS-002, MEA-005)."""
+
+    ingredient: str = Field(min_length=1, max_length=240)
+    ingredient_id: str | None = Field(default=None, max_length=120)
+    amount: Amount
+    unit: str = Field(min_length=1, max_length=12)
 
 
 class LineRequest(Model):
@@ -52,13 +102,35 @@ class LineRequest(Model):
         description="Explicit catalog unit code, L or KG; boxes is ambiguous.",
     )
     substitutes_for: str | None = Field(default=None, max_length=40)
+    contributions: list[Contribution] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=30,
+        description="Free-form baskets: the ingredients this line serves; amounts add up to it.",
+    )
+
+    @model_validator(mode="after")
+    def contributions_add_up(self):
+        parts = self.contributions or []
+        if parts and all(c.unit == self.unit for c in parts):
+            if sum(c.amount for c in parts) != self.amount:
+                raise ValueError("Contributions must add up to the line amount")
+        return self
+
+    @model_serializer(mode="wrap")
+    def omit_absent_contributions(self, handler):
+        # Keeps the dump (stored request, retry hash, fingerprints) of earlier lines unchanged.
+        data = handler(self)
+        if data.get("contributions") is None:
+            data.pop("contributions", None)
+        return data
 
 
 class PurchaseRequest(Model):
     recipe_plan_id: UUID | None = None
     recipe_plan_revision: int | None = Field(default=None, ge=1)
     request_id: str = Field(min_length=1, max_length=100)
-    lines: list[LineRequest] = Field(min_length=1, max_length=30)
+    lines: list[LineRequest] = Field(min_length=1, max_length=MAX_BASKET_LINES)
     destination: str = Field(min_length=1, max_length=120)
     delivery_date: date
     requirements: Requirements = Field(default_factory=Requirements)
@@ -71,6 +143,8 @@ class PurchaseRequest(Model):
         ids = [line.product_id for line in self.lines]
         if len(ids) != len(set(ids)):
             raise ValueError("Combine quantities for duplicate product IDs before preparing")
+        if self.recipe_plan_id and any(line.contributions for line in self.lines):
+            raise ValueError("A saved recipe request takes its contributions from the saved plan")
         return self
 
 
@@ -130,6 +204,8 @@ class QuantityCalculation(Model):
     basis: list[str]
     source_step: str
     effective_step: str | None = None
+    # Sales units still missing when stock is below sales_quantity; absent when stock covers it.
+    shortfall: str | None = None
 
 
 class SnapshotLine(Model):
@@ -144,6 +220,7 @@ class SnapshotLine(Model):
     deposit_lines: list[dict]
     product_evidence: dict
     commercial_evidence: dict
+    contributions: list[dict] | None = None
 
 
 class PurchaseSnapshot(Model):
@@ -318,6 +395,11 @@ class CommercialEvidence(Model):
     mode: str
     observed_at: datetime
     source: CommercialSource
+    # Units (JNP3-TCT-005): net, gross and available_sales_quantity are all per one sales unit.
+    sales_unit: str | None = None
+    base_unit: str | None = None
+    price_basis: Literal["per_sales_unit"] | None = None
+    quantity_unit: str | None = None
 
 
 class LookupResponse(Model):
