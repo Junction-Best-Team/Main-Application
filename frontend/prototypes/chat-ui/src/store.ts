@@ -9,6 +9,7 @@
 import {
   INITIAL_CONVERSATIONS,
   PROPOSALS,
+  MANY_ORDERS,
   SESSION,
   CARBONARA_PLAN,
 } from "./fixtures";
@@ -65,6 +66,8 @@ const listeners = new Set<() => void>();
 function notify() {
   for (const l of listeners) l();
 }
+
+const PURCHASE_PAGE_SIZE = 4;
 
 const delay = () => new Promise((r) => setTimeout(r, state.scenario === "slow-network" ? 2600 : 650));
 
@@ -181,10 +184,19 @@ export const store = {
   },
 
   // --- purchases -----------------------------------------------------------
-  async listPurchases() {
+  // Default: every proposal in one page. Scenario "many-orders" serves a longer
+  // list in API pages of PURCHASE_PAGE_SIZE (offset paging, like the backend).
+  async listPurchases(offset = 0) {
     await delay();
     if (state.scenario === "empty-purchases") return { items: [], next_offset: null };
-    return { items: Array.from(state.proposals.values()).map(clone), next_offset: null };
+    const base = Array.from(state.proposals.values());
+    if (state.scenario !== "many-orders") return { items: base.map(clone), next_offset: null };
+    const all = [...MANY_ORDERS, ...base];
+    const next = offset + PURCHASE_PAGE_SIZE;
+    return {
+      items: all.slice(offset, next).map(clone),
+      next_offset: next < all.length ? next : null,
+    };
   },
   findConversationForProposal(proposalId: string): string | undefined {
     for (const c of state.conversations.values()) {
@@ -195,7 +207,10 @@ export const store = {
   async getProposal(proposalId?: string, approvalId?: string): Promise<Proposal> {
     await delay();
     const id = proposalId ?? approvalIndex(state.proposals).get(approvalId ?? "");
-    const p = id ? state.proposals.get(id) : undefined;
+    const p = id
+      ? state.proposals.get(id) ??
+        (state.scenario === "many-orders" ? MANY_ORDERS.find((m) => m.proposal_id === id) : undefined)
+      : undefined;
     if (!p) throw new FakeApiError(404, "Purchase not found.");
     return clone(p);
   },

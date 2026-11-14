@@ -139,6 +139,56 @@ function proposal(overrides: Partial<Proposal>): Proposal {
   return { ...base, ...overrides, snapshot: { ...base.snapshot, ...overrides.snapshot } };
 }
 
+// Scenario "many-orders": a purchase list long enough to need several API pages,
+// where the first pages hold no accepted orders (Past Orders must keep paging).
+// Order matters: the list is served in this order, then the base PROPOSALS.
+function manyOrder(id: string, kind: "accepted" | "rejected" | "expired" | "pending", day: number): Proposal {
+  const when = new Date(Date.now() - 1000 * 60 * 60 * 24 * day).toISOString();
+  const accepted = kind === "accepted";
+  return proposal({
+    proposal_id: id,
+    approval_id: `appr-${id}`,
+    approval_status: accepted ? "approved" : kind === "rejected" ? "rejected" : "pending",
+    order_status: accepted ? "accepted_mock" : "none",
+    can_decide: kind === "pending",
+    order_id: accepted ? `DEMO-ORD-${2000 + day}` : null,
+    committed_revision: accepted ? 1 : null,
+    expires_at:
+      kind === "expired"
+        ? new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString()
+        : new Date(Date.now() + 1000 * 60 * 60 * 20).toISOString(),
+    request: {
+      request_id: `REQ-${accepted ? "MANY" : "REJ"}-${String(day).padStart(3, "0")}`,
+      destination: "Kitchen 4, Teurastamo, Helsinki",
+      delivery_date: when.slice(0, 10),
+      budget_gross: null,
+    },
+    snapshot: {
+      mode: "fixture",
+      observed_at: when,
+      lines: CARBONARA_LINES.slice(0, 1 + (day % 3)),
+      net_total: "100.00",
+      tax_total: "10.00",
+      deposits_gross: "0.00",
+      charges_gross: "0.00",
+      gross_total: "110.00",
+    },
+    history: accepted
+      ? [
+          { event: "proposal_created", actor_id: "aimo-agent", created_at: when },
+          { event: "purchase_confirmed", actor_id: SESSION.username, created_at: when },
+        ]
+      : [{ event: "proposal_created", actor_id: "aimo-agent", created_at: when }],
+  });
+}
+
+export const MANY_ORDERS: Proposal[] = [
+  ...(["rejected", "expired", "pending", "rejected", "pending", "expired", "rejected", "pending"] as const).map(
+    (kind, i) => manyOrder(`prop-many-open-${i}`, kind, 40 + i),
+  ),
+  ...[1, 2, 3, 4, 5, 6, 7].map((day) => manyOrder(`prop-many-done-${day}`, "accepted", day * 4)),
+];
+
 export const PROPOSALS: Record<string, Proposal> = {
   "prop-ready": proposal({}),
   "prop-conflict": proposal({

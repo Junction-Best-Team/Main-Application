@@ -127,4 +127,5 @@ export type Scenario =
   | "reconnecting"
   | "send-error"
   | "empty-purchases"
+  | "many-orders"
   | "slow-network";

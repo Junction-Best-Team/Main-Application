@@ -31,4 +31,13 @@ export const MOCK = {
     substitutionsOn: true,
     accountManager: { initials: "MV", name: "Mikael Virtanen", phone: "+358 10 381 00" },
   },
+  /** Past Orders screen (inert toolbar and account chips). */
+  pastOrders: {
+    account: { label: "Customer Account", value: "Ravintola Aarni (#FI-94812)" },
+    searchPlaceholder: "Search past orders or invoice number (e.g. VA-8921)...",
+    searchLabel: "Search past orders",
+    periodLabel: "Last 90 days",
+    sortLabel: "Sort: Most recent",
+    statusLabel: "Status: All",
+  },
 } as const;

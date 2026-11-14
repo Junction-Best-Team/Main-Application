@@ -1,13 +1,13 @@
-import React from "react";
-import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import React, { useEffect } from "react";
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useStoreState } from "./useStoreState";
+import { store } from "./store";
 import { AppShell, NoticeBar } from "./AppShell";
 import { DemoBar } from "./DemoBar";
 import { Login } from "./Login";
 import { HomePage } from "./HomePage";
 import { ChatPage } from "./ChatPage";
 import { PurchasesPage } from "./PurchasesPage";
-import { DetailPage } from "./DetailPage";
 
 function Guard({ children }: { children: React.ReactNode }) {
   const { session } = useStoreState();
@@ -17,6 +17,19 @@ function Guard({ children }: { children: React.ReactNode }) {
       <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />
     )
   );
+}
+
+// Old approval links: resolve the approval to its purchase, then show it in Past Orders.
+function ApprovalRedirect() {
+  const { approvalId } = useParams();
+  const navigate = useNavigate();
+  useEffect(() => {
+    store
+      .getProposal(undefined, approvalId)
+      .then((p) => navigate(`/purchases/${p.proposal_id}`, { replace: true }))
+      .catch(() => navigate("/purchases", { replace: true }));
+  }, [approvalId, navigate]);
+  return null;
 }
 
 // Routes: Home "/", Request "/request" and "/conversations/:id", Past Orders
@@ -39,9 +52,9 @@ function Shell() {
           <Route path="/" element={<HomePage />} />
           <Route path="/request" element={<ChatPage />} />
           <Route path="/conversations/:conversationId" element={<ChatPage />} />
-          <Route path="/purchases" element={<PurchasesPage />} />
-          <Route path="/purchases/:proposalId" element={<DetailPage />} />
-          <Route path="/approvals/:approvalId" element={<DetailPage />} />
+          <Route path="/purchases" element={<PurchasesPage key="list" />} />
+          <Route path="/purchases/:proposalId" element={<PurchasesPage key="deep-link" />} />
+          <Route path="/approvals/:approvalId" element={<ApprovalRedirect />} />
         </Route>
         <Route
           path="*"
