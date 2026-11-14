@@ -149,7 +149,7 @@ def scan_text(file, raw):
             sql,
             re.I,
         ):
-            if re.search(r"CREATE\s+TRIGGER\s+" + re.escape(m.group(1)) + r"\b", sql, re.I):
+            if re.search(r"CREATE\s+TRIGGER\s+" + re.escape(m.group(1)) + r"\b", text, re.I):
                 continue  # repeatable re-creation of a trigger the same file creates (008)
             add("DROP_TRIGGER", m.group(2) or "", m.group(1))
         for m in re.finditer(r"\bDROP\s+FUNCTION\s+(?:IF\s+EXISTS\s+)?" + NAME, sql, re.I):
