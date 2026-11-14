@@ -96,10 +96,11 @@ def assert_agent_safe(problem):
 
 
 def test_the_full_tool_list_is_always_exposed():
-    """Eight purchasing tools and the five recipe tools are registered with no feature flag."""
-    assert len(ALL_TOOLS) == 13, ALL_TOOLS
-    assert set(RECIPE_TOOLS) <= set(ALL_TOOLS)
-    assert len(set(ALL_TOOLS) - set(RECIPE_TOOLS)) == 8
+    """Purchasing, recipe and explicit memory tools are always registered."""
+    memory_tools = {"search_memory", "manage_memory"}
+    assert len(ALL_TOOLS) == 15, ALL_TOOLS
+    assert set(RECIPE_TOOLS) | memory_tools <= set(ALL_TOOLS)
+    assert len(set(ALL_TOOLS) - set(RECIPE_TOOLS) - memory_tools) == 8
 
 
 @pytest.mark.parametrize("name", ALL_TOOLS)
@@ -630,6 +631,8 @@ def test_tct005_every_registered_tool_is_covered_by_a_result_check_here():
         "search_products": "test_tct005_search_products_results_carry_evidence_and_units",
         "get_product": "test_tct005_get_product_result_carries_evidence_and_units",
         "get_purchase_policy": "no product or quantity (a currency limit; see the audit)",
+        "search_memory": "no calculated quantity; compact memory results tested in test_memory.py",
+        "manage_memory": "no calculated quantity; persistence and replay tested in test_memory.py",
         "check_price_and_availability": "test_tct005_lookup_result_carries_mode_time_currency",
         "publish_meal_plan": "test_tct005_publish_meal_plan_echoes_every_amount_with_its_unit",
         "prepare_order": "test_tct005_prepare_order_lines_carry_quantity_unit_basis_and_evidence",

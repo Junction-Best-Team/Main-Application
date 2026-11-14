@@ -747,6 +747,8 @@ def test_dedicated_catalog_role_can_sync_but_cannot_read_purchasing_data(
 
 
 def test_sync_retains_withdrawn_products_and_skips_identical_snapshot(tmp_path):
+    with connection() as c:
+        c.execute("DELETE FROM active_catalog")
     records = products(60, tag="withdrawal-integration")
     first_path, first_sha = snapshot(tmp_path, records, "before.json")
     sync(first_path, first_sha, len(records))
