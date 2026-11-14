@@ -1,8 +1,8 @@
 # Voice conversations
 
 Click the circular waveform button (**Start voice mode**) beside the empty request
-composer, allow the microphone and speak. Typing a draft swaps it for the send
-arrow; clearing the draft brings it back. The single-line composer and fixed
+composer, allow the microphone and speak. Typing a draft or attaching a file swaps it for
+the send arrow; clearing both brings it back. The single-line composer and fixed
 message viewport from PR #162 remain in place.
 Gemini 3.8 Live listens and speaks; the existing Aimo worker handles each request.
 The recognized words and reviewed assistant reply are saved in the normal chat.

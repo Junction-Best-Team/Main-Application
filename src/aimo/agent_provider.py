@@ -116,9 +116,11 @@ class ChatProvider:
 
     @operation("llm.completion")
     def complete(self, messages, tools, deadline):
+        from aimo.attachments import image_context_bytes, openai_messages
+
         payload = {
             "model": self.config.llm_model,
-            "messages": messages,
+            "messages": openai_messages(messages),
             "tools": tools,
             "tool_choice": "auto",
             "parallel_tool_calls": True,
@@ -127,7 +129,8 @@ class ChatProvider:
         effort = getattr(self.config, "llm_reasoning_effort", "")
         if effort:
             payload["reasoning_effort"] = effort
-        if len(encode(payload).encode()) > MAX_CONTEXT_BYTES:
+        image_bytes = image_context_bytes(messages)
+        if len(encode(payload).encode()) - image_bytes > MAX_CONTEXT_BYTES or image_bytes > 6_000_000:
             raise Problem(
                 "LLM_CONTEXT_LIMIT",
                 "This conversation exceeds the assistant context limit. "

@@ -6,6 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field, model_validator
 
+from aimo.attachments import AttachmentInfo, AttachmentInput, check_total
 from aimo.image_schemas import RecipeImage
 from aimo.schemas import MAX_BASKET_LINES, Constraint, Model, ProposalResponse, QuantityCalculation
 
@@ -88,13 +89,21 @@ class MessageConstraints(Model):
 
 
 class MessageRequest(Model):
-    text: str = Field(min_length=1, max_length=4000)
+    text: str = Field(default="", max_length=4000)
     idempotency_key: str = Field(min_length=8, max_length=120)
     constraints: MessageConstraints | None = Field(
         default=None,
         description="Optional hard limits set by the customer (budget, dietary toggles). They "
         "stay in force for the rest of the conversation until a later message changes them.",
     )
+    attachments: list[AttachmentInput] = Field(default_factory=list, max_length=3)
+
+    @model_validator(mode="after")
+    def validate_message(self):
+        if not self.text.strip() and not self.attachments:
+            raise ValueError("Write a message or attach a file.")
+        check_total(self.attachments)
+        return self
 
 
 class RetryConstraints(Model):
@@ -106,11 +115,12 @@ class RetryConstraints(Model):
 
 
 class RetryMessage(Model):
-    """An unfinished message the client can send again with the same key and the same limits."""
+    """An unfinished message, including the same limits and files for an exact retry."""
 
     text: str
     idempotency_key: str
     constraints: RetryConstraints | None = None
+    attachments: list[AttachmentInput] = Field(default_factory=list)
 
 
 class ConversationCreate(Model):
@@ -126,6 +136,7 @@ class ChatMessage(Model):
     meal_plan: MealPlan | None = None
     proposal_id: str | None = None
     image: RecipeImage | None = None
+    attachments: list[AttachmentInfo] = Field(default_factory=list)
 
 
 class ConversationSummary(Model):
