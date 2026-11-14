@@ -59,7 +59,7 @@ def main():
         "| Source | Line + branch coverage |",
         "| --- | ---: |",
         f"| pytest only | {p_total:.1f}% |",
-        f"| sweep server only (incl. migrate/seed CLI) | {s_total:.1f}% |",
+        f"| e2e server only (sweep + browser, incl. migrate/seed CLI) | {s_total:.1f}% |",
         f"| **combined** | **{c_total:.1f}%** |",
     ]
     files = ["| File | pytest | sweep | combined |", "| --- | ---: | ---: | ---: |"]
@@ -96,7 +96,7 @@ def main():
         gate,
         "### Per file (lowest combined first)",
         "\n".join(files),
-        "### Reached only by the black-box sweep",
+        "### Reached only by the end-to-end runs (sweep, browser), not by pytest",
         "\n".join(only_table) if only else "None.",
     ]
     text = "\n\n".join(sections) + "\n"

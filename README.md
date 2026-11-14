@@ -13,19 +13,24 @@ The agreed scope is in [docs/brief.md](docs/brief.md). PR #2 was **closed withou
 - Keep `main` ready to demonstrate. Promote a tested snapshot with a release PR from `develop` to `main` only when a release is explicitly requested. Avoid force pushes to shared branches and preserve teammates' uncommitted work.
 - Use a separate checkout/worktree and branch for each concurrent agent on the same machine.
 
-## Lightweight CI
+## CI
 
-GitHub Actions runs on PRs into `develop` and `main`, and pushes to either branch:
+One workflow, `.github/workflows/ci.yml`, runs on PRs into `develop` and `main` and on pushes to either. Its jobs run in parallel:
 
-- Python lint: `ruff check src tests scripts`.
-- Backend regression tests: `pytest -q` against temporary PostgreSQL/pgvector, using fixture embeddings and supplier responses. Test dependencies come from `uv.lock`; the unused ML stack is pruned to keep installation small.
-- Frontend TypeScript checks and production build: `npm ci` then `npm run build` in `frontend`.
+| Job (GitHub name) | What it does |
+| --- | --- |
+| Detect application components | Decides which jobs apply (backend, frontend, Terraform) |
+| Python lint and tests | `ruff check`, then `pytest` against temporary PostgreSQL/pgvector with fixture embeddings and supplier responses; saves coverage data |
+| Frontend types and build | `npm ci`, TypeScript check, production build |
+| Tool sweep | Starts the real server and drives all eight agent tools, MCP and the buyer approval, rejection and separation controls (`tests/sweep/run_sweep.py`) |
+| Browser tests | Playwright flows in real Chromium against the built UI |
+| Terraform | Format, validate, mocked-provider plan tests and Helm render for `infra/` (only when it or the workflows changed) |
+| Coverage (95% minimum) | Combines the pytest, sweep and browser coverage data and fails below `fail_under` in `pyproject.toml` |
+| **CI gate** | Waits for every job above; the required status check |
 
-Backend and frontend jobs run in parallel, dependency downloads are cached, and a new commit cancels outdated runs. Components are explicitly skipped only while their application code has not been added; incomplete manifests fail the workflow. No model weights, full catalog imports, Docker builds, browser tests, production credentials, or deployments are needed for this pipeline. Run broader demo/browser checks locally when the change warrants them.
+Dependencies come from the lockfiles with the unused ML stack pruned, downloads are cached and a new commit cancels outdated runs. Everything runs on fixtures: CI never has the Valio API key, and no model weights, full catalog imports, Docker builds or deployments are needed. The live check is the local `tests/ci.sh --live`. What every check verifies is in [tests/README.md](tests/README.md) and [tests/TEST-GUIDE.md](tests/TEST-GUIDE.md).
 
-A separate workflow, `.github/workflows/coverage.yml`, runs on pull requests and manually: pytest plus the black-box sweep under coverage with fixtures, failing below the `fail_under` threshold in `pyproject.toml` (see [tests/README.md](tests/README.md)).
-
-Our workflow is **task PR → green CI → self-merge**. Reviews are optional, and the optional `skip-review` label does not bypass CI. GitHub's current plan blocks branch protection for this private repository, so teammates and agents must follow this convention; the merge button is not technically gated. No approval gates or special GitHub board are required. Use the team chat to coordinate.
+Our workflow is **task PR → green CI → self-merge**. Branch protection on `develop` requires the CI gate plus the three application checks; reviews are optional and the `skip-review` label does not bypass CI. Adding a job: give it a `name`, add it to the gate's `needs` and `applies` table in `ci.yml`.
 
 ## Local setup
 

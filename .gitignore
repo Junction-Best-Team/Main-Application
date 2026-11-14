@@ -45,3 +45,6 @@ frontend/playwright-report/
 *.onnx
 *.safetensors
 .coverage/
+
+# Local-only notes (not for GitHub).
+*.local.md

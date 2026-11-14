@@ -1,11 +1,12 @@
 # Tests and CI procedure
 
-One command runs the checks locally. GitHub Actions runs them on every PR into `develop` or `main`.
+One command runs the checks locally. GitHub Actions (`.github/workflows/ci.yml`) runs them as parallel jobs on every PR into `develop` or `main`; the `CI gate` job waits for all of them. For a plain-language explanation of each test, see [TEST-GUIDE.md](TEST-GUIDE.md).
 
 ```sh
 tests/ci.sh                          # lint + pytest + tool sweep, hermetic (no API key needed)
 tests/ci.sh --browser                # ... plus frontend build and Playwright browser tests
-tests/ci.sh --skip-unit --browser    # only sweep + browser (what the e2e workflow runs)
+tests/ci.sh --skip-unit              # only the sweep (the CI "Tool sweep" job)
+tests/ci.sh --skip-unit --no-sweep --browser   # only the browser tests (the CI "Browser tests" job)
 tests/ci.sh --live                   # sweep against the real Valio API (needs VALIO_AIMO_API_KEY)
 SWEEP_ARGS=--strict tests/ci.sh      # a skipped check counts as a failure
 ```
@@ -14,18 +15,20 @@ Needs Docker (PostgreSQL + pgvector, started by the script), `uv`, and for `--br
 
 ## Where each check runs
 
-| Layer | What it is | Needs | Quick CI (`ci.yml`) | End-to-end CI (`e2e.yml`) | Local only |
-| --- | --- | --- | :-: | :-: | :-: |
-| `ruff check src tests scripts` | Lint | nothing | yes | | |
-| `pytest` (`tests/test_*.py`) | Unit and integration tests against real PostgreSQL, fixture upstream and embeddings | pgvector DB | yes | | |
-| Frontend `npm run build` | TypeScript check and production build | Node | yes | | |
-| `tests/sweep/run_sweep.py` | Black-box sweep of the eight agent tools, MCP and the buyer controls, against a running server | server + DB | | yes | `--live` too |
-| `frontend/e2e` (Playwright) | Six browser flows in real Chromium against the built UI | server + DB + Chromium | | yes | |
-| `scripts/mcp_smoke.py` | Official MCP SDK over authenticated HTTP | running server | | | yes |
-| `scripts/demo.py` | The demo story as a reference client | running server | | | yes |
-| `scripts/restart_smoke.py` | Real container restart between approval and commit | Docker image | | | yes |
-| `scripts/verify_catalog.py`, `scripts/evaluate_search.py` | Seven golden catalog cases; 30-case retrieval evaluation | full catalog | | | yes |
-| `tests/ci.sh --live` | Sweep with real Valio price and stock | API key | | | yes |
+| Layer | What it is | Needs | CI job in `ci.yml` | Local only |
+| --- | --- | --- | --- | :-: |
+| `ruff check src tests scripts` | Lint | nothing | Python lint and tests | |
+| `pytest` (`tests/test_*.py`) | Unit and integration tests against real PostgreSQL, fixture upstream and embeddings | pgvector DB | Python lint and tests | |
+| Frontend `npm run build` | TypeScript check and production build | Node | Frontend types and build | |
+| `tests/sweep/run_sweep.py` | Black-box sweep of the eight agent tools, MCP and the buyer controls, against a running server | server + DB | Tool sweep | `--live` too |
+| `frontend/e2e` (Playwright) | Six browser flows in real Chromium against the built UI | server + DB + Chromium | Browser tests | |
+| `scripts/mcp_smoke.py` | Official MCP SDK over authenticated HTTP | running server | | yes |
+| `scripts/demo.py` | The demo story as a reference client | running server | | yes |
+| `scripts/restart_smoke.py` | Real container restart between approval and commit | Docker image | | yes |
+| `scripts/verify_catalog.py`, `scripts/evaluate_search.py` | Seven golden catalog cases; 30-case retrieval evaluation | full catalog | | yes |
+| `tests/ci.sh --live` | Sweep with real Valio price and stock | API key | | yes |
+| `tests/coverage_report.py` | Combines pytest, sweep and browser coverage; fails below `fail_under` | coverage data | Coverage (95% minimum) | |
+| `infra/` Terraform checks (`terraform.yml`) | Format, `validate`, mocked-provider `terraform test` plans, ingress Helm render and Python unit tests for the cloud and Kubernetes modules; no cloud token | Terraform | Terraform | |
 
 Not covered by any CI: the Docker image build, Kubernetes manifests, the live Valio API (key not stored in GitHub), and search quality (the evaluation needs the 84 MB catalog and real embeddings).
 
@@ -113,8 +116,8 @@ CI_COVERAGE=1 tests/ci.sh                  # data goes to .coverage/ (gitignored
 uv run python tests/coverage_report.py     # pytest only / sweep only / combined, per file, lines only the sweep reaches, HTML + XML in .coverage/
 ```
 
-- **Gate.** `fail_under` in `pyproject.toml` (`[tool.coverage.report]`), currently **84**, is applied to the combined total by `coverage_report.py` (exit 1 below it). It is the only place to change it. Do not run bare `pytest --cov` expecting a pass: pytest alone is about 84.5%, so add `--cov-fail-under=0` (`tests/ci.sh` does).
-- **CI.** `.github/workflows/coverage.yml` (pull requests, manual) runs the above with fixtures and no API key, prints the table in the log and the job summary, uploads the HTML/XML report and fails below the gate. The quick `ci.yml` is unchanged.
+- **Gate: 95%.** `fail_under` in `pyproject.toml` (`[tool.coverage.report]`) is applied to the combined total by `coverage_report.py` (exit 1 below it). It is the only place to change it, and it is required: the CI job "Coverage (95% minimum)" is part of the `CI gate`. Do not run bare `pytest --cov` expecting a pass: pytest alone is lower than the combined total, so add `--cov-fail-under=0` when you only want the table.
+- **CI.** The `Python lint and tests`, `Tool sweep` and `Browser tests` jobs each upload their coverage data; the `Coverage` job downloads and combines them, prints the table in the log and the job summary, uploads the HTML/XML report and fails below the gate.
 - **Excluded.** Only `if __name__ == "__main__":` blocks. `tests/`, `scripts/`, `frontend/` and the live Valio path (not reachable without a key) are not measured.
 - **Frontend: not measured.** Browser tests need a `.env` and a coverage fixture in the specs; see F-MVP-007 for the options.
 - **Measured 2026-11-14** (fixture mode): pytest only 84.5%, sweep only about 73%, combined about 87% (runs differ by about 0.5 point). Weakest: `ingest.py` 51%, `cli.py` 69%, `upstream.py` 81% (live HTTP branches), `purchases.py` and `catalog.py` about 83-86%.

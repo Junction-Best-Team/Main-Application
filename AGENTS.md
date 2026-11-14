@@ -16,7 +16,7 @@ Four-person Junction hackathon repository. The implemented Valio Aimo MVP is des
 - Work on a separate task branch; never commit or push changes directly to `develop` or `main`.
 - Always open feature, fix, documentation, and maintenance PRs against `develop`. Specify the base explicitly: `gh pr create --base develop`. Verify the base before creating or merging a PR.
 - Wait for the latest CI run to pass before merging. You may merge your own PR without a human approval. Request a teammate review for risky changes to authentication, database schemas, or shared interfaces; routine work does not need to wait for a reviewer.
-- CI runs Python lint, backend tests with fixture data and PostgreSQL/pgvector, and the TypeScript/production frontend build. It skips application components only while their code has not been added. Keep model downloads, full catalog imports, Docker builds, and browser tests outside this quick pipeline. The optional `skip-review` label never skips CI.
+- CI is one workflow, `.github/workflows/ci.yml`, of parallel jobs: Python lint and pytest (fixtures, PostgreSQL/pgvector), frontend build, the black-box tool sweep, Playwright browser tests, Terraform validation and a combined Python coverage gate (95% minimum). The always-present `CI gate` job waits for all of them and is the required check; add any new job to its `needs` and `applies` table. Model downloads, full catalog imports, Docker builds and live-API calls stay out of CI (CI never has the Valio key). The optional `skip-review` label never skips CI.
 - `main` holds stable demo/release snapshots. Only open a release PR from `develop` to `main` when the user explicitly requests a release; never target `main` with a task PR.
 - Do not force-push either shared branch. Preserve other contributors' changes and checkouts.
 
@@ -29,7 +29,7 @@ Four-person Junction hackathon repository. The implemented Valio Aimo MVP is des
 
 ## Checks
 
-`tests/ci.sh` runs lint, the pytest suite and a black-box sweep of all eight agent tools (`tests/README.md`). Run it before pushing; `tests/ci.sh --live` repeats the sweep against the real Valio API. `CI_COVERAGE=1 tests/ci.sh` then `uv run python tests/coverage_report.py` measures Python coverage and enforces the `fail_under` gate in `pyproject.toml`; `coverage.yml` does this on PRs.
+`tests/ci.sh` runs lint, the pytest suite and a black-box sweep of all eight agent tools (`tests/README.md`); `--browser` adds the Playwright tests and `--live` repeats the sweep against the real Valio API. `CI_COVERAGE=1 tests/ci.sh` then `uv run python tests/coverage_report.py` measures Python coverage and enforces the `fail_under` gate in `pyproject.toml`; CI does the same across its parallel jobs. `tests/TEST-GUIDE.md` explains what each test checks.
 
 ## Scope and history
 
