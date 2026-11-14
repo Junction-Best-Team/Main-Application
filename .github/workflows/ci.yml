@@ -156,8 +156,6 @@ jobs:
         run: npm ci
       - name: Check TypeScript and build production assets
         run: npm run build
-      - name: Component tests with coverage (Vitest, jsdom; no browser)
-        run: npm run test:coverage
 
   sweep:
     name: API sweep

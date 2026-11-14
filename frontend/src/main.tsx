@@ -1067,7 +1067,7 @@ function Guard({ children }: { children: React.ReactNode }) {
     <Navigate to="/login" replace state={{ from: location.pathname }} />
   );
 }
-export function App() {
+function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1176,11 +1176,8 @@ export function App() {
     </Auth.Provider>
   );
 }
-// Tests import App without a #root element, so nothing is mounted for them.
-const root = document.getElementById("root");
-if (root)
-  createRoot(root).render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>,
-  );
+createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);
