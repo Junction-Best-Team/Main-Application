@@ -9,6 +9,8 @@ from datetime import date, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
 
+from fastapi.encoders import jsonable_encoder
+
 from aimo import scheduler
 from aimo.approval_policy import evaluate_purchase
 from aimo.config import settings
@@ -434,14 +436,14 @@ def agree(terms, agreed_fingerprint):
             "SCHEDULE_NOT_REORDERABLE",
             "This order needs a decision each time and cannot be scheduled as it is.",
             422,
-            public_details={"blocking_reasons": terms["blocking_reasons"]},
+            details=jsonable_encoder({"blocking_reasons": terms["blocking_reasons"]}),
         )
     if terms["terms_fingerprint"] != agreed_fingerprint:
         raise Problem(
             "SCHEDULE_TERMS_CHANGED",
             "Prices or products changed; review the new terms.",
             409,
-            public_details={"terms": public_terms(terms)},
+            details=jsonable_encoder({"terms": public_terms(terms)}),
         )
 
 

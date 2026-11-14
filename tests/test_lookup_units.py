@@ -13,7 +13,7 @@ import httpx
 import pytest
 
 from aimo import upstream
-from aimo.config import Settings, settings
+from aimo.config import settings
 from aimo.db import Problem, now
 from aimo.fixtures import fixture_facts
 from aimo.upstream import FixtureClient, ValioClient, validate_lookup
@@ -113,8 +113,9 @@ def ids(n):
 
 
 def simulate_setting(monkeypatch, value):
-    monkeypatch.setattr(Settings, "supplier_lookup_batch_size", value, raising=False)
-    settings.cache_clear()
+    """Force the batch size, including values Settings itself would reject (the client clamps)."""
+    forced = settings().model_copy(update={"supplier_lookup_batch_size": value})
+    monkeypatch.setattr(upstream, "settings", lambda: forced)
 
 
 def sizes(posts, endpoint):

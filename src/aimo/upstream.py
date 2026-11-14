@@ -285,6 +285,26 @@ class FixtureClient:
         }
 
 
+def check_supplier_startup():
+    """Fail startup when a hosted deployment would serve the supplier without a key (SUP-005).
+
+    Hosted = `SECURE_COOKIES=true`. Applies to the `live` and `auto` modes only: `fixture` is an
+    explicit choice and always starts, and local runs (secure cookies off) keep their labelled
+    fixtures. Called at API startup and in the worker readiness check, never at import.
+    """
+    cfg = settings()
+    if (
+        cfg.secure_cookies
+        and cfg.upstream_mode in ("live", "auto")
+        and not cfg.valio_aimo_api_key.strip()
+    ):
+        raise RuntimeError(
+            f"A hosted deployment (SECURE_COOKIES=true) with UPSTREAM_MODE={cfg.upstream_mode} "
+            "needs VALIO_AIMO_API_KEY; set the key, or set UPSTREAM_MODE=fixture explicitly "
+            "for a deployment on labelled mock supplier data."
+        )
+
+
 def effective_mode() -> str:
     """`auto` uses the live API when a key is configured and labelled fixtures when it is not.
 

@@ -101,9 +101,19 @@ class Problem(Exception):
         message: str,
         status: int = 409,
         retry_after: int | None = None,
-        public_details: dict | None = None,
+        details=None,
     ):
         self.code, self.message, self.status = code, message, status
         self.retry_after = retry_after
-        self.public_details = public_details  # shown to the browser as error.details
+        if details is not None:
+            self.details = details  # JSON-ready, client-safe (the browser sees error.details)
         super().__init__(message)
+
+    details = None  # structured, client-safe extra fields; a subclass may set an instance value
+
+    def body(self) -> dict:
+        """The `error` object sent to the browser and to the model: code, message, details."""
+        error = {"code": self.code, "message": self.message}
+        if self.details is not None:
+            error["details"] = self.details
+        return error
