@@ -41,19 +41,9 @@ class Settings(BaseSettings):
     llm_model: str = "openai/gpt-4.1-mini"
     llm_timeout_seconds: float = Field(default=20, gt=0, le=30)
     llm_max_tool_rounds: int = Field(default=20, ge=1, le=24)
-    # Semantic guardrails (TypeSafe Jev through OpenRouter's Decisions API). Deterministic
-    # purchasing controls are independent of this setting. See docs/guardrails.md.
-    # Off unless an operator opts in: shadow/enforce send screened chat text to TypeSafe.
-    guardrail_mode: Literal["off", "shadow", "enforce"] = "off"
-    # Blank reuses LLM_API_KEY only when both LLM_BASE_URL and GUARDRAIL_BASE_URL are openrouter.ai.
-    guardrail_api_key: str = ""
-    guardrail_base_url: str = "https://openrouter.ai/api/alpha"
-    guardrail_model: str = "typesafe/jev-1.14"
-    guardrail_timeout_seconds: float = Field(default=5, gt=0, le=15)
-    guardrail_max_calls_per_turn: int = Field(default=16, ge=1, le=40)
-    # Per-buyer chat bounds across all conversations (message size is bounded by MessageRequest).
-    chat_max_messages_per_hour: int = Field(default=60, ge=1, le=1000)
-    chat_max_active_turns: int = Field(default=3, ge=1, le=20)
+    # Semantic guardrails (TypeSafe Jev through OpenRouter, using LLM_API_KEY): enforce, shadow
+    # (record only) or off. Deterministic purchasing controls always apply. See docs/guardrails.md.
+    guardrail_mode: Literal["off", "shadow", "enforce"] = "enforce"
 
 
 @lru_cache

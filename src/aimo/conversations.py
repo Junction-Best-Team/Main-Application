@@ -8,7 +8,6 @@ from aimo import approval_workflow as workflow
 from aimo import auth
 from aimo.approval_policy import can_approve
 from aimo.chat_schemas import AgentTurn
-from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, js, now
 from aimo.guardrails import encode, proposal_view
 from aimo.purchases import context
@@ -147,9 +146,13 @@ def enqueue(identity, cid, body):
     return detail(identity, cid)
 
 
+# Per-buyer chat bounds across conversations; accepted retries are never counted again.
+MAX_ACTIVE_TURNS = 3
+MAX_MESSAGES_PER_HOUR = 60
+
+
 def limit_turns(c, identity, new):
     """Bound model work per buyer across conversations; accepted retries are never limited."""
-    cfg = settings()
     counts = c.execute(
         """SELECT count(*) FILTER (WHERE t.state='queued'
              OR (t.state='running' AND t.lease_until>%s)) AS active,
@@ -158,14 +161,14 @@ def limit_turns(c, identity, new):
         WHERE c.buyer_id=%s""",
         (now(), now() - timedelta(hours=1), identity["buyer_id"]),
     ).fetchone()
-    if counts["active"] >= cfg.chat_max_active_turns:
+    if counts["active"] >= MAX_ACTIVE_TURNS:
         raise Problem(
             "CHAT_BUSY",
             "Other responses are still in progress for this account. Wait for one to finish.",
             429,
             5,
         )
-    if new and counts["recent"] >= cfg.chat_max_messages_per_hour:
+    if new and counts["recent"] >= MAX_MESSAGES_PER_HOUR:
         raise Problem(
             "CHAT_RATE_LIMIT",
             "This account reached its hourly message limit. Try again later.",
