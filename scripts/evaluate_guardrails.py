@@ -723,15 +723,14 @@ def main():
     args = parser.parse_args()
     base = settings()
     if not api_key(base):
-        print("skipped: GUARDRAIL_API_KEY (or an OpenRouter LLM_API_KEY) is not configured")
+        print("skipped: LLM_API_KEY for OpenRouter (LLM_BASE_URL on openrouter.ai) is not configured")
         sys.exit(1 if args.require_config else 0)
     cfg = SimpleNamespace(**base.model_dump())
     cfg.guardrail_mode = "enforce"
-    cfg.guardrail_max_calls_per_turn = 1
     cases = run(cfg, args.repeat)
     result = {
         "date": date.today().isoformat(),
-        "model": cfg.guardrail_model,
+        "model": guardrails.MODEL,
         "served_models": sorted({c[4].model for c in cases if c[4].model}),
         "policy_version": guardrails.POLICY_VERSION,
         "thresholds": {

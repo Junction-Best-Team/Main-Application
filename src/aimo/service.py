@@ -55,11 +55,7 @@ class Service:
 
     def recipe_operation(self, name, identity, request):
         from aimo import recipes
-        from aimo.config import settings
-        from aimo.db import Problem
 
-        if not settings().recipe_planning_enabled:
-            raise Problem("RECIPES_DISABLED", "Recipe planning has not been enabled.", 503)
         return getattr(recipes, name)(identity, request)
 
     def search_recipes(self, identity, request):

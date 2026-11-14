@@ -4,7 +4,7 @@ Three independently deployed apps serve chat purchasing: a React/Nginx frontend,
 
 The current [product migration](docs/chat-purchasing.md) overrides the external-agent entry points in the [original brief](docs/brief.md). The underlying purchasing controls remain. [Infrastructure](infra/README.md) is optional and operator-managed; this migration does not apply Terraform, deploy or enable releases.
 
-See the [architecture diagrams](docs/architecture.md) for the system overview, purchase confirmation flow and code map. [Agent guardrails](docs/guardrails.md) separates deterministic controls from the optional TypeSafe Jev checks (`GUARDRAIL_MODE`).
+See the [architecture diagrams](docs/architecture.md) for the system overview, purchase confirmation flow and code map. [Agent guardrails](docs/guardrails.md) separates deterministic controls from the TypeSafe Jev checks, which enforce by default using the OpenRouter `LLM_API_KEY` (`GUARDRAIL_MODE=enforce|shadow|off`).
 
 ## Working in parallel
 
@@ -173,11 +173,12 @@ schema/grant Job, its one-time Secret provisioning, and image rollback limitatio
 
 [Preparation and third-party provenance](docs/pre-existing-work.md) must accompany the event submission. Restricted raw data, credentials, downloaded weights and generated browser test artifacts are ignored.
 
-### Recipe planning (opt-in)
+### Recipe planning
 
 See [recipe planning](docs/recipes.md) for versioned UniTools ingestion, independent
 recipe embeddings/search, server-scaled saved plans, reviewed product matching and
-complete-basket checks. Import recipes explicitly after migrations; enable
-`RECIPE_PLANNING_ENABLED` only when data and reviewed matching evidence are ready.
+complete-basket checks. Recipe tools are always available to the chat agent; import
+recipes explicitly after migrations (until then they report `RECIPES_NOT_READY`).
+Purchasing through a recipe additionally needs reviewed forms and product evidence.
 Qwen recipe search reuses PR #34's hosted provider. Dataset import is separate from
 the release migration Job and from product-catalog ingestion.

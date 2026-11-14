@@ -99,13 +99,8 @@ def test_enforced_guard_turn_still_needs_exact_customer_confirmation(
         "settings",
         lambda: SimpleNamespace(
             guardrail_mode="enforce",
-            guardrail_api_key="private-guard-key",
-            guardrail_base_url="https://openrouter.ai/api/alpha",
-            guardrail_model="typesafe/jev-1.14",
-            guardrail_timeout_seconds=5,
-            guardrail_max_calls_per_turn=16,
-            llm_api_key="",
-            llm_base_url="https://provider.test/v1",
+            llm_api_key="private-llm-key",
+            llm_base_url="https://openrouter.ai/api/v1",
         ),
     )
     guardrails._SCREEN_CACHE.clear()
@@ -157,11 +152,8 @@ def test_enforced_guard_turn_still_needs_exact_customer_confirmation(
 
 
 def limits(monkeypatch, messages, active):
-    monkeypatch.setattr(
-        conversations,
-        "settings",
-        lambda: SimpleNamespace(chat_max_messages_per_hour=messages, chat_max_active_turns=active),
-    )
+    monkeypatch.setattr(conversations, "MAX_MESSAGES_PER_HOUR", messages)
+    monkeypatch.setattr(conversations, "MAX_ACTIVE_TURNS", active)
 
 
 def test_hourly_chat_limit_spans_conversations_but_not_retries(monkeypatch, service, buyer):
@@ -242,12 +234,14 @@ def test_persisted_purchase_context_is_minimised(monkeypatch, service, buyer, re
     assert all(m["role"] in ("user", "assistant") for m in seen)
 
 
-def test_guard_is_opt_in_and_documented():
+def test_guard_enforces_by_default_with_one_setting():
     from aimo.config import Settings
 
     fields = Settings.model_fields
-    assert fields["guardrail_mode"].default == "off"
-    assert fields["guardrail_model"].default == "typesafe/jev-1.14"
+    assert fields["guardrail_mode"].default == "enforce"
+    assert [f for f in fields if f.startswith(("guardrail_", "chat_max_"))] == ["guardrail_mode"]
     example = open(os.path.join(os.path.dirname(__file__), "..", ".env.example")).read()
-    for name in ("GUARDRAIL_MODE", "GUARDRAIL_API_KEY", "GUARDRAIL_MODEL", "CHAT_MAX_ACTIVE_TURNS"):
-        assert name + "=" in example
+    assert "GUARDRAIL_MODE=enforce" in example
+    assert [
+        line for line in example.splitlines() if line.startswith(("GUARDRAIL_", "CHAT_MAX"))
+    ] == ["GUARDRAIL_MODE=enforce"]
