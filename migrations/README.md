@@ -15,6 +15,7 @@ Do not rename applied migrations or delete their ledger rows.
 | 012_buyer_user_memory | Buyer and user memory (`docs/memory.md`) |
 | 012_catalog_import_profile | Catalog sync: `catalog_generations.import_profile` (additive, nullable) |
 | 013_catalog_sync_withdrawals | Release integration: source snapshot count and product-ID-only cleanup protection view |
+| **016_scheduled_orders** | **Person 3 (WS-E)**: role `scheduler` and one scheduler identity per buyer, `scheduled_authorizations` (terms immutable, pause and resume allowed), `scheduled_runs` (unique per authorization and date), append-only event logs, `order_request_cancellations`, message role `system`. 014 and 015 are in flight on other branches |
 
 Before allocating another number, check remote branch tips and open PRs and update
 this table with the agreed allocation. Reservations do not create migration files.

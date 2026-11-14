@@ -238,13 +238,33 @@ REVIEWED = {
         "Relaxes a constraint; the primary key (buyer, agent, key) still enforces idempotency; "
         "no row changes."
     ),
+    (
+        "016_scheduled_orders.sql",
+        "DROP_CONSTRAINT",
+        "identities",
+        "identities_role_check",
+    ): (
+        "Immediately re-added in the same file with a wider CHECK that also allows the role "
+        "'scheduler'. Every existing row already satisfies it, so no row changes; the same "
+        "pattern as 004 for conversation_turns_state_check."
+    ),
+    (
+        "016_scheduled_orders.sql",
+        "DROP_CONSTRAINT",
+        "conversation_messages",
+        "conversation_messages_role_check",
+    ): (
+        "Immediately re-added in the same file with a wider CHECK that also allows the role "
+        "'system' (the system-authored first message of a scheduled-run chat). Existing user and "
+        "assistant rows are unchanged."
+    ),
     ("011_proposal_revision_ordering.sql", "UPDATE", "proposals", "updated_at"): (
         "Only fills the NEW column updated_at (guarded so it runs once, inside the block that "
         "adds the column). No existing column of proposals changes."
     ),
 }
 # INSERT targets that migrations may use (new reference rows only).
-ALLOWED_INSERT_TABLES = {"identities", "internal_agents"}
+ALLOWED_INSERT_TABLES = {"identities", "internal_agents", "scheduler_identities"}
 
 
 def key(finding):
@@ -349,7 +369,10 @@ def test_inserts_only_add_reference_rows_to_known_tables():
     _, inserts = scan_all()
     assert inserts, "003_chat_purchasing.sql inserts the internal agents"
     assert {table for _, _, table in inserts} <= ALLOWED_INSERT_TABLES, inserts
-    assert {file for file, _, _ in inserts} == {"003_chat_purchasing.sql"}
+    assert {file for file, _, _ in inserts} == {
+        "003_chat_purchasing.sql",
+        "016_scheduled_orders.sql",
+    }
 
 
 def test_immutable_trigger_definitions_cover_the_four_tables_and_never_replace_the_function():
