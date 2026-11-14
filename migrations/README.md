@@ -19,6 +19,7 @@ Do not rename applied migrations or delete their ledger rows.
 | 013_catalog_sync_withdrawals | Release integration: source snapshot count and product-ID-only cleanup protection view |
 | 014_policy_settings | Buyer policy managers, append-only change attribution and restricted policy save function |
 | 015_recipe_images | Optional chat illustrations, durable generation/upload recovery |
+| 021_turn_constraints | The customer's structured limits (budget, dietary toggles) stored with the chat turn that carries them (POL-008 producer, owner Q-97). One nullable `jsonb` column on `conversation_turns`; additive |
 
 Before allocating another number, check remote branch tips and open PRs and update
 this table with the agreed allocation. Reservations do not create migration files.

@@ -474,7 +474,7 @@ export interface components {
              * @default false
              */
             busy: boolean;
-            retry_message?: components["schemas"]["MessageRequest"] | null;
+            retry_message?: components["schemas"]["RetryMessage"] | null;
         };
         /** ConversationSummary */
         ConversationSummary: {
@@ -771,12 +771,35 @@ export interface components {
             /** Idempotency Key */
             idempotency_key: string;
         };
+        /**
+         * MessageConstraints
+         * @description Hard limits the customer sets on a message (POL-008); false withdraws an earlier toggle.
+         */
+        MessageConstraints: {
+            /**
+             * Budget Gross
+             * @description Hard budget in euros, gross; the basket may not exceed it.
+             */
+            budget_gross?: number | string | null;
+            /**
+             * Lactose Free
+             * @description Require lactose-free products.
+             */
+            lactose_free?: boolean | null;
+            /**
+             * Milk Free
+             * @description Require milk-free products.
+             */
+            milk_free?: boolean | null;
+        };
         /** MessageRequest */
         MessageRequest: {
             /** Text */
             text: string;
             /** Idempotency Key */
             idempotency_key: string;
+            /** @description Optional hard limits set by the customer (budget, dietary toggles). They stay in force for the rest of the conversation until a later message changes them. */
+            constraints?: components["schemas"]["MessageConstraints"] | null;
         };
         /** NextAction */
         NextAction: {
@@ -1030,6 +1053,11 @@ export interface components {
             observed_at: string;
             /** Reasons */
             reasons: components["schemas"]["Reason"][];
+            /**
+             * Totals Are Estimates
+             * @description True when any line is priced by variable weight, so the totals are estimates. Absent otherwise.
+             */
+            totals_are_estimates?: boolean | null;
         };
         /** QuantityCalculation */
         QuantityCalculation: {
@@ -1106,6 +1134,29 @@ export interface components {
              * @description Customer requirements the catalog cannot verify (for example gluten-free). Each entry blocks readiness: the basket needs the customer's decision (POL-009).
              */
             unsupported?: string[];
+        };
+        /**
+         * RetryConstraints
+         * @description The limits of an unfinished message, in the shape the client sends them back.
+         */
+        RetryConstraints: {
+            /** Budget Gross */
+            budget_gross?: string | null;
+            /** Lactose Free */
+            lactose_free?: boolean | null;
+            /** Milk Free */
+            milk_free?: boolean | null;
+        };
+        /**
+         * RetryMessage
+         * @description An unfinished message the client can send again with the same key and the same limits.
+         */
+        RetryMessage: {
+            /** Text */
+            text: string;
+            /** Idempotency Key */
+            idempotency_key: string;
+            constraints?: components["schemas"]["RetryConstraints"] | null;
         };
         /** RevisedProposalResponse */
         RevisedProposalResponse: {
@@ -1218,6 +1269,11 @@ export interface components {
             contributions?: {
                 [key: string]: unknown;
             }[] | null;
+            /**
+             * Price Is Estimate
+             * @description True for a variable-weight product: the final weight and price settle at delivery (BAS-007). Absent otherwise.
+             */
+            price_is_estimate?: boolean | null;
         };
         /** VoiceSession */
         VoiceSession: {

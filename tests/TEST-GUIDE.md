@@ -358,8 +358,15 @@ Checks that the quantity maths is exact: purchased amounts are whole multiples o
 | No-float guard (1 helper test + 7 modules) | Parses the source of the arithmetic modules (catalog, numeric, purchases, approval policy, workflow, service, recipes) for `float(...)` or float literals | No hits; the detector itself is shown to catch both forms | Binary floating point creeping into money or quantities. Checks source text only, so a float built another way would not be seen |
 | Variable weight still flagged | A raw product with no `variableUnit` flag, then with it set false | Missing means flagged (`True`); explicit false means `False` | Treating unknown as "fixed weight" |
 
-Strict xfail:
-- `test_variable_weight_line_is_flagged_but_does_not_block` stands for BAS-007 (owner decision: warn only). Today a variable-weight line (12 kg of product `460675`) still makes the outcome `needs_resolution`, because `purchases.py` and `recipes.py` still block it (implementation deferred, ISS-JCT-001). The flag half of the test already holds; the "must not block" half fails.
+BAS-007 (owner Q-68: variable weight warns and the basket continues): `test_variable_weight_line_is_flagged_but_does_not_block` (a variable-weight line is flagged and not `needs_resolution`), `test_variable_weight_line_shows_the_warning_and_an_estimated_price` (severity `warning`, the message says the price is an estimate, `price_is_estimate` on the line and `totals_are_estimates` on the snapshot, the customer's confirmation still places the mock order) and `test_a_basket_without_variable_weight_is_not_marked_as_an_estimate`; `test_agent.py::test_variable_weight_estimate_reaches_the_trusted_notice` checks the chat notice.
+
+#### `tests/test_chat_constraints.py` (POL-008 producer, owner Q-97) - 15 passed
+
+The customer's structured limits on a message (a hard budget, the lactose-free and milk-free toggles) become trusted constraints (source `user_request`, confirmed): the request model validates them (positive budget, at least one field, no unknown field); they are stored with the turn in `conversation_turns.constraints` (migration 021) and are not part of a finished conversation response; the same key with another record, or with none, is `IDEMPOTENCY_CONFLICT`, an exact retry is fine, and the hash of a message without limits is unchanged; the worker hands the limits in force to the runner as `constraints=` (the latest value per name over the conversation, a toggle sent as false withdraws it, another conversation is not affected, no limits means the old three-argument call); a looser budget asked by the model is stopped at the customer's number (`CONSTRAINT_LOOSENED` and `HARD_BUDGET_EXCEEDED`), a dropped diet flag is `needs_resolution`; no tool schema has a `constraints` argument; the retry message carries the fields back; migration 021 is one nullable `jsonb` column and is in the readiness manifest and the allocation table.
+
+#### `tests/test_order_weight.py` (MEA-011, owner Q-70 and Q-98) - 15 passed
+
+An order heavier than 30,000 kg is refused with `ORDER_WEIGHT_LIMIT_EXCEEDED` (422) before any supplier call, and the error states the limit ("30,000 kg per order"), the computed weight and the litre rule. The weight of a line is what is bought: the whole sales units the basket proposes times the kilograms in one sales unit. Kilograms come from catalogue evidence (sales unit KG, a KG entry in the units table, or a known KG measure) and win; where there is none a litre counts as 1 kg per litre (Q-98). A product with neither kilogram nor litre evidence (for example eggs counted in pieces) is not counted and never guessed; the error names how many lines were not counted. Cases: the helper for KG, litre (with and without a kilogram measure), piece and unknown products, conflicting evidence not replaced by the litre rule, whole-unit rounding (29,995 asked is 30,000 bought and allowed, 30,001 asked is 30,010 bought and refused), two lines adding up, exactly 30,000 kg and 30,000 L allowed, 30,001 L refused with the rule in the message, an unweighed line named, and `Service.prepare_order` creating no proposal. The recipe-only per-portion bound that PR #133 added was removed on the owner's answer to Q-96; the order limit is the only MEA-011 check.
 
 #### `tests/test_basket_contract.py` (JNP3-BAS-001 to BAS-005, plus BAS-008 shortfall) - 33 passed, 1 xfailed
 
@@ -411,18 +418,16 @@ Requirements that are still "Draft" or newly approved. Each test asserts the wan
 | Test | Scenario | Asserts | Catches |
 | --- | --- | --- | --- |
 | Terminating quantity unchanged | 150 g x 200 / 6 | Exactly "5" | Rounding touching an exact value (guard for MEA-012) |
-| 1000 purchase lines; 1000 lookup ids | Build requests with 1000 items | Accepted | Early caps on large requests |
+| 100 purchase lines, 100 meal-plan ingredients, 100 recipe ingredients; 1000 lookup ids | Build requests at the limit and one over | 100 accepted, 101 refused; the supplier's 1000 lookup ids stay accepted (MEA-013, Q-67) | Caps drifting from the owner's number |
 | Lookup batching (SUP-007) | 2500 ids with a stub supplier transport | Every request has at most 1000 products; no id lost or repeated in price or availability | One oversized supplier call |
 | Numeric shortfall (BAS-008) | Stock 3, need 10 L | `shortfall` equals packs needed minus available | Only a text reason existing |
 | Unpriced deposit on the line | Deposit price missing | Line gross, deposits, net, tax are `None`, not zero | A line looking cheaper than it is |
 | No shortfall when covered | Stock is enough | No `shortfall` key | Changing old fingerprints |
-| Material cap | Constants | `MAX_BASKET_LINES == MAX_LOOKUP_IDS == MAX_MATERIALS == 1000` | Limits drifting apart |
+| Basket and material caps | Constants | `MAX_BASKET_LINES == 100`; `MAX_LOOKUP_IDS == MAX_MATERIALS == 1000` (the supplier's own limit) | Limits drifting apart |
 
-Strict xfails (3):
-- `test_absurd_quantity_per_portion_is_rejected` (MEA-011): `scaled_plan` has no maximum per portion (the value is pending), so 9,999,999 kg per serving x 10,000 portions is accepted.
+Strict xfails (7):
 - `test_scaled_quantity_is_rounded_up_to_four_decimals` (MEA-012, 3 cases): a quantity needing more than 4 decimals is left unresolved (`None`), not rounded up (3.3334, 6.6667, 0.0334 expected).
-- `test_meal_plan_accepts_one_thousand_ingredients` (MEA-013): `MealPlan.ingredients` in `chat_schemas.py` (person 1) is still capped at 30.
-- `test_recipe_with_one_thousand_ingredients_can_be_scaled` (MEA-013): `Recipe` (100) and `scaled_plan` (30) in the recipe files (person 2) are not raised.
+- `test_product_requested_in_two_units_becomes_one_line_in_the_priority_unit` (BAS-009): the same product in KG and pieces is rejected before it reaches the service instead of being combined into one KG line (the combine helper exists, see `test_unit_priority.py`, but the tool path does not use it).
 
 #### `tests/test_matching_contract.py` (MEA-014) - 14 passed, 0 xfailed
 

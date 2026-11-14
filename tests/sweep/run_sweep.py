@@ -75,8 +75,10 @@ class Sweep:
     def health(self):
         r = httpx.get(self.base + "/health/ready", timeout=60)
         need(r.status_code == 200, f"/health/ready returned {r.status_code}: {r.text[:120]}")
-        self.mode = r.json()["upstream_mode"]
-        return f"upstream_mode={self.mode}"
+        # The readiness body no longer names the supplier mode (Q-72); the sweep is started by
+        # tests/ci.sh with UPSTREAM_MODE set, so it reports that.
+        self.mode = os.environ.get("UPSTREAM_MODE", "unknown")
+        return f"upstream_mode={self.mode} (from the environment)"
 
     def sign_in_required(self):
         anonymous = httpx.Client(base_url=self.base, timeout=30)
