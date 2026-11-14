@@ -136,7 +136,7 @@ export function OrderRow({
             )}
           </div>
           <div className="flex flex-wrap items-center gap-space-sm">
-            {item.status === "placed" && item.order_id && (
+            {item.status === "placed" && item.order_id && !item.schedule_id && (
               <Link
                 to={`/schedules/new?order=${encodeURIComponent(item.order_id)}`}
                 className={linkButton}

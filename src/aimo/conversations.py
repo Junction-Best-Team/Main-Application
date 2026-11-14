@@ -359,6 +359,29 @@ def customer_constraints(c, cid, tid):
     return [r for r in merged.values() if r["value"] is not False]
 
 
+def restorable_plan(messages):
+    """The meal plan the customer last saw and has not yet turned into a basket, else None.
+
+    Only the latest assistant answer counts, and only if it carries a complete plan matched to
+    products and no basket was prepared from it or after it. A plan the conversation has moved
+    past (a later text answer, a revised ingredient list) is not offered again. The result is
+    still re-verified from the catalog by ToolSession.restore_plan.
+    """
+    shown = [m for m in messages if not m.get("notice")]
+    last = next((i for i in range(len(shown) - 1, -1, -1) if shown[i]["role"] == "assistant"), None)
+    if last is None:
+        return None
+    plan = shown[last].get("meal_plan")
+    if not plan or any(m.get("proposal_id") for m in shown[last:]):
+        return None
+    if not isinstance(plan, dict) or plan.get("recipe_plan_id"):
+        return None
+    items = plan.get("ingredients")
+    if not items or any(not i.get("product_id") for i in items):
+        return None
+    return plan
+
+
 @operation("chat.execute", context_arg="turn")
 def execute_turn(turn, service, runner=None):
     """Execute only a claimed job, and fence the reply against lease replacement."""
@@ -406,6 +429,7 @@ def execute_turn(turn, service, runner=None):
             scheduler.provider_message(m["role"], m["text"]) | {"attachments": m["attachments"]}
             for m in shown
         ]
+        stored = restorable_plan(data["messages"])
         # Structured persisted plans and status survive refresh, restarts and a provider context reset.
         for index, msg in enumerate(shown):
             if msg["meal_plan"]:
@@ -441,7 +465,13 @@ def execute_turn(turn, service, runner=None):
             )
             if prepared
             else AgentTurn.model_validate(
-                runner(actor, history, service, **({"constraints": limits} if limits else {}))
+                runner(
+                    actor,
+                    history,
+                    service,
+                    **({"constraints": limits} if limits else {}),
+                    **({"stored_plan": stored} if stored else {}),
+                )
             )
         )
         if result.proposal_id:
