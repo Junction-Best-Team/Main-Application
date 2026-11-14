@@ -49,12 +49,13 @@ def snapshot(total="10.00", excess="0", reasons=(), currency="EUR", lines=1):
     }
 
 
-def run(req=None, snap=None, rule=None, approvers=(APPROVER,)):
+def run(req=None, snap=None, rule=None, approvers=(APPROVER,), **extra):
     return evaluate_purchase(
         req or request(),
         snap or snapshot(),
         rule if rule is not None else rules(),
         list(approvers),
+        **extra,
     )
 
 
@@ -68,21 +69,108 @@ def codes(result):
 @pytest.mark.parametrize(
     "case,args,code,severity,outcome",
     [
-        ("destination", dict(req=request(destination="elsewhere")), "DESTINATION_NOT_ALLOWED", "denied", "denied"),
-        ("hard budget", dict(req=request(budget_gross="9.99")), "HARD_BUDGET_EXCEEDED", "denied", "denied"),
-        ("currency unresolved", dict(snap=snapshot(currency=None, total=None)), "CURRENCY_UNRESOLVED", "unresolved", "needs_resolution"),
-        ("currency outside authority", dict(snap=snapshot(currency="USD")), "CURRENCY_NOT_ALLOWED", "denied", "denied"),
-        ("substitution forbidden", dict(req=request("Y"), rule=rules(substitution="forbidden")), "SUBSTITUTION_FORBIDDEN", "denied", "denied"),
-        ("substitution declared", dict(req=request(lines=[{"product_id": "X", "substitutes_for": "Z"}]), rule=rules(substitution="forbidden")), "SUBSTITUTION_FORBIDDEN", "denied", "denied"),
-        ("substitution needs approval", dict(req=request("Y")), "SUBSTITUTION_REQUIRES_APPROVAL", "exception", "approval_required"),
-        ("overbuy forbidden", dict(snap=snapshot(excess="1"), rule=rules(overbuy="forbidden")), "OVERBUY_FORBIDDEN", "denied", "denied"),
-        ("overbuy refused by request", dict(snap=snapshot(excess="1"), req=request(allow_overbuy=False)), "OVERBUY_FORBIDDEN", "denied", "denied"),
-        ("overbuy needs approval", dict(snap=snapshot(excess="1")), "OVERBUY_REQUIRES_APPROVAL", "exception", "approval_required"),
-        ("no approver covers it", dict(snap=snapshot(total="6000.00")), "NO_ELIGIBLE_APPROVER", "unresolved", "needs_resolution"),
-        ("approver lacks exception", dict(req=request("Y"), approvers=[{**APPROVER, "exceptions": ["overbuy"]}]), "NO_ELIGIBLE_APPROVER", "unresolved", "needs_resolution"),
+        (
+            "destination",
+            dict(req=request(destination="elsewhere")),
+            "DESTINATION_NOT_ALLOWED",
+            "denied",
+            "denied",
+        ),
+        (
+            "hard budget",
+            dict(req=request(budget_gross="9.99")),
+            "HARD_BUDGET_EXCEEDED",
+            "denied",
+            "denied",
+        ),
+        (
+            "currency unresolved",
+            dict(snap=snapshot(currency=None, total=None)),
+            "CURRENCY_UNRESOLVED",
+            "unresolved",
+            "needs_resolution",
+        ),
+        (
+            "currency outside authority",
+            dict(snap=snapshot(currency="USD")),
+            "CURRENCY_NOT_ALLOWED",
+            "denied",
+            "denied",
+        ),
+        (
+            "substitution forbidden",
+            dict(req=request("Y"), rule=rules(substitution="forbidden")),
+            "SUBSTITUTION_FORBIDDEN",
+            "denied",
+            "denied",
+        ),
+        (
+            "substitution declared",
+            dict(
+                req=request(lines=[{"product_id": "X", "substitutes_for": "Z"}]),
+                rule=rules(substitution="forbidden"),
+            ),
+            "SUBSTITUTION_FORBIDDEN",
+            "denied",
+            "denied",
+        ),
+        (
+            "substitution needs approval",
+            dict(req=request("Y")),
+            "SUBSTITUTION_REQUIRES_APPROVAL",
+            "exception",
+            "approval_required",
+        ),
+        (
+            "overbuy forbidden",
+            dict(snap=snapshot(excess="1"), rule=rules(overbuy="forbidden")),
+            "OVERBUY_FORBIDDEN",
+            "denied",
+            "denied",
+        ),
+        (
+            "overbuy refused by request",
+            dict(snap=snapshot(excess="1"), req=request(allow_overbuy=False)),
+            "OVERBUY_FORBIDDEN",
+            "denied",
+            "denied",
+        ),
+        (
+            "overbuy needs approval",
+            dict(snap=snapshot(excess="1")),
+            "OVERBUY_REQUIRES_APPROVAL",
+            "exception",
+            "approval_required",
+        ),
+        (
+            "no approver covers it",
+            dict(snap=snapshot(total="6000.00")),
+            "NO_ELIGIBLE_APPROVER",
+            "unresolved",
+            "needs_resolution",
+        ),
+        (
+            "approver lacks exception",
+            dict(req=request("Y"), approvers=[{**APPROVER, "exceptions": ["overbuy"]}]),
+            "NO_ELIGIBLE_APPROVER",
+            "unresolved",
+            "needs_resolution",
+        ),
         ("missing rules", dict(rule={}), "MISSING_AUTHORITY", "unresolved", "needs_resolution"),
-        ("no approver at all", dict(approvers=()), "NO_ELIGIBLE_APPROVER", "unresolved", "needs_resolution"),
-        ("approver in another currency", dict(approvers=[{**APPROVER, "currency": "SEK"}]), "NO_ELIGIBLE_APPROVER", "unresolved", "needs_resolution"),
+        (
+            "no approver at all",
+            dict(approvers=()),
+            "NO_ELIGIBLE_APPROVER",
+            "unresolved",
+            "needs_resolution",
+        ),
+        (
+            "approver in another currency",
+            dict(approvers=[{**APPROVER, "currency": "SEK"}]),
+            "NO_ELIGIBLE_APPROVER",
+            "unresolved",
+            "needs_resolution",
+        ),
     ],
 )
 def test_each_policy_duty_has_a_reason_code(case, args, code, severity, outcome):
@@ -95,8 +183,18 @@ def test_each_policy_duty_has_a_reason_code(case, args, code, severity, outcome)
 
 def test_dietary_evidence_enters_policy_through_snapshot_reasons():
     """Dietary reasons come from catalog.requirement_reasons; the policy must keep them."""
-    unresolved = {"code": "MILK_FREE_UNVERIFIED", "message": "m", "product_id": "X", "severity": "unresolved"}
-    denied = {"code": "MILK_REQUIREMENT_VIOLATED", "message": "m", "product_id": "X", "severity": "denied"}
+    unresolved = {
+        "code": "MILK_FREE_UNVERIFIED",
+        "message": "m",
+        "product_id": "X",
+        "severity": "unresolved",
+    }
+    denied = {
+        "code": "MILK_REQUIREMENT_VIOLATED",
+        "message": "m",
+        "product_id": "X",
+        "severity": "denied",
+    }
     assert run(snap=snapshot(reasons=[unresolved]))["policy_outcome"] == "needs_resolution"
     assert run(snap=snapshot(reasons=[denied]))["policy_outcome"] == "denied"
     assert run(snap=snapshot(reasons=[unresolved, denied]))["policy_outcome"] == "denied"
@@ -194,7 +292,10 @@ def test_outside_scope_product_follows_the_substitution_rule():
     needs = run(req=outside, rule=rules(substitution="requires_approval"))
     assert needs["policy_outcome"] == "approval_required"
     assert needs["required_exceptions"] == ["substitution"]
-    assert run(req=outside, rule=rules(substitution="forbidden"), approvers=())["policy_outcome"] == "denied"
+    assert (
+        run(req=outside, rule=rules(substitution="forbidden"), approvers=())["policy_outcome"]
+        == "denied"
+    )
 
 
 def test_inside_scope_product_needs_no_substitution_exception():
@@ -223,7 +324,9 @@ def test_allowed_substitution_reason_covers_declared_substitution_too():
     declared = request(lines=[{"product_id": "X", "substitutes_for": "Z"}])
     result = run(req=declared, rule=rules(substitution="allowed"))
     assert result["policy_outcome"] == "ready_to_commit"
-    assert [r["product_id"] for r in result["reasons"] if r["code"] == "SUBSTITUTION_ALLOWED_BY_POLICY"] == ["X"]
+    assert [
+        r["product_id"] for r in result["reasons"] if r["code"] == "SUBSTITUTION_ALLOWED_BY_POLICY"
+    ] == ["X"]
 
 
 def test_allowed_substitution_with_a_request_refusal_is_still_denied():
@@ -272,7 +375,12 @@ def test_unknown_total_never_reaches_ready_to_commit():
 
 
 def test_unknown_total_reason_is_not_duplicated_when_the_snapshot_already_has_it():
-    known = {"code": "TOTAL_UNRESOLVED", "message": "m", "product_id": None, "severity": "unresolved"}
+    known = {
+        "code": "TOTAL_UNRESOLVED",
+        "message": "m",
+        "product_id": None,
+        "severity": "unresolved",
+    }
     result = run(snap=snapshot(total=None, reasons=[known]))
     assert codes(result).count("TOTAL_UNRESOLVED") == 1
     assert result["policy_outcome"] == "needs_resolution"
@@ -360,3 +468,76 @@ def test_service_requires_approval_substitution_still_needs_a_decision(
         buyer, p["approval_id"], DecisionRequest(revision=1, decision="approve")
     )
     assert service.commit_order(agent, commit(p))["status"] == "accepted_mock"
+
+
+# --- POL-008: an unconfirmed assumption never loosens a hard limit (waits for provenance) -----
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=TypeError,
+    reason="POL-008 is not enforceable yet: no per-constraint provenance exists (issues #75, #92). "
+    "evaluate_purchase has no trusted `constraints` input; see evidence/ws-c/pol-008-design.md.",
+)
+def test_unconfirmed_assumption_never_loosens_hard_limits():
+    """Target behaviour. `constraints` is a SERVER-supplied record (never a model argument) of what
+    the customer stated, each entry {name, value, source, confirmed}; the request carries the
+    model's values. The effective limit is the stricter of the two; a looser request value is a
+    named reason, never a silent relaxation."""
+    stated_budget = {
+        "name": "budget_gross",
+        "value": "50.00",
+        "source": "user_request",
+        "confirmed": True,
+    }
+    stated_milk_free = {
+        "name": "milk_free",
+        "value": True,
+        "source": "user_request",
+        "confirmed": True,
+    }
+    assumed_loose_budget = {
+        "name": "budget_gross",
+        "value": "500.00",
+        "source": "stated_assumption",
+        "confirmed": False,
+    }
+    over_stated = snapshot(total="100.00")
+
+    # (a) a looser unconfirmed budget cannot lift the customer's stated budget of 50
+    result = run(
+        req=request(budget_gross="500.00"),
+        snap=over_stated,
+        constraints=[stated_budget, assumed_loose_budget],
+    )
+    assert result["policy_outcome"] == "denied" and "HARD_BUDGET_EXCEEDED" in codes(result)
+
+    # (b) dropping a stated dietary requirement from the request is a named reason, not a pass
+    dropped = run(
+        req=request(requirements={"milk_free": False}),
+        constraints=[stated_milk_free],
+    )
+    assert dropped["policy_outcome"] == "needs_resolution"
+    assert "CONSTRAINT_LOOSENED" in codes(dropped)
+
+    # (c) a stricter assumption is allowed and still enforced
+    stricter = {
+        "name": "budget_gross",
+        "value": "40.00",
+        "source": "stated_assumption",
+        "confirmed": False,
+    }
+    strict_result = run(
+        req=request(budget_gross="40.00"),
+        snap=snapshot(total="30.00"),
+        constraints=[stated_budget, stricter],
+    )
+    assert strict_result["policy_outcome"] == "ready_to_commit"
+    assert (
+        run(
+            req=request(budget_gross="40.00"),
+            snap=over_stated,
+            constraints=[stated_budget, stricter],
+        )["policy_outcome"]
+        == "denied"
+    )
