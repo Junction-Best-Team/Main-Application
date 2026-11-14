@@ -19,7 +19,6 @@ import pytest
 from pydantic import ValidationError
 
 from aimo import fixtures
-from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint
 from aimo.ingest import publish
 from aimo.recipe_batch import MAX_BATCH_MATCHES, MatchIngredients, match_ingredients
@@ -358,16 +357,8 @@ def test_another_agents_plan_is_not_found(tmp_path, actor, meal_products):
     assert revision_count(plan) == 1
 
 
-def test_service_batch_operation_runs_when_enabled_and_fails_closed_when_disabled(
-    tmp_path, actor, service, meal_products, monkeypatch
-):
+def test_service_batch_operation_writes_one_revision(tmp_path, actor, service, meal_products):
     plan = new_plan(tmp_path, actor)
     request = batch(plan, pairs())
-    monkeypatch.setattr(settings(), "recipe_planning_enabled", False)
-    with pytest.raises(Problem) as error:
-        service.match_ingredients(actor, request)
-    assert error.value.code == "RECIPES_DISABLED"
-    assert revision_count(plan) == 1
-    monkeypatch.setattr(settings(), "recipe_planning_enabled", True)
     result = service.match_ingredients(actor, request)
     assert result["recipe_plan_revision"] == 2

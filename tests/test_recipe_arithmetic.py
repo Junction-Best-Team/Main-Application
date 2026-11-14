@@ -25,7 +25,6 @@ from pydantic import ValidationError
 from aimo import fixtures
 from aimo.agent_tools import ToolSession
 from aimo.catalog import quantity
-from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint
 from aimo.ingest import publish
 from aimo.recipe_import import import_product_evidence, ingest_recipes
@@ -772,23 +771,19 @@ def test_prepare_is_refused_while_any_ingredient_is_unresolved(
 
 
 def test_agent_tool_refuses_prepare_while_the_saved_plan_is_unresolved(
-    tmp_path, actor, service, meal_products, monkeypatch
+    tmp_path, actor, service, meal_products
 ):
-    monkeypatch.setattr(settings(), "recipe_planning_enabled", True)
-    try:
-        versions = import_fixture(tmp_path)
-        session = ToolSession(actor, service)
-        session.invoke("scale_recipe", json.dumps(dict(versions[0], portions=200)))
-        request = request_for(
-            scale_recipe(actor, ref(versions)),
-            lines=[{"product_id": "recipe-spaghetti", "amount": "20", "unit": "KG"}],
-        ).model_dump(mode="json")
-        request.pop("idempotency_key")
-        with pytest.raises(Problem) as error:
-            session.invoke("prepare_order", json.dumps(request))
-        assert error.value.code == "INCOMPLETE_MEAL_PLAN"
-    finally:
-        settings.cache_clear()
+    versions = import_fixture(tmp_path)
+    session = ToolSession(actor, service)
+    session.invoke("scale_recipe", json.dumps(dict(versions[0], portions=200)))
+    request = request_for(
+        scale_recipe(actor, ref(versions)),
+        lines=[{"product_id": "recipe-spaghetti", "amount": "20", "unit": "KG"}],
+    ).model_dump(mode="json")
+    request.pop("idempotency_key")
+    with pytest.raises(Problem) as error:
+        session.invoke("prepare_order", json.dumps(request))
+    assert error.value.code == "INCOMPLETE_MEAL_PLAN"
 
 
 def free_form_session(tmp_path, actor, service):
@@ -826,16 +821,12 @@ def free_form_session(tmp_path, actor, service):
 
 
 def test_free_form_basket_that_omits_ingredients_is_prepared_but_labelled_free_form(
-    tmp_path, actor, service, meal_products, monkeypatch
+    tmp_path, actor, service, meal_products
 ):
     """Characterisation of the documented cross-turn limit (docs/recipes.md)."""
-    monkeypatch.setattr(settings(), "recipe_planning_enabled", True)
-    try:
-        later, request = free_form_session(tmp_path, actor, service)
-        result = later.invoke("prepare_order", json.dumps(request))
-        assert result["recipe_basis"] == "free_form" and result["request"]["recipe_plan_id"] is None
-    finally:
-        settings.cache_clear()
+    later, request = free_form_session(tmp_path, actor, service)
+    result = later.invoke("prepare_order", json.dumps(request))
+    assert result["recipe_basis"] == "free_form" and result["request"]["recipe_plan_id"] is None
 
 
 @pytest.mark.xfail(
@@ -846,15 +837,11 @@ def test_free_form_basket_that_omits_ingredients_is_prepared_but_labelled_free_f
     "ToolSession.prepare (agent_tools.py, person 2) must call it. See evidence MEA-008-requests.md.",
 )
 def test_gap_free_form_basket_for_a_dish_with_unresolved_saved_plan_is_refused(
-    tmp_path, actor, service, meal_products, monkeypatch
+    tmp_path, actor, service, meal_products
 ):
-    monkeypatch.setattr(settings(), "recipe_planning_enabled", True)
-    try:
-        later, request = free_form_session(tmp_path, actor, service)
-        with pytest.raises(Problem):
-            later.invoke("prepare_order", json.dumps(request))
-    finally:
-        settings.cache_clear()
+    later, request = free_form_session(tmp_path, actor, service)
+    with pytest.raises(Problem):
+        later.invoke("prepare_order", json.dumps(request))
 
 
 # --- MEA-009: required amount versus pack-rounded purchase -----------------------------------------

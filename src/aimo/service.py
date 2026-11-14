@@ -63,10 +63,8 @@ class Service:
 
     def ensure_saved_plan_resolved(self, identity, title):
         from aimo import recipe_guard
-        from aimo.config import settings
 
-        if settings().recipe_planning_enabled:
-            recipe_guard.ensure_no_unresolved_saved_plan(identity, title)
+        recipe_guard.ensure_no_unresolved_saved_plan(identity, title)
 
     def recipe_operation(self, name, identity, request):
         from aimo import recipes
@@ -90,11 +88,7 @@ class Service:
 
     def match_ingredients(self, identity, request):
         from aimo import recipe_batch
-        from aimo.config import settings
-        from aimo.db import Problem
 
-        if not settings().recipe_planning_enabled:
-            raise Problem("RECIPES_DISABLED", "Recipe planning has not been enabled.", 503)
         return recipe_batch.match_ingredients(identity, request)
 
     def get_proposal(self, identity, proposal_id):

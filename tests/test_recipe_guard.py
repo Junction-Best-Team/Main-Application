@@ -8,10 +8,8 @@ from uuid import uuid4
 
 import pytest
 
-from aimo.config import settings
 from aimo.db import Problem, connection, js
 from aimo.recipe_guard import ensure_no_unresolved_saved_plan, unresolved_saved_plans_for_dish
-from aimo.service import Service
 
 
 @pytest.fixture(autouse=True)
@@ -172,16 +170,9 @@ def test_inside_a_conversation_only_that_conversations_plans_count(actor):
     assert unresolved_saved_plans_for_dish(elsewhere, "Old dish") == []
 
 
-def test_service_method_refuses_when_recipe_planning_is_enabled(actor, service, monkeypatch):
+def test_service_method_refuses_an_unresolved_saved_plan(actor, service):
     add_plan(actor, "Spaghetti Carbonara", UNRESOLVED)
-    monkeypatch.setattr(settings(), "recipe_planning_enabled", True)
     with pytest.raises(Problem) as error:
         service.ensure_saved_plan_resolved(actor, "Spaghetti Carbonara")
     assert error.value.code == "RECIPE_PLAN_UNRESOLVED"
     assert service.ensure_saved_plan_resolved(actor, "Lasagne") is None
-
-
-def test_service_method_allows_everything_when_recipe_planning_is_off(actor, monkeypatch):
-    add_plan(actor, "Spaghetti Carbonara", UNRESOLVED)
-    monkeypatch.setattr(settings(), "recipe_planning_enabled", False)
-    assert Service().ensure_saved_plan_resolved(actor, "Spaghetti Carbonara") is None

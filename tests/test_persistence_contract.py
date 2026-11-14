@@ -228,13 +228,6 @@ def request_for(plan):
 
 
 @pytest.fixture
-def recipes_on(monkeypatch):
-    monkeypatch.setattr(settings(), "recipe_planning_enabled", True)
-    yield
-    settings.cache_clear()
-
-
-@pytest.fixture
 def planned(tmp_path, actor, meal_products):
     """A saved, fully matched plan (revision 4: scale, then one match per ingredient)."""
     *_, versions = import_fixture(tmp_path)
@@ -512,7 +505,7 @@ def test_failed_prepare_rolls_back_every_proposal_record_and_keeps_the_plan(
 
 
 def test_tool_session_state_is_memory_only_and_the_plan_reloads_from_postgres(
-    tmp_path, actor, service, meal_products, recipes_on
+    tmp_path, actor, service, meal_products
 ):
     *_, versions = import_fixture(tmp_path)
     session = ToolSession(actor, service)
@@ -572,20 +565,10 @@ def test_plan_by_id_returns_the_current_revision_and_names_its_number(planned, a
     assert error.value.code == "NOT_FOUND"
 
 
-def test_service_get_recipe_plan_needs_flag_and_matches_the_recipes_module(
-    planned, actor, service, monkeypatch
-):
+def test_service_get_recipe_plan_matches_the_recipes_module(planned, actor, service):
     plan, _ = planned
     request = PlanReference(plan_id=plan["recipe_plan_id"])
-    monkeypatch.setattr(settings(), "recipe_planning_enabled", False)
-    with pytest.raises(Problem) as error:
-        service.get_recipe_plan(actor, request)
-    assert error.value.code == "RECIPES_DISABLED"
-    monkeypatch.setattr(settings(), "recipe_planning_enabled", True)
-    try:
-        assert service.get_recipe_plan(actor, request) == plan
-    finally:
-        settings.cache_clear()
+    assert service.get_recipe_plan(actor, request) == plan
 
 
 def test_proposal_carries_server_computed_totals_and_http_returns_them_unchanged(
