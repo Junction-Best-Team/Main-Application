@@ -1,8 +1,10 @@
 import { expect, test } from "./test";
 
 test("signs in and screenshots each existing screen", async ({ page }, info) => {
+  // "smoke-" prefix so these early captures never overwrite the per-screen
+  // review screenshots that the screen specs take once content has loaded.
   const shot = (name: string) =>
-    page.screenshot({ path: `test-results/screens/${info.project.name}-${name}.png`, fullPage: true });
+    page.screenshot({ path: `test-results/screens/${info.project.name}-smoke-${name}.png`, fullPage: true });
 
   await page.goto("/login");
   await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
