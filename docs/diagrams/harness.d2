@@ -26,7 +26,7 @@ vertical-gap: 85
 message: "Buyer sends message\nReact chat interface" {class: human; width: 285; height: 145}
 api: "API authenticates\nSession · Origin · CSRF" {class: app; width: 285; height: 145}
 queue: "PostgreSQL saves turn\nMessage + durable queue" {class: app; width: 285; height: 145; shape: cylinder}
-worker: "Worker claims turn\nLease + buyer-scoped identity" {class: app; width: 285; height: 145}
+worker: "Worker polls queue\nClaims turn + buyer scope" {class: app; width: 285; height: 145}
 basket: "Save proposal revision\nExact basket + reasons" {class: app; width: 285; height: 145}
 checks: "Purchasing checks\nScope · quantity · dietary\nPrice · stock · budget" {class: check; width: 285; height: 145}
 tools: "Typed tool registry\nSearch · plan · prepare · read\nNo approve / commit tool" {class: app; width: 285; height: 145}

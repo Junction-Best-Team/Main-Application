@@ -20,6 +20,13 @@ below. [Edit the diagrams with free D2](diagrams/README.md).
 
 ![Full system architecture](diagrams/architecture.svg)
 
+The buyer message creates the work: the API persists a queued turn; the continuously
+running worker polls PostgreSQL, claims a turn, and executes the agent. It saves its
+reply/proposal in PostgreSQL. The API reads saved state and delivers updates to the
+browser via SSE. The API does not invoke the worker directly. The diagram’s green
+stores are logical areas of one external managed database; blue workloads share the
+Kubernetes cluster.
+
 ### Agent harness and purchase authority
 
 [Editable D2 source](diagrams/harness.d2) · [Full-size SVG](diagrams/harness.svg) · [PNG](diagrams/harness.png)

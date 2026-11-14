@@ -1,44 +1,34 @@
+# Runtime flow. Blue boxes are separate workloads in the same Kubernetes cluster.
+# The three green stores are logical areas of ONE external managed PostgreSQL database.
 vars: {d2-config: {layout-engine: elk; theme-id: 0; pad: 35}}
 direction: down
 classes: {
   app: {style: {fill: "#EAF1FF"; stroke: "#6984AE"; border-radius: 12; font-size: 22}}
-  human: {style: {fill: "#E2F5EF"; stroke: "#65A08D"; border-radius: 12; font-size: 22}}
+  data: {style: {fill: "#E2F5EF"; stroke: "#65A08D"; font-size: 21}}
   external: {style: {fill: "#F1EAFF"; stroke: "#9B85BE"; border-radius: 12; font-size: 21}}
-  ops: {style: {fill: "#FFF2D9"; stroke: "#B29963"; border-radius: 12; font-size: 21}}
+  ops: {style: {fill: "#FFF2D9"; stroke: "#B29963"; border-radius: 12; font-size: 20}}
 }
-browser: "BUYER'S BROWSER" {
-  style: {fill: "#F5FCF9"; stroke: "#A7CABD"; font-size: 24}
-  ui: "Aimo web app\nReact + TypeScript\nChat · basket · purchase history" {class: human}
-}
-cluster: "Kubernetes cluster" {
-  label.near: top-left
-  style: {fill: "#FAFBFE"; stroke: "#C6D2E2"; stroke-dash: 4; font-size: 24}
-  entry: "Public entry point\nTraefik · HTTPS routing" {class: app}
-  web: "Frontend server\nNginx\nServes React files" {class: app}
-  api: "Application API\nFastAPI\nSessions · chat · purchases" {class: app}
-  worker: "AI worker\nAgent tools + hybrid search\nLocal E5 / hosted embeddings" {class: app}
-  job: "Operator jobs\nDataset imports · schema setup" {class: ops}
-  entry -> web: load app
-  entry -> api: API + events
-}
-db: "PostgreSQL + pgvector\nCatalog + vectors · optional recipes\nChat + job queue · buyer identities\nPolicies · approvals · mock orders · audit" {
-  shape: cylinder
-  style: {fill: "#E2F5EF"; stroke: "#65A08D"; font-size: 22}
-}
-providers: "External APIs" {
-  label.near: top-left
-  style: {fill: "#FCFAFF"; stroke: "#CFC0E1"; font-size: 24}
-  chat: "Conversational LLM\nOpenRouter default\nProvider is configurable" {class: external}
-  search: "Hosted search / opt-in\nQwen3 embeddings\n+ shortlist reranker" {class: external; style.stroke-dash: 4}
-  supplier: "Valio Aimo API\nPrices + availability only" {class: external}
-}
-inputs: "Private source datasets\nProducts · optional recipes" {class: ops; shape: page}
-browser.ui -> cluster.entry: HTTPS
-cluster.api -> db: persist state
-cluster.worker -> db: claim / search / save
-cluster.worker -> providers.chat: model calls
-cluster.worker -> providers.search: embed / rerank {style.stroke-dash: 4}
-cluster.worker -> providers.supplier: price / stock
-cluster.api -> providers.supplier: revalidate
-inputs -> cluster.job: operator action {style.stroke-dash: 4}
-cluster.job -> db: import / migrate {style.stroke-dash: 4}
+browser: "BUYER WEB APP\nReact in the browser\nChat · basket · history" {class: data; style.border-radius: 12}
+frontend: "FRONTEND SERVER\nNginx · Kubernetes pod\nServes React files" {class: app}
+api: "APPLICATION API\nFastAPI · Kubernetes pod\nSessions · chat · confirmation" {class: app}
+queue: "DURABLE CHAT QUEUE\nPostgreSQL conversation_turns\nQueued work + claim leases" {class: data; shape: cylinder}
+worker: "AI WORKER\nIndependent Kubernetes pod\nPoll → claim → run agent" {class: app}
+records: "APPLICATION RECORDS\nSame PostgreSQL database\nReplies · proposals · policies\nConfirmations · mock orders · audit" {class: data; shape: cylinder}
+catalog: "CATALOG + VECTORS\nSame PostgreSQL / pgvector\nProducts · optional recipes" {class: data; shape: cylinder}
+llm: "CONVERSATIONAL LLM\nOpenRouter default\nTool calls + replies" {class: external}
+search: "HOSTED SEARCH / OPTIONAL\nQwen3 embeddings + reranker\nAlternative to local E5" {class: external; style.stroke-dash: 4}
+supplier: "VALIO AIMO API\nPrices + availability only\nLabelled fixtures in demo mode" {class: external}
+inputs: "PRIVATE DATASETS\nProducts · optional recipes" {class: ops; shape: page}
+import: "OPERATOR JOBS\nExplicit import / schema setup\nRuns in Kubernetes" {class: ops}
+browser -> frontend: "Load React files\nHTTPS via Traefik"
+browser <-> api: "1. Send message / receive events\nHTTPS via Traefik"
+api -> queue: "2. Save queued turn"
+queue -> worker: "3. Worker polls + claims"
+worker -> records: "4. Persist reply + proposal"
+api <-> records: "5. Read saved updates\nSessions + purchases"
+worker -> catalog: hybrid search
+worker -> llm: model requests
+worker -> search: embed / rerank {style.stroke-dash: 4}
+worker -> supplier: shortlist lookup
+api -> supplier: confirmation recheck
+inputs -> import -> catalog: explicit batch import {style.stroke-dash: 4}

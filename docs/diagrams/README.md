@@ -29,6 +29,12 @@ Detailed contracts remain in [architecture.md](../architecture.md).
   Traefik routes HTTPS to Nginx or the FastAPI API. These are distinct responsibilities.
 - Blue: application components. Green: people, data and persisted results. Purple:
   external AI/supplier providers. Gold: deterministic purchasing checks.
+- The numbered path is buyer → API → saved PostgreSQL turn → polling worker → saved reply
+  → API → browser. The worker is continuously running: it polls for work, rather than
+  receiving a direct API call. It waits one second after an empty poll.
+- The frontend server, API and worker are separate workloads in the same Kubernetes
+  cluster. The green stores are logical areas of one managed PostgreSQL database
+  outside that cluster, not three databases.
 - PostgreSQL is both the application database and durable job queue. It also stores
   catalog/recipe vectors, policies, confirmations, mock orders and audit history.
 - The worker can use local E5 embeddings; hosted search and recipe planning require
