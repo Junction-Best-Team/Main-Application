@@ -149,6 +149,8 @@ def scan_text(file, raw):
             sql,
             re.I,
         ):
+            if re.search(r"CREATE\s+TRIGGER\s+" + re.escape(m.group(1)) + r"\b", sql, re.I):
+                continue  # repeatable re-creation of a trigger the same file creates (008)
             add("DROP_TRIGGER", m.group(2) or "", m.group(1))
         for m in re.finditer(r"\bDROP\s+FUNCTION\s+(?:IF\s+EXISTS\s+)?" + NAME, sql, re.I):
             add("DROP_FUNCTION", "", m.group(1))
@@ -361,7 +363,10 @@ def test_immutable_trigger_definitions_cover_the_four_tables_and_never_replace_t
             created[m.group(1)] = path.name
     assert set(IMMUTABLE) <= set(guarded), set(IMMUTABLE) - set(guarded)
     extra = {t: f for t, f in guarded.items() if t not in IMMUTABLE}
-    assert all(created.get(t) == f for t, f in extra.items()), extra
+    # 008 (WS-D) additionally guards `orders`, a base table created in 001: a saved receipt is
+    # history. It only adds protection; nothing is unguarded.
+    guarded_later = {"orders": "008_orders_immutable.sql"}
+    assert all(created.get(t) == f or guarded_later.get(t) == f for t, f in extra.items()), extra
     definitions = [
         p.name
         for p in MIGRATIONS.glob("*.sql")
