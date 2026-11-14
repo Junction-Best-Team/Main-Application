@@ -1,7 +1,6 @@
-"""Actual purchasing functions with PostgreSQL and authored meal/supplier fixtures.
+"""Real provider protocol and purchasing functions with authored fixtures.
 
-The standalone agent workstream predates the backend route migration, so this
-module runs after that dependency is integrated. The provider alone is scripted.
+Only provider HTTP responses, catalog/embeddings and supplier facts are mocked.
 """
 
 import json
@@ -11,10 +10,9 @@ from datetime import date, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
-
-pytest.importorskip("aimo.conversations", reason="requires the chat backend integration")
 
 from aimo import agent as internal
 from aimo import auth, fixtures
@@ -82,11 +80,16 @@ def test_carbonara_actual_catalog_policy_customer_confirmation_and_persisted_rec
     ])
     seen = []
 
-    def provider(client, cfg, messages, definitions, deadline):
-        seen.append(deepcopy(messages))
-        return next(sequence)
+    def provider(request):
+        payload = json.loads(request.content)
+        seen.append(deepcopy(payload["messages"]))
+        assert "unused-scripted-provider" not in str(payload)
+        return httpx.Response(200, json={"choices": [{"message": next(sequence)}]})
 
-    monkeypatch.setattr(internal, "_completion", provider)
+    real_client = httpx.Client
+    monkeypatch.setattr(internal.httpx, "Client", lambda **kwargs: real_client(
+        transport=httpx.MockTransport(provider), **kwargs
+    ))
     connector = FixtureClient()
     service = Service(connector)
     with TestClient(create_app(service)) as client:
