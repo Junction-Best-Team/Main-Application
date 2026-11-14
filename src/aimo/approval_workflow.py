@@ -151,10 +151,12 @@ def render(c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, hi
         action = {"type": "view_current_proposal", "tool": "get_proposal"}
     elif committed:
         action = {"type": "complete", "tool": "get_order"}
-    elif status == "rejected" or r["policy_outcome"] == "denied":
+    elif status == "rejected":
         action = {"type": "stop"}
     elif status in ("expired", "superseded", "policy_changed", "authority_changed"):
         action = {"type": "request_fresh_proposal", "tool": "prepare_order"}
+    elif r["policy_outcome"] == "denied":
+        action = {"type": "stop"}
     elif r["policy_outcome"] == "needs_resolution":
         action = {"type": "revise_request", "tool": "prepare_order"}
     elif eligible:

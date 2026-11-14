@@ -140,12 +140,18 @@ key and the prepared-plan lock commit together. A concurrent edit invalidates th
 in-flight preparation; concurrent prepares of one plan can create only one proposal.
 The same retry key returns the existing proposal. An active basket or completed
 order cannot be prepared again with a different key. When an unordered proposal
-expires, needs resolution, or requires policy/authority refresh, a new customer
-turn may reload the same plan and refresh commercial terms.
+expires, is denied, needs resolution, or requires policy/authority refresh, a new
+customer turn may reload the same plan and prepare corrected commercial terms.
 This appends a revision to the **same proposal**, preserving matched ingredients.
 Old revisions/decisions stay in history; approval/confirmation is required again.
-Rejection and policy denial are final for that recipe plan, including after expiry
-or policy changes; a new purchase requires a new customer request and saved plan.
+An approver rejection is final for that recipe plan, including after expiry or
+policy changes; a new purchase requires a new customer request and saved plan.
+A policy denial can be retried after correcting its cause (date, destination,
+budget or buyer policy), retaining the matched ingredients. Every refresh rechecks
+recipe completeness, catalog/evidence, quantities, commercial facts and policy;
+an unchanged denial still blocks commitment. Recipe/product changes still require
+a new plan. Ordinary denied proposals retain fresh-preparation guidance after
+expiry or policy/authority changes.
 Concurrent refreshes fence the prior proposal revision so only one can append;
 failed persistence rolls everything back.
 Recipe/product changes still need a new plan and matching evidence. Unprepared
@@ -198,8 +204,8 @@ for forms, yolk/count yields, pepper scaling, salt quantity and missing product 
 before it can produce a complete executable real-catalog basket.
 
 Local verification after the re-review fixes and integration with current develop:
-470 backend tests, Python lint, TypeScript/production build, six focused browser
-flows, all 10 API sweep checks and the combined 95% coverage gate passed (95.21%).
+475 backend tests, Python lint, TypeScript/production build, six focused browser
+flows, all 10 API sweep checks and the combined 95% coverage gate passed (95.22%).
 Earlier infrastructure checks passed: 37 helper tests and 11 mocked Kubernetes
 Terraform plans. Regressions include one/two-connection pools, simultaneous prepares
 and refreshes, stale confirmations, immutable history, migration backfill/ambiguity,

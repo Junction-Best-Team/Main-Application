@@ -12,7 +12,7 @@ import pytest
 from aimo import fixtures, recipe_search
 from aimo.agent_tools import ToolSession
 from aimo.config import settings
-from aimo.db import Problem, close_pools, connection, fingerprint
+from aimo.db import Problem, close_pools, connection, fingerprint, js
 from aimo.ingest import publish
 from aimo.recipe_import import import_product_evidence, ingest_recipes
 from aimo.recipe_schemas import (
@@ -783,7 +783,9 @@ def test_recipe_flag_keeps_direct_product_purchases_available(
     assert service.prepare_order(actor, PrepareRequest(**request_data))["proposal_id"]
 
 
-@pytest.mark.parametrize("closed", ["expired", "needs_resolution"])
+@pytest.mark.parametrize(
+    "closed", ["expired", "needs_resolution", "delivery_date", "destination", "budget", "policy"]
+)
 def test_closed_recipe_proposal_refreshes_in_place_without_rematching(
     tmp_path, actor, service, meal_products, closed, monkeypatch, request_data
 ):
@@ -793,13 +795,28 @@ def test_closed_recipe_proposal_refreshes_in_place_without_rematching(
     *_, versions = import_fixture(tmp_path)
     plan = match_all(actor, scale_recipe(actor, ref(versions)))
     original_request = request_for(plan)
-    if closed == "expired":
+    if closed == "delivery_date":
+        original_request.delivery_date = date.today() - timedelta(days=1)
+    elif closed in {"destination", "policy"}:
+        original_request.destination = "mistyped-destination"
+    elif closed == "budget":
+        original_request.budget_gross = Decimal("0.01")
+    elif closed == "expired":
         monkeypatch.setattr(settings(), "proposal_ttl_seconds", -1)
     elif closed == "needs_resolution":
         with connection() as c:
             c.execute("UPDATE identities SET active=false WHERE id='buyer'")
     first = service.prepare_order(actor, original_request)
     assert first["recipe_basis"] == "saved_recipe"
+    if closed in {"delivery_date", "destination", "budget", "policy"}:
+        assert first["policy_outcome"] == "denied"
+        expected_code = {
+            "delivery_date": "DELIVERY_IN_PAST",
+            "destination": "DESTINATION_NOT_ALLOWED",
+            "policy": "DESTINATION_NOT_ALLOWED",
+            "budget": "HARD_BUDGET_EXCEEDED",
+        }[closed]
+        assert any(r["code"] == expected_code for r in first["reasons"])
     monkeypatch.setattr(settings(), "proposal_ttl_seconds", 900)
     if closed == "needs_resolution":
         assert first["policy_outcome"] == closed
@@ -807,6 +824,18 @@ def test_closed_recipe_proposal_refreshes_in_place_without_rematching(
         with connection() as c:
             c.execute("UPDATE identities SET active=true WHERE id='buyer'")
 
+    if closed == "policy":
+        with connection() as c:
+            c.execute("SELECT id FROM buyers WHERE id='demo-hotel' FOR UPDATE")
+            rules = c.execute(
+                "SELECT rules FROM policies WHERE buyer_id='demo-hotel' AND version=1"
+            ).fetchone()["rules"]
+            rules["destinations"].append(original_request.destination)
+            c.execute(
+                "INSERT INTO policies(buyer_id,version,rules) VALUES('demo-hotel',2,%s)",
+                (js(rules),),
+            )
+            c.execute("UPDATE buyers SET current_policy=2 WHERE id='demo-hotel'")
     newer = service.prepare_order(actor, PrepareRequest(**request_data))
     before = conversations.purchases(actor, 0, 1)
     assert before["items"][0]["proposal_id"] == newer["proposal_id"]
@@ -822,6 +851,8 @@ def test_closed_recipe_proposal_refreshes_in_place_without_rematching(
     saved = get_plan(later, PlanReference(plan_id=plan["recipe_plan_id"]))
     assert saved == plan
     fresh_request = request_for(saved)
+    if closed == "policy":
+        fresh_request.destination = original_request.destination
     fresh = service.prepare_order(later, fresh_request)
     assert fresh["proposal_id"] == first["proposal_id"] and fresh["revision"] == 2
     assert fresh["recipe_basis"] == "saved_recipe"
@@ -854,10 +885,38 @@ def test_closed_recipe_proposal_refreshes_in_place_without_rematching(
     assert error.value.code == "STALE_REVISION"
 
 
-@pytest.mark.parametrize("outcome", ["rejected", "denied"])
+def test_denied_recipe_refresh_does_not_bypass_purchase_checks(
+    tmp_path, actor, service, meal_products
+):
+    from aimo.schemas import CommitRequest
+
+    *_, versions = import_fixture(tmp_path)
+    plan = match_all(actor, scale_recipe(actor, ref(versions)))
+    request = request_for(plan)
+    request.budget_gross = Decimal("0.01")
+    first = service.prepare_order(actor, request)
+    later = actor | {"_turn_id": str(uuid4())}
+    request.idempotency_key = str(uuid4())
+    refreshed = service.prepare_order(later, request)
+    assert refreshed["proposal_id"] == first["proposal_id"] and refreshed["revision"] == 2
+    assert refreshed["policy_outcome"] == "denied"
+    assert refreshed["approval_id"] is None and refreshed["next_action"]["type"] == "stop"
+    with pytest.raises(Problem) as error:
+        service.commit_order(
+            later,
+            CommitRequest(
+                proposal_id=first["proposal_id"], revision=2, idempotency_key=str(uuid4())
+            ),
+        )
+    assert error.value.code == "COMMIT_BLOCKED"
+    assert get_plan(later, PlanReference(plan_id=plan["recipe_plan_id"])) == plan
+    with connection() as c:
+        assert c.execute("SELECT count(*) AS n FROM orders").fetchone()["n"] == 0
+
+
 @pytest.mark.parametrize("expired", [False, True])
 def test_stopped_recipe_basket_requires_new_plan(
-    tmp_path, actor, buyer, service, meal_products, outcome, expired, monkeypatch
+    tmp_path, actor, buyer, service, meal_products, expired, monkeypatch
 ):
     from aimo import approval_workflow
     from aimo.schemas import DecisionRequest
@@ -865,13 +924,10 @@ def test_stopped_recipe_basket_requires_new_plan(
     *_, versions = import_fixture(tmp_path)
     plan = match_all(actor, scale_recipe(actor, ref(versions)))
     request = request_for(plan)
-    if outcome == "denied":
-        request.budget_gross = Decimal("0.01")
     first = service.prepare_order(actor, request)
-    if outcome == "rejected":
-        approval_workflow.record_human_decision(
-            buyer, first["approval_id"], DecisionRequest(revision=1, decision="reject")
-        )
+    approval_workflow.record_human_decision(
+        buyer, first["approval_id"], DecisionRequest(revision=1, decision="reject")
+    )
     if expired:
         future = approval_workflow.now() + timedelta(hours=1)
         monkeypatch.setattr(approval_workflow, "now", lambda: future)

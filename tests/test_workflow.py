@@ -243,6 +243,42 @@ def test_policy_version_reauthorizes_and_seed_preserves(service, agent, buyer, m
     assert fresh["policy_version"] == 2 and fresh["approval_status"] == "pending"
 
 
+@pytest.mark.parametrize("change", ["expiry", "policy"])
+def test_denied_direct_order_can_request_fresh_terms(
+    service, agent, request_data, monkeypatch, change
+):
+    from aimo.config import settings
+
+    request_data["destination"] = "new-destination"
+    if change == "expiry":
+        monkeypatch.setattr(settings(), "proposal_ttl_seconds", -1)
+    first = service.prepare_order(agent, PrepareRequest(**request_data))
+    assert first["policy_outcome"] == "denied"
+    if change == "policy":
+        assert first["next_action"]["type"] == "stop"
+        with connection() as c:
+            c.execute("SELECT id FROM buyers WHERE id='demo-hotel' FOR UPDATE")
+            rules = c.execute(
+                "SELECT rules FROM policies WHERE buyer_id='demo-hotel' AND version=1"
+            ).fetchone()["rules"]
+            rules["destinations"].append("new-destination")
+            c.execute(
+                "INSERT INTO policies(buyer_id,version,rules) VALUES('demo-hotel',2,%s)",
+                (js(rules),),
+            )
+            c.execute("UPDATE buyers SET current_policy=2 WHERE id='demo-hotel'")
+    else:
+        request_data["destination"] = "hotel-helsinki"
+    monkeypatch.setattr(settings(), "proposal_ttl_seconds", 900)
+    current = service.get_proposal(agent, first["proposal_id"])
+    assert current["approval_status"] == ("expired" if change == "expiry" else "policy_changed")
+    assert current["next_action"]["type"] == "request_fresh_proposal"
+    request_data["idempotency_key"] = str(uuid4())
+    fresh = service.prepare_order(agent, PrepareRequest(**request_data))
+    assert fresh["proposal_id"] != first["proposal_id"]
+    assert fresh["policy_outcome"] == "ready_to_commit"
+
+
 def test_approver_amount_and_exception_scope(service, agent, buyer, mission):
     p = service.prepare_order(agent, mission)
     with connection() as c:
