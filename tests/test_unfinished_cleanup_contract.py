@@ -86,9 +86,11 @@ def counts(proposal_id):
 @pytest.mark.xfail(
     strict=True,
     raises=AttributeError,
-    reason="CNF-021 not implemented: no purge_unfinished_proposals exists, and the immutable "
-    "triggers on proposal_revisions, audit_events and customer_confirmations reject any DELETE. "
-    "Design: Assistant/projects/junction/evidence/ws-d/cnf-021-design.md (needs migration 012/013).",
+    reason="CNF-021 not implemented: no purge_unfinished_proposals exists, the immutable triggers "
+    "on proposal_revisions, audit_events and customer_confirmations reject any DELETE, and there "
+    "is no purged_proposals table. Owner: default period 30 days from the current revision's "
+    "expiry (Q-56), append-only purged_proposals table (Q-57), migration 012 (not yet reserved). "
+    "Design: Assistant/projects/junction/evidence/ws-d/cnf-021-design.md.",
 )
 def test_unfinished_proposals_and_approvals_are_removed_after_the_period_and_orders_are_kept(
     service, buyer, request_data, monkeypatch
@@ -130,6 +132,10 @@ def test_unfinished_proposals_and_approvals_are_removed_after_the_period_and_ord
     assert result["proposals"] == 2
     for pid in unfinished:
         assert set(counts(pid).values()) == {0}
+    # Q-57: one append-only record per removed proposal; none for the ordered one.
+    with connection() as c:
+        purged = c.execute("SELECT proposal_id FROM purged_proposals").fetchall()
+    assert {str(r["proposal_id"]) for r in purged} == set(unfinished)
     # The order, its proposal, revisions, confirmation, approval and audit history stay intact.
     assert counts(ordered["proposal_id"]) == ordered_before
     assert service.get_order(actor, receipt["order_id"]) == receipt
