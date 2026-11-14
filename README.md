@@ -143,5 +143,7 @@ model initialization and a recent successful database poll.
 cover independent Kubernetes Deployments, Services, path routing, migration 004,
 and rollback while preserving the existing managed database and purchase history.
 The separate-app rollout is not implied by a successful local build or PR check.
+[Release migration operations](docs/release-migrations.md) covers the automatic
+schema/grant Job, its one-time Secret provisioning, and image rollback limitations.
 
 [Preparation and third-party provenance](docs/pre-existing-work.md) must accompany the event submission. Restricted raw data, credentials, downloaded weights and generated browser test artifacts are ignored.

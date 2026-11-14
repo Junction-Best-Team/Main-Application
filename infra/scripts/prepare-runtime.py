@@ -72,6 +72,10 @@ def main():
             "database_ca": outputs["database_ca"],
             "session_secret": secrets.token_urlsafe(48),
             "app_replicas": 0,
+            "migration_credentials": {
+                "database_url": outputs["bootstrap_database_url"],
+                "database_user": outputs["database_user"],
+            },
             "bootstrap_generation": None,
             "bootstrap_credentials": {
                 "database_url": outputs["bootstrap_database_url"],

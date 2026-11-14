@@ -170,17 +170,18 @@ These steps document the future deployment; none were performed for this PR.
    mocked supplier price/availability; enable `live` only with working API access.
    Orders/receipts remain mock acceptance as defined in the application plan.
 
-Future migrations/imports require an intentional new setup generation with the
-app stopped and temporary setup credentials re-supplied. Renew the kubeconfig
-through the provider/CLI when its credentials expire. The helper does not rotate
+Routine schema migrations use the [release migration gate](../docs/release-migrations.md).
+Catalog imports remain explicit operator work with the app stopped; use a new
+setup generation only when intentionally repeating full bootstrap/import. Renew
+the kubeconfig through the provider/CLI when its credentials expire. The helper does not rotate
 demo credentials on reruns.
 
 ## Simple main-to-cluster release pipeline
 
 The main CI workflow calls `Build and deploy` only after its `CI gate` passes on
-a push to `main`. It builds the PR #4 Dockerfile for `linux/amd64`, pushes
-`ghcr.io/junction-best-team/main-application:sha-COMMIT`, and records the immutable
-digest in the run summary. PRs and pushes to `develop` never publish or deploy.
+a push to `main`. It builds the frontend, API and worker Docker targets for
+`linux/amd64`, pushes component SHA tags, and records each immutable digest in
+the run summary. PRs and pushes to `develop` never publish or deploy.
 Docker layers are cached. Main releases are serialized so a new commit cannot
 cancel a deployment halfway through.
 
@@ -213,15 +214,20 @@ cancel a deployment halfway through.
    gh variable set DEPLOY_ENABLED --body true --repo Junction-Best-Team/Main-Application
    ```
 
-5. Run **Build and deploy** manually on `main` with **deploy** checked for the
+5. Before the first automated migration, provision the dedicated `aimo-migration`
+   Secret using `migration_credentials` as described in the
+   [operator guide](../docs/release-migrations.md#one-time-credential-provisioning).
+   Keep it after removing bootstrap credentials.
+6. Run **Build and deploy** manually on `main` with **deploy** checked for the
    first end-to-end deployment. Subsequent checked releases into `main` build and
    deploy automatically. To pause automatic deployment, set `DEPLOY_ENABLED=false`.
    A manual run with **deploy** checked explicitly requests deployment regardless
    of that variable.
 
 The deploy job temporarily adds only its runner's IPv4 `/32` to the existing
-DOKS control-plane allowlist, gets a 30-minute kubeconfig, updates `deployment/aimo`
-to the published digest, and waits for readiness. Cleanup removes that temporary
+DOKS control-plane allowlist, gets a 30-minute kubeconfig, runs a bounded
+schema/grant Job using the new API digest, then updates worker/API/frontend to
+their published digests and waits for readiness. Cleanup removes that temporary
 IP and local kubeconfig even after a rollout failure. If a runner is forcibly
 terminated and cleanup cannot run, remove its `/32` through the cloud console
 or reapply the cloud stack's operator allowlist. A failed rollout restores the
@@ -230,13 +236,16 @@ stopped or unbootstrapped app.
 
 Terraform owns initial infrastructure/configuration and the first image; it
 ignores later Deployment image changes so an infrastructure apply cannot undo
-the CI release. For a schema change, stop the app and run an explicit reviewed
-setup generation with the matching image before releasing compatible serving
-code. CI never runs Terraform apply, migrations, seed, or catalog import.
+the CI release. Pending schema migrations and restricted runtime grants now run
+on every deployment before application image changes, including same-image
+releases. They must remain compatible with the previous running app version.
+CI never runs Terraform apply, seed, catalog import or profile activation. See
+the [operator guide](../docs/release-migrations.md) for failure/retry and credentials.
 
-Rollback can also be done manually with `kubectl -n junction set image
-deployment/aimo aimo=ghcr.io/...@sha256:PREVIOUS_DIGEST`, followed by `kubectl -n
-junction rollout status deployment/aimo`. The deployment uses `Recreate`, so
+Rollback can also restore each changed `deployment/aimo-{worker,api,frontend}`
+container to its previous digest with `kubectl set image`, followed by its
+`kubectl rollout status` check. Image rollback never reverses database migrations.
+The deployment uses `Recreate`, so
 brief downtime during releases is expected on the single demo worker.
 
 ## Another cloud or an existing cluster
