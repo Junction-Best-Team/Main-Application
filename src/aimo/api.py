@@ -190,11 +190,9 @@ def create_app(service=None):
                 "The database schema is not up to date; run the migrations.",
                 503,
             )
-        return {
-            "status": "ready",
-            "model": active["model_key"],
-            "upstream_mode": upstream.effective_mode(),
-        }
+        # A bare status (Q-72): the embedding model and the supplier mode are in the startup log
+        # (api.started), not in a public response.
+        return {"status": "ready"}
 
     @app.head("/health/ready", include_in_schema=False)
     def ready_head():
