@@ -31,11 +31,17 @@ GitHub Actions runs on PRs into `develop` and `main`, and pushes to either branc
 - Frontend TypeScript checks and production build: `npm ci` then `npm run build` in `frontend`.
 - Terraform formatting, validation, mocked plan tests, helper tests and ingress chart rendering when `infra/` or either CI workflow changes.
 
-Backend and frontend jobs run in parallel, dependency downloads are cached, and a new commit cancels outdated runs. Components are explicitly skipped only while their application code has not been added; incomplete manifests fail the workflow. No model weights, full catalog imports, Docker builds, browser tests, production credentials, or deployments are needed for this pipeline. Run broader demo/browser checks locally when the change warrants them.
+Backend and frontend jobs run in parallel, dependency downloads are cached, and a new commit cancels outdated PR/develop runs. Main releases are serialized. Components are explicitly skipped only while their application code has not been added; incomplete manifests fail the workflow. No model weights, full catalog imports, Docker builds, browser tests, production credentials, or deployments are needed for PR validation. Run broader demo/browser checks locally when the change warrants them.
 
 The always-present `CI gate` requires successful detection and every applicable application/Terraform check; it accepts a skipped job only when detection says that job is unnecessary. Branch protection requires this gate alongside the three existing application checks on both `develop` and `main`.
 
 Our workflow is **task PR → green CI → self-merge**. Reviews are optional, and the optional `skip-review` label does not bypass CI. The repository is public, and GitHub protects both `develop` and `main`: pull requests and required checks apply even to administrators; force-pushes and branch deletion are blocked. Human approvals are not required. GitHub does not require updating a PR branch after every base-branch change. No special GitHub board is required. Use the team chat to coordinate.
+
+## Build and deploy releases
+
+After a release PR reaches `main` and CI passes, GitHub builds the application Docker image and pushes it to GHCR with a commit tag and immutable digest. Once the cluster is bootstrapped and `DEPLOY_ENABLED=true`, the same release updates the running app and waits for readiness; a failed rollout restores the previous image. Human approval is not required.
+
+Deployment is off until the one-time setup is complete. The application in PR #4 must be merged before an image can be built. Terraform provisioning, database migrations and catalog import remain explicit operator steps. See [the release setup instructions](infra/README.md#simple-main-to-cluster-release-pipeline) for the cluster ID, deployment token, initial public image, and activation switch.
 
 ## Planned stack and application setup
 

@@ -41,3 +41,5 @@ jobs:
         run: |
           python3 -m unittest discover -s infra/tests -v
           python3 -m py_compile infra/kubernetes/bootstrap.py
+          python3 -m py_compile infra/scripts/ci-cluster-access.py
+          bash -n infra/scripts/deploy-app.sh

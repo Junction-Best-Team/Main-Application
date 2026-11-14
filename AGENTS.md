@@ -18,6 +18,7 @@ Four-person Junction hackathon repository. Preparation and design files only; th
 - Wait for the latest CI run to pass before merging. You may merge your own PR without a human approval. Request a teammate review for risky changes to authentication, database schemas, or shared interfaces; routine work does not need to wait for a reviewer.
 - CI runs Python lint, backend tests with fixture data and PostgreSQL/pgvector, and the TypeScript/production frontend build. It skips application components only while their code has not been added. Keep model downloads, full catalog imports, Docker builds, and browser tests outside this quick pipeline. The optional `skip-review` label never skips CI.
 - `main` holds stable demo/release snapshots. Only open a release PR from `develop` to `main` when the user explicitly requests a release; never target `main` with a task PR.
+- After successful main CI, the release workflow builds/pushes the image and deploys only when `DEPLOY_ENABLED=true`. Terraform provisioning, migrations, seeding, and catalog imports stay explicit operator steps; never enable deployment before bootstrap is complete. Follow `infra/README.md` for setup.
 - Do not force-push either shared branch. Preserve other contributors' changes and checkouts.
 
 ## Post-MVP plan
