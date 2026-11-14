@@ -635,6 +635,9 @@ class ToolSession:
             raise Problem(
                 "RECIPE_PLAN_REQUIRED", "Load the saved recipe plan before preparing it.", 422
             )
+        else:
+            # MEA-008: no free-form basket for a dish whose own saved plan is still unresolved.
+            self.service.ensure_saved_plan_resolved(self.identity, self.plan.title)
         if not self.plan.recipe_plan_id:
             # BAS-002: the line names the ingredients it combines (server-made, never client input).
             parts = {}

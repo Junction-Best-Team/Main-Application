@@ -797,8 +797,10 @@ def test_agent_tool_refuses_prepare_while_the_saved_plan_is_unresolved(
     assert error.value.code == "INCOMPLETE_MEAL_PLAN"
 
 
-def free_form_session(tmp_path, actor, service):
-    """Earlier turn leaves an unresolved saved plan; a later turn sends a one-ingredient plan."""
+def free_form_session(tmp_path, actor, service, title=None):
+    """Earlier turn leaves an unresolved saved plan; a later turn sends a one-ingredient plan.
+
+    `title` defaults to the saved plan's own title (the same dish)."""
     versions = import_fixture(tmp_path, review=False)
     unresolved = scale_recipe(actor, ref(versions))
     assert all(i["status"] == "unresolved" for i in unresolved["ingredients"])
@@ -808,7 +810,7 @@ def free_form_session(tmp_path, actor, service):
         "publish_meal_plan",
         json.dumps(
             {
-                "title": unresolved["title"],
+                "title": title or unresolved["title"],
                 "portions": 200,
                 "ingredients": [
                     {
@@ -834,19 +836,12 @@ def free_form_session(tmp_path, actor, service):
 def test_free_form_basket_that_omits_ingredients_is_prepared_but_labelled_free_form(
     tmp_path, actor, service, meal_products
 ):
-    """Characterisation of the documented cross-turn limit (docs/recipes.md)."""
-    later, request = free_form_session(tmp_path, actor, service)
+    """A free-form plan for a differently titled dish is still prepared and labelled (docs/recipes.md)."""
+    later, request = free_form_session(tmp_path, actor, service, title="Spaghetti only")
     result = later.invoke("prepare_order", json.dumps(request))
     assert result["recipe_basis"] == "free_form" and result["request"]["recipe_plan_id"] is None
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="MEA-008 gap: a later-turn free-form plan that names the same dish as an earlier "
-    "unresolved saved plan is prepared (only labelled free_form); proposed contract: refuse it. "
-    "Backend half exists (aimo.recipe_guard, Service.ensure_saved_plan_resolved); remaining step: "
-    "ToolSession.prepare (agent_tools.py, person 2) must call it. See evidence MEA-008-requests.md.",
-)
 def test_gap_free_form_basket_for_a_dish_with_unresolved_saved_plan_is_refused(
     tmp_path, actor, service, meal_products
 ):

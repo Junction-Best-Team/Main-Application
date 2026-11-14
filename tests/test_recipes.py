@@ -1086,7 +1086,7 @@ def test_new_turn_free_form_basket_is_labeled_without_recipe_completeness_claim(
         "publish_meal_plan",
         json.dumps(
             {
-                "title": unresolved["title"],
+                "title": "Spaghetti only",  # another dish: the same title would be refused (MEA-008)
                 "portions": 200,
                 "ingredients": [
                     {

@@ -21,6 +21,8 @@ READ_AND_PREPARE = {
     "get_order",
     "list_substitution_candidates",
 }
+# A read-only check the prepare handler makes (MEA-008), not a tool.
+SERVICE_CHECKS = {"ensure_saved_plan_resolved"}
 # Recipe discovery and deterministic scaling (PR #38, always registered since PR #103): no purchasing.
 RECIPE_TOOLS = {
     "search_recipes",
@@ -108,9 +110,8 @@ def test_registry_handlers_call_only_read_and_prepare_service_methods():
         and node.value.attr == "service"
     }
     assert used, "expected the tool handlers to call self.service"
-    assert used <= READ_AND_PREPARE | RECIPE_TOOLS | MEMORY_SERVICE, (
-        used - READ_AND_PREPARE - RECIPE_TOOLS - MEMORY_SERVICE
-    )
+    allowed = READ_AND_PREPARE | RECIPE_TOOLS | MEMORY_SERVICE | SERVICE_CHECKS
+    assert used <= allowed, used - allowed
 
 
 @pytest.mark.parametrize("module", ["agent.py", "agent_tools.py", "agent_provider.py"])

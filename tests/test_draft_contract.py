@@ -186,6 +186,9 @@ class RecordingService:
     def __init__(self):
         self.prepared = None
 
+    def ensure_saved_plan_resolved(self, identity, title):
+        return None
+
     def get_product(self, identity, product_id):
         from copy import deepcopy
 
