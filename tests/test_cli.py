@@ -74,10 +74,12 @@ def applied():
 
 def test_migrate_is_idempotent():
     expected = sorted(p.name for p in (ROOT / "migrations").glob("*.sql"))
-    assert applied() == expected
+    before = applied()
+    # Superseded filenames (such as PR #38's old 008) remain in upgrade ledgers.
+    assert set(expected) <= set(before)
     cli.migrate()
     cli.migrate()
-    assert applied() == expected
+    assert applied() == before
 
 
 def test_migrate_applies_a_new_migration_exactly_once(tmp_path, monkeypatch):

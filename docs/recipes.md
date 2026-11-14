@@ -9,7 +9,7 @@ recipe import and feature activation remain explicit operator actions.
 
 1. After the migration credential bootstrap, the release pipeline applies
    the recipe migrations (`005_recipe_planning.sql`, `006_recipe_proposal_link.sql`,
-   `007_recipe_refresh_keys.sql`, `008_proposal_revision_ordering.sql`) and runtime
+   `007_recipe_refresh_keys.sql`, `011_proposal_revision_ordering.sql`) and runtime
    grants before app rollout.
    For manual local setup use `aimo migrate` with the migration/setup role.
    Schema migration performs no download, seed, embedding or dataset import.
@@ -157,9 +157,16 @@ The owner cannot confirm whether 005 was applied to a shared database, so its sc
 is left intact and 006 remains an additive upgrade rather than rewriting history.
 Migration 007 allows multiple preparation retry keys to reference one proposal;
 the buyer/agent/key primary key and payload conflict checks remain unchanged.
-Migration 008 adds an indexed proposal revision timestamp, backfilled from revision
+Migration 011 adds an indexed proposal revision timestamp, backfilled from revision
 audit events (falling back to creation time). Purchases sorts by this timestamp so
 fresh terms return to the top without changing original creation/history dates.
+Migration numbers **008–010 are reserved for Person 3** (policy edits, meal
+revocation and a spare); **011 belongs to recipe proposal ordering**. No new 008–010
+file is added by this PR. An earlier PR revision used
+`008_proposal_revision_ordering.sql`: if already applied, leave its ledger row in
+place. Migration 011 detects the existing column/index and preserves timestamps.
+Both 005 files retain their original names because prior application is unknown;
+the runner orders and records full filenames, which is tested.
 The API session exposes the recipe flag; chat and purchase recipe-basis labels
 appear only when it is enabled. Keep the API and worker flag settings aligned.
 Prepared plans remain readable in the same or a new turn; changed recipes require
@@ -191,7 +198,7 @@ for forms, yolk/count yields, pepper scaling, salt quantity and missing product 
 before it can produce a complete executable real-catalog basket.
 
 Local verification after the re-review fixes and integration with current develop:
-467 backend tests, Python lint, TypeScript/production build, six focused browser
+470 backend tests, Python lint, TypeScript/production build, six focused browser
 flows, all 10 API sweep checks and the combined 95% coverage gate passed (95.21%).
 Earlier infrastructure checks passed: 37 helper tests and 11 mocked Kubernetes
 Terraform plans. Regressions include one/two-connection pools, simultaneous prepares
