@@ -1,0 +1,7 @@
+node_modules/
+dist/
+prototypes/
+src/shared/api/schema.ts
+openapi.json
+test-results/
+playwright-report/

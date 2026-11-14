@@ -1,0 +1,233 @@
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
+import { useNavigate } from "react-router-dom";
+import { ApiError } from "../../../shared/api/client";
+import type { Conversation, ConversationList } from "../../../shared/api/types";
+import { useRefresh } from "../../../shared/hooks/useRefresh";
+import { useAuth } from "../../auth/useAuth";
+import {
+  listConversations,
+  getConversation,
+  createConversation,
+  sendMessage,
+  openConversationEvents,
+} from "../api/chatApi";
+
+export function useChat(conversationId?: string) {
+  const { session, setSession } = useAuth();
+  const navigate = useNavigate();
+  const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [conversations, setConversations] = useState<ConversationList | null>(
+    null,
+  );
+  const [text, setText] = useState("");
+  const [error, setError] = useState("");
+  const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const sendingRef = useRef(false);
+  const createKey = useRef(crypto.randomUUID());
+  const transcript = useRef<HTMLDivElement>(null);
+  const loadedConversation = useRef<string | null>(null);
+  const activeConversation = useRef(conversationId);
+  activeConversation.current = conversationId;
+  const pendingStorage = `aimo-pending-${session?.buyer_id}-${conversationId}`;
+  const fail = useCallback(
+    (e: unknown) => {
+      if (e instanceof ApiError && e.status === 401) setSession(null);
+      else setError((e as Error).message);
+    },
+    [setSession],
+  );
+  const loadList = useCallback(async () => {
+    try {
+      setConversations(await listConversations());
+    } catch (e) {
+      fail(e);
+    }
+  }, [fail]);
+  async function loadOlder() {
+    if (conversations?.next_offset == null || loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const older = await listConversations(conversations.next_offset);
+      setConversations((current) =>
+        current
+          ? {
+              ...older,
+              items: [
+                ...current.items,
+                ...older.items.filter(
+                  (item) =>
+                    !current.items.some((existing) => existing.id === item.id),
+                ),
+              ],
+            }
+          : older,
+      );
+    } catch (e) {
+      fail(e);
+    } finally {
+      setLoadingOlder(false);
+    }
+  }
+  const load = useCallback(async () => {
+    if (!conversationId) return;
+    try {
+      const data = await getConversation(conversationId);
+      if (activeConversation.current !== conversationId) return;
+      setConversation(data);
+      if (loadedConversation.current !== conversationId) {
+        loadedConversation.current = conversationId;
+        if (data.retry_message && !sendingRef.current)
+          setText(data.retry_message.text);
+      }
+      setReconnecting(false);
+    } catch (e) {
+      fail(e);
+    }
+  }, [conversationId, fail]);
+  useEffect(() => {
+    void loadList();
+  }, [loadList, conversationId]);
+  useEffect(() => {
+    setConversation(null);
+    loadedConversation.current = null;
+    setError("");
+    const saved = sessionStorage.getItem(pendingStorage);
+    try {
+      setText(saved ? JSON.parse(saved).text : "");
+    } catch {
+      setText("");
+    }
+    if (!conversationId) return;
+    setLoading(true);
+    void load().finally(() => setLoading(false));
+  }, [conversationId, load, pendingStorage]);
+  useRefresh(load, Boolean(conversationId));
+  useEffect(() => {
+    if (!conversationId) return;
+    let stream: EventSource | null = null;
+    const open = () => {
+      stream?.close();
+      stream = null;
+      if (document.visibilityState !== "visible") return;
+      stream = openConversationEvents(conversationId);
+      stream.addEventListener("conversation", (event) => {
+        if (activeConversation.current !== conversationId) return;
+        try {
+          setConversation(JSON.parse((event as MessageEvent).data));
+          setReconnecting(false);
+        } catch {
+          void load();
+        }
+      });
+      stream.addEventListener("expired", () => setSession(null));
+      stream.onerror = () => setReconnecting(true);
+    };
+    open();
+    document.addEventListener("visibilitychange", open);
+    return () => {
+      stream?.close();
+      document.removeEventListener("visibilitychange", open);
+    };
+  }, [conversationId, load, setSession]);
+  useEffect(() => {
+    transcript.current?.scrollIntoView({ block: "end", behavior: "instant" });
+  }, [conversation?.messages.length, conversation?.busy]);
+  async function send(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!text.trim() || !session || sendingRef.current || conversation?.busy)
+      return;
+    sendingRef.current = true;
+    setSending(true);
+    setError("");
+    const messageText = text.trim();
+    let id = conversationId;
+    try {
+      if (!id) {
+        const created = await createConversation(
+          {
+            title: messageText.slice(0, 120),
+            idempotency_key: createKey.current,
+          },
+          session.csrf_token,
+        );
+        id = created.id;
+        setConversation(created);
+        createKey.current = crypto.randomUUID();
+        navigate(`/conversations/${id}`, { replace: true });
+      }
+      const storageKey = `aimo-pending-${session.buyer_id}-${id}`;
+      let key: string = crypto.randomUUID();
+      try {
+        const saved = JSON.parse(sessionStorage.getItem(storageKey) || "null");
+        if (saved?.text === messageText) key = saved.idempotency_key;
+      } catch {
+        /* A missing pending request starts a new turn. */
+      }
+      if (conversation?.retry_message?.text === messageText) {
+        key = conversation.retry_message.idempotency_key;
+      }
+      sessionStorage.setItem(
+        storageKey,
+        JSON.stringify({ text: messageText, idempotency_key: key }),
+      );
+      const result = await sendMessage(
+        id,
+        { text: messageText, idempotency_key: key },
+        session.csrf_token,
+      );
+      sessionStorage.removeItem(storageKey);
+      if (activeConversation.current === id) {
+        setConversation(result);
+        setText("");
+      }
+      await loadList();
+    } catch (e) {
+      if (activeConversation.current !== id) return;
+      fail(e);
+      setText(messageText);
+      if (id) {
+        try {
+          const result = await getConversation(id);
+          if (activeConversation.current === id) setConversation(result);
+        } catch {
+          /* Keep the actionable send error. */
+        }
+      }
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
+    }
+  }
+  const retryText = conversation?.retry_message?.text;
+  const retryKey = conversation?.retry_message?.idempotency_key;
+  useEffect(() => {
+    if (retryText !== undefined && !conversation?.busy && !sending) {
+      setText(retryText);
+      setError("The response was interrupted. Retry this request to continue.");
+    }
+  }, [retryKey, retryText, conversation?.busy, sending]);
+  const busy = Boolean(sending || conversation?.busy);
+  return {
+    conversation,
+    conversations,
+    text,
+    setText,
+    error,
+    loading,
+    reconnecting,
+    loadingOlder,
+    loadOlder,
+    transcript,
+    send,
+    busy,
+  };
+}

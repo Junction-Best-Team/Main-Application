@@ -106,3 +106,18 @@ original records and reviewed overrides. Agent, product search and purchasing re
 existing application code; hosted recipe search targets PR #34's Qwen provider.
 Tests use authored recipe/product/commerce evidence, not verified sponsor stock.
 See `docs/recipes.md` for the snapshot checksum and remaining recipe/data limitations.
+
+## Production frontend styling foundation — 2026-11-14
+
+Reused PR #107's Tailwind v4 theme and Google Fonts declaration in the production
+`frontend/` package. Restored the existing `ui/` design references from `develop`.
+The existing stylesheet now occupies the components cascade layer, allowing
+Tailwind utilities to override it during gradual screen migration. Existing API,
+session, SSE and purchasing behavior is retained.
+
+The subsequent frontend organization reuses those same production components
+and behavior in feature folders (`auth`, `chat`, `purchases`), with shared API
+transport/types, formatting and UI. Generated OpenAPI types were relocated
+without changing their content. Added agent/architecture/development/testing
+guides and ESLint/Prettier checks; no new customer screen or mock backend was
+introduced by the structural refactor.

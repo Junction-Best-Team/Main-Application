@@ -1,5 +1,5 @@
 :root {
-  font-family: "Trebuchet MS", Arial, sans-serif;
+  font-family: var(--font-body, Arial, sans-serif);
   color: #12384b;
   background: #f2f6f8;
   font-synthesis: none;
