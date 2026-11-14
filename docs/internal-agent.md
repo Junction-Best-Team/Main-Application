@@ -130,6 +130,17 @@ the model; model tool arguments cannot assign those sources. Model additions are
 separate assumptions. Missing or conflicting trusted facts must request resolution,
 not silently use a model value. This contract is proposed, not implemented.
 
+**Built (POL-008, backend half):** `run_turn(..., constraints=None)` and `ToolSession(..., constraints=None)`
+take a server-only list of `{name, value, source, confirmed}` (`name` is `budget_gross`, `lactose_free`,
+`milk_free` or `unsupported:<text>`). No tool input accepts it (extra arguments are rejected with
+`INVALID_TOOL_ARGUMENTS`). `Service.prepare_order(..., constraints=)` stores it in the revision's
+request JSON under `constraints` (key omitted when empty; no new table), so the fingerprint covers it,
+and refresh and commit re-evaluate with the stored record; callers never see the key. Entries with
+source `stated_assumption` and `confirmed` false are ignored; trusted values set the stricter limit.
+A looser request value or a dropped flag adds `CONSTRAINT_LOOSENED` (unresolved, so `needs_resolution`),
+and a looser budget is enforced at the customer's number (`HARD_BUDGET_EXCEEDED`, denied). Nothing fills
+the record yet: extraction from the conversation (#75) is person 1's work, so production passes `None`.
+
 The current UI renders ingredient names/amounts and plan notes; it does not show
 a per-row unresolved status. The agent now supplies an explicit unresolved list
 in persisted final text. Person 1 must add the row state and persist any required

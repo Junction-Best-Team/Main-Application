@@ -2,15 +2,76 @@
 
 from decimal import Decimal
 
+DIETARY_FLAGS = ("lactose_free", "milk_free")
 
-def evaluate_purchase(request: dict, snapshot: dict, rules: dict, approvers: list[dict]) -> dict:
+
+def trusted_constraints(constraints: list[dict] | None) -> list[dict]:
+    """Customer-stated values only. An unconfirmed model assumption (POL-008) is never trusted,
+    so it can neither loosen a limit nor be the reason a limit is skipped."""
+    return [
+        c
+        for c in constraints or []
+        if c.get("source") != "stated_assumption" or c.get("confirmed") is True
+    ]
+
+
+def evaluate_purchase(
+    request: dict,
+    snapshot: dict,
+    rules: dict,
+    approvers: list[dict],
+    constraints: list[dict] | None = None,
+) -> dict:
     """Spending authority belongs to the buyer's human approvers (their `max_gross`) and to the
-    request's hard budget. Agent identities carry none (owner decision Q-35)."""
+    request's hard budget. Agent identities carry none (owner decision Q-35).
+
+    `constraints` is a server-only record of what the customer stated (POL-008), never a model
+    argument. The effective limit is the stricter of the request value and the trusted value."""
     reasons = list(snapshot["reasons"])
     exceptions = []
 
     def add(code, message, severity):
         reasons.append(dict(code=code, message=message, product_id=None, severity=severity))
+
+    trusted = trusted_constraints(constraints)
+    requirements = request.get("requirements") or {}
+    budget = request.get("budget_gross")
+    budget = Decimal(budget) if budget is not None else None
+    stored_budgets = [Decimal(str(c["value"])) for c in trusted if c["name"] == "budget_gross"]
+    if stored_budgets:
+        stored = min(stored_budgets)
+        if budget is not None and budget > stored:
+            add(
+                "CONSTRAINT_LOOSENED",
+                f"The request budget_gross {budget} is looser than the customer's {stored}; "
+                "ask the customer.",
+                "unresolved",
+            )
+        # A missing or looser budget is enforced at the customer's number.
+        budget = stored if budget is None else min(budget, stored)
+    for flag in DIETARY_FLAGS:
+        if any(c["name"] == flag and c["value"] is True for c in trusted) and not requirements.get(
+            flag
+        ):
+            add(
+                "CONSTRAINT_LOOSENED",
+                f"The customer required {flag} but the request does not; ask the customer.",
+                "unresolved",
+            )
+    stated_unsupported = {u.casefold() for u in requirements.get("unsupported") or []}
+    for c in trusted:
+        text = c["name"].removeprefix("unsupported:")
+        if (
+            c["name"].startswith("unsupported:")
+            and c["value"] is True
+            and text.casefold() not in stated_unsupported
+        ):
+            add(
+                "CONSTRAINT_LOOSENED",
+                f"The customer's requirement '{text}' is missing from the request; "
+                "ask the customer.",
+                "unresolved",
+            )
 
     if not rules:
         add("MISSING_AUTHORITY", "Buyer policy is missing.", "unresolved")
@@ -32,11 +93,7 @@ def evaluate_purchase(request: dict, snapshot: dict, rules: dict, approvers: lis
         # Owner decision (Q-30, POL-009): readiness never depends on the caller having reported
         # an unknown total; every spending rule below is skipped when the total is unknown.
         add("TOTAL_UNRESOLVED", "Complete gross payable cannot be established.", "unresolved")
-    if (
-        total is not None
-        and request.get("budget_gross") is not None
-        and total > Decimal(request["budget_gross"])
-    ):
+    if total is not None and budget is not None and total > budget:
         add(
             "HARD_BUDGET_EXCEEDED",
             "Gross payable exceeds the mission budget; revise the request.",

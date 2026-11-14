@@ -60,14 +60,14 @@ class Service:
         }
 
     @operation("service.prepare_order")
-    def prepare_order(self, identity, request: PrepareRequest):
+    def prepare_order(self, identity, request: PrepareRequest, constraints=None):
         from aimo.db import Problem
 
         if request.recipe_plan_revision and not request.recipe_plan_id:
             raise Problem(
                 "RECIPE_PLAN_REQUIRED", "Prepare a complete saved recipe plan first.", 422
             )
-        return workflow.prepare_order(identity, request, self.connector)
+        return workflow.prepare_order(identity, request, self.connector, constraints)
 
     @operation("service.ensure_saved_plan_resolved")
     def ensure_saved_plan_resolved(self, identity, title):

@@ -591,24 +591,28 @@ Add new findings below, under your track heading.
 - Finding: recipes.scaled_plan scales exactly with Fraction but returns amount None when the exact result has more than four decimals (Amount is a 4-decimal string). At base 6 servings and 200 portions, 200 g, 100 g and 500 g become unresolved while 150 g gives 5 KG; roughly two thirds of gram quantities are lost whenever the portion count does not divide evenly. Owner decision MEA-012: round scaled quantities UP to four decimals. The patch is in person 2's recipes.py (MEA-012-013-requests.md), verified on a scratch copy.
 - Evidence: tests/test_draft_contract.py::test_scaled_quantity_is_rounded_up_to_four_decimals (strict xfail), tests/test_recipe_arithmetic.py (nonterminating cases); a throwaway probe of scaled_plan (outputs in the audit file section "Merged develop 17579d8").
 - Impact: Until the patch lands a carbonara for a non-dividing portion count has unresolved ingredients that cannot be matched.
+- Update 2026-11-14 (branch `p3/otto-fixes`, not merged): fixed. `scaled_plan` rounds up to four decimals (MEA-012); verified by `tests/test_draft_contract.py::test_scaled_quantity_is_rounded_up_to_four_decimals`.
 
 ### F-BASKET-004: No upper bound on scaled quantity per portion
 - Date: 2026-11-14   Track: 3   Status: verified
 - Finding: scaled_plan accepts 9,999,999 kg per serving at 10,000 portions (99,999,990,000 KG). Only Amount (14 digits) and portions (1..10000) limit it. MEA-011 (maximum per portion) is deferred and belongs to person 2 (owner decision); the guardrails added in #56 are an optional model-judged check, off by default, not a numeric bound.
 - Evidence: tests/test_draft_contract.py::test_absurd_quantity_per_portion_is_rejected (strict xfail).
 - Impact: A wrong recipe quantity reaches the product match unchecked; the budget limit catches price, not quantity.
+- Update 2026-11-14 (branch `p3/otto-fixes`, not merged): fixed with sanity bounds of 5 KG, 5 L and 50 pieces per portion (`recipes.MAX_QUANTITY_PER_PORTION`, `QUANTITY_PER_PORTION_EXCEEDED`); these numbers are my proposal for the owner to retune, and they apply to recipe-scaled plans only. Verified by `tests/test_draft_contract.py` (limit allowed, above limit refused, per-portion not total).
 
 ### F-BASKET-005: Variable-weight products block in two places (known gap, owner: warn only)
 - Date: 2026-11-14   Track: 3   Status: verified
 - Finding: purchases.py:117-119 adds VARIABLE_WEIGHT_UNRESOLVED (severity unresolved, so needs_resolution) and recipes.py:272 leaves the ingredient unresolved. A missing variableUnit counts as variable weight (catalog.py:80). By F-DATA numbers about 21% of the catalog (632 true plus 3,068 without the field, of 17,546) cannot be committed. Owner decided BAS-007 is warn only; implementation deferred (ISS-JCT-001). A non-blocking warning also needs a severity that does not block (Reason.severity allows denied, unresolved, exception only).
 - Evidence: tests/test_arithmetic_contract.py::test_variable_weight_line_is_flagged_but_does_not_block (strict xfail), BAS-007.md.
 - Impact: The demo avoids variable-weight products; real orders with them are blocked.
+- Update 2026-11-14 (branch `p3/otto-fixes`, not merged): fixed. VARIABLE_WEIGHT_UNRESOLVED now has the non-blocking severity `warning`, and `match_ingredient` / `match_ingredients` no longer leave a variable-weight product unresolved. Status: fixed on the branch, verified by `tests/test_arithmetic_contract.py::test_variable_weight_line_is_flagged_but_does_not_block` and `tests/test_recipes.py::test_variable_weight_products_can_be_matched_and_only_warn`.
 
 ### F-BASKET-006: One product in two units could never be prepared
 - Date: 2026-11-14   Track: 3   Status: verified
 - Finding: A plan that needs the same product in two units (for example KG and piece) has two basket keys (product_id, unit) while PurchaseRequest allows one line per product, so every prepare ended in MEAL_BASKET_MISMATCH. Owner decisions: BAS-009 unit priority KG, then L, then pieces; the agent must always request with the plan's units (Q-44), and the refusal must say exactly what to send. Backend built: catalog.combine_in_priority_unit (exact, never rounded) and basket_errors (structured details). The call sites in agent_tools.py and recipes.py are person 2's (patch text in BAS-009-requests.md).
 - Evidence: tests/test_basket_contract.py::test_one_product_in_two_units_can_be_prepared (strict xfail), tests/test_unit_priority.py, tests/test_basket_errors.py.
 - Impact: Mixed-unit recipes stay unpreparable until person 2 applies the patch.
+- Update 2026-11-14 (branch `p3/otto-fixes`, not merged): fixed in `agent_tools.py` / `recipes.py` (`combine_by_product`); verified by `tests/test_basket_contract.py::test_one_product_in_two_units_can_be_prepared` and `tests/test_draft_contract.py::test_product_requested_in_two_units_becomes_one_line_in_the_priority_unit`.
 
 ### F-BASKET-007: Per-ingredient conversion is computed alone, so shared packs overstate
 - Date: 2026-11-14   Track: 3   Status: verified

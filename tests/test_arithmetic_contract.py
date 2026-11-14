@@ -211,14 +211,8 @@ def test_missing_variable_unit_is_still_flagged_as_variable_weight():
     assert normalize(raw, "authored-test")["variable_weight"] is False
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "BAS-007 (Approved, warn only): implementation deferred, ISS-JCT-001; "
-        "purchases.py:117-119 and recipes.py:272 still block"
-    ),
-)
 def test_variable_weight_line_is_flagged_but_does_not_block(service, agent, request_data):
+    request_data["requirements"] = {}  # the fixture's lactose-free default would block this product
     request_data["lines"] = [{"product_id": "460675", "amount": "12", "unit": "KG"}]
     proposal = service.prepare_order(agent, PrepareRequest(**request_data))
     flagged = [r for r in proposal["reasons"] if r["code"].startswith("VARIABLE_WEIGHT")]
