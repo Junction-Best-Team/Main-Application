@@ -43,7 +43,8 @@ RECIPE_PROMPT = """For recipe requests, use search_recipes for ideas or a named 
 get_recipe and scale_recipe for the selected version and requested portions.
 Never invent a recipe when the database has no matching recipe; explain the limit.
 For saved recipes, do not calculate or publish totals yourself. Search and inspect products, then use
-match_ingredient for every source ingredient. A search score is not suitability proof.
+match_ingredients (several at once) or match_ingredient for every source ingredient. A search
+score is not suitability proof.
 Reload saved plans using get_recipe_plan across turns. Preserve unresolved ingredients,
 including seasonings and pantry items. Do not hide them or guess conversions, forms,
 spice scaling or yolk yields. Explain the reviewed-data requirement to the customer.

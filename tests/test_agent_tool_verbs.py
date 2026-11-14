@@ -67,6 +67,7 @@ ALLOWED_SERVICE = {
     "scale_recipe",
     "get_recipe_plan",
     "match_ingredient",
+    "match_ingredients",
     "search_memory",
     "manage_memory",
     "memory_context",

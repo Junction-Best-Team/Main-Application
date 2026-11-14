@@ -12,6 +12,7 @@ from aimo import memory
 from aimo.chat_schemas import AgentTurn, MealPlan
 from aimo.db import Problem, fingerprint
 from aimo.memory_schemas import MemoryChange, MemoryToolSearch
+from aimo.recipe_batch import MatchIngredients
 from aimo.recipe_schemas import (
     MatchIngredient,
     PlanReference,
@@ -163,6 +164,12 @@ class ToolSession:
                     "Check a catalog product against one required ingredient; retain unresolved items.",
                     self.match_ingredient,
                 ),
+                "match_ingredients": ToolSpec(
+                    MatchIngredients,
+                    "Check catalog products against several required ingredients in one call; "
+                    "writes one plan revision, retains unresolved items, all-or-nothing.",
+                    self.match_ingredients,
+                ),
             }
         )
 
@@ -193,6 +200,16 @@ class ToolSession:
                 "PRODUCT_NOT_VERIFIED", "Read the selected product with get_product first.", 422
             )
         return self.save_recipe_result(self.service.match_ingredient(self.identity, request))
+
+    def match_ingredients(self, request):
+        if self.prepared_digest is not None:
+            raise Problem("MEAL_PLAN_LOCKED", "Request recipe changes in a new customer message.")
+        for pair in request.matches:
+            if pair.product_id not in self.products:
+                raise Problem(
+                    "PRODUCT_NOT_VERIFIED", "Read the selected product with get_product first.", 422
+                )
+        return self.save_recipe_result(self.service.match_ingredients(self.identity, request))
 
     def memory_actor(self):
         return memory.chat_actor(self.identity)

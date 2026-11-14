@@ -602,6 +602,33 @@ def test_hosted_recipe_search_reranks_only_its_shortlist(tmp_path, actor, monkey
     assert seen[0][0].startswith("Find cooking recipes")
 
 
+def test_batch_match_tool_matches_every_ingredient_in_one_revision(
+    tmp_path, actor, service, meal_products
+):
+    """Issue 95 (MEA-014): the agent can match several ingredients with one tool call."""
+    *_, versions = import_fixture(tmp_path)
+    session = ToolSession(actor, service)
+    assert "match_ingredients" in session.registry
+
+    def invoke(name, args):
+        return session.invoke(name, json.dumps(args))
+
+    plan = invoke("scale_recipe", dict(versions[0], portions=200))["meal_plan"]
+    pairs = [
+        {"ingredient_id": i["ingredient_id"], "product_id": "recipe-" + i["ingredient_id"]}
+        for i in plan["ingredients"]
+    ]
+    base = dict(plan_id=plan["recipe_plan_id"], revision=plan["recipe_plan_revision"])
+    with pytest.raises(Problem) as error:  # no product was read with get_product yet
+        invoke("match_ingredients", base | {"matches": pairs})
+    assert error.value.code == "PRODUCT_NOT_VERIFIED"
+    for pair in pairs:
+        invoke("get_product", {"product_id": pair["product_id"]})
+    matched = invoke("match_ingredients", base | {"matches": pairs})["meal_plan"]
+    assert matched["recipe_plan_revision"] == plan["recipe_plan_revision"] + 1
+    assert all(i["status"] == "matched" for i in matched["ingredients"])
+
+
 def test_commit_rechecks_suitability_for_mass_ingredients(tmp_path, actor, service, meal_products):
     from aimo.schemas import CommitRequest
 
@@ -1144,7 +1171,9 @@ def test_recipe_creation_requires_turn_known_version_and_supported_size(tmp_path
     assert error.value.code == "NOT_FOUND"
     raw = source_recipe()
     raw["ingredients"] = [raw["ingredients"][0] | {"id": f"ingredient-{i}"} for i in range(1001)]
-    with pytest.raises(ValueError, match="at most 1000"):  # MEA-013: the import refuses a larger recipe
+    with pytest.raises(
+        ValueError, match="at most 1000"
+    ):  # MEA-013: the import refuses a larger recipe
         import_fixture(tmp_path, [raw])
 
 

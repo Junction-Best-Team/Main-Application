@@ -110,7 +110,8 @@ pack counts. Revoked suitability blocks confirmation.
 ## Agent and persistence
 
 Tools: `search_recipes`, `get_recipe`, `scale_recipe`, `get_recipe_plan`,
-`match_ingredient`, plus the existing product discovery and purchasing tools.
+`match_ingredient`, `match_ingredients` (several ingredient and product pairs, one plan revision,
+all-or-nothing), plus the existing product discovery and purchasing tools.
 
 Scaling stores a buyer/agent-scoped plan and all source ingredients. One server
 turn fixes one recipe version/portion count; repeat scaling returns the saved plan.

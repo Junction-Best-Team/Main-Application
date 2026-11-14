@@ -27,6 +27,7 @@ RECIPE_TOOLS = {
     "scale_recipe",
     "get_recipe_plan",
     "match_ingredient",
+    "match_ingredients",
 }
 MEMORY_TOOLS = {"search_memory", "manage_memory"}
 MEMORY_SERVICE = MEMORY_TOOLS | {"memory_context", "get_memory", "replay_memory"}
