@@ -55,7 +55,7 @@ def test_health_routes_answer_head_with_the_same_status_as_get(client, path):
 
 
 def test_the_health_head_routes_are_not_added_to_the_published_contract(client):
-    paths = client.get("/openapi.json").json()["paths"]
+    paths = client.app.openapi()["paths"]
     assert "head" not in paths["/health/live"] and "head" not in paths["/health/ready"]
 
 

@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from aimo.api import create_app
 from aimo.auth import digest, hasher
+from aimo.config import settings
 from aimo.db import connection, js
 
 
@@ -156,7 +157,13 @@ def test_login_rate_limit_and_wrong_origin(http):
     )
 
 
-def test_documentation_nonce_and_scoped_csp(http):
+def test_documentation_nonce_and_scoped_csp(service, monkeypatch):
+    monkeypatch.setattr(settings(), "api_docs_enabled", True)  # off by default (Q-72)
+    with TestClient(create_app(service)) as http:
+        check_documentation_nonce_and_scoped_csp(http)
+
+
+def check_documentation_nonce_and_scoped_csp(http):
     docs = http.get("/docs")
     assert docs.status_code == 200
     policy = docs.headers["Content-Security-Policy"]

@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     public_base_url: str = "http://localhost:8000"
     approval_session_secret: str = ""
     secure_cookies: bool = True
+    # The interactive docs and the OpenAPI document are for local development only (Q-72).
+    api_docs_enabled: bool = False
     upstream_mode: Literal["auto", "fixture", "live"] = "auto"
     valio_aimo_base_url: str = "https://junction26.valioaimo.fi"
     valio_aimo_api_key: str = ""
@@ -59,6 +61,8 @@ class Settings(BaseSettings):
     unfinished_proposal_retention_days: int = Field(default=30, ge=1, le=3650)
     # Native Google credentials shared by chat, decisions, embeddings and images.
     gemini_api_key: str = Field(default="", repr=False)
+    voice_enabled: bool = True
+    voice_model: str = "gemini-3.8-live"
     cloudinary_url: str = Field(default="", repr=False)
     recipe_images_enabled: bool = True
     recipe_image_model: str = "gemini-nano-banana-2.1"

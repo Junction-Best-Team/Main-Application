@@ -23,6 +23,7 @@ from aimo import (
     schedules,
     schema_state,
     upstream,
+    voice,
 )
 from aimo.chat_schemas import (
     ConversationCreate,
@@ -94,25 +95,32 @@ def create_app(service=None):
         lifespan=lifespan,
         docs_url=None,
         redoc_url=None,
+        # Q-72: no /openapi.json unless API_DOCS_ENABLED. app.openapi() still builds the contract
+        # for scripts/export_schema.py, which generates the committed file the typed client uses.
+        openapi_url="/openapi.json" if settings().api_docs_enabled else None,
     )
     app.state.service = service
 
-    @app.get("/docs", include_in_schema=False)
-    def docs():
-        nonce = token_urlsafe(32)
-        html = get_swagger_ui_html(
-            openapi_url=app.openapi_url,
-            title=f"{app.title} — API documentation",
-            swagger_favicon_url="data:,",
-            swagger_ui_parameters={"validatorUrl": None},
-        ).body.decode()
-        policy = CONTENT_SECURITY_POLICY.replace(
-            "script-src 'self'", f"script-src 'self' 'nonce-{nonce}'"
-        ).replace("style-src 'self'", "style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'")
-        return HTMLResponse(
-            html.replace("<script", f'<script nonce="{nonce}"'),
-            headers={"Content-Security-Policy": policy, "Cache-Control": "no-store"},
-        )
+    if settings().api_docs_enabled:
+
+        @app.get("/docs", include_in_schema=False)
+        def docs():
+            nonce = token_urlsafe(32)
+            html = get_swagger_ui_html(
+                openapi_url=app.openapi_url,
+                title=f"{app.title} — API documentation",
+                swagger_favicon_url="data:,",
+                swagger_ui_parameters={"validatorUrl": None},
+            ).body.decode()
+            policy = CONTENT_SECURITY_POLICY.replace(
+                "script-src 'self'", f"script-src 'self' 'nonce-{nonce}'"
+            ).replace(
+                "style-src 'self'", "style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'"
+            )
+            return HTMLResponse(
+                html.replace("<script", f'<script nonce="{nonce}"'),
+                headers={"Content-Security-Policy": policy, "Cache-Control": "no-store"},
+            )
 
     @app.exception_handler(Problem)
     async def problem_handler(request, exc):
@@ -208,11 +216,9 @@ def create_app(service=None):
                 "The database schema is not up to date; run the migrations.",
                 503,
             )
-        return {
-            "status": "ready",
-            "model": active["model_key"],
-            "upstream_mode": upstream.effective_mode(),
-        }
+        # A bare status (Q-72): the embedding model and the supplier mode are in the startup log
+        # (api.started), not in a public response.
+        return {"status": "ready"}
 
     @app.head("/health/ready", include_in_schema=False)
     def ready_head():
@@ -416,6 +422,15 @@ def create_app(service=None):
             identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
         )
         return conversations.enqueue(identity, conversation_id, body)
+
+    @app.post(
+        "/api/conversations/{conversation_id}/voice-session", response_model=voice.VoiceSession
+    )
+    def voice_session(conversation_id: UUID, request: Request, identity=Depends(buyer)):
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+        return voice.create_session(identity, conversation_id)
 
     @app.get(
         "/api/conversations/{conversation_id}/events",
