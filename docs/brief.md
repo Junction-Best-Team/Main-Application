@@ -2,6 +2,8 @@
 
 Updated **14 November 2026 (Europe/Helsinki)** with the agreed scope and the discussion after the first draft. This is a design document: application code, containers, Kubernetes resources, and authenticated Valio API integration have not been implemented or tested.
 
+Infrastructure follow-up: the owner requested optional Terraform provisioning after this plan. See [the infrastructure runbook](../infra/README.md) for the DigitalOcean adapter and portable Kubernetes stack. These configurations have not been applied; application implementation remains in PR #4. The existing-cluster assumptions below describe the original application scope.
+
 ## 1. What we are building
 
 Build **one seller-side backend with HTTP and MCP interfaces** that lets an external purchasing agent search Valio Aimo's products, obtain prices and availability, prepare a valid purchase, obtain any required buyer approval, and submit a mock order.

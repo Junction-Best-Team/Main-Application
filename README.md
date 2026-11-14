@@ -2,7 +2,7 @@
 
 Four-person team repository for [Junction 2026](https://2026.hackjunction.com/), November 13–15 in Espoo, Finland.
 
-Preparation and design files for Valio Aimo's [Trusted Trade Agents challenge](https://hackjunction.app/participate/45/challenges/327). The [implementation plan](docs/brief.md) defines one seller-side backend with HTTP/MCP access, catalog ingestion and hybrid search, a React buyer approval inbox/review frontend served by that backend, and mock ordering. It supports conversational or mission-driven external agents. Use an available Kubernetes cluster as the hosting target, with Docker Compose for local development or an initial demo. Application code and deployment resources are not implemented yet.
+Design and infrastructure files for Valio Aimo's [Trusted Trade Agents challenge](https://hackjunction.app/participate/45/challenges/327). The [implementation plan](docs/brief.md) defines one seller-side backend with HTTP/MCP access, catalog ingestion and hybrid search, a React buyer approval inbox/review frontend served by that backend, and mock ordering. It supports conversational or mission-driven external agents. [Terraform infrastructure](infra/README.md) provides an optional DigitalOcean Kubernetes/managed PostgreSQL stack and a separate portable Kubernetes deployment. Nothing is automatically applied. Application implementation is tracked separately in [PR #4](https://github.com/Junction-Best-Team/Main-Application/pull/4).
 
 ## Get started
 
@@ -53,7 +53,7 @@ Our workflow is **task PR → green CI → self-merge**. Reviews are optional, a
 | Local development command | TBD |
 | Build / quick validation command | TBD |
 | Deployment target | Available Kubernetes cluster: one backend Deployment initially, an on-demand ingestion Job, Service/HTTPS routing, and shared PostgreSQL |
-| Deployment procedure and resource values | TBD with actual cluster, registry, database, and domain access; no new cluster or database operator in application scope |
+| Deployment procedure and resource values | [Terraform runbook](infra/README.md): one worker, external managed PostgreSQL/pgvector, HTTPS ingress and explicit setup/import Job; alternatively supply an existing cluster/database |
 | Demo URL | TBD |
 
 Commit the chosen runtime-version configuration and dependency lockfile with the application skeleton. Then verify that another teammate can get from a fresh clone to a running app using these instructions. Add automated checks only when they save time.
