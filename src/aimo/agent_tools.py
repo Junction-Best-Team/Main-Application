@@ -184,6 +184,13 @@ class MealPlanResult(Model):
     purchase_authorized: Literal[False]
 
 
+class RecipeImageResult(Model):
+    """The hosted illustration: its address and size, never dietary, product or purchase evidence."""
+
+    image: RecipeImage
+    illustration_only: Literal[True]
+
+
 class SubstitutionResult(Model):
     """Supplier-rule substitutes: candidates only, never a suitability claim."""
 
@@ -278,6 +285,7 @@ class ToolSession:
                 "One image per message; never dietary, product or purchase evidence. "
                 "On failure continue with text and do not call again in the same message.",
                 self.generate_recipe_image,
+                RecipeImageResult,
             ),
             "search_products": ToolSpec(
                 SearchProducts,
