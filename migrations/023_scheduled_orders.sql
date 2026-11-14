@@ -1,5 +1,5 @@
 -- WS-E scheduled (standing) re-orders. Additive. Every order it places is a MOCK order.
--- Number 020: after WS-D's 018 (purge unfinished proposals) and 019 (history immutability); 014 and 015 are other branches.
+-- Number 023: the next free one after WS-D's 018 and 019, Otto's 020_chat_attachments, 021_turn_constraints and 022_buyer_settings.
 
 -- 1. A separate scheduler identity per buyer: no login, no model, no authority.
 ALTER TABLE identities DROP CONSTRAINT identities_role_check;
