@@ -1,9 +1,7 @@
-import { useState } from "react";
 import type { Proposal } from "./types";
 import { Badge, canConfirm, currency, statusOf } from "./shared";
 import { useConfirmFlow } from "./confirmFlow";
 import { store } from "./store";
-import { VLink } from "./variant";
 
 function StatusNote({ p, onUpdate }: { p: Proposal; onUpdate: (p: Proposal) => void }) {
   const s = statusOf(p);
@@ -39,15 +37,6 @@ function StatusNote({ p, onUpdate }: { p: Proposal; onUpdate: (p: Proposal) => v
   );
 }
 
-function ActionNote() {
-  return (
-    <p className="action-note">
-      Your confirmation applies to this revision only. We recheck prices, availability and your
-      authority before recording a mock order. No supplier order or stock reservation is made.
-    </p>
-  );
-}
-
 function ConfirmRejectButtons({
   p,
   busy,
@@ -73,11 +62,10 @@ function ConfirmRejectButtons({
   );
 }
 
-type PanelProps = { p: Proposal; onUpdate: (p: Proposal) => void; threadHref?: string };
+type PanelProps = { p: Proposal; onUpdate: (p: Proposal) => void };
 
-// Variant A (#26): confirmation lives on a sticky bar pinned to the bottom
-// of the viewport while the buyer scrolls the basket — the closest cousin
-// of the real PR #13 decision panel, made literally a sticky bar.
+// The single confirmation path: a bar pinned to the bottom of the viewport
+// while the buyer scrolls the basket, restating the total and Confirm/Reject.
 export function StickyConfirmPanel({ p, onUpdate }: PanelProps) {
   const flow = useConfirmFlow(onUpdate);
   if (!canConfirm(p)) {
@@ -118,130 +106,4 @@ function ErrorInline({ message }: { message: string }) {
       {message}
     </div>
   );
-}
-
-// Variant B (#27): the basket page shows a plain summary; a button opens a
-// modal that restates the exact terms before the buyer can confirm.
-export function ModalConfirmPanel({ p, onUpdate }: PanelProps) {
-  const flow = useConfirmFlow(onUpdate);
-  const [open, setOpen] = useState(false);
-  if (!canConfirm(p)) {
-    return (
-      <aside className="decision-panel">
-        <h2>Review your basket</h2>
-        <p className="decision-total">{currency(p.snapshot.gross_total)}</p>
-        {flow.message && <p role="status" className="success">{flow.message}</p>}
-        <StatusNote p={p} onUpdate={onUpdate} />
-      </aside>
-    );
-  }
-  return (
-    <aside className="decision-panel">
-      <h2>Review your basket</h2>
-      <p className="decision-total">{currency(p.snapshot.gross_total)}</p>
-      <ActionNote />
-      {flow.message && <p role="status" className="success">{flow.message}</p>}
-      {flow.error && <ErrorInline message={flow.error} />}
-      <button className="primary full" onClick={() => setOpen(true)}>
-        Review &amp; confirm…
-      </button>
-      {open && (
-        <div className="modal-overlay" role="presentation" onClick={() => !flow.busy && setOpen(false)}>
-          <div
-            className="modal-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Confirm this purchase"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2>Confirm these exact terms</h2>
-            <dl className="modal-terms">
-              <div>
-                <dt>Request</dt>
-                <dd>{p.request.request_id}</dd>
-              </div>
-              <div>
-                <dt>Deliver to</dt>
-                <dd>{p.request.destination}</dd>
-              </div>
-              <div>
-                <dt>Delivery date</dt>
-                <dd>{p.request.delivery_date}</dd>
-              </div>
-              <div>
-                <dt>Revision</dt>
-                <dd>
-                  {p.revision} / policy v{p.policy_version}
-                </dd>
-              </div>
-              <div>
-                <dt>Total payable</dt>
-                <dd className="modal-total">{currency(p.snapshot.gross_total)}</dd>
-              </div>
-            </dl>
-            <ul className="reasons">
-              {p.reasons.map((r, i) => (
-                <li key={i}>
-                  {r.message}
-                  <span className="reason-code">{r.code}</span>
-                </li>
-              ))}
-            </ul>
-            {flow.error && <ErrorInline message={flow.error} />}
-            <div className="modal-actions">
-              <ConfirmRejectButtons
-                p={p}
-                busy={flow.busy}
-                onConfirm={() => flow.confirm(p)}
-                onReject={() => flow.reject(p)}
-              />
-              <button className="text-button" disabled={flow.busy} onClick={() => setOpen(false)}>
-                Cancel, keep reviewing
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </aside>
-  );
-}
-
-// Variant C (#28): the primary confirm/reject lives on the proposal card
-// inside the chat thread (see InlineThreadCard). Basket detail keeps the
-// same action available for full-surface parity, labelled as the secondary
-// path back to the thread.
-export function InlineVariantPanel({ p, onUpdate, threadHref }: PanelProps) {
-  const flow = useConfirmFlow(onUpdate);
-  if (!canConfirm(p)) {
-    return (
-      <aside className="decision-panel">
-        <h2>Review your basket</h2>
-        <p className="decision-total">{currency(p.snapshot.gross_total)}</p>
-        {flow.message && <p role="status" className="success">{flow.message}</p>}
-        <StatusNote p={p} onUpdate={onUpdate} />
-      </aside>
-    );
-  }
-  return (
-    <aside className="decision-panel">
-      <h2>Review your basket</h2>
-      <p className="decision-total">{currency(p.snapshot.gross_total)}</p>
-      <p className="inline-variant-note">
-        In this variant, confirmation is primarily on the proposal card inside the chat thread.
-        {threadHref && <> <VLink to={threadHref}>Back to the conversation</VLink>.</>}
-      </p>
-      <ActionNote />
-      {flow.message && <p role="status" className="success">{flow.message}</p>}
-      {flow.error && <ErrorInline message={flow.error} />}
-      <ConfirmRejectButtons p={p} busy={flow.busy} onConfirm={() => flow.confirm(p)} onReject={() => flow.reject(p)} />
-    </aside>
-  );
-}
-
-export function ConfirmPanel(
-  props: PanelProps & { variant: "sticky" | "modal" | "inline" },
-) {
-  if (props.variant === "modal") return <ModalConfirmPanel {...props} />;
-  if (props.variant === "inline") return <InlineVariantPanel {...props} />;
-  return <StickyConfirmPanel {...props} />;
 }

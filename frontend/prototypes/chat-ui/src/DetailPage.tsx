@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import type { Proposal } from "./types";
 import { Badge, currency, dateTime, statusOf, title } from "./shared";
 import { store } from "./store";
-import { useVariant, VLink } from "./variant";
-import { ConfirmPanel } from "./ConfirmPanels";
+import { StickyConfirmPanel } from "./ConfirmPanels";
 
 export function DetailPage() {
   const { approvalId, proposalId } = useParams();
-  const variant = useVariant();
   const [p, setProposal] = useState<Proposal | null>(null);
   const [error, setError] = useState("");
 
@@ -25,13 +23,11 @@ export function DetailPage() {
     void load();
   }, [load]);
 
-  const threadId = p ? store.findConversationForProposal(p.proposal_id) : undefined;
-
   return (
     <main className="workspace">
-      <VLink className="back" to="/purchases">
+      <Link className="back" to="/purchases">
         Back to purchases
-      </VLink>
+      </Link>
       {error && (
         <div className="error" role="alert">
           {error}
@@ -178,12 +174,7 @@ export function DetailPage() {
                 </pre>
               </details>
             </article>
-            <ConfirmPanel
-              variant={variant}
-              p={p}
-              onUpdate={setProposal}
-              threadHref={threadId ? `/conversations/${threadId}` : undefined}
-            />
+            <StickyConfirmPanel p={p} onUpdate={setProposal} />
           </div>
         </>
       )}

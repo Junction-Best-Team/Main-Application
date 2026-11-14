@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Inbox } from "./types";
 import { Badge, ErrorMessage, currency, dateTime, statusOf } from "./shared";
 import { store } from "./store";
-import { VLink } from "./variant";
+import { Link } from "react-router-dom";
 
 export function PurchasesPage() {
   const [data, setData] = useState<Inbox | null>(null);
@@ -59,7 +59,7 @@ export function PurchasesPage() {
       ) : (
         <div className="purchase-list">
           {data?.items.map((p) => (
-            <VLink className="purchase-row" key={p.proposal_id} to={`/purchases/${p.proposal_id}`}>
+            <Link className="purchase-row" key={p.proposal_id} to={`/purchases/${p.proposal_id}`}>
               <div className="row-main">
                 <Badge value={statusOf(p)} />
                 <h2>{p.request.request_id}</h2>
@@ -73,7 +73,7 @@ export function PurchasesPage() {
                 <span>Including tax &amp; deposits</span>
                 <span className="expiry">Expires {dateTime(p.expires_at)}</span>
               </div>
-            </VLink>
+            </Link>
           ))}
         </div>
       )}

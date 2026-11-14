@@ -1,5 +1,6 @@
 import { defineConfig } from "@playwright/test";
 
+// Runs against the standalone prototype dev server (fake in-memory backend).
 export default defineConfig({
   testDir: "./e2e",
   workers: 1,

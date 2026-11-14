@@ -25,14 +25,7 @@ export function Login() {
     const form = new FormData(event.currentTarget);
     try {
       await store.login(String(form.get("username")), String(form.get("password")));
-      // Preserve whichever ?variant= was active, whether it travelled with
-      // the redirect destination or was only on this /login URL.
-      if (destination.includes("?")) {
-        navigate(destination, { replace: true });
-      } else {
-        const variant = new URLSearchParams(location.search).get("variant");
-        navigate(variant ? `${destination}?variant=${variant}` : destination, { replace: true });
-      }
+      navigate(destination, { replace: true });
     } catch (e) {
       setError((e as Error).message);
     } finally {

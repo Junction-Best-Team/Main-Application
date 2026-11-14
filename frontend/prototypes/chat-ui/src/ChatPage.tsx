@@ -1,16 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import type { Conversation, ConversationList } from "./types";
 import { Badge, ErrorMessage, currency, dateTime, purchaseStatus } from "./shared";
 import { store, FakeApiError } from "./store";
 import { useStoreState } from "./useStoreState";
-import { useVariant, useVariantNavigate, VLink } from "./variant";
-import { ProposalCard } from "./InlineThreadCard";
 
 export function ChatPage() {
   const { conversationId } = useParams();
-  const variant = useVariant();
-  const navigate = useVariantNavigate();
+  const navigate = useNavigate();
   const { session, scenario } = useStoreState();
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [conversations, setConversations] = useState<ConversationList | null>(null);
@@ -94,9 +91,9 @@ export function ChatPage() {
   return (
     <main className="chat-workspace">
       <aside className="conversation-sidebar" aria-label="Conversations">
-        <VLink className="new-conversation" to="/">
+        <Link className="new-conversation" to="/">
           New purchase
-        </VLink>
+        </Link>
         <h2>Your conversations</h2>
         {!conversations ? (
           <p className="muted small">Loading conversations…</p>
@@ -106,16 +103,16 @@ export function ChatPage() {
           <ul>
             {conversations.items.map((item) => (
               <li key={item.id}>
-                <VLink to={`/conversations/${item.id}`} aria-current={conversationId === item.id ? "page" : undefined}>
+                <Link to={`/conversations/${item.id}`} aria-current={conversationId === item.id ? "page" : undefined}>
                   {item.title}
-                </VLink>
+                </Link>
               </li>
             ))}
           </ul>
         )}
-        <VLink className="history-link" to="/purchases">
+        <Link className="history-link" to="/purchases">
           View purchase history
-        </VLink>
+        </Link>
       </aside>
       <section className="conversation-main">
         <div className="chat-heading">
@@ -182,7 +179,11 @@ export function ChatPage() {
                   </p>
                 </section>
               )}
-              {message.proposal_id && <ProposalCard proposalId={message.proposal_id} variant={variant} />}
+              {message.proposal_id && (
+                <Link className="basket-link" to={`/purchases/${message.proposal_id}`}>
+                  Review basket and purchasing checks
+                </Link>
+              )}
             </article>
           ))}
           {busy && (
@@ -196,11 +197,11 @@ export function ChatPage() {
           <section className="conversation-baskets" aria-label="Conversation baskets">
             <h2>Baskets in this conversation</h2>
             {conversation?.purchases.map((purchase) => (
-              <VLink key={purchase.proposal_id} to={`/purchases/${purchase.proposal_id}`}>
+              <Link key={purchase.proposal_id} to={`/purchases/${purchase.proposal_id}`}>
                 <span>{purchase.request.request_id}</span>
                 <Badge value={purchaseStatus(purchase)} />
                 <strong>{currency(purchase.snapshot.gross_total)}</strong>
-              </VLink>
+              </Link>
             ))}
           </section>
         )}
