@@ -42,6 +42,7 @@ Our workflow is **task PR → green CI → self-merge**. Reviews are optional, a
 | MCP | Official Python MCP SDK; HTTP transport compatible with the selected client |
 | Dependencies and packaging | `uv` with committed lockfile; one Docker image with planned `serve` and `ingest` modes |
 | Shared storage | PostgreSQL: separate tables for the derived product index and new proposals, approvals, orders, and receipts |
+| Customer rules and approval logic | One seeded demo customer policy/authority configuration in PostgreSQL; `approval_policy` and `approval_workflow` modules inside the backend enforce it |
 | Hybrid search | pgvector similarity plus PostgreSQL full-text search; reciprocal rank fusion and structured validation |
 | Embeddings | Sentence Transformers; evaluate `intfloat/multilingual-e5-small` on Finnish/English catalog queries before pinning a model revision |
 | Human interface | Minimal server-rendered approval page using FastAPI/Jinja2, served by the same backend; no standalone frontend service or React build |
@@ -58,6 +59,8 @@ Commit the chosen runtime-version configuration and dependency lockfile with the
 
 The product has **one running custom service**, not separate search, MCP, approval, and ordering microservices. The importer runs to completion when invoked. PostgreSQL/pgvector is the proposed shared-storage choice for the Kubernetes direction; the earlier SQLite/file-index idea is only a single-instance alternative, not another required implementation. See the plan's [element inventory](docs/brief.md#2-elements-ownership-and-service-count), [ingestion flow](docs/brief.md#4-ingestion-where-the-searchable-data-comes-from), and [deployment diagram](docs/brief.md#10-kubernetes-deployment).
 
+The buying company owns its approval rules. For the MVP, seed one demo customer's spending limit, permitted destinations, substitution/overbuy rules, and agent/approver authority during setup. The approval page captures a decision for one proposal; backend modules evaluate policy and enforce authorization again before commitment. Customer settings screens and admin-only rule-management MCP tools are optional later additions. See [customer rules and the approval gate](docs/brief.md#8-customer-rules-backend-approval-gate-and-approval-page).
+
 ## Environment
 
 [.env.example](.env.example) records planned variable names only; no application reads them yet. Supply real values through local ignored files or deployment secrets when the implementation exists. Keep secrets out of commits and browser-side code. Set the public origin used for approval URLs and a private browser-session secret; buyer/agent credential settings will be documented with the chosen authentication implementation. Commit lockfiles; ignore dependencies and generated output.
@@ -65,7 +68,7 @@ The product has **one running custom service**, not separate search, MCP, approv
 ## Shared context
 
 - [AGENTS.md](AGENTS.md): short instructions shared by coding agents. [CLAUDE.md](CLAUDE.md) imports the same file for Claude Code.
-- [Implementation plan](docs/brief.md): core scope, element count, stack, ingestion and updates, tool schemas, the approval page and asynchronous agent resume, data checks, Kubernetes diagrams, demo, milestones, and acceptance checks.
+- [Implementation plan](docs/brief.md): core scope, element count, stack, ingestion and updates, tool schemas, customer rule ownership/setup, backend approval modules, the approval page and asynchronous agent resume, concurrency, data checks, Kubernetes diagrams, demo, milestones, and acceptance checks.
 - [Pre-existing work](docs/pre-existing-work.md): preparation and reused material to disclose in the submission.
 
 Check the current event and challenge rules before preparing application code. Junction's [general terms](https://www.hackjunction.com/terms-of-service) require projects to be built primarily during the event and pre-existing material to be identified in the submission. Confirm the required project licence before submitting.
