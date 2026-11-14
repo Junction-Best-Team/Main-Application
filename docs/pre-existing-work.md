@@ -14,7 +14,7 @@ Add any starter code or earlier prototypes separately. Describe which parts exis
 
 | Material | Date | Source or author | Work performed |
 | --- | --- | --- | --- |
-| Valio Aimo implementation plan | 2026-11-14 | Team-provided research brief and discussions with AI assistants; plan developed with Codex after checking the official challenge, portal/API documentation, product schema, and selected catalog records | Documentation and read-only catalog analysis only. No application implementation or authenticated price/availability API calls at planning time. See [the plan](brief.md). |
+| Valio Aimo implementation plan and diagrams | 2026-11-14 | Team-provided research brief and discussions with AI assistants; plan developed with Codex after checking the official challenge, portal/API documentation, product schema, and selected catalog records | Documentation and read-only catalog analysis only. Revised after discussion to cover the smaller MVP, in-agent human approval, API-fed ingestion and updates, hybrid search, and Kubernetes hosting with shared storage. No application implementation, authenticated Valio API calls, or deployment at planning time. See [the plan](brief.md). |
 
 ## Reused code, data, models, and assets
 
@@ -23,6 +23,8 @@ Add any starter code or earlier prototypes separately. Describe which parts exis
 | Valio Aimo synthetic catalog, schema, companion data, and API documentation | [Challenge resource portal](https://junction26.valioaimo.fi/) | Sponsor states the synthetic data is for this challenge only; verify any additional submission/distribution requirements | Supplied inputs for design and planned implementation; raw datasets are not committed with the plan | Identify sponsor-provided data and distinguish live lookups, fixtures, and mock order acceptance |
 
 Include frameworks, datasets, model weights, third-party assets, and earlier work as applicable. Record source/version information while building so submission preparation is straightforward.
+
+The plan names intended frameworks and an embedding-model candidate; that is not a claim that their code or model weights have already been integrated. Add exact versions, licences, and actual usage to this log when implementation starts.
 
 ## Final review
 
