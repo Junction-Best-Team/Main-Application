@@ -64,6 +64,7 @@ MANIFEST: dict[str, list[tuple[str, ...]]] = {
         ("trigger", "orders", "immutable_truncate"),
     ],
     "021_turn_constraints.sql": [("column", "conversation_turns", "constraints")],
+    "022_buyer_settings.sql": [("function", "save_buyer_settings(text,integer,jsonb)")],
 }
 
 _RELATION = "SELECT to_regclass(%s) IS NOT NULL"

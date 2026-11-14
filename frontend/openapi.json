@@ -1848,21 +1848,20 @@
       },
       "EditablePolicy": {
         "properties": {
-          "currency": {
-            "type": "string",
-            "const": "EUR",
-            "title": "Currency"
-          },
-          "destinations": {
-            "items": {
-              "type": "string",
-              "maxLength": 100,
-              "minLength": 1
-            },
-            "type": "array",
-            "maxItems": 50,
-            "minItems": 1,
-            "title": "Destinations"
+          "max_order_gross": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Order Gross"
           },
           "substitution": {
             "type": "string",
@@ -1885,26 +1884,14 @@
           "whole_sales_units": {
             "type": "boolean",
             "title": "Whole Sales Units"
-          },
-          "approved_product_ids": {
-            "items": {
-              "type": "string",
-              "pattern": "^[A-Za-z0-9_-]{1,80}$"
-            },
-            "type": "array",
-            "maxItems": 1000,
-            "title": "Approved Product Ids"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "currency",
-          "destinations",
           "substitution",
           "overbuy",
-          "whole_sales_units",
-          "approved_product_ids"
+          "whole_sales_units"
         ],
         "title": "EditablePolicy"
       },
@@ -2949,6 +2936,18 @@
       },
       "PolicyRules": {
         "properties": {
+          "max_order_gross": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Order Gross",
+            "description": "Optional account-wide gross cap per order. Never grants personal approval authority."
+          },
           "currency": {
             "type": "string",
             "const": "EUR",
@@ -2997,7 +2996,7 @@
               }
             ],
             "title": "Approved Product Ids",
-            "description": "Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope always blocks a purchase until a policy manager configures it in Settings."
+            "description": "Buyer-configured product scope. Outside products count as substitutions even without an agent flag. Missing scope always blocks a purchase until an operator configures it."
           }
         },
         "additionalProperties": false,
