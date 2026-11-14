@@ -14,12 +14,12 @@ edits or restarts one (those are the customer's functions in aimo.schedules).
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
 from aimo import auth as auth_module
-from aimo import cancellations
+from aimo import cancellations, clock
 from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, js
 from aimo.observability import event, failure
@@ -31,7 +31,7 @@ ONE_DAY = timedelta(days=1)
 
 def helsinki_today(now=None):
     """The Helsinki calendar date: every schedule date and every run is in this zone."""
-    return (now or datetime.now(timezone.utc)).astimezone(HELSINKI).date()
+    return (now or clock.real_now()).astimezone(HELSINKI).date()
 
 
 # --- Terms fingerprint ---------------------------------------------------------------------
@@ -339,33 +339,60 @@ def scheduler_identity_id(c, buyer_id):
     return row["id"] if row else None
 
 
+# A buyer's Helsinki date at `now` plus their demo offset (aimo.clock), for the due and expiry scans.
+BUYER_TODAY = (
+    "((%s + make_interval(secs => COALESCE((SELECT d.offset_seconds FROM demo_clock d "
+    "WHERE d.buyer_id=scheduled_authorizations.buyer_id), 0))) AT TIME ZONE 'Europe/Helsinki')::date"
+)
+
+
 def materialise(now=None):
-    """Create the run of each due date. Short, idempotent and serialized across replicas."""
-    now = now or datetime.now(timezone.utc)
+    """Create the run of each due date. Short, idempotent and serialized across replicas.
+
+    With no `now` and the demo clock on, each authorization is due by its buyer's own simulated date.
+    """
+    follow = now is None and clock.enabled()
+    now = now or clock.real_now()
     today = helsinki_today(now)
     after_hour = now.astimezone(HELSINKI).hour >= settings().scheduler_run_after_hour
+    today_sql, today_args = ("%s", (today,)) if not follow else (BUYER_TODAY, (now,))
     created = 0
     with connection() as c:
         c.execute("SELECT pg_advisory_xact_lock(%s)", (LOCK_KEY,))
         for row in c.execute(
-            """UPDATE scheduled_authorizations SET status='expired',next_run_date=NULL,paused_at=NULL,
-            updated_at=%s WHERE status IN ('active','paused') AND valid_until < %s RETURNING id""",
-            (now, today),
+            f"""UPDATE scheduled_authorizations SET status='expired',next_run_date=NULL,paused_at=NULL,
+            updated_at=%s WHERE status IN ('active','paused') AND valid_until < {today_sql} RETURNING id""",
+            (now, *today_args),
         ).fetchall():
             auth_event(c, row["id"], "expired")
         due = c.execute(
-            """SELECT * FROM scheduled_authorizations WHERE status IN ('active','paused')
-            AND next_run_date IS NOT NULL AND next_run_date <= %s
+            f"""SELECT * FROM scheduled_authorizations WHERE status IN ('active','paused')
+            AND next_run_date IS NOT NULL AND next_run_date <= {today_sql}
             ORDER BY next_run_date,id LIMIT %s FOR UPDATE SKIP LOCKED""",
-            (today, settings().scheduler_max_runs_per_pass),
+            (*today_args, settings().scheduler_max_runs_per_pass),
         ).fetchall()
         for auth in due:
-            created += open_dates(c, auth, today, after_hour, now)
+            offset = clock.offset_seconds(auth["buyer_id"], c) if follow else 0
+            if not offset:
+                created += open_dates(c, auth, today, after_hour, now)
+                continue
+            buyer_now = now + timedelta(seconds=offset)
+            created += open_dates(
+                c,
+                auth,
+                helsinki_today(buyer_now),
+                buyer_now.astimezone(HELSINKI).hour >= settings().scheduler_run_after_hour,
+                now,
+                lambda day: min(buyer_now, run_time(day) + timedelta(minutes=1)),
+            )
     return created
 
 
-def open_dates(c, auth, today, after_hour, now):
-    """Open the runs of one authorization. A paused one skips every date up to today."""
+def open_dates(c, auth, today, after_hour, now, date_now=None):
+    """Open the runs of one authorization. A paused one skips every date up to today.
+
+    `date_now(day)` (a buyer's demo jump) is the time at which a date is judged for lateness: each
+    skipped date then runs as if the scheduler had been running, never missed and never late."""
     made, day = 0, auth["next_run_date"]
     while day is not None and day <= today:
         if day == today and not after_hour:
@@ -373,11 +400,13 @@ def open_dates(c, auth, today, after_hour, now):
         run_id, late, delivery = uuid4(), False, day + timedelta(days=auth["delivery_offset_days"])
         if auth["status"] == "paused":
             state, code = "skipped", "PAUSED"
-        elif not within_grace(day, now):
+        elif not within_grace(day, date_now(day) if date_now else now):
             state, code = "disrupted", "RUN_MISSED"
         else:
             state, code = "due", None
-            if run_age(day, now) > LATE_AFTER:  # CNF-039: a short outage runs the date late
+            if (
+                run_age(day, date_now(day) if date_now else now) > LATE_AFTER
+            ):  # CNF-039: a short outage runs the date late
                 late = True
                 delivery = max(delivery, today + ONE_DAY)  # tomorrow at the earliest
         row = c.execute(
@@ -427,12 +456,16 @@ def open_dates(c, auth, today, after_hour, now):
 LATE_AFTER = timedelta(minutes=15)  # a run started later than this after its run time is "late"
 
 
-def run_age(day, now):
-    """How long after its run time (the run hour, Helsinki, on that date) `now` is."""
-    run_time = datetime.combine(
+def run_time(day):
+    """The run hour, Helsinki, on `day`."""
+    return datetime.combine(
         day, datetime.min.time().replace(hour=settings().scheduler_run_after_hour), HELSINKI
     )
-    return now - run_time
+
+
+def run_age(day, now):
+    """How long after its run time (the run hour, Helsinki, on that date) `now` is."""
+    return now - run_time(day)
 
 
 def within_grace(day, now):
@@ -489,14 +522,19 @@ def claim_run(now):
 
 
 def run_due_schedules(service, *, now=None, materialise_first=True):
-    """One step of one run. Returns whether any work was done."""
-    now = now or datetime.now(timezone.utc)
-    created = materialise(now) if materialise_first else 0
+    """One step of one run. Returns whether any work was done.
+
+    With no `now` the scheduler reads the clock itself: real time, or while the demo clock is on the
+    buyer's simulated date for what is due and for pause and expiry checks. Leases, retries and
+    everything it writes stay on real time."""
+    follow = now is None and clock.enabled()
+    now = now or clock.real_now()
+    created = materialise(None if follow else now) if materialise_first else 0
     run = claim_run(now)
     if run is None:
         return created > 0
     try:
-        step(service, run, now)
+        step(service, run, now, clock.app_now(run["buyer_id"]) if follow else None)
     except Exception as exc:
         # A failed step is retried with backoff; after the limit the run is a disruption.
         event("scheduler.step_failed", level=logging.WARNING, run_id=str(run["id"]), **failure(exc))
@@ -687,7 +725,7 @@ def skip(c, run, code, now, cancel_reason=None):
     run_event(c, run["id"], "scheduler", "skipped", {"code": code})
 
 
-def step(service, run, now):
+def step(service, run, now, buyer_now=None):
     with connection() as c:
         auth = c.execute(
             "SELECT * FROM scheduled_authorizations WHERE id=%s", (run["authorization_id"],)
@@ -700,7 +738,7 @@ def step(service, run, now):
     with connection() as c:
         if auth["status"] == "paused":
             return skip(c, run, "PAUSED", now, "customer_cancelled")
-        if auth["status"] in ENDED or auth["valid_until"] < helsinki_today(now):
+        if auth["status"] in ENDED or auth["valid_until"] < helsinki_today(buyer_now or now):
             return skip(
                 c, run, "AUTHORIZATION_" + auth["status"].upper(), now, "customer_cancelled"
             )
