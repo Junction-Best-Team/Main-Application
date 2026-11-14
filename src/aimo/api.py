@@ -482,10 +482,16 @@ def create_app(service=None):
             max_length=80,
             description="Comma list of scheduled, pending, placed, cancelled; empty means all",
         ),
+        q: str | None = Query(
+            None,
+            max_length=200,
+            description="Search: trimmed, at most 80 characters, case-insensitive substring over "
+            "titles, order and proposal ids, destination, delivery date, line names, product ids",
+        ),
         identity=Depends(buyer),
     ):
         statuses = [s.strip() for s in (status or "").split(",") if s.strip()]
-        return orders_list.orders_page(identity, offset, limit, statuses=statuses)
+        return orders_list.orders_page(identity, offset, limit, statuses=statuses, query=q)
 
     def csrf(identity, request: Request):
         auth.csrf_check(

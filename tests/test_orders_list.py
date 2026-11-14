@@ -42,7 +42,7 @@ def place(service, buyer):
     return lambda p: service.commit_order(buyer, commit_request(p))
 
 
-def authorization(buyer, order_id, *, next_run=None, status="active"):
+def authorization(buyer, order_id, *, next_run=None, status="active", agreed_lines=None):
     """Insert a standing authorization the way schedules.create stores it (authored row)."""
     aid = uuid4()
     first = date.today() + timedelta(days=2)
@@ -52,7 +52,7 @@ def authorization(buyer, order_id, *, next_run=None, status="active"):
             create_key,create_hash,request,agreed_lines,terms_fingerprint,currency,
             agreed_gross_total,price_ceiling_gross,delivery_offset_days,recurrence,first_run_date,
             valid_until,status,stop_reason,next_run_date,paused_at)
-            VALUES(%s,%s,%s,%s,%s,'h',%s,'[]','fp','EUR',17,20,2,%s,%s,%s,%s,%s,%s,%s)""",
+            VALUES(%s,%s,%s,%s,%s,'h',%s,%s,'fp','EUR',17,20,2,%s,%s,%s,%s,%s,%s,%s)""",
             (
                 aid,
                 buyer["buyer_id"],
@@ -60,6 +60,7 @@ def authorization(buyer, order_id, *, next_run=None, status="active"):
                 order_id,
                 str(aid),
                 js({"destination": "hotel-helsinki", "lines": [{"product_id": "464306"}]}),
+                js(agreed_lines or []),
                 js({"kind": "days", "interval": 7}),
                 first,
                 first + timedelta(days=300),
