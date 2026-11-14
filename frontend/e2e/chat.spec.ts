@@ -130,6 +130,109 @@ async function mockSession(page: Page, signedIn = true) {
 }
 
 for (const width of [1440, 320]) {
+  test(`recipe draft appears in Overview before a basket at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await mockSession(page);
+    const plan = {
+      title: "Vegan lasagna estimate",
+      portions: 500,
+      base_servings: 4,
+      ingredients: [
+        {
+          name: "Dry lasagna sheets",
+          amount: "50",
+          unit: "KG",
+          status: "proposed" as const,
+        },
+        {
+          name: "Plant mince",
+          amount: "75",
+          unit: "KG",
+          status: "proposed" as const,
+        },
+        {
+          name: "Tomato sauce",
+          amount: "125",
+          unit: "L",
+          status: "proposed" as const,
+        },
+      ],
+      notes: [
+        "Assistant-drafted recipe estimate; ingredient quantities need review.",
+      ],
+    };
+    let prepared = false;
+    await page.route(`**/api/conversations/${conversationId}`, (route) =>
+      route.fulfill({
+        json: {
+          ...blankConversation,
+          // A newer draft must replace an earlier purchase in Overview, without deleting history.
+          purchases: [proposal],
+          messages: [
+            {
+              id: 1,
+              role: "assistant",
+              text: "Earlier basket",
+              proposal_id: proposalId,
+              created_at: timestamp,
+            },
+            {
+              id: 2,
+              role: "user",
+              text: "Now plan vegan lasagna for 500 people.",
+              created_at: timestamp,
+            },
+            {
+              id: 3,
+              role: "assistant",
+              text: "Here is the recipe estimate for 500 portions.",
+              meal_plan: plan,
+              proposal_id: prepared ? proposalId : null,
+              created_at: timestamp,
+            },
+          ],
+        },
+      }),
+    );
+    await page.goto(`/conversations/${conversationId}`);
+    const overview = page.getByRole("complementary", { name: "Overview" });
+    if (width < 1024)
+      await overview.getByRole("button", { name: "Expand overview" }).click();
+    await expect(overview).toContainText("3 draft ingredients");
+    await expect(overview).toContainText("500 portions");
+    await expect(overview).toContainText("50 KG");
+    await expect(overview).toContainText("125 L");
+    await expect(overview).not.toContainText("Nothing staged");
+    await expect(
+      overview.getByRole("button", { name: "Approve & Push to Dispatch" }),
+    ).toHaveCount(0);
+    await expect(overview).not.toContainText("Total estimated");
+    await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
+    await page.screenshot({
+      path: testInfo.outputPath(`recipe-draft-${width}.png`),
+      fullPage: true,
+    });
+    await page.reload();
+    if (width < 1024)
+      await overview.getByRole("button", { name: "Expand overview" }).click();
+    await expect(overview).toContainText("3 draft ingredients");
+    // A real proposal takes over; only then are price and confirmation controls displayed.
+    prepared = true;
+    await page.reload();
+    if (width < 1024)
+      await overview.getByRole("button", { name: "Expand overview" }).click();
+    await expect(overview).toContainText("1 items staged");
+    await expect(overview).toContainText("Total estimated");
+    await expect(
+      overview.getByRole("button", { name: "Approve & Push to Dispatch" }),
+    ).toBeVisible();
+    await expect(overview).not.toContainText("3 draft ingredients");
+  });
+}
+
+for (const width of [1440, 320]) {
   test(`chat renders Markdown without page overflow at ${width}px`, async ({
     page,
   }, testInfo) => {
@@ -1359,6 +1462,23 @@ for (const width of [1440, 390, 320]) {
     ).toHaveCount(0);
     snapshot = {
       ...snapshot,
+      messages: [
+        {
+          id: 1,
+          role: "assistant",
+          text: "Recipe estimate for 200 portions.",
+          created_at: timestamp,
+          meal_plan: {
+            title: "Pasta lunch",
+            portions: 200,
+            ingredients: [
+              { name: "Pasta", amount: "20", unit: "KG", status: "proposed" },
+              { name: "Salt", amount: null, unit: "g", status: "unresolved" },
+            ],
+            notes: ["Assistant-drafted recipe estimate."],
+          },
+        },
+      ],
       draft_cart: {
         turn_id: turnId,
         title: "Pasta lunch",
@@ -1371,6 +1491,9 @@ for (const width of [1440, 390, 320]) {
     publish();
     const draft = page.getByRole("complementary", { name: "Draft cart" });
     await expect(draft.getByRole("status")).toHaveText("0 of 2 items matched");
+    await expect(
+      page.getByRole("complementary", { name: "Overview" }),
+    ).toHaveCount(0); // The live cart takes precedence over the saved recipe draft.
     if (width < 1024)
       await draft.getByRole("button", { name: "Expand draft cart" }).click();
     await expect(
@@ -1439,6 +1562,16 @@ for (const width of [1440, 390, 320]) {
       ...snapshot,
       busy: false,
       purchases: [proposal],
+      messages: [
+        ...snapshot.messages,
+        {
+          id: 2,
+          role: "assistant",
+          text: "Review the prepared basket.",
+          created_at: timestamp,
+          proposal_id: proposalId,
+        },
+      ],
       draft_cart: { ...snapshot.draft_cart!, proposal_id: proposalId },
       activity: { turn_id: turnId, state: "complete", events: [] },
     };

@@ -259,6 +259,14 @@ All three distributed packages include SIL OFL 1.1 notices, copied intact to
 `frontend/public/font-licenses/` for distribution with the bundled font assets.
 The earlier ignored preview font cache and example-memory database remain local.
 
+## Meal planning without customer arithmetic — 2026-11-15
+
+Reused saved-recipe exact scaling and upward rounding, typed internal tools,
+conversation meal-plan persistence, product inspection, basket validation and the
+existing Overview design. Assistant-authored recipe bases remain labelled estimates,
+separate from imported saved recipes. Calculation and browser fixtures are authored
+synthetic examples, not verified recipes or live supplier records. No new external
+recipe source, dataset, visual asset or dependency was introduced.
 ## Header user dropdown — 2026-11-14
 
 Reused the existing account settings/preferences routes, session logout action,
@@ -274,6 +282,13 @@ PostgreSQL queue, retry fencing and native Google/OpenRouter adapters. Added pyp
 defusedxml and an explicit Pillow dependency for bounded file parsing; lockfile updated. Tests use
 small authored text, Office archives, PDF pages and image bytes, with mocked model responses;
 no challenge documents, user files, credentials or remote material are committed.
+
+## Seamless meal-planning integration — 2026-11-15
+
+Reused #179's persisted activity observer, reviewed draft-cart projection and UI,
+plus the current develop attachment, settings and scheduler changes. Combined tests
+use the existing synthetic recipe/product fixtures and intercepted browser snapshots;
+no new source material, assets or dependencies beyond the integrated branches.
 
 
 ## Minimal homepage — 2026-11-15
