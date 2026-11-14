@@ -413,7 +413,10 @@ def record_human_decision(identity, aid, decision: DecisionRequest):
         return render(c, *proposal(c, p["id"], identity), identity)
 
 
-def prior_result(c, identity, request):
+def prior_result(c, identity, request, *, any_key=False):
+    """Saved receipt for a repeated request. With `any_key` (customer confirmation, CNF-011) an
+    order already placed on this exact revision answers whatever the key; commit keeps its own
+    ALREADY_COMMITTED for a new key."""
     row = c.execute(
         "SELECT * FROM idempotency WHERE buyer_id=%s AND key=%s",
         (identity["buyer_id"], request.idempotency_key),
@@ -429,6 +432,25 @@ def prior_result(c, identity, request):
         return c.execute("SELECT receipt FROM orders WHERE id=%s", (row["order_id"],)).fetchone()[
             "receipt"
         ]
+    if any_key:
+        proposal(c, request.proposal_id, identity)
+        order = c.execute(
+            "SELECT revision,receipt FROM orders WHERE proposal_id=%s AND buyer_id=%s",
+            (request.proposal_id, identity["buyer_id"]),
+        ).fetchone()
+        if order and order["revision"] == request.revision:
+            used = c.execute(
+                "SELECT proposal_id,revision FROM customer_confirmations WHERE buyer_id=%s AND key=%s",
+                (identity["buyer_id"], request.idempotency_key),
+            ).fetchone()
+            if used and (
+                str(used["proposal_id"]) != str(request.proposal_id)
+                or used["revision"] != request.revision
+            ):
+                raise Problem(
+                    "IDEMPOTENCY_CONFLICT", "This confirmation key identifies different terms."
+                )
+            return order["receipt"]
     return None
 
 
