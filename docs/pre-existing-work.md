@@ -274,3 +274,14 @@ PostgreSQL queue, retry fencing and native Google/OpenRouter adapters. Added pyp
 defusedxml and an explicit Pillow dependency for bounded file parsing; lockfile updated. Tests use
 small authored text, Office archives, PDF pages and image bytes, with mocked model responses;
 no challenge documents, user files, credentials or remote material are committed.
+
+
+## Minimal homepage — 2026-11-15
+
+Implemented the owner's selected AI-generated homepage mockup as React/CSS;
+no generated bitmap is shipped. Reused the existing Hanken Grotesk typography,
+brand colors, authenticated chat hook, retry keys, navigation and mobile menu.
+The three schedule entries are authored static demo placeholders, with disabled
+schedule navigation. The composer retains develop’s file attachment behavior.
+No scheduling service, new dependency or external data was added. New browser checks use authored API responses, without supplier or
+model calls.
