@@ -1369,6 +1369,66 @@
         }
       }
     },
+    "/api/conversations/{conversation_id}/voice-session": {
+      "post": {
+        "summary": "Voice Session",
+        "operationId": "voice_session_api_conversations__conversation_id__voice_session_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceSession"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error. Every error body is an ErrorResponse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error. Every error body is an ErrorResponse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/conversations/{conversation_id}/events": {
       "get": {
         "summary": "Conversation Events",
@@ -3838,6 +3898,37 @@
           "commercial_evidence"
         ],
         "title": "SnapshotLine"
+      },
+      "VoiceSession": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "websocket_url": {
+            "type": "string",
+            "title": "Websocket Url"
+          },
+          "setup": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Setup"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "token",
+          "expires_at",
+          "websocket_url",
+          "setup"
+        ],
+        "title": "VoiceSession"
       }
     }
   }

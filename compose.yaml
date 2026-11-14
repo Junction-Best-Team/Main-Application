@@ -22,6 +22,9 @@ services:
       UPSTREAM_MODE: ${UPSTREAM_MODE:-fixture}
       VALIO_AIMO_API_KEY: ${VALIO_AIMO_API_KEY:-}
       EMBEDDING_BACKEND: ${EMBEDDING_BACKEND:-google}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      VOICE_ENABLED: ${VOICE_ENABLED:-true}
+      VOICE_MODEL: ${VOICE_MODEL:-gemini-3.8-live}
     depends_on:
       db: {condition: service_healthy}
     healthcheck:

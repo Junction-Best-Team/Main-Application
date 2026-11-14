@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     unfinished_proposal_retention_days: int = Field(default=30, ge=1, le=3650)
     # Native Google credentials shared by chat, decisions, embeddings and images.
     gemini_api_key: str = Field(default="", repr=False)
+    voice_enabled: bool = True
+    voice_model: str = "gemini-3.8-live"
     cloudinary_url: str = Field(default="", repr=False)
     recipe_images_enabled: bool = True
     recipe_image_model: str = "gemini-nano-banana-2.1"

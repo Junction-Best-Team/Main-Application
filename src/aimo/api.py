@@ -10,7 +10,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, StreamingResponse
 
 from aimo import approval_workflow as workflow
-from aimo import auth, conversations, errors, memory, policy_settings, schema_state, upstream
+from aimo import auth, conversations, errors, memory, policy_settings, schema_state, upstream, voice
 from aimo.chat_schemas import (
     ConversationCreate,
     ConversationList,
@@ -351,6 +351,13 @@ def create_app(service=None):
             identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
         )
         return conversations.enqueue(identity, conversation_id, body)
+
+    @app.post("/api/conversations/{conversation_id}/voice-session", response_model=voice.VoiceSession)
+    def voice_session(conversation_id: UUID, request: Request, identity=Depends(buyer)):
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+        return voice.create_session(identity, conversation_id)
 
     @app.get(
         "/api/conversations/{conversation_id}/events",
