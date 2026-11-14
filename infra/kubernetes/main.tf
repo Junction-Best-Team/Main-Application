@@ -127,6 +127,7 @@ resource "kubernetes_deployment_v1" "aimo" {
             limits   = { cpu = "2", memory = "3Gi" }
           }
           security_context {
+            run_as_non_root            = true
             allow_privilege_escalation = false
             read_only_root_filesystem  = true
             capabilities { drop = ["ALL"] }
