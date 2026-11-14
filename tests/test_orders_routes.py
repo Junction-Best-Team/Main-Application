@@ -48,6 +48,7 @@ def test_the_orders_list_shows_the_pending_request_in_the_declared_shape(http, p
         "line_names",
         "cancel_reason",
         "placed_at",
+        "fulfilment",
         "paused",
         "schedule_title",
         "updated_at",

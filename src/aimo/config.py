@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     # CNF-038: a demo switch (off by default). On: a first run date may be today and the customer
     # can trigger the next run at once (POST /api/schedules/{id}/run-now). Every check still applies.
     scheduler_demo_mode: bool = False
+    # Demo clock (owner Q-115): a per-buyer simulated time that moves only the derived fulfilment
+    # status and the scheduler. Off by default; refused at startup with the live supplier.
+    demo_clock_enabled: bool = False
     # CNF-021: days after a proposal's current revision expired before an unfinished (never ordered)
     # proposal and its approvals may be removed by `aimo purge-proposals` (an operator command run
     # with the schema owner's DATABASE_URL; the runtime role cannot delete history).

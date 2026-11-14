@@ -293,6 +293,14 @@ def check_supplier_startup():
     fixtures. Called at API startup and in the worker readiness check, never at import.
     """
     cfg = settings()
+    if cfg.demo_clock_enabled and effective_mode() == "live":
+        # Owner Q-115: the demo clock never runs with live supplier lookups (their validity and
+        # real orders depend on real time); the hosted fixture deployment may enable it.
+        raise RuntimeError(
+            "DEMO_CLOCK_ENABLED=true is refused while supplier lookups are live "
+            f"(UPSTREAM_MODE={cfg.upstream_mode}); set UPSTREAM_MODE=fixture or unset "
+            "DEMO_CLOCK_ENABLED."
+        )
     if (
         cfg.secure_cookies
         and cfg.upstream_mode in ("live", "auto")

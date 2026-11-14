@@ -25,6 +25,7 @@ GUARDED = (
     "orders",
     "meal_authorization_withdrawals",
     "purged_proposals",
+    "demo_clock_events",
 )
 
 
