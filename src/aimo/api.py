@@ -436,6 +436,13 @@ def create_app(service=None):
         )
         return conversations.enqueue(identity, conversation_id, body)
 
+    @app.post("/api/conversations/{conversation_id}/cancel", response_model=ConversationResponse)
+    def cancel_conversation(conversation_id: UUID, request: Request, identity=Depends(buyer)):
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+        return conversations.cancel_turn(identity, conversation_id)
+
     @app.post(
         "/api/conversations/{conversation_id}/voice-session", response_model=voice.VoiceSession
     )
