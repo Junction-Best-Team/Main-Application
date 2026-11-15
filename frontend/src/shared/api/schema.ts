@@ -938,6 +938,11 @@ export interface components {
             activity?: components["schemas"]["ChatActivity"] | null;
             draft_cart?: components["schemas"]["DraftCart"] | null;
             /**
+             * Cart Not Included
+             * @description Items the current basket leaves out (no product, no quantity, or removed by the customer on the card), from the latest stored plan; empty without an open basket.
+             */
+            cart_not_included?: components["schemas"]["CartNotIncluded"][];
+            /**
              * Cart Editable
              * @default false
              */
