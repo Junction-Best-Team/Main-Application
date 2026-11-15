@@ -7,6 +7,9 @@
 @import "./home.css" layer(components);
 @import "tailwindcss/utilities" layer(utilities);
 
+/* `dark:` utilities follow the in-app theme toggle (html[data-theme]), not only the OS. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 /* All tokens from ui/DESIGN.md (source of truth over per-screen HTML configs). */
 @theme {
   --color-surface: #f9f9f9;
@@ -129,6 +132,59 @@
   --shadow-level-3: 0 12px 32px -4px rgba(30, 61, 72, 0.16);
 
   --breakpoint-md: 768px;
+}
+
+/* Dark theme. ui/DESIGN.md defines only the light palette; these values come from the same
+   Material tonal palettes (its inverse-primary and *-fixed tokens), with navy-tinted surfaces
+   from Deep Navy #1E3D48. Brand constants (lime accent, deep navy ink on lime) do not change. */
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --color-canvas: #0b1418;
+    --color-background: #0e181c;
+    --color-on-background: #e0e4e5;
+    --color-surface: #0e181c;
+    --color-surface-dim: #0e181c;
+    --color-surface-bright: #33403f;
+    --color-surface-pure: #121e23;
+    --color-surface-container-lowest: #091216;
+    --color-surface-container-low: #152227;
+    --color-surface-container: #1a272d;
+    --color-surface-container-high: #213138;
+    --color-surface-container-highest: #2a3a42;
+    --color-surface-variant: #2a3a42;
+    --color-on-surface: #e0e4e5;
+    --color-on-surface-variant: #c0c8cd;
+    --color-inverse-surface: #e0e4e5;
+    --color-inverse-on-surface: #2f3131;
+    --color-outline: #8a9297;
+    --color-outline-variant: #40484c;
+    --color-surface-tint: #90cfed;
+    --color-primary: #90cfed;
+    --color-primary-container: #005670;
+    --color-on-primary-container: #bee9ff;
+    --color-inverse-primary: #1f6580;
+    --color-secondary: #accbd9;
+    --color-secondary-container: #2d4b56;
+    --color-on-secondary-container: #c7e8f6;
+    --color-tertiary: #c1d000;
+    --color-on-tertiary: #2e3300;
+    --color-tertiary-container: #454b00;
+    --color-on-tertiary-container: #dded2a;
+    --color-error: #ffb4ab;
+    --color-on-error: #690005;
+    --color-error-container: #5c1414;
+    --color-on-error-container: #ffdad6;
+    --color-wholesale-teal: #5fb0d3;
+    --color-border-subtle: #24343b;
+    --color-workspace-panel: #0f1b20;
+    --color-workspace-active: #1d3540;
+    --shadow-level-2: 0 4px 16px -2px rgba(0, 0, 0, 0.4);
+    --shadow-level-3: 0 12px 32px -4px rgba(0, 0, 0, 0.55);
+  }
 }
 
 @layer base {

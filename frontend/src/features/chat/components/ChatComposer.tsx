@@ -18,6 +18,17 @@ import {
 const composerActionClassName =
   "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary transition-colors hover:enabled:bg-deep-ocean-navy focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container disabled:cursor-not-allowed disabled:opacity-50";
 
+function draftSignature(text: string, attachments: ChatAttachment[]) {
+  return JSON.stringify({
+    text,
+    attachments: attachments.map((file) => ({
+      name: file.name,
+      media_type: file.media_type,
+      data: file.data,
+    })),
+  });
+}
+
 type Props = {
   appearance?: "chat" | "home";
   conversationId?: string;
@@ -73,6 +84,8 @@ export function ChatComposer({
   const [fileError, setFileError] = useState("");
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
+  // Snapshot of the restored interrupt/fail draft. Editing leaves Retry for Send.
+  const retryBaselineRef = useRef<string | null>(null);
   const canQueue = Boolean(queue && conversationId);
   // The input stays enabled while Aimo answers so focus never leaves it; only
   // sending is held back when there is no queue to put the message in.
@@ -80,7 +93,15 @@ export function ChatComposer({
   const sendBlocked = Boolean(busy) && !canQueue;
   // One action at a time: send while there is a draft or attachment, otherwise voice.
   const hasDraft = Boolean(text.trim()) || attachments.length > 0;
-  const canRetry = Boolean(error) && hasDraft && !busy;
+  // Home has no Cancel/Retry chip row; the round slot still swaps to Retry.
+  const retryEligible = Boolean(error) && hasDraft && !busy;
+  const signature = draftSignature(text, attachments);
+  if (!retryEligible) {
+    retryBaselineRef.current = null;
+  } else if (retryBaselineRef.current === null) {
+    retryBaselineRef.current = signature;
+  }
+  const showRetry = retryEligible && retryBaselineRef.current === signature;
   function handleComposerKeyDown(
     event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) {
@@ -110,13 +131,7 @@ export function ChatComposer({
       setReading(false);
     }
   }
-  const sendLabel = busy
-    ? canQueue
-      ? "Queue message"
-      : "Working…"
-    : canRetry
-      ? "Retry request"
-      : "Send Order Request";
+  const sendLabel = "Send Order Request";
   return (
     <form
       onSubmit={(event) => {
@@ -233,37 +248,6 @@ export function ChatComposer({
           {fileError}
         </p>
       )}
-      {busy && !home && (
-        <div className="flex flex-wrap items-center gap-space-sm px-space-sm">
-          <button
-            type="button"
-            onClick={() => onCancel?.()}
-            disabled={!onCancel}
-            className="rounded-lg bg-surface-pure px-space-md py-space-xs font-label text-label-md font-bold text-primary shadow-sm transition-colors hover:enabled:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <p className="text-label-sm text-secondary" role="status">
-            {canQueue
-              ? "Press Escape to cancel · Enter queues your next message"
-              : "Press Escape to cancel"}
-          </p>
-        </div>
-      )}
-      {canRetry && !home && (
-        <div className="flex flex-wrap items-center gap-space-sm px-space-sm">
-          <button
-            type="submit"
-            disabled={reading}
-            className="rounded-lg bg-primary-container px-space-md py-space-xs font-label text-label-md font-bold text-on-primary transition-colors hover:enabled:bg-deep-ocean-navy focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Retry request
-          </button>
-          <p className="text-label-sm text-secondary" role="status">
-            Your draft is ready to send again.
-          </p>
-        </div>
-      )}
       {(dragging || reading) && (
         <p className="px-space-sm text-label-sm text-secondary" role="status">
           {dragging ? "Drop files here" : "Reading files…"}
@@ -272,7 +256,7 @@ export function ChatComposer({
       <div
         className={
           home
-            ? "flex w-full min-w-0 flex-col"
+            ? "flex min-h-0 w-full min-w-0 flex-1 flex-col"
             : "flex w-full min-w-0 items-end gap-space-sm"
         }
       >
@@ -306,7 +290,51 @@ export function ChatComposer({
               : "flex shrink-0 items-center gap-space-xs pb-0.5"
           }
         >
-          {hasDraft && !(canRetry && !home) ? (
+          {!home && busy ? (
+            <button
+              type="button"
+              aria-label="Stop"
+              title="Stop"
+              onClick={() => onCancel?.()}
+              disabled={!onCancel}
+              className={composerActionClassName}
+            >
+              <svg
+                aria-hidden="true"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <rect x="6" y="6" width="12" height="12" rx="1.5" />
+              </svg>
+            </button>
+          ) : showRetry ? (
+            <button
+              type="submit"
+              aria-label="Retry"
+              title="Retry"
+              disabled={reading}
+              className={composerActionClassName}
+            >
+              <svg
+                aria-hidden="true"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M4.5 12a7.5 7.5 0 0 1 12.7-5.4L19 9" />
+                <path d="M19.5 4v5h-5" />
+                <path d="M19.5 12a7.5 7.5 0 0 1-12.7 5.4L5 15" />
+                <path d="M4.5 20v-5h5" />
+              </svg>
+            </button>
+          ) : hasDraft ? (
             <button
               type="submit"
               aria-label={sendLabel}
@@ -328,7 +356,7 @@ export function ChatComposer({
                 <path d="M12 20V4m-7 7 7-7 7 7" />
               </svg>
             </button>
-          ) : !hasDraft ? (
+          ) : (
             <button
               type="button"
               aria-label="Start voice mode"
@@ -351,7 +379,7 @@ export function ChatComposer({
                 <path d="M4 10v4M8 5v14M12 8v8M16 3v18M20 9v6" />
               </svg>
             </button>
-          ) : null}
+          )}
         </div>
       </div>
     </form>

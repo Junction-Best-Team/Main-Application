@@ -25,7 +25,7 @@ const ACTION: Record<Kind, typeof pauseSchedule> = {
   runNow: runScheduleNow,
 };
 const demoButton =
-  "inline-flex cursor-pointer items-center justify-center gap-1 rounded-lg border-2 border-dashed border-amber-500 bg-amber-100 px-space-md py-2 font-mono text-label-md text-amber-900 disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex cursor-pointer items-center justify-center gap-1 rounded-lg border-2 border-dashed border-amber-500 bg-amber-100 dark:bg-amber-900/40 dark:text-amber-100 px-space-md py-2 font-mono text-label-md text-amber-900 disabled:cursor-not-allowed disabled:opacity-50";
 // What a reload may hand back: the fresh schedule, so a Run now poll can stop once the run settled.
 type Reloaded = { last_run?: { status: string } | null } | void;
 const runPending = (r: Reloaded) =>
@@ -138,7 +138,7 @@ export function ScheduleActions({
               >
                 {label("runNow", "Run now (demo)")}
               </button>
-              <span className="font-mono text-label-sm uppercase text-amber-900">
+              <span className="font-mono text-label-sm uppercase text-amber-900 dark:text-amber-200">
                 Demo command
               </span>
             </span>

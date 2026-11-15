@@ -10,6 +10,9 @@ import "@fontsource/space-grotesk/600.css";
 import "@fontsource/space-grotesk/700.css";
 import "@fontsource-variable/material-symbols-outlined";
 import "./styles/theme.css";
+import { initTheme } from "./shared/lib/theme";
+
+initTheme();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

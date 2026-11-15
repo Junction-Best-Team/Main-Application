@@ -364,3 +364,15 @@ use authored provider replies and catalogs. Two local live Google/guardrail runs
 used only authored in-memory catalogs: one preserved an egg-unit blocker; the
 complete-catalog run matched six ingredients in 40.09 seconds. No customer chat,
 supplier lookup, order, dataset, dependency or deployed configuration was changed.
+
+## Home background, motion and dark theme — 2026-11-15
+
+Home shows one of seven free stock photos (Pexels and Unsplash, downscaled to 1920 px) in
+`frontend/src/features/home/assets/backgrounds/`: Jason Jarrach (LJ5IhBA4gbs), Mohammad
+Alizade (4wzRuAb-KWs), 4louette (4924603), Klaus Nielsen (6287498), Lucas Tran (27629352),
+Mateusz Feliksik (13422429) and Tina Xinia (knVb8xaRMnY). Added the `motion` package (MIT) for
+springs, layout and presence animations. The typewriter heading, iOS-style nav pointer,
+skeleton crossfade and rolling price are our own implementations of effects shown on
+motion.dev (whose versions are Motion+ and were not used). The dark palette is derived from
+the existing `ui/DESIGN.md` tokens; the kitchen-tool outlines are authored SVG paths. Written
+with Claude Code during the event.

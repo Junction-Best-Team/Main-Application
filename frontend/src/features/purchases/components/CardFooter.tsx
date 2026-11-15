@@ -98,7 +98,7 @@ export function CardFooter({
         <p
           role="status"
           data-testid="card-status"
-          className="m-0 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-body-sm text-green-900"
+          className="m-0 rounded-lg border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/50 px-3 py-2 text-body-sm text-green-900 dark:text-green-100"
         >
           {message}
         </p>

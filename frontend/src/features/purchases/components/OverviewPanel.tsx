@@ -2,7 +2,6 @@ import { useState } from "react";
 import type { MealPlan, Proposal } from "../../../shared/api/types";
 import type { DraftCart } from "../model/cart";
 import { currency } from "../../../shared/lib/format";
-import { Icon } from "../../../shared/components/DesignPrimitives";
 import { ErrorMessage } from "../../../shared/components/ErrorMessage";
 import { checksBadge, displayNames } from "../model/cardState";
 import { getPurchaseStatus } from "../model/purchaseStatus";
@@ -13,6 +12,7 @@ import { useCartOpen } from "../hooks/useCartOpen";
 import { usePrepareFromCart } from "../hooks/usePrepareFromCart";
 import { EDIT_COPY } from "../model/cartEdit";
 import { CardFooter } from "./CardFooter";
+import { CartShell } from "./CartShell";
 import { CardLogCopy } from "./CardLogCopy";
 import { CardPanel, CardTabList } from "./CardTabs";
 import { CartLines } from "./CartLines";
@@ -158,32 +158,15 @@ export function OverviewPanel({
     { message: prep.error, debug: prep.errorDebug },
     { message: editMessage, debug: edit.errorDebug },
   ].filter((x) => x.message);
-  return (
-    <aside
-      id="overview"
-      aria-label="Overview"
-      aria-busy={working || undefined}
-      className={`${drawer ? "fixed inset-x-3 bottom-4 z-30 max-h-[70dvh] lg:sticky lg:inset-x-auto lg:bottom-auto lg:top-0 lg:z-auto lg:max-h-full lg:w-80 lg:shrink-0 xl:w-96" : "w-full"} flex min-w-0 flex-col overflow-hidden rounded-xl border border-border-subtle bg-surface-pure p-space-md shadow-level-3 lg:shadow-sm ${working ? "opacity-70" : ""}`}
-    >
-      <div className="flex shrink-0 items-center justify-between gap-space-sm border-b border-border-subtle pb-space-sm">
-        <h2 className="m-0 font-headline text-headline-sm font-bold text-primary">
-          Your order
-        </h2>
-        <span className="flex items-center gap-space-sm">
-          <CardLogCopy />
-          {drawer && (
-            <button
-              type="button"
-              aria-label={open ? "Collapse cart" : "Expand cart"}
-              aria-expanded={open}
-              onClick={toggleOpen}
-              className="flex h-9 w-9 items-center justify-center rounded-lg border-0 bg-transparent p-0 text-secondary"
-            >
-              <Icon name={open ? "keyboard_arrow_down" : "keyboard_arrow_up"} />
-            </button>
-          )}
-        </span>
-      </div>
+  const summary = p
+    ? `${p.snapshot.lines.length} items staged`
+    : draft
+      ? `${draft.ingredients.length} draft ingredients`
+      : error
+        ? "Basket unavailable"
+        : "Loading basket…";
+  const content = (
+    <>
       {!p ? (
         <div className="flex flex-col gap-space-sm pt-space-sm">
           <ErrorMessage message={error} debug={errorDebug} />
@@ -297,6 +280,50 @@ export function OverviewPanel({
           />
         </>
       )}
+    </>
+  );
+  if (drawer)
+    return (
+      <CartShell
+        id="overview"
+        label="Overview"
+        title="Your order"
+        open={open}
+        onToggle={toggleOpen}
+        busy={working}
+        count={p ? p.snapshot.lines.length : draft?.ingredients.length}
+        headerExtra={
+          <>
+            <CardLogCopy />
+            <span className="font-label text-label-sm text-secondary">
+              {summary}
+            </span>
+          </>
+        }
+      >
+        {content}
+      </CartShell>
+    );
+  // Outside the chat (purchase review page): a plain, always-open panel.
+  return (
+    <aside
+      id="overview"
+      aria-label="Overview"
+      aria-busy={working || undefined}
+      className={`flex w-full min-w-0 flex-col overflow-hidden rounded-xl border border-border-subtle bg-surface-pure p-space-md shadow-level-3 lg:shadow-sm ${working ? "opacity-70" : ""}`}
+    >
+      <div className="flex shrink-0 items-center justify-between gap-space-sm border-b border-border-subtle pb-space-sm">
+        <h2 className="m-0 font-headline text-headline-sm font-bold text-primary">
+          Your order
+        </h2>
+        <span className="flex items-center gap-space-sm">
+          <CardLogCopy />
+          <span className="font-label text-label-sm text-secondary">
+            {summary}
+          </span>
+        </span>
+      </div>
+      {content}
     </aside>
   );
 }

@@ -1,3 +1,4 @@
+import { KitchenPattern } from "../../../shared/components/KitchenPattern";
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import type { ScheduleLine } from "../../../shared/api/types";
@@ -22,7 +23,8 @@ export function ScheduleCreatePage() {
   const [params] = useSearchParams();
   const orderId = params.get("order");
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-col gap-space-lg px-margin-sm py-space-lg md:px-margin md:py-space-xl">
+    <main className="isolate mx-auto flex w-full max-w-6xl flex-col gap-space-lg px-margin-sm py-space-lg md:px-margin md:py-space-xl">
+      <KitchenPattern seed={3} />
       <div className="flex flex-col gap-space-xs">
         <Link
           to="/purchases"

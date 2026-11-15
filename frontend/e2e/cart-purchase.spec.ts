@@ -512,7 +512,8 @@ test("collapsing hides the lines, the choice is remembered after a reload, and e
     "false",
   );
   await expect(card(page).getByText("Spaghetti 5 kg")).toBeHidden();
-  await expect(confirm(page)).toBeVisible(); // the button stays reachable
+  // Collapsed, the whole card is behind the corner cart button, purchase button included.
+  await expect(confirm(page)).toHaveCount(0);
   await page.reload();
   await expect(toggle(page, "Expand cart")).toBeVisible();
   await expect(card(page).getByText("Spaghetti 5 kg")).toBeHidden();
@@ -522,7 +523,7 @@ test("collapsing hides the lines, the choice is remembered after a reload, and e
   await expect(toggle(page, "Collapse cart")).toBeVisible();
 });
 
-test("an update never opens or closes the card: the choice survives the draft becoming a purchase", async ({
+test("an update never closes the card: it stays open while the draft becomes a purchase", async ({
   page,
 }) => {
   let prepared = false;
@@ -539,12 +540,12 @@ test("an update never opens or closes the card: the choice survives the draft be
     prepared = true;
     return json(route, { proposal: decidable, not_included: [] });
   });
-  await toggle(page, "Collapse cart").click();
+  // The purchase button lives on the open card (collapsed, the card is a corner button).
   await confirm(page).click();
   await expect(overview(page)).toBeVisible();
-  await expect(toggle(page, "Expand cart")).toHaveAttribute(
+  await expect(toggle(page, "Collapse cart")).toHaveAttribute(
     "aria-expanded",
-    "false",
+    "true",
   );
   await expect(overview(page).getByTestId("card-total-row")).toBeVisible();
   await expect(overview(page).getByText("Spaghetti 5 kg").first()).toBeHidden();

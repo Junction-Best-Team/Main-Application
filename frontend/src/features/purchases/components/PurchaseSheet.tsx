@@ -24,7 +24,7 @@ export function PurchaseSheet({ p }: { p: Proposal }) {
         </div>
       </div>
       <h2>Purchase details</h2>
-      <p className="mode-note mb-6 rounded-lg border border-border-subtle border-l-4 border-l-wholesale-teal bg-secondary-container/40 px-4 py-3 text-body-sm text-primary">
+      <p className="mode-note mb-6 rounded-lg border border-border-subtle bg-secondary-container/40 px-4 py-3 text-body-sm text-primary">
         {p.recipe_basis === "saved_recipe"
           ? "Recipe-backed basket — includes every ingredient from the saved recipe plan."
           : "Free-form basket — recipe completeness and ingredient conversions are not checked against a saved recipe."}
@@ -46,7 +46,7 @@ export function PurchaseSheet({ p }: { p: Proposal }) {
                   <strong>{l.name}</strong>
                   <span className="text-secondary">Product {l.product_id}</span>
                   {l.substitutes_for && (
-                    <span className="text-amber-800">
+                    <span className="text-amber-800 dark:text-amber-200">
                       Substitutes for {l.substitutes_for}
                     </span>
                   )}
@@ -61,7 +61,7 @@ export function PurchaseSheet({ p }: { p: Proposal }) {
                     {l.quantity.proposed_amount} {l.quantity.requested_unit}
                   </span>
                   {Number(l.quantity.excess) > 0 && (
-                    <span className="text-amber-800">
+                    <span className="text-amber-800 dark:text-amber-200">
                       +{l.quantity.excess} excess
                     </span>
                   )}

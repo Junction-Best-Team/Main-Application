@@ -311,9 +311,7 @@ test("interrupted activity stops moving and never marks an unfinished tool done"
   await expect(activity.getByRole("listitem").nth(1)).toContainText(
     "Searching recipes · Interrupted",
   );
-  await expect(
-    page.getByRole("button", { name: "Retry request" }),
-  ).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Retry" })).toBeEnabled();
 });
 
 test("a delayed queued response cannot replace streamed tool activity", async ({

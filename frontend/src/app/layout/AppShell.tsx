@@ -1,12 +1,22 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, Outlet, useLocation } from "react-router-dom";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useConversationNavigation } from "../../features/chat/hooks/useConversationNavigation";
 import { Wordmark } from "../../shared/components/Wordmark";
 import { Icon } from "../../shared/components/DesignPrimitives";
 import { UserMenu } from "./UserMenu";
+import { PointerNavLink } from "./PointerNavLink";
+import { LayoutGroup } from "motion/react";
+import { ThemeToggle } from "../../shared/components/ThemeToggle";
+import { HomeBackground } from "../../features/home/components/HomeBackground";
+import { collapseChatToHome } from "../../features/home/model/expandToChat";
+import { markNavigated } from "../../shared/lib/navigationState";
+import { prefetchStandingOrders } from "../../features/home/hooks/useStandingOrders";
 
 import type { ConversationList } from "../../shared/api/types";
 type ConversationListItem = ConversationList["items"][number];
+
+const isChatPath = (path: string) =>
+  path === "/request" || path.startsWith("/conversations/");
 
 type NavItem = {
   label: string;
@@ -47,14 +57,14 @@ type ConversationNav = {
   error: string;
 };
 
+// The current page keeps its own highlight; hover is the gliding highlight in PointerNavLink.
 const navItemClass = (active: boolean) =>
-  `flex min-w-0 flex-1 items-center gap-space-sm rounded-lg px-space-md py-space-sm font-body text-[15px] no-underline transition-colors hover:no-underline ${
-    active
-      ? "bg-workspace-active text-primary"
-      : "text-primary hover:bg-workspace-active"
+  `flex min-w-0 flex-1 items-center gap-space-sm rounded-lg px-space-md py-space-sm font-body text-[15px] text-primary no-underline transition-colors hover:no-underline ${
+    active ? "bg-workspace-active" : ""
   }`;
 
-/** Collapsible tree of the buyer's conversations under the Request item. */
+/** Collapsible tree of the buyer's conversations under the Request item. Shows 13 at a
+ *  time and scrolls; the bottom edge fades out while more conversations are below. */
 function ConversationSubList({
   items,
   pathname,
@@ -64,10 +74,30 @@ function ConversationSubList({
   pathname: string;
   onNavigate?: () => void;
 }) {
+  const list = useRef<HTMLUListElement>(null);
+  const [moreBelow, setMoreBelow] = useState(false);
+  const measure = useCallback(() => {
+    const el = list.current;
+    if (el) setMoreBelow(el.scrollTop + el.clientHeight < el.scrollHeight - 1);
+  }, []);
+  useEffect(() => {
+    measure();
+    // Keep the open conversation in view inside the scrolling list.
+    list.current
+      ?.querySelector('[aria-current="page"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [items, pathname, measure]);
   return (
     <ul
+      ref={list}
       aria-label="Conversations"
-      className="m-0 flex list-none flex-col gap-1 px-space-sm py-space-xs"
+      onScroll={measure}
+      // 13 rows: 13 x 1.75rem (body-sm line + py-space-xs) + 12 x 0.25rem gaps + 0.5rem padding.
+      className={`m-0 flex max-h-[26.25rem] list-none flex-col gap-1 overflow-y-auto overscroll-contain px-space-sm py-space-xs ${
+        moreBelow
+          ? "[mask-image:linear-gradient(to_bottom,black_calc(100%-3rem),transparent)]"
+          : ""
+      }`}
     >
       {!items ? (
         <li className="px-space-md py-space-xs font-body text-body-sm text-on-surface-variant">
@@ -78,7 +108,7 @@ function ConversationSubList({
           const to = `/conversations/${item.id}`;
           const current = pathname === to;
           return (
-            <li key={item.id} className="relative flex">
+            <li key={item.id} className="relative flex shrink-0">
               <Link
                 to={to}
                 onClick={onNavigate}
@@ -108,91 +138,119 @@ function NavLinks({
   onNavigate?: () => void;
 }) {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+  // The item under the mouse; the hover highlight glides between items.
+  const [hovered, setHovered] = useState<string | null>(null);
+  const group = useId();
   return (
-    <nav
-      aria-label="Main navigation"
-      className="flex flex-col gap-space-xs px-space-sm pt-space-sm"
-    >
-      {NAV_ITEMS.map((item) => {
-        const active = item.isActive(pathname);
-        // Request is the current page only for a new request; inside a
-        // conversation it marks the current section and the conversation is the page.
-        const current = active
-          ? item.to === "/request" && pathname !== "/request"
-            ? "true"
-            : "page"
-          : undefined;
-        const link = (
-          <Link
-            key={item.to}
-            to={item.to}
-            onClick={onNavigate}
-            aria-current={current}
-            className={navItemClass(active)}
-          >
-            <Icon name={item.icon} className="text-[20px]" />
-            {item.label}
-          </Link>
-        );
-        if (item.to !== "/request") return link;
-        return (
-          <div key={item.to} className="flex flex-col">
-            <div className="flex items-center gap-space-xs">
-              {link}
-              <button
-                type="button"
-                aria-expanded={conversations.expanded}
-                aria-controls="nav-conversations"
-                aria-label={
-                  conversations.expanded
-                    ? "Hide conversations"
-                    : "Show conversations"
+    <LayoutGroup id={group}>
+      <nav
+        aria-label="Main navigation"
+        className="flex flex-col gap-space-xs px-space-sm pt-space-sm"
+        onPointerLeave={() => setHovered(null)}
+      >
+        {NAV_ITEMS.map((item) => {
+          const active = item.isActive(pathname);
+          // Request is the current page only for a new request; inside a
+          // conversation it marks the current section and the conversation is the page.
+          const current = active
+            ? item.to === "/request" && pathname !== "/request"
+              ? "true"
+              : "page"
+            : undefined;
+          const link = (
+            <PointerNavLink
+              key={item.to}
+              to={item.to}
+              highlighted={hovered === item.to}
+              // Over the current page the hover highlight goes invisible (no double highlight)
+              // but stays there, so it slides out from the current page to the next item.
+              dimmed={active}
+              onHover={() => setHovered(item.to)}
+              onClick={(event) => {
+                onNavigate?.();
+                // From a chat, "New request" plays the Home -> chat animation in reverse.
+                if (
+                  item.to === "/" &&
+                  isChatPath(pathname) &&
+                  !event.metaKey &&
+                  !event.ctrlKey
+                ) {
+                  event.preventDefault();
+                  prefetchStandingOrders();
+                  collapseChatToHome(() => navigate("/"));
                 }
-                onClick={conversations.onToggle}
-                className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent p-0 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
-              >
-                <Icon
-                  name={conversations.expanded ? "expand_less" : "expand_more"}
-                  className="text-[20px]"
-                />
-              </button>
-            </div>
-            {conversations.expanded && (
-              <div
-                id="nav-conversations"
-                className="ml-space-lg max-h-[min(24rem,40dvh)] overflow-y-auto overscroll-contain border-l border-border-subtle"
-              >
-                <p className="mb-space-xs mt-space-sm px-space-md text-body-sm text-secondary">
-                  Recent
-                </p>
-                <ConversationSubList
-                  items={conversations.items}
-                  pathname={pathname}
-                  onNavigate={onNavigate}
-                />
-                {conversations.hasMore && (
-                  <button
-                    className="mx-space-md my-space-xs text-label-sm"
-                    onClick={conversations.loadMore}
-                    disabled={conversations.loading}
-                  >
-                    Load older conversations
-                  </button>
-                )}
-                {conversations.error && (
-                  <p
-                    role="alert"
-                    className="px-space-md text-body-sm text-error"
-                  >
-                    {conversations.error}
-                  </p>
-                )}
+              }}
+              ariaCurrent={current}
+              className={navItemClass(active)}
+            >
+              <Icon name={item.icon} className="text-[20px]" />
+              {item.label}
+            </PointerNavLink>
+          );
+          if (item.to !== "/request") return link;
+          return (
+            <div key={item.to} className="flex flex-col">
+              <div className="flex items-center gap-space-xs">
+                {link}
+                <button
+                  type="button"
+                  aria-expanded={conversations.expanded}
+                  aria-controls="nav-conversations"
+                  aria-label={
+                    conversations.expanded
+                      ? "Hide conversations"
+                      : "Show conversations"
+                  }
+                  onClick={conversations.onToggle}
+                  className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent p-0 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+                >
+                  <Icon
+                    name={
+                      conversations.expanded ? "expand_less" : "expand_more"
+                    }
+                    className="text-[20px]"
+                  />
+                </button>
               </div>
-            )}
-          </div>
-        );
-      })}
-    </nav>
+              {conversations.expanded && (
+                // The list itself scrolls (13 rows, fading at the bottom).
+                <div
+                  id="nav-conversations"
+                  className="ml-space-lg border-l border-border-subtle"
+                >
+                  <p className="mb-space-xs mt-space-sm px-space-md text-body-sm text-secondary">
+                    Recent
+                  </p>
+                  <ConversationSubList
+                    items={conversations.items}
+                    pathname={pathname}
+                    onNavigate={onNavigate}
+                  />
+                  {conversations.hasMore && (
+                    <button
+                      className="mx-space-md my-space-xs text-label-sm"
+                      onClick={conversations.loadMore}
+                      disabled={conversations.loading}
+                    >
+                      Load older conversations
+                    </button>
+                  )}
+                  {conversations.error && (
+                    <p
+                      role="alert"
+                      className="px-space-md text-body-sm text-error"
+                    >
+                      {conversations.error}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </nav>
+    </LayoutGroup>
   );
 }
 
@@ -214,8 +272,11 @@ function Sidebar({ conversations }: { conversations: ConversationNav }) {
         </Link>
         <NavLinks conversations={conversations} />
       </div>
-      <div className="shrink-0 px-space-sm pt-space-sm">
-        <UserMenu />
+      <div className="flex shrink-0 items-center gap-space-xs px-space-sm pt-space-sm">
+        <div className="min-w-0 flex-1">
+          <UserMenu />
+        </div>
+        <ThemeToggle />
       </div>
     </aside>
   );
@@ -325,8 +386,11 @@ function MobileMenu({
           </div>
           <NavLinks conversations={conversations} onNavigate={onClose} />
         </div>
-        <div className="shrink-0 p-space-sm pb-space-md">
-          <UserMenu onNavigate={onClose} />
+        <div className="flex shrink-0 items-center gap-space-xs p-space-sm pb-space-md">
+          <div className="min-w-0 flex-1">
+            <UserMenu onNavigate={onClose} />
+          </div>
+          <ThemeToggle />
         </div>
       </div>
     </div>
@@ -338,9 +402,14 @@ export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const { pathname } = useLocation();
-  const isChat =
-    pathname === "/request" || pathname.startsWith("/conversations/");
+  const isChat = isChatPath(pathname);
+  // Only Home shows the photo; opening a chat covers it and unmounts it.
+  const onPhoto = pathname === "/";
   useEffect(() => setMenuOpen(false), [pathname]);
+  const firstPath = useRef(pathname);
+  useEffect(() => {
+    if (pathname !== firstPath.current) markNavigated();
+  }, [pathname]);
   const [expanded, setExpanded] = useState(true);
   const navigation = useConversationNavigation(pathname);
   const conversations: ConversationNav = {
@@ -354,9 +423,10 @@ export function AppShell() {
   };
   return (
     <div className="min-h-screen bg-canvas font-body text-on-surface">
+      {onPhoto && <HomeBackground />}
       <Sidebar conversations={conversations} />
       <div
-        className={`flex min-w-0 flex-col md:pl-60 ${isChat ? "h-dvh overflow-hidden" : ""}`}
+        className={`relative flex min-w-0 flex-col md:pl-60 ${isChat ? "h-dvh overflow-hidden" : ""}`}
       >
         <MobileTopBar
           menuOpen={menuOpen}
