@@ -76,6 +76,8 @@ export type CartWorld = {
   expired: boolean;
   /** Serve the conversation snapshot on the SSE stream too (reconnects every 300 ms) so a state change shows at once. */
   stream: boolean;
+  /** Items without a product or quantity, listed by the conversation as `cart_not_included` (reason no_product / no_quantity). */
+  unmatched: CartNotIncluded[];
   /** Like the real backend: an edit prepares a NEW proposal (new id, revision 1) and cancels the older one. */
   renew: boolean;
   /** How many times the proposal was renewed (0: the original id). */
@@ -100,6 +102,7 @@ export const newCart = (over: Partial<CartWorld> = {}): CartWorld => ({
   outcome: "ready_to_commit",
   expired: false,
   stream: false,
+  unmatched: [],
   renew: true,
   seq: 0,
   old: [],
@@ -230,7 +233,14 @@ export function conversationOf(w: CartWorld): Conversation {
         }),
     ...(w.legacy
       ? {}
-      : { cart_editable: w.editable, cart_edit_reason: w.reason }),
+      : {
+          cart_editable: w.editable,
+          cart_edit_reason: w.reason,
+          // What the current basket leaves out, computed by the server on every read (empty until a basket exists).
+          cart_not_included: prepared
+            ? [...w.unmatched, ...notIncludedOf(w)]
+            : [],
+        }),
   } as Conversation;
 }
 

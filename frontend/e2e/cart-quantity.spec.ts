@@ -282,6 +282,13 @@ const failures = [
       "That change was already sent with other settings. Change the number again.",
   },
   {
+    code: "CART_CHANGED",
+    status: 409,
+    server: "The cart changed while the basket was prepared. Try again.",
+    shown:
+      "Your cart changed while this number was being saved. Check the numbers and try again.",
+  },
+  {
     code: "BASKET_ALREADY_ORDERED",
     status: 409,
     server:

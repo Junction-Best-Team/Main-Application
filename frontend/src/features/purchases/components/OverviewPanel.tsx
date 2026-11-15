@@ -10,6 +10,10 @@ import { usePurchaseDetail } from "../hooks/usePurchaseDetail";
 import { useCartEdit } from "../hooks/useCartEdit";
 import { useCartOpen } from "../hooks/useCartOpen";
 import { CardLogCopy } from "./CardLogCopy";
+import {
+  CartNotIncludedList,
+  type CartNotIncludedItem,
+} from "./CartNotIncluded";
 import { DisabledConfirm } from "./DisabledConfirm";
 import { CART_COPY } from "../model/cartCopy";
 import { CartLines } from "./CartLines";
@@ -129,6 +133,7 @@ export function OverviewPanel({
   cart = null,
   working = false,
   cartEdit,
+  notIncluded,
   onPrepared,
 }: {
   flow: ReturnType<typeof usePurchaseDetail>;
@@ -142,6 +147,8 @@ export function OverviewPanel({
   working?: boolean;
   /** From the conversation (`cart_editable`, `cart_edit_reason`): whether pack counts can be edited and why not. */
   cartEdit?: { editable: boolean; reason: string | null };
+  /** `cart_not_included` of the conversation: what the basket leaves out; undefined from an older server. */
+  notIncluded?: CartNotIncludedItem[];
   onPrepared?: (proposal: Proposal) => void;
 }) {
   const { error, errorDebug } = flow;
@@ -264,8 +271,17 @@ export function OverviewPanel({
                     working={working}
                     onPrepared={onPrepared}
                   />
-                  {cart?.proposal_id === p.proposal_id && (
-                    <NotIncluded cart={cart} />
+                  {notIncluded !== undefined ? (
+                    <CartNotIncludedList
+                      items={notIncluded}
+                      hideNames={edit.rows
+                        .filter((row) => row.kind === "ghost")
+                        .map((row) => row.removed.name)}
+                    />
+                  ) : (
+                    cart?.proposal_id === p.proposal_id && (
+                      <NotIncluded cart={cart} />
+                    )
                   )}
                 </>
               )}

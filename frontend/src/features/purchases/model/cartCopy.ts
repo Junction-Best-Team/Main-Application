@@ -29,6 +29,7 @@ export const CART_COPY = {
   notIncludedHeading: "Not included",
   notIncludedWarning: "These items will not be ordered.",
   noProduct: "no product yet",
+  removedByYou: "removed by you",
   noQuantity: "quantity needed",
   noProductOrQuantity: "no product or quantity yet",
   dateReason: (earliest: string) =>

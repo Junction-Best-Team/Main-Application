@@ -24,3 +24,12 @@ Where: the lines of the prepared basket in the Overview (`OverviewPanel` -> `Car
   with `prefers-reduced-motion` it is removed at once) and the polite live note (`data-testid="cart-live-note"`) says `Removed <product>`. A refusal
   (for example `EMPTY_CART`, the last line) leaves the line as it is with its typed 0; there is no ghost because the server still has the line.
   The line stays in the server's cart; asking the assistant brings it back.
+
+## What the basket leaves out, and a changed cart
+
+- `cart_not_included` (GET conversation, from the backend, computed on every read) lists what the current basket leaves out: items without a product
+  (`no product yet`), without a quantity (`quantity needed`) and lines the customer set to 0 (`removed by you`). The prepared card shows them in the
+  "Not included" block (`components/CartNotIncluded.tsx`) with "These items will not be ordered."; an item still on screen as a ghost is not listed
+  twice. An older server without the field keeps the earlier behaviour.
+- A 409 `CART_CHANGED` (the cart changed while an edit was being prepared) says: "Your cart changed while this number was being saved. Check the
+  numbers and try again." The typed number stays and `Try again` re-sends the same request.

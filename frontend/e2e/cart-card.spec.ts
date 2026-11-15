@@ -251,3 +251,86 @@ test("a closed card with blocked site storage still opens and works", async ({
   await toggle(page).click();
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
 });
+
+// --- what the prepared basket leaves out (backend field cart_not_included) ---------------------
+
+const unobtainium = {
+  name: "Unobtainium",
+  amount: "3",
+  unit: "kg",
+  reason: "no_product" as const,
+};
+const notIncluded = (page: Page) =>
+  card(page).getByRole("region", { name: "Not included" });
+
+test("the prepared card lists the items the basket leaves out, in plain words, and keeps listing them after a reload", async ({
+  page,
+}) => {
+  await open(page, { view: "prepared", unmatched: [unobtainium] });
+  await expect(notIncluded(page)).toContainText("Unobtainium · no product yet");
+  await expect(notIncluded(page)).toContainText(
+    "These items will not be ordered.",
+  );
+  await page.reload();
+  await expect(notIncluded(page)).toContainText("Unobtainium · no product yet");
+});
+
+test("an item without a quantity says only the quantity is missing", async ({
+  page,
+}) => {
+  await open(page, {
+    view: "prepared",
+    unmatched: [
+      { name: "Basil", amount: null, unit: "bunch", reason: "no_quantity" },
+    ],
+  });
+  await expect(notIncluded(page)).toContainText("Basil · quantity needed");
+});
+
+test("nothing is left out: no Not included block on the prepared card", async ({
+  page,
+}) => {
+  await open(page, { view: "prepared" });
+  await expect(notIncluded(page)).toHaveCount(0);
+});
+
+test("a line the customer removed is listed as removed once its ghost has faded, never twice", async ({
+  page,
+}) => {
+  const world = await open(page, { view: "prepared" });
+  await card(page)
+    .getByRole("spinbutton", {
+      name: "Quantity of Spaghetti 5 kg",
+      exact: true,
+    })
+    .fill("0");
+  await page.clock.runFor(650); // the 600 ms wait before the edit is saved
+  await expect(card(page).locator('[data-testid="ghost-line"]')).toBeVisible();
+  // While the ghost is on screen the item is not also listed as left out.
+  await expect(notIncluded(page)).toHaveCount(0);
+  expect(world.qty.pasta).toBe(0);
+  await page.clock.runFor(15_600);
+  await expect(card(page).locator('[data-testid="ghost-line"]')).toHaveCount(0);
+  await expect(notIncluded(page)).toContainText(
+    "Spaghetti 5 kg · removed by you",
+  );
+  await page.reload();
+  await expect(notIncluded(page)).toContainText(
+    "Spaghetti 5 kg · removed by you",
+  );
+  await expect(
+    card(page).getByRole("spinbutton", { name: /Spaghetti/ }),
+  ).toHaveCount(0);
+});
+
+test("a conversation without the field (an older server) shows the card as before", async ({
+  page,
+}) => {
+  await open(page, {
+    view: "prepared",
+    legacy: true,
+    unmatched: [unobtainium],
+  });
+  await expect(notIncluded(page)).toHaveCount(0);
+  await expect(card(page).getByText("Total estimated")).toBeVisible();
+});

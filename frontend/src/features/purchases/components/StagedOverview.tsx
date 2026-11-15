@@ -108,6 +108,7 @@ export function StagedOverview({
       conversationId={conversation?.id}
       cart={draft ?? null}
       working={conversation?.busy}
+      notIncluded={conversation?.cart_not_included}
       cartEdit={
         conversation
           ? {

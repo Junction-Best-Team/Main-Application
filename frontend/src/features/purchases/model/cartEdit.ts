@@ -20,6 +20,8 @@ export const EDIT_COPY = {
   failed: "The quantity could not be saved. Try again.",
   conflict:
     "That change was already sent with other settings. Change the number again.",
+  changed:
+    "Your cart changed while this number was being saved. Check the numbers and try again.",
   working: "The assistant is still working on your request.",
   quantityOf: (name: string) => `Quantity of ${name}`,
   decrease: (name: string) => `Decrease quantity of ${name}`,
@@ -48,6 +50,7 @@ const SERVER_TEXT = new Set([
 export function editErrorMessage(error: unknown): string {
   if (!(error instanceof ApiError)) return EDIT_COPY.failed;
   if (error.code === "IDEMPOTENCY_CONFLICT") return EDIT_COPY.conflict;
+  if (error.code === "CART_CHANGED") return EDIT_COPY.changed;
   if (error.code && SERVER_TEXT.has(error.code) && error.message)
     return error.message;
   return EDIT_COPY.failed;
