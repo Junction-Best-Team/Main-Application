@@ -718,17 +718,14 @@ test("request starts a meal conversation and keeps messages through refresh", as
   await page.getByLabel("Your meal or purchasing request").press("Enter");
   await expect(page).toHaveURL(new RegExp(`/conversations/${conversationId}$`));
   await expect(
-    page.getByRole("heading", { name: "Carbonara", exact: true }),
+    page.getByRole("button", { name: "Open recipe Carbonara" }),
   ).toBeVisible();
   await expect(
     page.getByRole("list", { name: "Proposed items" }),
   ).toContainText("SKU pasta");
-  const recipe = page.getByRole("region", { name: "Proposed meal plan" });
-  await expect(recipe.getByText("20 KG", { exact: true })).toHaveCount(0);
-  await expect(recipe.getByText("Spaghetti", { exact: true })).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: /Open recipe/ }),
-  ).toHaveCount(0);
+  const log = page.getByRole("log", { name: "Conversation messages" });
+  await expect(log.getByText("20 KG", { exact: true })).toHaveCount(0);
+  await expect(log.getByText("Spaghetti", { exact: true })).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Review basket to confirm" }),
   ).toBeVisible();
@@ -741,7 +738,7 @@ test("request starts a meal conversation and keeps messages through refresh", as
   await expect(page.getByLabel("Continue the conversation")).toHaveValue("");
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "Carbonara", exact: true }),
+    page.getByRole("button", { name: "Open recipe Carbonara" }),
   ).toBeVisible();
   expect(keys).toHaveLength(1);
   await page.getByRole("log", { name: "Conversation messages" }).screenshot({
@@ -1401,15 +1398,15 @@ test(`free-form recipe plan stays compact without chat ingredient dump`, async (
     }),
   );
   await page.goto(`/conversations/${conversationId}`);
-  const plan = page.getByRole("region", { name: "Proposed meal plan" });
-  await expect(plan.getByRole("heading", { name: "Carbonara" })).toBeVisible();
-  await expect(plan.getByText("200 portions", { exact: false })).toBeVisible();
-  await expect(plan.getByText("open the basket for ingredients")).toBeVisible();
-  await expect(plan.getByText("Salt", { exact: true })).toHaveCount(0);
-  await expect(plan.getByText("Buy 7 ST", { exact: false })).toHaveCount(0);
+  const log = page.getByRole("log", { name: "Conversation messages" });
   await expect(
-    page.getByRole("button", { name: /Open recipe/ }),
-  ).toHaveCount(0);
+    page.getByRole("button", { name: "Open recipe Carbonara" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open recipe Carbonara" }),
+  ).toContainText("200 portions");
+  await expect(log.getByText("Salt", { exact: true })).toHaveCount(0);
+  await expect(log.getByText("Buy 7 ST", { exact: false })).toHaveCount(0);
   await expect(page.getByRole("dialog", { name: "Carbonara" })).toHaveCount(0);
   await expect(
     page.getByRole("link", { name: "Review basket and purchasing checks" }),

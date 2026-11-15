@@ -69,22 +69,7 @@ export function ConversationTranscript({
                     image={message.image}
                   />
                 )}
-                {message.meal_plan && (
-                  <MealPlanCard
-                    plan={message.meal_plan}
-                    onOpenBasket={
-                      message.proposal_id &&
-                      onReviewBasket &&
-                      conversation.purchases.some(
-                        (p) =>
-                          p.proposal_id === message.proposal_id &&
-                          p.order_status !== "accepted_mock",
-                      )
-                        ? () => onReviewBasket(message.proposal_id!)
-                        : undefined
-                    }
-                  />
-                )}
+                {message.meal_plan && <MealPlanCard plan={message.meal_plan} />}
                 {message.proposal_id && (
                   <>
                     <SkuCards
