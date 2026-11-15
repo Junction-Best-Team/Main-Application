@@ -509,6 +509,15 @@ for (const [width, height] of [
     await mockSession(page);
     let saved: Conversation = {
       ...blankConversation,
+      activity: {
+        turn_id: "scroll-test-turn",
+        state: "complete",
+        events: [
+          { sequence: 1, kind: "started", label: "Checking your request" },
+          { sequence: 2, kind: "thinking", label: "Thinking" },
+          { sequence: 3, kind: "complete", label: "Finished" },
+        ],
+      },
       messages: Array.from({ length: 30 }, (_, index) => ({
         id: index + 1,
         role: index % 2 ? "assistant" : "user",
@@ -577,6 +586,16 @@ for (const [width, height] of [
     await expect(
       page.getByText("Send Order Request", { exact: true }),
     ).toHaveCount(0);
+    // Screen-reader-only activity labels must stay inside the history's scroll
+    // boundary, including while its completed steps are expanded.
+    await page.getByRole("button", { name: /Show 2 steps/ }).click();
+    await expect(
+      page.getByRole("list", { name: "Activity steps" }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollHeight),
+    ).toBeLessThanOrEqual(height);
+    await page.getByRole("button", { name: /Hide 2 steps/ }).click();
     await history.hover();
     await page.mouse.wheel(0, -100000);
     await expect.poll(() => history.evaluate((node) => node.scrollTop)).toBe(0);
