@@ -13,13 +13,19 @@ import httpx
 from aimo.agent_provider import chat_provider, check_deadline, encode
 from aimo.agent_reads import executions
 from aimo.agent_recovery import partial_notice
+from aimo.agent_stop import (
+    CONTINUE_NOTICE,
+    MIN_SECONDS_TO_CONTINUE,
+    asks_for_delivery_details,
+    wants_to_buy,
+)
 from aimo.agent_tools import ToolSession
 from aimo.chat_activity import tool_detail
 from aimo.chat_draft import cart_snapshot
 from aimo.chat_schemas import AgentTurn, DraftCart
 from aimo.config import settings
 from aimo.db import Problem, fingerprint
-from aimo.guardrails import PREPARE_NOTICE, Guardrails
+from aimo.guardrails import PREPARE_NOTICE, Guardrails, Verdict
 from aimo.observability import elapsed, event, failure, log_context, operation
 
 BASE_PROMPT = """You are the customer's internal meal-purchasing assistant.
@@ -373,6 +379,13 @@ def validate_context(identity, messages):
         )
 
 
+def stop_control_on():
+    # The application setting itself (agent.settings is the model provider's configuration).
+    from aimo.config import settings as application_settings
+
+    return application_settings().agent_stop_control
+
+
 @operation("agent.turn", context_arg="identity")
 def run_turn(
     identity,
@@ -433,6 +446,7 @@ def run_turn(
     progress.emit("started")
     tool_log = []
     guard = None
+    continued = False
 
     reviewed_draft = None
     reviewed_plan = None
@@ -489,6 +503,29 @@ def run_turn(
                         raise Problem(
                             "LLM_RESPONSE_INVALID", "The assistant returned no message.", 502
                         )
+                    # Stopped short? The customer asked to buy, the plan is complete, nothing was
+                    # prepared: continue ONCE with a labelled server notice instead of ending.
+                    if (
+                        not continued
+                        and stop_control_on()
+                        and session.prepared_digest is None
+                        and session.plan_complete
+                        and wants_to_buy(session.customer_texts)
+                        and not asks_for_delivery_details(reply.content)
+                        and round_number < cfg.llm_max_tool_rounds
+                        and check_deadline(deadline) >= MIN_SECONDS_TO_CONTINUE
+                        and (
+                            guard.mode == "off"
+                            or (
+                                guard.input_result is not None
+                                and guard.input_result.verdict == Verdict.ALLOWED
+                            )
+                        )
+                        and not guard.prepare_refused
+                    ):
+                        continued = True
+                        history.append({"role": "user", "content": CONTINUE_NOTICE})
+                        continue
                     # LLM -> user: unsupported narrative is replaced; trusted state is kept.
                     if guard.mode != "off":
                         progress.emit("reviewing")

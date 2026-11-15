@@ -110,3 +110,10 @@ def call_key(name, arguments):
     except (TypeError, ValueError):
         canonical = str(arguments)
     return name, hashlib.sha256(canonical.encode()).hexdigest()[:16]
+
+
+CONTINUE_NOTICE = (
+    "Server notice, not from the customer: you have not prepared the basket. Call prepare_order "
+    "now with the existing plan, or ask for the one missing fact (delivery date or destination)."
+)
+MIN_SECONDS_TO_CONTINUE = 15

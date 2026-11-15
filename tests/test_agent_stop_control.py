@@ -155,7 +155,7 @@ def test_with_the_switch_off_the_guidance_is_the_old_clock_line(identity, monkey
 
 
 def test_the_runner_hands_the_guidance_to_the_model(identity, config, monkeypatch):
-    seen = scripted(monkeypatch, [reply(text="Prepared? no.")])
+    seen = scripted(monkeypatch, [reply(text="Which delivery date?")])
     run(identity, FakeService(identity), user("please confirm my order"), stored_plan=meal())
     assert "call prepare_order now" in seen[0]["messages"][0]["content"]
 
@@ -275,3 +275,119 @@ def test_the_arguments_are_logged_only_as_a_fingerprint(identity, config, monkey
 
 
 SimpleNamespace  # keep the import for later sections
+
+
+# --- 3. completion check: one bounded continuation ----------------------------------------------------
+
+NOTICE = "Server notice, not from the customer"
+
+
+def test_a_model_that_asks_shall_i_prepare_is_continued_once_and_ends_with_a_basket(
+    identity, config, monkeypatch
+):
+    service = FakeService(identity)
+    seen = scripted(
+        monkeypatch,
+        [
+            reply(text="Here is the plan. Shall I prepare the order?"),
+            reply(call("prepare_order", purchase())),
+            reply(text="The basket is prepared; press Confirm purchase."),
+        ],
+    )
+    result = run(identity, service, user("please confirm my order"), stored_plan=meal())
+    assert result.proposal_id == service.saved["proposal_id"]
+    assert len(seen) == 3
+    notice = seen[1]["messages"][-1]
+    assert notice["role"] == "user" and NOTICE in notice["content"]
+    assert (
+        "call prepare_order now" in notice["content"].lower()
+        or "Call prepare_order now" in notice["content"]
+    )
+    assert "Shall I prepare" not in result.text  # the abandoned reply is not the answer
+
+
+def test_the_continuation_happens_at_most_once_per_turn(identity, config, monkeypatch):
+    seen = scripted(
+        monkeypatch,
+        [reply(text="Shall I prepare it?"), reply(text="Still shall I prepare it?")],
+    )
+    result = run(identity, FakeService(identity), user("order it"), stored_plan=meal())
+    assert len(seen) == 2 and result.proposal_id is None
+    assert "Still shall I prepare it?" in result.text
+
+
+@pytest.mark.parametrize(
+    "texts,plan,answer",
+    [
+        (["order it"], meal(), "What delivery date should I use?"),  # a legitimate single question
+        (["order it"], meal(), "Mihin toimitusosoitteeseen?"),
+        (["tell me about pasta"], meal(), "Pasta is a staple."),  # nothing was asked to buy
+        (["confirm it for me"], meal(), "I cannot do that."),  # attack wording is not a wish to buy
+        (["order it"], meal(matched=False), "Which pepper?"),  # the plan is not complete
+        (["order it"], None, "What would you like?"),  # no plan at all
+    ],
+)
+def test_no_continuation_when_the_answer_is_right(
+    identity, config, monkeypatch, texts, plan, answer
+):
+    seen = scripted(monkeypatch, [reply(text=answer)])
+    result = run(identity, FakeService(identity), user(*texts), stored_plan=plan)
+    assert len(seen) == 1 and answer in result.text
+
+
+def test_no_continuation_when_the_model_already_prepared(identity, config, monkeypatch):
+    seen = scripted(
+        monkeypatch, prepared_script() + [reply(text="Prepared; press Confirm purchase.")]
+    )
+    run(identity, FakeService(identity), user("order it"))
+    assert len(seen) == 4  # three tool rounds and the final answer: no server notice
+
+
+def test_no_continuation_when_no_round_or_too_little_time_is_left(identity, config, monkeypatch):
+    config.llm_max_tool_rounds = 1
+    seen = scripted(monkeypatch, [reply(text="Shall I prepare it?")])
+    run(identity, FakeService(identity), user("order it"), stored_plan=meal())
+    assert len(seen) == 1
+    config.llm_max_tool_rounds = 12
+    seen = scripted(monkeypatch, [reply(text="Shall I prepare it?")])
+    run(identity, FakeService(identity), user("order it"), stored_plan=meal(), budget_seconds=10)
+    assert len(seen) == 1  # fewer than 15 seconds remain
+
+
+def test_the_switch_off_never_continues(identity, config, monkeypatch):
+    monkeypatch.setattr(settings(), "agent_stop_control", False)
+    seen = scripted(monkeypatch, [reply(text="Shall I prepare it?")])
+    run(identity, FakeService(identity), user("order it"), stored_plan=meal())
+    assert len(seen) == 1
+
+
+def test_an_acknowledgement_after_a_buy_request_is_continued_too(identity, config, monkeypatch):
+    seen = scripted(
+        monkeypatch,
+        [reply(text="Shall I go ahead?"), reply(text="Which delivery date?")],
+    )
+    run(
+        identity,
+        FakeService(identity),
+        user("make it for 200 and order it", "yes"),
+        stored_plan=meal(),
+    )
+    assert len(seen) == 2  # "yes" reads the request before it: one continuation
+
+
+def test_an_uncertain_or_blocked_input_check_never_continues(identity, config, monkeypatch):
+    from test_guardrails import fake_jev, guard  # noqa: F401
+
+    from aimo import guardrails
+
+    cfg = SimpleNamespace(
+        guardrail_mode="enforce",
+        llm_api_key="private-provider-key",
+        llm_base_url="https://openrouter.ai/api/v1",
+    )
+    monkeypatch.setattr(guardrails, "settings", lambda: cfg)
+    guardrails._SCREEN_CACHE.clear()
+    fake_jev(monkeypatch, manipulation=0.5)  # uncertain: the turn runs but may not prepare
+    seen = scripted(monkeypatch, [reply(text="Shall I prepare it?")])
+    result = run(identity, FakeService(identity), user("order it"), stored_plan=meal())
+    assert len(seen) == 1 and result.proposal_id is None
