@@ -138,6 +138,15 @@ def test_each_phase_shows_and_hides_the_right_tools(identity):
     assert {"search_products", "get_product", "publish_meal_plan"} <= shown
     assert not shown & {"scale_recipe", "draft_recipe", "prepare_order"}
 
+    from test_agent import draft_basis, revised_basis
+
+    drafted = enforced(ToolSession(identity, service))
+    drafted.customer_texts = ["vegan lasagna for 500"]
+    invoke(drafted, "draft_recipe", draft_basis())
+    assert drafted.phase == "match" and "draft_recipe" in names(drafted)  # one own-estimate revision
+    invoke(drafted, "draft_recipe", revised_basis())
+    assert drafted.phase == "match" and "draft_recipe" not in names(drafted)
+
     prepare = enforced(matched_session(identity, service))
     prepare.customer_texts = ["carbonara for 20"]
     shown = names(prepare)

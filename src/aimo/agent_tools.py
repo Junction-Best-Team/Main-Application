@@ -399,6 +399,7 @@ class ToolSession:
         self.restored = None  # the plan restore_plan loaded; unchanged, it is not shown again
         self.draft_basis = None
         self.draft_totals = None
+        self.redrafted = False  # one in-turn revision of the assistant's own estimate
         self.proposal = None
         self.receipt = None
         self.prepared_digest = None
@@ -584,7 +585,12 @@ class ToolSession:
                     "for base_servings. Supply BASE ingredient amounts, not scaled totals; "
                     "the server scales to portions and publishes the draft. No purchase authority. "
                     "Then inspect products and publish_meal_plan with these exact returned totals "
-                    "and product IDs. Never use to bypass an unresolved saved recipe plan.",
+                    "and product IDs. Never use to bypass an unresolved saved recipe plan. "
+                    "Prefer weight or volume (g, ml) over pieces, also for eggs (in-shell weight, "
+                    "about 60 g each): supplier packs convert from weight, rarely from a count. "
+                    "Before the basket you may revise your own estimate ONCE, e.g. after seeing "
+                    "the products: send the complete base recipe again with the same portions "
+                    "and every ingredient kept.",
                     self.draft_recipe,
                     MealPlanResult,
                 ),
@@ -771,13 +777,54 @@ class ToolSession:
             raise Problem("CUSTOMER_RECIPE_REQUIRED", "Record the customer's supplied recipe before using this source label.", 422)
         if self.draft_basis is not None:
             if request != self.draft_basis:
-                raise Problem("MEAL_PLAN_LOCKED", "Change the recipe in a new customer message.")
+                return self.redraft_recipe(request)
             return {"meal_plan": self.plan.model_dump(mode="json"), "purchase_authorized": False}
         plan = draft_plan(request)
         result = self.publish(plan)
         self.draft_basis = request.model_copy(deep=True)
         self.draft_totals = plan.model_copy(deep=True)
         return result
+
+    def redraft_recipe(self, request):
+        """One in-turn revision of the assistant's own estimate, e.g. after seeing which products
+        exist. Before the basket only; the customer's portions, recipe and ingredients stay."""
+        basis = self.draft_basis
+        if self.prepared_digest is not None or self.redrafted:
+            raise Problem(
+                "MEAL_PLAN_LOCKED",
+                "The recipe estimate was already revised in this turn; continue with it. "
+                "Change the recipe in a new customer message.",
+            )
+        if basis.source == "customer_recipe" or request.source != basis.source:
+            raise Problem(
+                "MEAL_PLAN_LOCKED", "The customer's recipe changes only in a new customer message."
+            )
+        if request.portions != basis.portions:
+            raise Problem(
+                "DRAFT_PORTIONS_FIXED",
+                f"Keep the customer's {basis.portions} portions; revise only base amounts.",
+                422,
+            )
+        names = Counter(i.name.strip().casefold() for i in request.ingredients)
+        if Counter(i.name.strip().casefold() for i in basis.ingredients) - names:
+            raise Problem(
+                "INCOMPLETE_MEAL_PLAN",
+                "Keep every previously required ingredient; a product form (liquid egg, frozen) "
+                "is a product match, not a recipe change. Ask the customer before removing one.",
+                422,
+            )
+        old_plan, old_totals = self.plan, self.draft_totals
+        self.plan, self.draft_basis, self.draft_totals = None, None, None
+        try:
+            result = self.draft_recipe(request)
+        except Exception:
+            self.plan, self.draft_basis, self.draft_totals = old_plan, basis, old_totals
+            raise
+        self.redrafted = True
+        self.plan.notes.append("Estimate revised once in this turn after checking products.")
+        self.plan.notes = self.plan.notes[-20:]
+        self.draft_totals = self.plan.model_copy(deep=True)
+        return {**result, "meal_plan": self.plan.model_dump(mode="json")}
 
     def get_recipe_plan(self, request):
         return self.save_recipe_result(
@@ -864,7 +911,8 @@ class ToolSession:
         return [
             tool.schema(name) for name, tool in self.registry.items()
             if not (self.needs_recipe_plan and name in CATALOG_TOOLS)
-            and not (name == "draft_recipe" and self.draft_basis is not None)
+            and not (name == "draft_recipe" and self.draft_basis is not None
+                     and not self.can_redraft)
             and name not in self.hidden_tools()
         ]
 
@@ -918,6 +966,8 @@ class ToolSession:
         if not self.enforce_phases or not self.phases_on or self.phase_refusals >= 2:
             return frozenset()
         phase = self.phase
+        if phase == "match" and self.can_redraft:
+            return agent_stop.PHASE_HIDDEN["match"] - {"draft_recipe"}
         if phase != "finish":
             return agent_stop.PHASE_HIDDEN.get(phase, frozenset())
         blocked = self.proposal and self.proposal.get("policy_outcome") in (
@@ -961,6 +1011,13 @@ class ToolSession:
         )
         refusal.phase = True  # the call never ran: it may be tried again once the phase allows it
         return refusal
+
+    @property
+    def can_redraft(self):
+        """The assistant's own draft may still be revised once in this turn (before the basket)."""
+        basis = self.draft_basis
+        return (basis is not None and basis.source != "customer_recipe" and not self.redrafted
+                and self.prepared_digest is None)
 
     @property
     def needs_recipe_plan(self):
@@ -1271,6 +1328,27 @@ class ToolSession:
             if per_sales_for(details, unit)[0] and not per_sales_for(details, unit)[2]
         ]
 
+    def require_pack_conversion(self, plan):
+        """While the own estimate can still be revised, refuse a match whose amount cannot become
+        packs (eggs counted in pieces, a box known only by weight) when another unit would."""
+        if not self.can_redraft:
+            return  # nothing to revise with: the card shows the line for the customer to resolve
+        for item in plan.ingredients:
+            details = self.products.get(item.product_id) if item.product_id else None
+            if not details or item.amount is None:
+                continue
+            usable = self.pack_size_units(details)
+            if not usable or per_sales_for(details, item.unit)[0]:
+                continue
+            raise Problem(
+                "QUANTITY_UNRESOLVED",
+                f"{details['name']} converts to packs only from {' or '.join(usable)}, not from "
+                f"{item.unit}. Revise the estimate once with draft_recipe giving {item.name} by "
+                "weight or volume (eggs: in-shell weight, about 60 g each), then match again.",
+                422,
+                details={"ingredient": item.name, "product_id": item.product_id, "units": usable},
+            )
+
     def in_scope(self, product_id):
         if "scope" not in self.__dict__:
             rules = self.policy(None)["rules"]
@@ -1406,6 +1484,7 @@ class ToolSession:
                 )
             # Matching cannot remove the server's provenance and estimate labels.
             plan.notes = list(dict.fromkeys([*basis.notes, *plan.notes]))[:20]
+            self.require_pack_conversion(plan)
         if self.plan:
             previous = Counter(i.name.strip().casefold() for i in self.plan.ingredients)
             current = Counter(i.name.strip().casefold() for i in plan.ingredients)

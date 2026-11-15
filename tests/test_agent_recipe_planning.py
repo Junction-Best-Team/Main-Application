@@ -207,7 +207,7 @@ def test_recipe_discovery_requires_visible_plan_before_catalog_work(identity):
     assert error.value.code == "MEAL_PLAN_REQUIRED" and not service.calls
     session.invoke("draft_recipe", json.dumps(estimate()))
     tools = {d["function"]["name"] for d in session.definitions}
-    assert "search_products" in tools and "draft_recipe" not in tools
+    assert "search_products" in tools and "draft_recipe" in tools  # one own-estimate revision
     session.invoke("get_product", '{"product_id":"pasta"}')
     assert len(service.calls) == 1 and session.plan.portions == 200
 
