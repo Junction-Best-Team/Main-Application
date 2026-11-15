@@ -7,8 +7,8 @@ set -euo pipefail
 : "${FRONTEND_IMAGE:?Set FRONTEND_IMAGE}"
 components=(worker api frontend)
 images=("$WORKER_IMAGE" "$IMAGE" "$FRONTEND_IMAGE")
-# The worker can finish a six-minute turn plus persistence before stopping.
-rollout_timeouts=(10m 5m 5m)
+# The worker can finish a ten-minute turn plus persistence before stopping.
+rollout_timeouts=(15m 5m 5m)
 previous=()
 changed=()
 for image in "${images[@]}"; do

@@ -68,10 +68,10 @@ resource "kubernetes_config_map_v1" "runtime" {
     LLM_BASE_URL              = var.llm_base_url
     LLM_MODEL                 = var.llm_model
     LLM_TIMEOUT_SECONDS       = "45"
-    LLM_TURN_TIMEOUT_SECONDS  = "360"
+    LLM_TURN_TIMEOUT_SECONDS  = "600"
     LLM_REASONING_EFFORT      = "low"
     LLM_MAX_COMPLETION_TOKENS = "8192"
-    LLM_MAX_TOOL_ROUNDS       = "40"
+    LLM_MAX_TOOL_ROUNDS       = "60"
     PUBLIC_BASE_URL           = "https://${var.hostname}"
     SECURE_COOKIES            = "true"
     UPSTREAM_MODE             = var.upstream_mode
@@ -131,7 +131,8 @@ resource "kubernetes_deployment_v1" "apps" {
     labels    = { "app.kubernetes.io/part-of" = "aimo", "app.kubernetes.io/component" = each.key }
   }
   spec {
-    replicas = var.app_replicas
+    replicas                  = var.app_replicas
+    progress_deadline_seconds = each.key == "worker" ? 900 : 600
     strategy { type = "Recreate" }
     selector { match_labels = { app = "aimo-${each.key}" } }
     template {
@@ -147,7 +148,7 @@ resource "kubernetes_deployment_v1" "apps" {
       }
       spec {
         automount_service_account_token  = false
-        termination_grace_period_seconds = each.key == "worker" ? 420 : 30
+        termination_grace_period_seconds = each.key == "worker" ? 660 : 30
         security_context {
           run_as_non_root = true
           run_as_user     = each.value.uid
@@ -255,7 +256,10 @@ resource "kubernetes_deployment_v1" "apps" {
       }
     }
   }
-  timeouts { create = "15m" }
+  timeouts {
+    create = "15m"
+    update = "15m"
+  }
   lifecycle {
     precondition {
       condition = var.app_replicas == 0 || (
