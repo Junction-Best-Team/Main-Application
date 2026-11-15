@@ -882,6 +882,76 @@ test("composer clears as soon as send starts", async ({ page }) => {
   await expect(composer).toHaveValue("");
 });
 
+test("Home does not restore the accepted first message while Aimo is working", async ({
+  page,
+}) => {
+  await mockSession(page);
+  const text = "i would like to cook 200 carbonara";
+  await page.route("**/api/conversations", (route) =>
+    route.fulfill({ json: blankConversation }),
+  );
+  let accepted = blankConversation;
+  let acknowledge!: () => void;
+  const acceptedReady = new Promise<void>((resolve) => {
+    acknowledge = resolve;
+  });
+  await page.route(`**/api/conversations/${conversationId}`, async (route) => {
+    await acceptedReady;
+    await route.fulfill({ json: accepted });
+  });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const posted: string[] = [];
+  await page.route(
+    `**/api/conversations/${conversationId}/messages`,
+    async (route) => {
+      const body = route.request().postDataJSON();
+      posted.push(body.text);
+      // The real API exposes retry metadata for unfinished text-only turns,
+      // including a queued/running turn. It does not mean the send failed.
+      accepted = {
+        ...blankConversation,
+        busy: true,
+        retry_message: {
+          text: body.text,
+          idempotency_key: body.idempotency_key,
+        },
+        messages: [{ id: 1, role: "user", text, created_at: timestamp }],
+      };
+      acknowledge();
+      await gate;
+      await route.fulfill({ json: accepted });
+    },
+  );
+  await page.goto("/");
+  await page.getByLabel("Your meal or purchasing request").fill(text);
+  await page.getByRole("button", { name: "Send Order Request" }).click();
+  await expect(page).toHaveURL(new RegExp(`/conversations/${conversationId}$`));
+  await expect(
+    page.getByText("Press Escape to cancel", { exact: false }),
+  ).toBeVisible();
+  const composer = page.getByLabel("Continue the conversation");
+  await expect(composer).toHaveValue("");
+  release();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (key) => sessionStorage.getItem(key),
+        `aimo-pending-${session.buyer_id}-${conversationId}`,
+      ),
+    )
+    .toBeNull();
+  await expect(composer).toHaveValue("");
+  await page.reload();
+  await expect(
+    page.getByText("Press Escape to cancel", { exact: false }),
+  ).toBeVisible();
+  await expect(composer).toHaveValue("");
+  expect(posted).toEqual([text]);
+});
+
 test("messages typed while Aimo works queue above the composer and send in order", async ({
   page,
 }) => {
@@ -1144,7 +1214,9 @@ test("unfinished server turns restore the request and retry key on another brows
   await expect(page.getByRole("alert")).toHaveText(
     "The response was interrupted. Retry this request to continue.",
   );
-  await expect(page.getByText("Your draft is ready to send again.")).toBeVisible();
+  await expect(
+    page.getByText("Your draft is ready to send again."),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Retry request" }).click();
   await expect(page.getByText("Your saved request resumed.")).toBeVisible();
   expect(payload).toEqual(retry);
@@ -1206,7 +1278,9 @@ test("an interrupted turn arriving through SSE restores the persisted retry acti
   await expect(page.getByRole("alert")).toHaveText(
     "The response was interrupted. Retry this request to continue.",
   );
-  await expect(page.getByText("Your draft is ready to send again.")).toBeVisible();
+  await expect(
+    page.getByText("Your draft is ready to send again."),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Retry request" }).click();
   await expect(page.getByText("The interrupted turn resumed.")).toBeVisible();
   expect(payload).toEqual(retry);

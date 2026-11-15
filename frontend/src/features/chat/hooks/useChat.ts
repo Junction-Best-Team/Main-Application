@@ -96,7 +96,9 @@ export function useChat(conversationId?: string) {
       setConversation(data);
       if (loadedConversation.current !== conversationId) {
         loadedConversation.current = conversationId;
-        if (data.retry_message && !sendingRef.current) {
+        // Text-only running turns also carry retry metadata. Restore it only
+        // after the turn stops, never into the next-message composer.
+        if (data.retry_message && !data.busy && !sendingRef.current) {
           setText(data.retry_message.text);
           setAttachments(data.retry_message.attachments ?? []);
         }
