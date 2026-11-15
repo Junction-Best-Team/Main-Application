@@ -1,6 +1,6 @@
 import type React from "react";
 
-const NOT_AVAILABLE = "Not available in this demo";
+const NOT_AVAILABLE = "Not available yet";
 
 /** Placeholder button (account switcher, Save as Draft, ...). */
 export function InertButton({

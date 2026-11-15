@@ -54,7 +54,7 @@ export function LoginPage() {
           </h1>
           <p className="m-0 text-body-md text-secondary-container">
             Plan a meal, find ingredients and review real catalog matches. You
-            confirm the exact basket before a demo order is recorded.
+            confirm the exact basket before an order is recorded.
           </p>
           <div className="mt-8 hidden border-t border-on-secondary-container pt-6 text-body-sm text-secondary-container md:block">
             Your conversations, decisions and purchase history stay together.
@@ -97,8 +97,7 @@ export function LoginPage() {
             </button>
           </form>
           <p className="m-0 text-body-sm text-on-surface-variant">
-            Demo purchasing service. No real supplier orders or stock
-            reservations.
+            No real supplier orders or stock reservations.
           </p>
         </section>
       </main>

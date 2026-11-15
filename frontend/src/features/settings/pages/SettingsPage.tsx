@@ -35,7 +35,7 @@ export function SettingsPage() {
             <strong>You confirm every order.</strong>
             <p>
               The assistant prepares baskets. Your explicit confirmation is
-              required to place a mock order.
+              required to place an order.
             </p>
           </div>
           <PolicyForm

@@ -1679,7 +1679,7 @@ for (const width of [1440, 390]) {
     await expect(panel.locator(".order-reference")).toContainText(
       "overview-order",
     );
-    await expect(panel).toContainText("Accepted by demo order service");
+    await expect(panel).toContainText("Order accepted");
     await expect(
       panel.getByRole("button", { name: "Confirm purchase" }),
     ).toBeDisabled();
@@ -1929,7 +1929,7 @@ for (const width of [1440, 390, 320]) {
     await expect(draft.getByRole("status")).toHaveText("Preparing your order…");
     await expect(draft.getByText(/28\.50.*BAG incl. VAT/)).toBeVisible();
     await expect(
-      draft.getByText(/Fixture price · invented demo data/),
+      draft.getByText(/Catalog price/),
     ).toBeVisible();
     await expect(
       draft.getByText("Price not checked", { exact: true }),
@@ -2307,7 +2307,7 @@ for (const width of [1440, 320]) {
     // This test mocks no standing orders, so the strip shows its empty state.
     await expect(schedule).toContainText("No standing orders yet.");
     await expect(
-      page.getByText("Demo schedule · No supplier orders are placed."),
+      page.getByText("No supplier orders are placed."),
     ).toBeVisible();
     expect(
       await page.evaluate(

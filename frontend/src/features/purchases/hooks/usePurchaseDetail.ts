@@ -118,7 +118,7 @@ export function usePurchaseDetail({
           "Terms changed during verification. Review the new revision and confirm again.",
         );
       } else {
-        setMessage("Confirmation saved. Your demo receipt is below.");
+        setMessage("Confirmation saved. Your receipt is below.");
       }
     } catch (e) {
       const info = toErrorInfo(e);

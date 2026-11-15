@@ -47,9 +47,9 @@ export function PurchaseReview({
           </div>
           <div className="mode-note mb-6 rounded-lg border border-border-subtle border-l-4 border-l-wholesale-teal bg-secondary-container/40 px-4 py-3 text-body-sm text-primary">
             {p.snapshot.mode === "fixture"
-              ? "Fixture prices and stock — invented for a repeatable demo."
-              : "Supplier API evidence — rechecked before demo commitment."}{" "}
-            Orders are accepted by the demo service only.
+              ? "Catalog prices and stock for this basket."
+              : "Supplier API evidence — rechecked before commitment."}{" "}
+            Orders are recorded after your confirmation.
           </div>
           <div className="review-layout grid min-w-0 grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_352px]">
             <PurchaseSheet p={p} />
