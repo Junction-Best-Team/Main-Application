@@ -212,6 +212,12 @@ nearby topics; decline clearly unrelated requests in simple language. Extended t
 same synthetic evaluation with workout, food-before-exercise, storage, kitchen-supply
 and community-serving cases. No new external material was used.
 
+## Chat activity header — 2026-11-15
+
+Reused the existing persisted activity events, server-owned labels, expandable
+history and authored browser fixtures. Kept the latest step visible between tool
+calls; no new dependencies, models, assets or datasets were introduced.
+
 ## Simplified memory screen — 2026-11-14
 
 Adapted the owner-approved in-chat Memory mockup into the existing preferences
@@ -319,3 +325,8 @@ Recipe feedback follow-up (2026-11-15): reused the existing server scaling,
 versioned matching, provider-failure retry flow and authored catalog/recipe/browser
 fixtures. No external recipe data, generated assets, new dependency or live
 supplier/model calls were used for this fix. Orders remain mocks.
+
+Sidebar divider follow-up (2026-11-15): reused the existing shell and border token;
+no new dependencies, assets or external material.
+
+Requests nesting fix (2026-11-15): reused the existing app shell, conversation navigation/pagination and authored browser fixtures. No new dependencies, assets or external material.

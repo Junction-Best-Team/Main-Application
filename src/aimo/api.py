@@ -14,6 +14,7 @@ from aimo import approval_workflow as workflow
 from aimo import (
     auth,
     cancellations,
+    clock,
     conversations,
     errors,
     memory,
@@ -61,6 +62,9 @@ from aimo.schemas import (
     CommitRequest,
     CommitResponse,
     DecisionRequest,
+    DemoClockAdvance,
+    DemoClockReset,
+    DemoClockState,
     InboxResponse,
     LoginRequest,
     OrderResponse,
@@ -306,6 +310,34 @@ def create_app(service=None):
     def purchase_receipt(proposal_id: UUID, identity=Depends(buyer)):
         # The stored mock receipt of this buyer's own proposal; 404 NO_RECEIPT until it is ordered.
         return workflow.get_receipt(identity, proposal_id)
+
+    # Demo clock (owner Q-115): customer controls that exist only while DEMO_CLOCK_ENABLED is on and
+    # the supplier is not live; every route answers 404 otherwise. Never an agent tool.
+    @app.get("/api/demo/clock", response_model=DemoClockState)
+    def demo_clock_state(identity=Depends(buyer)):
+        return clock.state(identity["buyer_id"])
+
+    @app.post("/api/demo/clock/advance", response_model=DemoClockState)
+    def demo_clock_advance(body: DemoClockAdvance, request: Request, identity=Depends(buyer)):
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+        return clock.advance(
+            identity["buyer_id"],
+            identity["id"],
+            days=body.days,
+            to=body.to,
+            idempotency_key=body.idempotency_key,
+        )
+
+    @app.post("/api/demo/clock/reset", response_model=DemoClockState)
+    def demo_clock_reset(body: DemoClockReset, request: Request, identity=Depends(buyer)):
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+        return clock.reset(
+            identity["buyer_id"], identity["id"], idempotency_key=body.idempotency_key
+        )
 
     @app.get("/api/memories", response_model=MemoryList)
     def memory_list(

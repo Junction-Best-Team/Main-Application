@@ -1156,3 +1156,18 @@ Add new findings below, under your track heading.
 - Scaled saved ingredients with known quantities/forms now start as proposed; true quantity/form blockers remain unresolved. Customer cards and trusted notices separate those states, summarize pending products by count, and make incomplete purchasing checks explicit. Historical generated notices are rephrased only when they exactly match their stored plan; messages are not rewritten. Missing-quantity labels wrap without overlapping ingredient names on phones.
 - Pending saved plans require inspection after three searches and persisted matching after three candidate reads. If every remaining quantity/form needs review, further catalog discovery is refused with a specific explanation. Retry context includes the current turn's saved plan ID/revision so prior matching survives an interrupted response. Free-form estimates, evidence checks, provider-failure notices, exact confirmation and mock orders retain their existing controls.
 - Verification: Python lint; 59 core PR regressions; 164 focused agent/recipe/tool-contract cases on the final backend behavior; all 11 strict fixture HTTP sweep checks; frontend formatting/lint/types/production build; and 54 fixture-backed chat/activity browser cases passed. Desktop/390px screenshots were inspected. Earlier broader checking caught assertions for the intentionally changed pending status; those assertions were corrected and their cases rerun. No live provider/supplier calls, migration, merge, deployment or Terraform change.
+
+### F-CHAT-ACTIVITY-002: Keep the latest step in the progress header
+
+- Date: 2026-11-15. At the owner's request, replaced the generic “Thinking…” fallback with the latest server-authored activity label. Completed/failed tools retain their label and outcome between calls; the next active tool replaces it. The expandable step count/history is retained, including 15-step histories.
+- Verification: frontend `npm run check` and all six fixture-backed `chat-activity.spec.ts` browser checks passed. Covered initial request checking, completed/failed steps between calls, streamed next steps, finishing, interruptions, refresh, reduced motion and 1440/390/320px layouts; desktop/390px screenshots inspected. No backend/schema changes or live provider calls. No merge or deployment.
+
+### F-SIDEBAR-001: Restore the sidebar divider
+
+- Date: 2026-11-15. Added a full-height 1px right border to the desktop sidebar using the existing `border-subtle` token, matching the header separator.
+- Verification: frontend `npm run check` and both fixture-backed `minimal Home and navigation work` Playwright checks passed at 1440/390px; screenshots inspected. No merge or deployment.
+
+### F-NAV-REQUESTS-001: Keep expanded conversations inside Requests
+
+- Date: 2026-11-15. Moved the expanded Recent list from the bottom of navigation into its Requests parent, before Schedule and Orders. Indentation and a bounded scrolling area keep long histories grouped and the following navigation reachable on desktop and mobile; pagination, errors and collapse controls stay together.
+- Verification: frontend `npm run check` and four focused fixture-backed Playwright checks passed at 1440/390px. Covered 31 requests, ordering/indentation, internal scrolling, collapse/reopen, loading older records, selection and mobile-menu dismissal; desktop/mobile screenshots inspected. No backend/schema changes, merge or deployment.

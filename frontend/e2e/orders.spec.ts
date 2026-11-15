@@ -126,6 +126,36 @@ test("placed rows offer Schedule this order and expand to the receipt details", 
   ).toHaveCount(1);
 });
 
+test("a placed row that a standing order placed does not offer Schedule this order", async ({
+  page,
+}) => {
+  await mockOrders(page, [
+    {
+      ...orders[3]!,
+      title: "Placed by schedule",
+      schedule_id: ids.schedule,
+      schedule_title: "Breakfast dairy",
+    },
+    orders[3]!,
+  ]);
+  await page.goto("/purchases");
+  await expect(
+    row(page, "Placed by schedule").getByRole("link", {
+      name: /From standing order Breakfast dairy/,
+    }),
+  ).toBeVisible();
+  await expect(
+    row(page, "Placed by schedule").getByRole("link", {
+      name: "Schedule this order",
+    }),
+  ).toHaveCount(0);
+  await expect(
+    row(page, "Hotel breakfast").getByRole("link", {
+      name: "Schedule this order",
+    }),
+  ).toHaveCount(1);
+});
+
 test("cancelled rows explain why, and rows from a standing order link to it", async ({
   page,
 }) => {

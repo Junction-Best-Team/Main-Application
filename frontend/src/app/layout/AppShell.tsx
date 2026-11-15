@@ -66,7 +66,6 @@ function ConversationSubList({
 }) {
   return (
     <ul
-      id="nav-conversations"
       aria-label="Conversations"
       className="m-0 flex list-none flex-col gap-1 px-space-sm py-space-xs"
     >
@@ -158,35 +157,41 @@ function NavLinks({
                 />
               </button>
             </div>
+            {conversations.expanded && (
+              <div
+                id="nav-conversations"
+                className="ml-space-lg max-h-[min(24rem,40dvh)] overflow-y-auto overscroll-contain border-l border-border-subtle"
+              >
+                <p className="mb-space-xs mt-space-sm px-space-md text-body-sm text-secondary">
+                  Recent
+                </p>
+                <ConversationSubList
+                  items={conversations.items}
+                  pathname={pathname}
+                  onNavigate={onNavigate}
+                />
+                {conversations.hasMore && (
+                  <button
+                    className="mx-space-md my-space-xs text-label-sm"
+                    onClick={conversations.loadMore}
+                    disabled={conversations.loading}
+                  >
+                    Load older conversations
+                  </button>
+                )}
+                {conversations.error && (
+                  <p
+                    role="alert"
+                    className="px-space-md text-body-sm text-error"
+                  >
+                    {conversations.error}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         );
       })}
-      {conversations.expanded && (
-        <>
-          <p className="mb-space-xs mt-space-xl px-space-md text-body-sm text-secondary">
-            Recent
-          </p>
-          <ConversationSubList
-            items={conversations.items}
-            pathname={pathname}
-            onNavigate={onNavigate}
-          />
-          {conversations.hasMore && (
-            <button
-              className="mx-space-md my-space-xs text-label-sm"
-              onClick={conversations.loadMore}
-              disabled={conversations.loading}
-            >
-              Load older conversations
-            </button>
-          )}
-          {conversations.error && (
-            <p role="alert" className="px-space-md text-body-sm text-error">
-              {conversations.error}
-            </p>
-          )}
-        </>
-      )}
     </nav>
   );
 }
@@ -197,7 +202,7 @@ function Sidebar({ conversations }: { conversations: ConversationNav }) {
   return (
     <aside
       aria-label="Sidebar"
-      className="fixed inset-y-0 left-0 z-50 hidden h-dvh w-60 flex-col bg-workspace-panel pb-space-md pt-space-md md:flex"
+      className="fixed inset-y-0 left-0 z-50 hidden h-dvh w-60 flex-col border-r border-border-subtle bg-workspace-panel pb-space-md pt-space-md md:flex"
     >
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <Link
