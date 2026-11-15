@@ -550,11 +550,13 @@ for (const [width, height] of [
         composerBounds!.x + composerBounds!.width,
       );
     };
-    // Barcode was removed; voice and send take turns in one slot after Attach file.
+    // Voice and send take turns in a single action slot.
     await expect(
       page.getByRole("button", { name: "Scan barcode" }),
     ).toHaveCount(0);
-    await expectBesideComposer("Attach file");
+    await expect(page.getByRole("button", { name: "Attach file" })).toHaveCount(
+      0,
+    );
     const voice = page.getByRole("button", { name: "Start voice mode" });
     const send = page.getByRole("button", { name: "Send Order Request" });
     await expectBesideComposer("Start voice mode");
@@ -1199,9 +1201,9 @@ for (const width of [1440, 390]) {
     await expect(
       page.getByRole("heading", { name: "Aimo Kitchen Assistant" }),
     ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Attach file" }),
-    ).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Attach file" })).toHaveCount(
+      0,
+    );
     await expect(
       page.getByRole("button", { name: "Start voice mode" }),
     ).toBeEnabled();
@@ -1611,6 +1613,40 @@ for (const width of [1440, 390, 320]) {
   });
 }
 
+type DroppedFile = { name: string; mimeType: string; buffer: Buffer };
+async function dropFiles(page: Page, files: DroppedFile | DroppedFile[]) {
+  const payload = (Array.isArray(files) ? files : [files]).map((file) => ({
+    name: file.name,
+    mimeType: file.mimeType,
+    base64: file.buffer.toString("base64"),
+  }));
+  await page
+    .getByRole("form", { name: "Chat message" })
+    .evaluate((form, files) => {
+      const data = new DataTransfer();
+      for (const file of files) {
+        data.items.add(
+          new File(
+            [
+              Uint8Array.from(atob(file.base64), (character) =>
+                character.charCodeAt(0),
+              ),
+            ],
+            file.name,
+            { type: file.mimeType },
+          ),
+        );
+      }
+      form.dispatchEvent(
+        new DragEvent("drop", {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer: data,
+        }),
+      );
+    }, payload);
+}
+
 const attachmentPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7VYAAAAASUVORK5CYII=",
   "base64",
@@ -1653,8 +1689,7 @@ for (const width of [1440, 320]) {
       },
     );
     await page.goto(`/conversations/${conversationId}`);
-    const picker = page.getByLabel("Choose attachments");
-    await picker.setInputFiles([
+    await dropFiles(page, [
       { name: "photo.png", mimeType: "image/png", buffer: attachmentPng },
       {
         name: "menu.csv",
@@ -1756,26 +1791,26 @@ test("unsupported, empty, oversized and excessive files are rejected without los
   );
   await page.goto(`/conversations/${conversationId}`);
   await page.getByLabel("Continue the conversation").fill("Soup menu");
-  const picker = page.getByLabel("Choose attachments");
-  await picker.setInputFiles({
+  await dropFiles(page, {
     name: "script.exe",
     mimeType: "application/octet-stream",
     buffer: Buffer.from("abc"),
   });
   await expect(page.getByRole("alert")).toContainText("Use PDF");
-  await picker.setInputFiles({
+  await dropFiles(page, {
     name: "large.txt",
     mimeType: "text/plain",
     buffer: Buffer.alloc(2 * 1024 * 1024 + 1),
   });
   await expect(page.getByRole("alert")).toContainText("at most 2 MB");
-  await picker.setInputFiles({
+  await dropFiles(page, {
     name: "empty.txt",
     mimeType: "text/plain",
     buffer: Buffer.alloc(0),
   });
   await expect(page.getByRole("alert")).toContainText("nonempty");
-  await picker.setInputFiles(
+  await dropFiles(
+    page,
     ["a", "b", "c", "d"].map((name) => ({
       name: `${name}.txt`,
       mimeType: "text/plain",
@@ -1783,7 +1818,8 @@ test("unsupported, empty, oversized and excessive files are rejected without los
     })),
   );
   await expect(page.getByRole("alert")).toContainText("up to 3 files");
-  await picker.setInputFiles(
+  await dropFiles(
+    page,
     ["a", "b", "c"].map((name) => ({
       name: `${name}.txt`,
       mimeType: "text/plain",

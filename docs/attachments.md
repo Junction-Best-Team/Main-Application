@@ -1,6 +1,6 @@
 # Chat attachments
 
-Choose **Attach file**, drop files on the chat input, or paste a file/image into it.
+Drop files on the chat input or paste a file/image into it.
 The input shows image thumbnails and file cards with names, types, sizes and remove buttons.
 Send files with a message or on their own. Sent files stay with the conversation and can be
 viewed or downloaded by authenticated members of the same buyer account.
