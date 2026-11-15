@@ -74,6 +74,8 @@ export type CartWorld = {
   outcome:
     "ready_to_commit" | "approval_required" | "denied" | "needs_resolution";
   expired: boolean;
+  /** A product whose line cannot be converted into packs: no number, a QUANTITY_UNRESOLVED check, needs_resolution. */
+  unresolved: string | null;
   /** Serve the conversation snapshot on the SSE stream too (reconnects every 300 ms) so a state change shows at once. */
   stream: boolean;
   /** Items without a product or quantity, listed by the conversation as `cart_not_included` (reason no_product / no_quantity). */
@@ -101,6 +103,7 @@ export const newCart = (over: Partial<CartWorld> = {}): CartWorld => ({
   view: "prepared",
   outcome: "ready_to_commit",
   expired: false,
+  unresolved: null,
   stream: false,
   unmatched: [],
   renew: true,
@@ -129,7 +132,7 @@ export function proposalOf(w: CartWorld): Proposal {
         requested_amount: String(q * p.amountPerPack),
         requested_unit: p.unit,
         sales_unit: p.salesUnit,
-        sales_quantity: String(q),
+        sales_quantity: w.unresolved === p.id ? null : String(q),
         proposed_amount: String(q * p.amountPerPack),
         excess: "0",
         status: "known" as const,
@@ -154,15 +157,32 @@ export function proposalOf(w: CartWorld): Proposal {
     revision: w.revision,
     current_revision: w.revision,
     committed_revision: w.orderPlaced ? w.revision : null,
-    policy_outcome: w.outcome,
+    policy_outcome: w.unresolved ? "needs_resolution" : w.outcome,
+    reasons: w.unresolved
+      ? [
+          {
+            code: "QUANTITY_UNRESOLVED",
+            message:
+              "This product has no pack size in its data; pick a product that does or ask for a number of packs.",
+            product_id: w.unresolved,
+            severity: "unresolved" as const,
+          },
+        ]
+      : [],
     expires_at: w.expired ? "2020-01-01T00:00:00Z" : baseProposal.expires_at,
-    approval_status: w.orderPlaced ? "approved" : "not_required",
+    approval_status: w.orderPlaced
+      ? "approved"
+      : w.outcome === "approval_required"
+        ? "pending"
+        : "not_required",
     order_status: w.orderPlaced ? "accepted_mock" : "not_placed",
     order_id: w.orderPlaced ? ids.sourceOrder : null,
-    approval_id: null,
-    approval_url: null,
+    approval_id:
+      w.outcome === "approval_required" ? baseProposal.approval_id : null,
+    approval_url:
+      w.outcome === "approval_required" ? baseProposal.approval_url : null,
     next_action: { type: w.orderPlaced ? "complete" : "commit" },
-    can_decide: false,
+    can_decide: w.outcome === "approval_required" && !w.orderPlaced,
     request: { ...baseProposal.request, delivery_date: "2026-11-17" },
     snapshot: {
       ...baseProposal.snapshot,
