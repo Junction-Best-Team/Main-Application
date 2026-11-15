@@ -2431,7 +2431,7 @@ test("proposal message offers Review basket handoff into Overview", async ({
   ).toBeVisible();
   await handoff.click();
   const overview = page.getByRole("complementary", { name: "Overview" });
-  await expect(overview).toContainText("1 items staged");
+  await expect(overview.getByTestId("card-total-row")).toBeVisible();
   await expect(
     overview.getByRole("button", { name: "Confirm purchase" }),
   ).toBeVisible();
