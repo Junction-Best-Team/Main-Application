@@ -148,6 +148,11 @@ export function ChatComposer({
           {fileError}
         </p>
       )}
+      {busy && !home && (
+        <p className="px-space-sm text-label-sm text-secondary" role="status">
+          Press Escape to cancel
+        </p>
+      )}
       {(dragging || reading) && (
         <p className="px-space-sm text-label-sm text-secondary" role="status">
           {dragging ? "Drop files here" : "Reading files…"}
