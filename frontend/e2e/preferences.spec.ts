@@ -603,11 +603,18 @@ test("mobile layout fits the viewport and tabs work from the keyboard", async ({
     page.getByText("Prefer Finnish organic cream", { exact: false }),
   ).toBeVisible();
 
-  // The mobile user dropdown links to the screen too.
-  await page.getByRole("button", { name: "User menu" }).click();
+  // The account popup is inside the mobile navigation drawer.
+  await page.getByRole("button", { name: "Open menu" }).click();
+  await page
+    .getByRole("dialog", { name: "Menu", exact: true })
+    .getByRole("button", { name: "User menu" })
+    .click();
   const account = page.getByRole("navigation", { name: "User account" });
   await account.getByRole("link", { name: "Memory" }).click();
   await expect(account).toHaveCount(0);
+  await expect(
+    page.getByRole("dialog", { name: "Menu", exact: true }),
+  ).toHaveCount(0);
 });
 
 test("fonts and sidebar icons load without Google Fonts access", async ({
