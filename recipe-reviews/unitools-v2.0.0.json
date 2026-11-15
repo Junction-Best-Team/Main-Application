@@ -1,0 +1,39 @@
+{
+  "source": "Junction recipe review 2026-11-15 (recipe-reviews/README.md): forms follow the ingredient name or recipe wording; spoon-to-gram conversions from USDA FoodData Central SR Legacy household portions",
+  "recipes": {
+    "spaghetti-carbonara": {
+      "ingredients": {
+        "spaghetti": {"form": "dry"},
+        "guanciale": {"form": "cured"},
+        "yolks": {"form": "raw"},
+        "egg": {"form": "raw"},
+        "pecorino": {"form": "hard cheese"},
+        "pepper": {
+          "form": "ground",
+          "quantity": 2.3,
+          "unit": "g",
+          "note": "coarsely ground. Review: 1 tsp ground black pepper = 2.3 g (USDA FDC SR Legacy, Spices, pepper, black)"
+        }
+      }
+    },
+    "lasagne-alla-bolognese": {
+      "ingredients": {
+        "beef": {"form": "raw minced"},
+        "pork": {"form": "raw minced"},
+        "pancetta": {"form": "cured"},
+        "milk": {"form": "liquid"},
+        "wine": {"form": "dry white"},
+        "tomatopaste": {
+          "form": "concentrated paste",
+          "quantity": 32,
+          "unit": "g",
+          "note": "Review: 2 tbsp tomato paste = 32 g (USDA FDC SR Legacy, Tomato products, canned, paste, 1 tbsp = 16 g)"
+        },
+        "butter": {"form": "butter"},
+        "flour": {"form": "plain wheat flour"},
+        "bechamelmilk": {"form": "liquid"},
+        "parmesan": {"form": "hard cheese"}
+      }
+    }
+  }
+}
