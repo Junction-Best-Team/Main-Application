@@ -405,8 +405,10 @@ def test_tools_use_persisted_plan_and_cannot_publish_edited_totals(
             return session.invoke(name, json.dumps(args))
 
         found = invoke("search_recipes", {"query": "carbonara"})
-        recipe = found["recipes"][0]
-        invoke("get_recipe", {"recipe_id": recipe["recipe_id"], "version": recipe["version"]})
+        recipe = found["best_match"]["recipe"]
+        assert recipe["id"] == found["recipes"][0]["recipe_id"]
+        assert len(recipe["ingredients"]) == 3 and recipe["instructions"]
+        assert found["best_match"]["planning_issues"] == []
         plan = invoke("scale_recipe", dict(versions[0], portions=200))["meal_plan"]
         with pytest.raises(Problem) as error:
             invoke(

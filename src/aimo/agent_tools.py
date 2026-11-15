@@ -223,6 +223,10 @@ class RecipePlanningDetail(RecipeDetail):
     planning_issues: list[dict[str, str]]
 
 
+class RecipePlanningSearchResult(RecipeSearchResult):
+    best_match: RecipePlanningDetail | None
+
+
 class RecipeImageResult(Model):
     """The hosted illustration: its address and size, never dietary, product or purchase evidence."""
 
@@ -429,17 +433,19 @@ class ToolSession:
             {
                 "search_recipes": ToolSpec(
                     FindRecipes,
-                    "Discover recipe summaries (ID, version, title, summary, base servings). "
-                    "No ingredients or instructions; read the selected candidate with get_recipe. "
-                    "Not dietary or purchasing proof.",
-                    lambda r: self.checked(
-                        RecipeSearchResult, self.service.search_recipes(self.identity, r)
-                    ),
-                    RecipeSearchResult,
+                    "Find recipes. best_match contains the full top recipe: all ingredients, "
+                    "quantities, instructions, attribution and planning_issues. Use it directly; "
+                    "do not call get_recipe again for this match. recipes contains ranked "
+                    "summaries; use get_recipe only for an alternative or a specific ID/version. "
+                    "Check planning_issues before scale_recipe. Not dietary or purchasing proof.",
+                    self.recipe_search,
+                    RecipePlanningSearchResult,
                 ),
                 "get_recipe": ToolSpec(
                     ReadRecipe,
-                    "Read full ingredients, quantities, instructions and planning_issues. "
+                    "Read an alternative recipe or a specific ID/version. The full best_match "
+                    "from search_recipes already has these details; do not read it again. "
+                    "Returns full ingredients, quantities, instructions and planning_issues. "
                     "If issues exist, choose an alternative or draft_recipe BEFORE scale_recipe "
                     "selects a saved plan. Empty issues do not prove product suitability.",
                     self.recipe_detail,
@@ -514,6 +520,15 @@ class ToolSession:
                 details={"planning_issues": detail["planning_issues"]},
             )
         return self.save_recipe_result(self.service.scale_recipe(self.identity, request))
+
+    def recipe_search(self, request):
+        result = self.checked(RecipeSearchResult, self.service.search_recipes(self.identity, request))
+        best = result["recipes"][0] if result["recipes"] else None
+        detail = (
+            self.recipe_detail(RecipeReference(recipe_id=best["recipe_id"], version=best["version"]))
+            if best else None
+        )
+        return result | {"best_match": detail}
 
     def recipe_detail(self, request):
         key = (request.recipe_id, request.version)

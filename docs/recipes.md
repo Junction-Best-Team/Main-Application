@@ -7,8 +7,11 @@ before rollout; recipe import remains an explicit operator action.
 
 ## Customer flow
 
-The customer names a meal and guest count. Recipe search returns summaries; the
-assistant reads the best candidate's details before selecting a saved plan. The
+The customer names a meal and guest count. Internal recipe search returns the full
+best match, including all ingredients, quantities, instructions and planning issues,
+alongside ranked summaries. The assistant uses the best match directly; `get_recipe`
+is only needed for an alternative or a specific ID/version. `scale_recipe` retains
+server-owned portion calculations, reusing the inspected recipe details. The
 internal detail tool reports `planning_issues` for missing quantities, unsupported
 scaling/units and unspecified forms. Such candidates are not selected as saved
 plans: the assistant chooses a complete alternative or publishes a labelled

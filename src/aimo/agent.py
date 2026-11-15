@@ -98,10 +98,13 @@ plan or drop its reference to bypass unresolved ingredients. Recipe changes requ
 a new customer message.
 """
 
-RECIPE_PROMPT = """For recipe requests, use search_recipes for ideas or a named dish, then
-get_recipe for the best candidate. Search returns summaries, not ingredients or
-instructions; get_recipe is the detail read, not a second search. Inspect its
-planning_issues before selecting a saved plan with scale_recipe. A recipe with
+RECIPE_PROMPT = """For recipe requests, use search_recipes for ideas or a named dish.
+Its best_match contains the full top recipe, all ingredients, quantities,
+instructions and planning_issues. Use that recipe directly without a get_recipe
+call. Other matches in recipes are summaries: use get_recipe only for an
+alternative or a specific recipe ID/version. Keep scale_recipe separate for
+server-owned portion calculations. Inspect the full candidate's planning_issues
+before selecting a saved plan with scale_recipe. A recipe with
 missing quantities, unsupported scaling/units or unspecified ingredient forms is
 not suitable for the saved-plan workflow. Before selecting it, choose a complete
 alternative or use draft_recipe for a labelled assistant-authored estimate. Do not
