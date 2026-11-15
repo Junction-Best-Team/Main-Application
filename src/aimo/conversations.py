@@ -362,8 +362,8 @@ def customer_constraints(c, cid, tid):
 def restorable_plan(messages):
     """The meal plan the customer last saw and has not yet turned into a basket, else None.
 
-    Only the latest assistant answer counts, and only if it carries a complete plan matched to
-    products and no basket was prepared from it or after it. A plan the conversation has moved
+    Only the latest assistant answer counts, and only if it carries a plain meal plan (matched or
+    partly matched) and no basket was prepared from it or after it. A plan the conversation has moved
     past (a later text answer, a revised ingredient list) is not offered again. The result is
     still re-verified from the catalog by ToolSession.restore_plan.
     """
@@ -376,10 +376,9 @@ def restorable_plan(messages):
         return None
     if not isinstance(plan, dict) or plan.get("recipe_plan_id"):
         return None
-    items = plan.get("ingredients")
-    if not items or any(not i.get("product_id") for i in items):
+    if not plan.get("ingredients"):
         return None
-    return plan
+    return plan  # a partly matched plan too: unmatched items stay unmatched and are not bought
 
 
 @operation("chat.execute", context_arg="turn")

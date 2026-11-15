@@ -320,7 +320,6 @@ def test_restored_products_are_verified_only_for_the_plan_they_came_from(chat, s
     [
         lambda p: p | {"ingredients": p["ingredients"] * 100},  # oversized: 500 ingredients
         lambda p: p | {"ingredients": [dict(p["ingredients"][0], amount="-1")]},
-        lambda p: p | {"ingredients": [dict(p["ingredients"][0], product_id=None)]},
         lambda p: p | {"recipe_plan_id": str(uuid4()), "recipe_plan_revision": 1},
         lambda p: p | {"unexpected": "field"},
         lambda p: "not a plan",
@@ -351,5 +350,74 @@ def test_the_selection_rule_picks_only_the_latest_unprepared_complete_plan():
     )
     assert restorable_plan([user, reply | {"meal_plan": mp | {"recipe_plan_id": "r"}}]) is None
     unmatched = mp | {"ingredients": [dict(mp["ingredients"][0], product_id=None)]}
-    assert restorable_plan([user, reply | {"meal_plan": unmatched}]) is None
+    assert restorable_plan([user, reply | {"meal_plan": unmatched}]) == unmatched  # partly matched
     assert restorable_plan([user]) is None and restorable_plan([]) is None
+
+
+# --- a plan that is only partly matched is restored too (verified for its matched ids only) -----------
+
+
+def partial_plan(unmatched=("pepper",)):
+    p = plan()
+    for item in p["ingredients"]:
+        if item["name"] in unmatched:
+            item["product_id"] = None
+    return p
+
+
+def test_a_partly_matched_plan_is_restored_verified_for_its_matched_products_only(
+    chat, service, buyer
+):
+    from aimo import auth
+    from aimo.agent_tools import ToolSession
+
+    session = ToolSession(auth.internal_agent(buyer) | {"_turn_id": str(uuid4())}, service)
+    assert session.restore_plan(partial_plan()) is True
+    assert set(session.products) == {"meal-" + n for n in NAMES if n != "pepper"}
+    assert [i.product_id for i in session.plan.ingredients][-1] is None  # still unmatched
+
+
+def test_the_unmatched_item_is_not_bought_and_no_basket_appears(chat):
+    first = chat.turn(
+        "200 portions of carbonara", *MATCH,
+        tool_reply(call("publish_meal_plan", partial_plan())), say("Pepper still needs a product."),
+    )  # fmt: skip
+    assert first["draft_cart"] is not None
+    # "yes, order it": the model tries to prepare what the plan holds; pepper has no product yet
+    second = chat.turn("yes, order it", *prepare_only())
+    assert second["purchases"] == [] and shows_draft_panel(second)
+
+
+def test_the_model_finishes_the_matching_and_prepares_in_the_turn_after_a_partial_plan(chat):
+    chat.turn(
+        "200 portions of carbonara", *MATCH,
+        tool_reply(call("publish_meal_plan", partial_plan())), say("Pepper still needs a product."),
+    )  # fmt: skip
+    only_pepper = [
+        tool_reply(call("search_products", {"query": "pepper"})),
+        tool_reply(call("get_product", {"product_id": "meal-pepper"})),
+    ]
+    finished = chat.turn(
+        "yes, order it", *only_pepper,  # the four matched products are NOT searched or read again
+        tool_reply(call("publish_meal_plan", plan())), *prepare_only(),
+    )  # fmt: skip
+    assert len(finished["purchases"]) == 1 and not shows_draft_panel(finished)
+    assert len(finished["purchases"][0]["snapshot"]["lines"]) == 5
+
+
+def test_a_withdrawn_matched_product_stops_a_partial_restore_too(chat):
+    from aimo.db import connection
+
+    chat.turn(
+        "200 portions of carbonara", *MATCH,
+        tool_reply(call("publish_meal_plan", partial_plan())), say("Pepper still needs a product."),
+    )  # fmt: skip
+    with connection() as c:
+        c.execute("DELETE FROM products WHERE id='meal-pork'")
+    only_pepper = [
+        tool_reply(call("search_products", {"query": "pepper"})),
+        tool_reply(call("get_product", {"product_id": "meal-pepper"})),
+    ]
+    data = chat.turn("yes, order it", *only_pepper, tool_reply(call("publish_meal_plan", plan())),
+                     *prepare_only())  # fmt: skip
+    assert data["purchases"] == []  # pork is no longer verified, so the plan cannot be published

@@ -644,7 +644,7 @@ class ToolSession:
         return result
 
     def restore_plan(self, stored):
-        """Re-verify a plan the customer already saw, from the catalog, for exactly its products.
+        """Re-verify a plan the customer already saw, from the catalog, for exactly its matched products.
 
         The stored plan is data from an earlier turn, never trusted: it must validate as a
         plain complete MealPlan, and every product is read again here (no supplier call).
@@ -658,9 +658,8 @@ class ToolSession:
                 return False
             for item in plan.ingredients:
                 TypeAdapter(Amount).validate_python(item.amount)
-            ids = list(dict.fromkeys(i.product_id for i in plan.ingredients))
-            if None in ids or "" in ids:
-                return False
+            # An ingredient without a product stays unmatched; only matched ids are verified.
+            ids = list(dict.fromkeys(i.product_id for i in plan.ingredients if i.product_id))
             found = {}
             for pid in ids:
                 result = self.checked(ProductResponse, self.service.get_product(self.identity, pid))
