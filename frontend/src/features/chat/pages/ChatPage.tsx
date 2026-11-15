@@ -31,6 +31,10 @@ export function ChatPage() {
     messageViewport,
     send,
     busy,
+    queue,
+    queuePaused,
+    removeQueued,
+    sendQueued,
     reload,
   } = useChat(conversationId);
   return (
@@ -167,6 +171,10 @@ export function ChatPage() {
             error={error}
             busy={busy}
             onSubmit={send}
+            queue={queue}
+            queuePaused={queuePaused}
+            onRemoveQueued={removeQueued}
+            onSendQueued={sendQueued}
           />
         </div>
       </div>
