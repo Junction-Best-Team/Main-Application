@@ -157,6 +157,9 @@ Historical cards also hide the old internal “Match a suitable catalog product�
 The transcript rephrases the exact old server-generated unresolved-ingredient list
 as a product-selection count when it matches the stored plan; persisted messages
 and surrounding narrative are preserved.
+Recipe cards omit duplicate generic estimate/required-ingredient notes and keep
+the complete source/license credit in an expandable “Recipe source” disclosure.
+Recipe-specific assumptions and actual ingredient blockers stay visible.
 
 The runner requires inspection after three consecutive product searches and a
 persisted match after three candidate reads on a pending saved plan. It refuses

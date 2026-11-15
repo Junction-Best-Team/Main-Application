@@ -1125,6 +1125,7 @@ test(`recipe plan keeps unresolved ingredients visible beside matched packs`, as
   await expect(plan.getByText("Excess: 1 KG", { exact: false })).toBeVisible();
   await expect(plan.getByText("Buy 4 ST", { exact: true })).toBeVisible();
   await expect(plan.getByText("Excess: 0", { exact: false })).toHaveCount(0);
+  await plan.getByText("Recipe source", { exact: true }).click();
   await expect(plan.getByText("UniTools", { exact: false })).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Review basket and purchasing checks" }),
@@ -2091,6 +2092,12 @@ for (const width of [1440, 390]) {
                 portions: 200,
                 recipe_plan_id: "288c227d-bad7-4eb5-93cd-be6158153d7c",
                 recipe_plan_revision: 1,
+                attribution: "UniTools — theunitools.com / CC BY-SA 4.0",
+                notes: [
+                  "Recipe quantities are estimates for customer review. All source ingredients remain required.",
+                  "Recipe quantities are estimates for customer review.",
+                  "Assumes 200 main-course portions.",
+                ],
                 ingredients: [
                   // Historical plans must not expose the old internal instruction either.
                   {
@@ -2170,6 +2177,27 @@ for (const width of [1440, 390]) {
     await expect(
       plan.getByText("Saved recipe plan", { exact: true }),
     ).toHaveCount(0);
+    await expect(plan).not.toContainText(
+      "All source ingredients remain required.",
+    );
+    await expect(plan).not.toContainText(
+      "Recipe quantities are estimates for customer review.",
+    );
+    await expect(plan).not.toContainText(
+      "Verified quantities and purchasing checks appear in the basket.",
+    );
+    await expect(
+      plan.getByText("Assumes 200 main-course portions.", { exact: true }),
+    ).toBeVisible();
+    const credit = plan.getByText("UniTools — theunitools.com / CC BY-SA 4.0", {
+      exact: true,
+    });
+    await expect(credit).not.toBeVisible();
+    const source = plan.getByText("Recipe source", { exact: true });
+    await source.press("Enter");
+    await expect(credit).toBeVisible();
+    await source.click();
+    await expect(credit).not.toBeVisible();
     await expect(
       page.getByRole("button", {
         name: /Confirm purchase|Approve & Push to Dispatch/,

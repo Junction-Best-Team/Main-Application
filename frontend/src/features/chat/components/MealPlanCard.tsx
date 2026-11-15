@@ -1,5 +1,11 @@
 import type { MealPlan } from "../../../shared/api/types";
 
+const boilerplateNotes = new Set([
+  "Recipe quantities are estimates for customer review. All source ingredients remain required.",
+  "Recipe quantities are estimates for customer review.",
+  "Recipe quantities are estimates.",
+]);
+
 function ingredientIssue(ingredient: MealPlan["ingredients"][number]) {
   if (ingredient.amount == null)
     return "Quantity needs verification before purchasing.";
@@ -63,17 +69,18 @@ export function MealPlanCard({ plan }: { plan: MealPlan }) {
         ))}
       </ul>
       {plan.attribution && (
-        <p className="text-body-sm text-secondary">{plan.attribution}</p>
+        <details className="text-body-sm text-secondary">
+          <summary className="cursor-pointer">Recipe source</summary>
+          <p className="mt-2">{plan.attribution}</p>
+        </details>
       )}
-      {(plan.notes ?? []).map((note, i) => (
-        <p className="text-body-sm text-secondary" key={i}>
-          {note}
-        </p>
-      ))}
-      <p className="text-body-sm text-secondary">
-        Recipe quantities are a proposal. Verified quantities and purchasing
-        checks appear in the basket.
-      </p>
+      {(plan.notes ?? [])
+        .filter((note) => !boilerplateNotes.has(note.trim()))
+        .map((note, i) => (
+          <p className="text-body-sm text-secondary" key={i}>
+            {note}
+          </p>
+        ))}
     </section>
   );
 }

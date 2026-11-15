@@ -326,6 +326,10 @@ versioned matching, provider-failure retry flow and authored catalog/recipe/brow
 fixtures. No external recipe data, generated assets, new dependency or live
 supplier/model calls were used for this fix. Orders remain mocks.
 
+Recipe-card copy follow-up (2026-11-15): reused native disclosure controls and the
+existing attribution/notes fields; no new material or dependency. Source credit
+is retained, and only known duplicate boilerplate is omitted from presentation.
+
 Sidebar divider follow-up (2026-11-15): reused the existing shell and border token;
 no new dependencies, assets or external material.
 
