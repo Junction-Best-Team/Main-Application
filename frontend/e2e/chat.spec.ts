@@ -929,9 +929,7 @@ test("Home does not restore the accepted first message while Aimo is working", a
   await page.getByLabel("Your meal or purchasing request").fill(text);
   await page.getByRole("button", { name: "Send Order Request" }).click();
   await expect(page).toHaveURL(new RegExp(`/conversations/${conversationId}$`));
-  await expect(
-    page.getByText("Press Escape to cancel", { exact: false }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
   const composer = page.getByLabel("Continue the conversation");
   await expect(composer).toHaveValue("");
   release();
@@ -945,9 +943,7 @@ test("Home does not restore the accepted first message while Aimo is working", a
     .toBeNull();
   await expect(composer).toHaveValue("");
   await page.reload();
-  await expect(
-    page.getByText("Press Escape to cancel", { exact: false }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
   await expect(composer).toHaveValue("");
   expect(posted).toEqual([text]);
 });
@@ -994,7 +990,8 @@ test("messages typed while Aimo works queue above the composer and send in order
   await composer.fill("Add a vegetarian option");
   await composer.press("Enter");
   await composer.fill("Never mind this one");
-  await page.getByRole("button", { name: "Queue message" }).click();
+  await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
+  await composer.press("Enter");
   await expect(composer).toBeFocused();
   const queued = page.getByRole("list", { name: "Queued messages" });
   await expect(queued.getByRole("listitem")).toContainText([
@@ -1214,10 +1211,7 @@ test("unfinished server turns restore the request and retry key on another brows
   await expect(page.getByRole("alert")).toHaveText(
     "The response was interrupted. Retry this request to continue.",
   );
-  await expect(
-    page.getByText("Your draft is ready to send again."),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Retry request" }).click();
+  await page.getByRole("button", { name: "Retry" }).click();
   await expect(page.getByText("Your saved request resumed.")).toBeVisible();
   expect(payload).toEqual(retry);
 });
@@ -1278,10 +1272,7 @@ test("an interrupted turn arriving through SSE restores the persisted retry acti
   await expect(page.getByRole("alert")).toHaveText(
     "The response was interrupted. Retry this request to continue.",
   );
-  await expect(
-    page.getByText("Your draft is ready to send again."),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Retry request" }).click();
+  await page.getByRole("button", { name: "Retry" }).click();
   await expect(page.getByText("The interrupted turn resumed.")).toBeVisible();
   expect(payload).toEqual(retry);
 });
@@ -2175,7 +2166,7 @@ test("failed worker retry restores attachments after refresh and retains the exa
   await expect(page.getByText("menu.txt", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByText("menu.txt", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Retry request" }).click();
+  await page.getByRole("button", { name: "Retry" }).click();
   await expect.poll(() => posted).toEqual(retry);
 });
 
@@ -2462,7 +2453,7 @@ test("home retains the draft and creation key after a failed start", async ({
   await page.getByRole("button", { name: "Send Order Request" }).click();
   await expect(page.getByRole("alert")).toContainText("Try again shortly.");
   await expect(input).toHaveValue("Restock milk for Monday");
-  await page.getByRole("button", { name: "Retry request" }).click();
+  await page.getByRole("button", { name: "Retry" }).click();
   await expect(page.getByRole("alert")).toContainText("Try again shortly.");
   expect(keys).toHaveLength(2);
   expect(keys[0]).toBe(keys[1]);

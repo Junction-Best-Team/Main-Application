@@ -425,7 +425,7 @@ test("a failed voice submission restores text and keeps its retry key", async ({
   await expect(
     page.getByRole("textbox", { name: "Continue the conversation" }),
   ).toHaveValue("Carbonara for 200 people.");
-  await page.getByRole("button", { name: "Retry request" }).click();
+  await page.getByRole("button", { name: "Retry" }).click();
   await expect.poll(() => mock.sent.length).toBe(2);
   expect(mock.sent[1].idempotency_key).toBe(mock.sent[0].idempotency_key);
 });
