@@ -12,6 +12,8 @@ exec .venv/bin/pytest -q -x --durations=5 \
   tests/test_conversations.py \
   tests/test_worker.py \
   tests/test_agent_integration.py \
+  tests/test_agent_parallel.py \
+  tests/test_agent_recovery_integration.py \
   tests/test_isolation.py \
   tests/test_migrations.py \
   tests/test_runtime_permissions.py \

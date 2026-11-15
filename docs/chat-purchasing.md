@@ -59,3 +59,30 @@ unsure). It is stored with a closed turn keyed by the order, so a replay, a revi
 nothing, no model is called and no error text is shown. The model's history leaves it out (the order state
 comes from the persisted purchasing state). A scheduled run's own commit writes none. Later fulfilment changes
 show on the order card and receipt, not in the chat. Code: `order_notice.py`, `conversations.store_confirmation_line`.
+
+## Bounded parallel reads and interrupted planning
+
+The harness executes independent catalog/product/policy/recipe reads from one model
+response in groups of at most four. Each read owns isolated caches; successful results
+are applied in model order. Plan changes, matching, supplier lookups, memory changes,
+images and basket preparation remain ordered barriers. Cancellation/reclaim fences
+cache updates; late reads cannot publish progress or change the live session.
+
+Product search defaults to three candidates and inspects the first three with the
+existing catalog reader. These include the same bounded, screened evidence as
+`get_product`; the turn reuses those facts and identical searches. Additional results
+remain discovery summaries. Inspection never proves recipe suitability, selects a
+product, grants purchasing authority or replaces fresh preparation/confirmation checks.
+
+Saved recipe blockers that need reviewed quantities/forms/scaling or suitability/count/
+conversion evidence end the turn with the unresolved plan instead of more catalog
+searches. Absent/withdrawn products remain searchable. The underlying recipe evidence
+requirements are unchanged.
+
+The 90-second turn limit is unchanged. Changed plans are reviewed before display even
+without a UI observer. On a later provider failure or timeout, the last approved plan
+is saved as a partial answer and the customer can continue with a new message. Later
+unreviewed/rejected changes are withheld. If no reviewed progress exists, the ordinary
+failed-turn retry remains; timeouts use a specific fixed notice in the customer's
+language. Native Google transport timeouts retain `LLM_TIMEOUT` instead of being
+reported as generic unavailability.

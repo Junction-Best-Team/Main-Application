@@ -543,7 +543,7 @@ def test_tool_error_described_as_success_is_not_shown(monkeypatch, config, guard
     scripted(monkeypatch, script + [reply(text="Your basket was prepared successfully.")])
     result = run(identity, service)
     assert result.text == OUTPUT_FALLBACK and result.meal_plan is None
-    records = next(s["state"] for s in seen if s["boundary"] == "assistant_output")
+    records = [s["state"] for s in seen if s["boundary"] == "assistant_output"][-1]
     assert {"tool": "prepare_order", "outcome": "SUPPLIER_DOWN"} in records["trusted_records"][
         "tool_calls"
     ]
@@ -576,7 +576,9 @@ def test_fake_approval_without_records_and_oversized_reply(monkeypatch, config, 
     )
     result = run(identity, FakeService(identity))
     assert result.text == OUTPUT_FALLBACK and result.meal_plan is None
-    assert "assistant_output" not in [s["boundary"] for s in seen]
+    # The plan alone is reviewed for recoverable progress. Oversized final prose is
+    # refused locally, without a second classifier request.
+    assert [s["boundary"] for s in seen].count("assistant_output") == 1
 
 
 def test_guard_state_has_no_credentials_or_identifiers(monkeypatch, config, guard, identity):
@@ -1022,8 +1024,8 @@ def test_plan_without_basket_is_withheld_and_shadow_keeps_it(monkeypatch, config
     assert run(identity, FakeService(identity)).meal_plan is not None
 
 
-@pytest.mark.parametrize("mode,visible", [("enforce", False), ("shadow", True)])
-def test_unreviewed_plan_is_withheld_when_the_turn_ends_early(
+@pytest.mark.parametrize("mode,visible", [("enforce", True), ("shadow", True)])
+def test_reviewed_plan_survives_when_the_turn_ends_early(
     monkeypatch, config, guard, identity, mode, visible
 ):
     guard.guardrail_mode = mode
@@ -1236,3 +1238,18 @@ def test_streamed_draft_waits_for_review_before_showing_free_form_plan(monkeypat
     assert all(e.draft is None for e in events if e.tool == "get_product")
     assert result.proposal_id is None
     assert len([s for s in seen if s["boundary"] == "assistant_output"]) == 2  # Draft, then final prose.
+
+
+def test_timeout_recovers_last_reviewed_plan_and_never_later_rejected_text(
+    monkeypatch, config, guard, identity
+):
+    fake_jev(monkeypatch, false_status=paid)
+    scripted(monkeypatch, [
+        reply(call("publish_meal_plan", meal(False))),
+        reply(call("publish_meal_plan", meal(False) | {"notes": ["Order paid and placed."]})),
+        Problem("LLM_TIMEOUT", "synthetic timeout", 504),
+    ])
+    result = run(identity, FakeService(identity))
+    assert result.meal_plan is not None
+    assert result.meal_plan.notes == meal(False)["notes"]
+    assert "Order paid and placed" not in result.text + str(result.meal_plan)
