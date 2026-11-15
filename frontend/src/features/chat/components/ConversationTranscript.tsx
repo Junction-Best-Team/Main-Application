@@ -11,9 +11,12 @@ import { SystemMessage } from "./SystemMessage";
 export function ConversationTranscript({
   conversation,
   busy,
+  onReviewBasket,
 }: {
   conversation: Conversation | null;
   busy: boolean;
+  /** Opens the existing Overview / purchase handoff for this proposal. */
+  onReviewBasket?: (proposalId: string) => void;
 }) {
   return (
     <div
@@ -65,11 +68,34 @@ export function ConversationTranscript({
                 )}
                 {message.meal_plan && <MealPlanCard plan={message.meal_plan} />}
                 {message.proposal_id && (
-                  <SkuCards
-                    proposal={conversation.purchases.find(
-                      (p) => p.proposal_id === message.proposal_id,
-                    )}
-                  />
+                  <>
+                    <SkuCards
+                      proposal={conversation.purchases.find(
+                        (p) => p.proposal_id === message.proposal_id,
+                      )}
+                    />
+                    {onReviewBasket &&
+                      conversation.purchases.some(
+                        (p) =>
+                          p.proposal_id === message.proposal_id &&
+                          p.order_status !== "accepted_mock",
+                      ) && (
+                        <div className="mt-space-md flex flex-col items-start gap-space-xs">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onReviewBasket(message.proposal_id!)
+                            }
+                            className="rounded-lg bg-primary-container px-space-md py-space-sm font-label text-label-md font-bold text-on-primary transition-colors hover:bg-deep-ocean-navy focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container"
+                          >
+                            Review basket to confirm
+                          </button>
+                          <p className="text-label-sm text-secondary">
+                            Sending chat never places an order.
+                          </p>
+                        </div>
+                      )}
+                  </>
                 )}
               </div>
               <MessageByline who="Aimo" at={message.created_at} />
