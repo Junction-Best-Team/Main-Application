@@ -249,6 +249,7 @@ def prepare_from_cart(identity, cid, body, service):
                 409,
                 3,
             )
+        refuse_if_ordered(c, cid)
         limits = customer_constraints(c, cid)
     stored = cart_plan(messages)
     tid = uuid4()
@@ -273,6 +274,48 @@ def latest_terms(c, cid):
         WHERE m.conversation_id=%s ORDER BY m.id DESC LIMIT 1""",
         (cid,),
     ).fetchone()
+
+
+def placed_order(c, cid):
+    """The order id if the conversation's CURRENT cart was already ordered, else None.
+
+    The current cart is the latest stored plan. It is ordered when the latest basket has an order and no
+    newer plan was stored after that basket (a new plan is a new customer request, a new cart)."""
+    row = c.execute(
+        """SELECT m.id AS message_id, p.order_id FROM conversation_messages m
+        JOIN proposals p ON p.id=m.proposal_id
+        WHERE m.conversation_id=%s ORDER BY m.id DESC LIMIT 1""",
+        (cid,),
+    ).fetchone()
+    if not row or not row["order_id"]:
+        return None
+    newer = c.execute(
+        "SELECT 1 FROM conversation_messages WHERE conversation_id=%s AND id>%s AND meal_plan IS NOT NULL",
+        (cid, row["message_id"]),
+    ).fetchone()
+    return None if newer else row["order_id"]
+
+
+def refuse_if_ordered(c, cid):
+    order_id = placed_order(c, cid)
+    if order_id:
+        raise Problem(
+            "BASKET_ALREADY_ORDERED",
+            "This order was already placed. Start a new request for another order.",
+            409,
+            details={"order_id": str(order_id)},
+        )
+
+
+def plan_signature(plan_data):
+    """What a cart holds, for comparing two stored plans: (name, product, amount, unit) per item."""
+    try:
+        return sorted(
+            (i["name"], i.get("product_id"), str(i.get("amount")), i["unit"])
+            for i in plan_data["ingredients"]
+        )
+    except (KeyError, TypeError):
+        return None
 
 
 def terms_for(latest, policy):
@@ -319,6 +362,17 @@ def auto_prepare(identity, cid, tid, result, service):
             _, policy, _, _ = context(c, identity)
             limits = customer_constraints(c, cid, tid)
             latest = latest_terms(c, cid)
+            ordered = placed_order(c, cid)
+            current = c.execute(
+                "SELECT meal_plan FROM conversation_messages WHERE conversation_id=%s AND meal_plan IS NOT NULL ORDER BY id DESC LIMIT 1",
+                (cid,),
+            ).fetchone()
+        if ordered and (
+            not current or plan_signature(current["meal_plan"]) == plan_signature(stored)
+        ):
+            return (
+                None  # the cart that was ordered: no second basket (a changed plan is a new cart)
+            )
         when, destination = terms_for(latest, policy)
         if not stored.get("recipe_plan_id"):
             plan = MealPlan.model_validate(stored)
@@ -402,6 +456,7 @@ def edit_cart(identity, cid, body, service):
         ).fetchone()
         if unfinished:
             raise Problem("CONVERSATION_BUSY", "A response is in progress.", 409, 3)
+        refuse_if_ordered(c, cid)
         limits = customer_constraints(c, cid)
         latest = latest_terms(c, cid)
     stored = cart_plan(messages)

@@ -20,3 +20,9 @@ One prepare = two sequential supplier requests (price and availability, up to 10
 
 ## Saved recipe plans
 The first prepare works. The plan is then locked (`RECIPE_PLAN_LOCKED`), so edits need a new request until the owner decides Q-126. The proposal's `recipe_basis` is `saved_recipe` for such a basket.
+
+## Number edits on the card (PUT /api/conversations/{id}/cart)
+Body `{request_id, lines:[{product_id, sales_quantity}]}`: whole sales units (packs) of products that are already in the stored cart (`ITEM_NOT_IN_CART` otherwise). The server converts packs to the plan's unit from catalog evidence, stores the edited plan as the newest assistant message together with a customer line ("I changed the cart on the card: ..."), prepares the basket again (older open basket cancelled atomically) and returns `{proposal, not_included}`. 0 keeps the product in the plan at amount "0" (left out of the basket, listed as `removed`); a value above 0 brings it back. The assistant sees the customer line and the stored plan with the new amounts, and is told never to undo a customer edit; `publish_meal_plan` accepts a carried-through "0" and `prepare_order` skips it. Saved-recipe carts: `422 RECIPE_BASKET_LOCKED` until the owner decides Q-126. `GET conversation` has `cart_editable` and `cart_edit_reason`.
+
+## After an order
+When the conversation's current cart (its latest stored plan) already has an order, `prepare-from-cart` and `PUT /cart` return `409 BASKET_ALREADY_ORDERED` (details.order_id), the automatic prepare does nothing for that plan, and `cart_editable` is false with "This order was already placed." A new plan (a new customer request) starts a new cart. The original press can still be replayed and returns its basket.

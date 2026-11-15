@@ -22,11 +22,22 @@ RECIPE_LOCKED_REASON = (
 )
 
 
-def cart_edit_state(messages):
-    """(editable, reason) for the number controls on the card, from the latest stored plan."""
-    plan = next((m["meal_plan"] for m in reversed(messages) if m["meal_plan"]), None)
-    if not plan:
+def cart_edit_state(messages, ordered=frozenset()):
+    """(editable, reason) for the number controls on the card, from the latest stored plan.
+    `ordered`: ids of baskets that have an order; the cart is closed when its latest basket is one."""
+    plan_at = next((i for i in range(len(messages) - 1, -1, -1) if messages[i]["meal_plan"]), None)
+    if plan_at is None:
         return False, "Add items to the cart first."
+    basket_at = next(
+        (i for i in range(len(messages) - 1, -1, -1) if messages[i]["proposal_id"]), None
+    )
+    if (
+        basket_at is not None
+        and plan_at <= basket_at
+        and str(messages[basket_at]["proposal_id"]) in ordered
+    ):
+        return False, "This order was already placed."
+    plan = messages[plan_at]["meal_plan"]
     if isinstance(plan, dict) and plan.get("recipe_plan_id"):
         return False, RECIPE_LOCKED_REASON
     return True, None
@@ -131,6 +142,7 @@ def detail(identity, cid, *, internal=False):
         ).fetchone()
     pids = list(dict.fromkeys(str(m["proposal_id"]) for m in messages if m["proposal_id"]))
     purchases = [workflow.get_proposal(identity, pid) for pid in pids]
+    ordered = {p["proposal_id"] for p in purchases if p["order_id"]}
     draft_cart = draft["draft_cart"] if draft else None
     if draft_cart:
         # Persisted quotes may have expired since the worker checked them.
@@ -163,8 +175,8 @@ def detail(identity, cid, *, internal=False):
         "purchases": purchases,
         "busy": busy,
         "draft_cart": draft_cart,
-        "cart_editable": cart_edit_state(messages)[0],
-        "cart_edit_reason": cart_edit_state(messages)[1],
+        "cart_editable": cart_edit_state(messages, ordered)[0],
+        "cart_edit_reason": cart_edit_state(messages, ordered)[1],
         "activity": {"turn_id": str(turn["id"]), "state": state, "events": turn["progress"]}
         if turn
         else None,
