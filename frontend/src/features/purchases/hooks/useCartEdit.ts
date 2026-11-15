@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef } from "react";
-import { ApiError } from "../../../shared/api/client";
+import { ApiError, type ErrorDebug } from "../../../shared/api/client";
 import type { Proposal } from "../../../shared/api/types";
 import { newIdempotencyKey } from "../../../shared/lib/idempotency";
 import { useAuth } from "../../auth/useAuth";
@@ -41,6 +41,7 @@ type Store = {
   answer: Proposal | null;
   updating: boolean;
   error: string;
+  errorDebug?: ErrorDebug;
   note: string;
 };
 
@@ -159,7 +160,7 @@ export function useCartEdit({
       attempt.current = { signature, id: newIdempotencyKey() };
     inflight.current = true;
     const before = shownRef.current;
-    change({ updating: true, error: "", note: "" });
+    change({ updating: true, error: "", errorDebug: undefined, note: "" });
     let failed = false;
     try {
       const result = await editCart(auth.csrf_token, cid, {
@@ -206,7 +207,10 @@ export function useCartEdit({
       failed = true;
       if (e instanceof ApiError && e.status === 401)
         callbacks.current.setSession(null);
-      change({ error: editErrorMessage(e) });
+      change({
+        error: editErrorMessage(e),
+        errorDebug: e instanceof ApiError ? e.debug : undefined,
+      });
     } finally {
       inflight.current = false;
       if (!failed && timer.current === undefined && dirtyLines().length > 0)
@@ -324,6 +328,7 @@ export function useCartEdit({
     retry,
     updating: s.updating,
     error: s.error,
+    errorDebug: s.errorDebug,
     invalid,
     flagged,
     note: s.note,

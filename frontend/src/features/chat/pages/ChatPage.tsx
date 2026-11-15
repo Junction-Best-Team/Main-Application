@@ -25,6 +25,7 @@ export function ChatPage() {
     attachments,
     setAttachments,
     error,
+    errorDebug,
     loading,
     reconnecting,
     messageViewport,
@@ -75,7 +76,7 @@ export function ChatPage() {
               Demo ordering only. No real supplier orders or stock reservations.
               Signed in as {session?.buyer_id}.
             </p>
-            <ErrorMessage message={error} />
+            <ErrorMessage message={error} debug={errorDebug} />
             {loading && <p role="status">Loading your conversation…</p>}
             {!conversationId && (
               <div className="flex flex-col items-start gap-space-sm rounded-xl bg-surface-container-low p-space-md">

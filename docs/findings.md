@@ -1154,7 +1154,45 @@ Add new findings below, under your track heading.
 
 - Date: 2026-11-15. At the owner's request, replaced the generic “Thinking…” fallback with the latest server-authored activity label. Completed/failed tools retain their label and outcome between calls; the next active tool replaces it. The expandable step count/history is retained, including 15-step histories.
 - Verification: frontend `npm run check` and all six fixture-backed `chat-activity.spec.ts` browser checks passed. Covered initial request checking, completed/failed steps between calls, streamed next steps, finishing, interruptions, refresh, reduced motion and 1440/390/320px layouts; desktop/390px screenshots inspected. No backend/schema changes or live provider calls. No merge or deployment.
+
 ### F-SIDEBAR-001: Restore the sidebar divider
 
 - Date: 2026-11-15. Added a full-height 1px right border to the desktop sidebar using the existing `border-subtle` token, matching the header separator.
 - Verification: frontend `npm run check` and both fixture-backed `minimal Home and navigation work` Playwright checks passed at 1440/390px; screenshots inspected. No merge or deployment.
+
+
+### F-COMPOSER-ATTACHMENT-001: Remove the paperclip button
+
+- Date: 2026-11-15. Removed the owner-identified attachment button and its unused file picker from chat. Drag/drop and paste retain attachment previews, limits, removal and file-only submission; attachment instructions now describe those entry points.
+- Verification: frontend `npm run check` and all 53 fixture-backed `chat.spec.ts` / `conversation.spec.ts` browser checks passed on a dedicated worktree server. Desktop/320px composer screenshots inspected. An initial browser run hit another worktree's occupied port and was discarded; the dedicated-server rerun passed. No backend/API changes, merge or deployment.
+
+### F-NAV-REQUESTS-001: Keep expanded conversations inside Requests
+
+- Date: 2026-11-15. Moved the expanded Recent list from the bottom of navigation into its Requests parent, before Schedule and Orders. Indentation and a bounded scrolling area keep long histories grouped and the following navigation reachable on desktop and mobile; pagination, errors and collapse controls stay together.
+- Verification: frontend `npm run check` and four focused fixture-backed Playwright checks passed at 1440/390px. Covered 31 requests, ordering/indentation, internal scrolling, collapse/reopen, loading older records, selection and mobile-menu dismissal; desktop/mobile screenshots inspected. No backend/schema changes, merge or deployment.
+
+### F-PAST-ORDERS-HEADER-001: Simplify the order-history header
+
+- Date: 2026-11-15. Implemented the owner's revised mockup: removed the customer-account badge, reduced title/vertical spacing, and aligned an outlined refresh button with the heading. Mobile stacks the heading and button. Removed the unused account placeholder.
+- Verification: frontend `npm run check` and all 24 fixture-backed `orders.spec.ts` / `purchases.spec.ts` checks passed on a dedicated worktree server. Inspected desktop/390px screenshots; checked 1440/390/320px layouts for absent account labels, visible keyboard focus and no horizontal overflow. No backend/API changes or live supplier calls.
+
+### F-COMPOSER-COLORS-001: Consistent voice and send actions
+
+- Date: 2026-11-15. Unified the home/chat voice and send buttons around the existing lime background and navy icon, including hover, focus and disabled styles. Both send buttons use the same upward arrow; removed unused home-only action styles.
+- Verification: frontend `npm run check` and seven focused fixture-backed Playwright home/navigation and composer checks passed across 1440/1024/390/320px layouts. Browser color checks confirmed matching normal/hover/icon colors for both actions on home/chat at 1440/390px; desktop/mobile screenshots inspected. No backend/API changes or live provider calls.
+
+
+### F-HOME-003: Fit the homepage into laptop viewports
+
+- Date: 2026-11-15. Replaced the large viewport-based top padding with automatic vertical centering and height-responsive gaps. Reused the existing homepage/composer styling; the heading, input, scheduled deliveries and demo notice fit without page scrolling at laptop sizes. Short phone screens can still scroll to every schedule and the demo notice.
+- Verification: reproduced the original overflow at 1366×656 before the fix. Frontend `npm run check` and 21 focused fixture-backed Playwright checks passed, including empty/three-schedule layouts at 1280×600, 1366×656, 1440×768 and 1512×800, mobile navigation, attachments, submission and retry. Inspected laptop and phone screenshots. No backend/API changes, merge or deployment.
+
+### F-SIDEBAR-ACCOUNT-001: Move account options to the sidebar footer
+
+- Date: 2026-11-15. Added an Account trigger at the bottom of desktop navigation and the mobile drawer. Its upward-opening popup retains Account Settings, Memory and Sign out. Removed the desktop navbar and the mobile header account icon; the mobile navigation opener remains. Homepage height now fills the desktop viewport.
+- Verification: frontend `npm run check` passed. All 82 fixture-backed checks in `settings.spec.ts`, `preferences.spec.ts`, `session.spec.ts`, `chat.spec.ts` and `conversation.spec.ts` passed on a dedicated worktree server. After adding short-screen and mobile sign-out coverage, all 19 settings/session checks passed (85 distinct checks overall). Covered footer placement, upward popup bounds at 320–1440px and short heights, keyboard focus/Escape, dismissal, same-route mobile drawer closing, authenticated sign-out, chat scrolling and existing exact-revision purchasing controls. Desktop and short-mobile screenshots inspected. After incorporating the concurrent composer-style change from develop, `npm run check` and 17 focused navigation/composer/settings/session checks passed again. No live backend/provider/supplier calls, PR merge or deployment.
+
+### F-RECIPE-REVIEW-001: Reviewed forms and spoon conversions for Carbonara and Lasagne
+
+- Date: 2026-11-15. The UniTools v2.0.0 source (SHA-256 verified) stores both recipes faithfully; import loses nothing. Across all 501 recipes no ingredient has a form, 1,956 use `damped` scaling without a formula, 828 use tsp/tbsp and 478 are "to taste"/pinch, so no saved recipe can currently reach a basket. Added `recipe-reviews/unitools-v2.0.0.json` with sourced forms and USDA spoon-to-gram conversions only.
+- Verification: imported into a local copy of the full 501-recipe fixture-embedding database (`embedded 2, reused 499`; originals retained). At 200 portions Carbonara resolves 5 of 7 lines (pepper scaling and salt quantity still need a decision) and Lasagne 10 of 14 (soffritto split, stock form, sheet form, nutmeg). Product evidence is still required for every line. Not imported into the shared DigitalOcean database: its access had expired. No live supplier calls, merge or deployment.

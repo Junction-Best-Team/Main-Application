@@ -66,7 +66,6 @@ function ConversationSubList({
 }) {
   return (
     <ul
-      id="nav-conversations"
       aria-label="Conversations"
       className="m-0 flex list-none flex-col gap-1 px-space-sm py-space-xs"
     >
@@ -158,35 +157,41 @@ function NavLinks({
                 />
               </button>
             </div>
+            {conversations.expanded && (
+              <div
+                id="nav-conversations"
+                className="ml-space-lg max-h-[min(24rem,40dvh)] overflow-y-auto overscroll-contain border-l border-border-subtle"
+              >
+                <p className="mb-space-xs mt-space-sm px-space-md text-body-sm text-secondary">
+                  Recent
+                </p>
+                <ConversationSubList
+                  items={conversations.items}
+                  pathname={pathname}
+                  onNavigate={onNavigate}
+                />
+                {conversations.hasMore && (
+                  <button
+                    className="mx-space-md my-space-xs text-label-sm"
+                    onClick={conversations.loadMore}
+                    disabled={conversations.loading}
+                  >
+                    Load older conversations
+                  </button>
+                )}
+                {conversations.error && (
+                  <p
+                    role="alert"
+                    className="px-space-md text-body-sm text-error"
+                  >
+                    {conversations.error}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         );
       })}
-      {conversations.expanded && (
-        <>
-          <p className="mb-space-xs mt-space-xl px-space-md text-body-sm text-secondary">
-            Recent
-          </p>
-          <ConversationSubList
-            items={conversations.items}
-            pathname={pathname}
-            onNavigate={onNavigate}
-          />
-          {conversations.hasMore && (
-            <button
-              className="mx-space-md my-space-xs text-label-sm"
-              onClick={conversations.loadMore}
-              disabled={conversations.loading}
-            >
-              Load older conversations
-            </button>
-          )}
-          {conversations.error && (
-            <p role="alert" className="px-space-md text-body-sm text-error">
-              {conversations.error}
-            </p>
-          )}
-        </>
-      )}
     </nav>
   );
 }
@@ -209,15 +214,10 @@ function Sidebar({ conversations }: { conversations: ConversationNav }) {
         </Link>
         <NavLinks conversations={conversations} />
       </div>
+      <div className="shrink-0 px-space-sm pt-space-sm">
+        <UserMenu />
+      </div>
     </aside>
-  );
-}
-
-function DesktopHeader() {
-  return (
-    <header className="sticky top-0 z-40 hidden h-16 shrink-0 items-center justify-end gap-space-md border-b border-border-subtle bg-surface/80 px-margin backdrop-blur-xl md:flex">
-      <UserMenu />
-    </header>
   );
 }
 
@@ -252,7 +252,6 @@ function MobileTopBar({
           </span>
         </Link>
       </div>
-      <UserMenu />
     </header>
   );
 }
@@ -270,6 +269,7 @@ function MobileMenu({
       'button[aria-controls="mobile-menu"]',
     );
     const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
       if (event.key === "Escape") {
         event.preventDefault();
         onClose();
@@ -308,10 +308,10 @@ function MobileMenu({
         role="dialog"
         aria-modal="true"
         aria-label="Menu"
-        className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col justify-between overflow-y-auto bg-workspace-panel shadow-level-3"
+        className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-workspace-panel shadow-level-3"
       >
-        <div className="flex flex-col">
-          <div className="flex h-16 items-center justify-between px-space-md">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <div className="flex h-16 shrink-0 items-center justify-between px-space-md">
             <Wordmark className="text-[1.75rem]" />
             <button
               type="button"
@@ -324,6 +324,9 @@ function MobileMenu({
             </button>
           </div>
           <NavLinks conversations={conversations} onNavigate={onClose} />
+        </div>
+        <div className="shrink-0 p-space-sm pb-space-md">
+          <UserMenu onNavigate={onClose} />
         </div>
       </div>
     </div>
@@ -355,7 +358,6 @@ export function AppShell() {
       <div
         className={`flex min-w-0 flex-col md:pl-60 ${isChat ? "h-dvh overflow-hidden" : ""}`}
       >
-        <DesktopHeader />
         <MobileTopBar
           menuOpen={menuOpen}
           onOpenMenu={() => setMenuOpen(true)}

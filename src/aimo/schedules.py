@@ -26,6 +26,7 @@ from aimo.schemas import PurchaseRequest
 PAGE_OF_RUNS = 20
 # Dates and the recipe link do not belong to a standing order; `constraints` is a server-only key of
 # a stored request (the limits of that one purchase) and is not accepted by PrepareRequest.
+REVIEWED_COUNT = "reviewed_ingredient_count_per_sales_unit"  # catalog.per_sales_for's basis
 NOT_A_SCHEDULE_DATE = (
     "request_id",
     "delivery_date",
@@ -63,7 +64,7 @@ def pct(value):
 
 def source_order(c, identity, order_id):
     row = c.execute(
-        """SELECT o.id,o.created_at,r.request FROM orders o
+        """SELECT o.id,o.created_at,r.request,r.snapshot FROM orders o
         JOIN proposal_revisions r ON r.proposal_id=o.proposal_id AND r.revision=o.revision
         WHERE o.id=%s AND o.buyer_id=%s""",
         (order_id, identity["buyer_id"]),
@@ -79,10 +80,32 @@ def reorder_request(order):
     A recipe-backed prepare would attach to the already ordered proposal and a recipe request
     forbids per-line contributions, so a standing order is always a free-form basket."""
     request = {k: v for k, v in order["request"].items() if k not in NOT_A_SCHEDULE_DATE}
+    resolved = {
+        line["product_id"]: line["quantity"]
+        for line in (order.get("snapshot") or {}).get("lines", [])
+    }
     request["lines"] = [
-        {k: v for k, v in line.items() if k != "substitutes_for"} for line in request["lines"]
+        packs_if_counted(
+            {k: v for k, v in line.items() if k != "substitutes_for"},
+            resolved.get(line["product_id"]),
+        )
+        for line in request["lines"]
     ]
     return request
+
+
+def packs_if_counted(line, quantity):
+    """A count ("20 piece") converts to packs only through the reviewed recipe evidence bound to the
+    recipe plan, which a free-form standing order does not carry. The customer's order already
+    resolved it, so the reorder repeats those packs: their sales quantity in the sales unit."""
+    if (
+        quantity
+        and REVIEWED_COUNT in (quantity.get("basis") or [])
+        and quantity.get("sales_quantity")
+        and quantity.get("sales_unit")
+    ):
+        return line | {"amount": str(quantity["sales_quantity"]), "unit": quantity["sales_unit"]}
+    return line
 
 
 def delivery_offset(order):

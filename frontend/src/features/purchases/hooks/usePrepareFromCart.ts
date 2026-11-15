@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ApiError } from "../../../shared/api/client";
+import { ApiError, type ErrorDebug } from "../../../shared/api/client";
 import type { Proposal } from "../../../shared/api/types";
 import { newIdempotencyKey } from "../../../shared/lib/idempotency";
 import { useAuth } from "../../auth/useAuth";
@@ -18,6 +18,7 @@ export function usePrepareFromCart(
   const { session } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [errorDebug, setErrorDebug] = useState<ErrorDebug | undefined>();
   const key = useRef<{ signature: string; value: string } | null>(null);
   async function prepare(
     delivery: { date: string; destination: string },
@@ -33,6 +34,7 @@ export function usePrepareFromCart(
       key.current = { signature: sig, value: newIdempotencyKey() };
     setBusy(true);
     setError("");
+    setErrorDebug(undefined);
     try {
       const result = await prepareFromCart(session.csrf_token, conversationId, {
         delivery_date: delivery.date,
@@ -43,9 +45,10 @@ export function usePrepareFromCart(
       onPrepared?.(result.proposal);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : CART_COPY.prepareFailed);
+      setErrorDebug(e instanceof ApiError ? e.debug : undefined);
     } finally {
       setBusy(false);
     }
   }
-  return { prepare, busy, error };
+  return { prepare, busy, error, errorDebug };
 }

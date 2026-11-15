@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError } from "../../../shared/api/client";
+import {
+  ApiError,
+  noError,
+  toErrorInfo,
+  type ErrorInfo,
+} from "../../../shared/api/client";
 import type { Proposal } from "../../../shared/api/types";
 import { useRefresh } from "../../../shared/hooks/useRefresh";
 import { useAuth } from "../../auth/useAuth";
@@ -29,7 +34,7 @@ export function usePurchaseDetail({
   const actionInFlight = useRef(false);
   const setProposal = (value: Proposal) =>
     setSnapshot({ key: currentDetail, p: value });
-  const [error, setError] = useState("");
+  const [errorInfo, setError] = useState<ErrorInfo>(noError);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const load = useCallback(async () => {
@@ -46,7 +51,7 @@ export function usePurchaseDetail({
       )
         return;
       setSnapshot({ key: currentDetail, p: result });
-      setError("");
+      setError(noError);
     } catch (e) {
       if (
         activeDetail.current !== currentDetail ||
@@ -54,12 +59,12 @@ export function usePurchaseDetail({
       )
         return;
       if (e instanceof ApiError && e.status === 401) setSession(null);
-      else setError((e as Error).message);
+      else setError(toErrorInfo(e));
     }
   }, [approvalId, proposalId, setSession, currentDetail]);
   useEffect(() => {
     setSnapshot(null);
-    setError("");
+    setError(noError);
     setBusy(false);
     setMessage("");
     void load();
@@ -78,7 +83,7 @@ export function usePurchaseDetail({
     if (!p || !session || !p.approval_id || actionInFlight.current) return;
     actionInFlight.current = true;
     setBusy(true);
-    setError("");
+    setError(noError);
     setMessage("");
     try {
       const result = await rejectPurchase(
@@ -90,9 +95,9 @@ export function usePurchaseDetail({
       setProposal(result);
       setMessage("Rejection recorded. This purchase cannot be committed.");
     } catch (e) {
-      const msg = (e as Error).message;
+      const info = toErrorInfo(e);
       await load();
-      if (activeDetail.current === currentDetail) setError(msg);
+      if (activeDetail.current === currentDetail) setError(info);
     } finally {
       actionInFlight.current = false;
       if (activeDetail.current === currentDetail) setBusy(false);
@@ -102,7 +107,7 @@ export function usePurchaseDetail({
     if (!p || !session || actionInFlight.current) return;
     actionInFlight.current = true;
     setBusy(true);
-    setError("");
+    setError(noError);
     setMessage("");
     try {
       const result = await confirmPurchase(p, session);
@@ -116,9 +121,9 @@ export function usePurchaseDetail({
         setMessage("Confirmation saved. Your demo receipt is below.");
       }
     } catch (e) {
-      const msg = (e as Error).message;
+      const info = toErrorInfo(e);
       await load();
-      if (activeDetail.current === currentDetail) setError(msg);
+      if (activeDetail.current === currentDetail) setError(info);
     } finally {
       actionInFlight.current = false;
       if (activeDetail.current === currentDetail) setBusy(false);
@@ -134,7 +139,8 @@ export function usePurchaseDetail({
       p.approval_status === "approved");
   return {
     p,
-    error,
+    error: errorInfo.message,
+    errorDebug: errorInfo.debug,
     busy,
     message,
     load,

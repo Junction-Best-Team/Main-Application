@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ErrorMessage } from "../../../shared/components/ErrorMessage";
 import type { Proposal } from "../../../shared/api/types";
 import { useDestinations } from "../hooks/useDestinations";
 import { usePrepareFromCart } from "../hooks/usePrepareFromCart";
@@ -32,7 +33,7 @@ export function DeliveryDetails({
     : [p.request.destination, ...destinations];
   const [date, setDate] = useState(p.request.delivery_date);
   const [destination, setDestination] = useState(p.request.destination);
-  const { prepare, busy, error } = usePrepareFromCart(
+  const { prepare, busy, error, errorDebug } = usePrepareFromCart(
     conversationId,
     onPrepared,
   );
@@ -73,14 +74,7 @@ export function DeliveryDetails({
           <span className="font-body">{destination}</span>
         </p>
       )}
-      {error && (
-        <p
-          role="alert"
-          className="m-0 rounded-lg bg-error-container p-space-sm text-body-sm text-on-error-container"
-        >
-          {error}
-        </p>
-      )}
+      <ErrorMessage message={error} debug={errorDebug} />
       {changed && (
         <>
           <button

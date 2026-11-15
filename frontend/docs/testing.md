@@ -96,3 +96,14 @@ Draft-cart cases in `e2e/chat.spec.ts` stream an empty chat through unresolved i
 selected products, checked unit prices, refresh and prepared-basket confirmation at
 1440/390/320px. Drafts expose no confirmation control; fixture prices remain labelled.
 Use a dedicated Vite port with `BASE_URL` when another checkout has a local server.
+
+## Debug mode (Copy link on errors)
+
+Open any page with `?debug=1` to turn on debug mode (remembered in `localStorage` key `aimo.debug`);
+`?debug=0` turns it off. There is no UI toggle. In debug mode every shared `ErrorMessage` gets a
+"Copy" link that copies a plain-text support block: timestamp, page path, request method and API
+path (no query strings), status, status text, content type, whether the body was a JSON error
+envelope (never the body text), elapsed ms, error code/message, `x-request-id` (`none` when the
+response had none) and the conversation id and user agent. Cookies, CSRF tokens, request bodies and the
+customer's text are never included. `ApiError.debug` carries the context; screens keep it next to
+the message (`ErrorInfo`). Covered by `e2e/debug-copy.spec.ts`.

@@ -3,8 +3,8 @@ import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../features/auth/useAuth";
 import { Icon } from "../../shared/components/DesignPrimitives";
 
-/** Header account actions, shared by the desktop and mobile headers. */
-export function UserMenu() {
+/** Account actions anchored above the desktop/mobile sidebar footer. */
+export function UserMenu({ onNavigate }: { onNavigate?: () => void }) {
   const { session, logout } = useAuth();
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
@@ -55,22 +55,28 @@ export function UserMenu() {
         aria-controls={id}
         title={`${session?.buyer_id} · ${session?.username}`}
         onClick={() => setOpen((value) => !value)}
-        className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 hover:bg-surface-container"
+        className="flex min-h-11 w-full cursor-pointer items-center gap-space-sm rounded-lg border-0 bg-transparent px-space-md py-space-sm text-left font-body text-[15px] text-primary hover:bg-workspace-active"
       >
-        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-on-primary">
-          <Icon name="person" className="text-[18px]" />
-        </span>
+        <Icon name="person" className="text-[20px]" />
+        <span className="flex-1">Account</span>
+        <Icon
+          name={open ? "expand_more" : "expand_less"}
+          className="text-[20px]"
+        />
       </button>
       {open && (
         <nav
           ref={panel}
           id={id}
           aria-label="User account"
-          className="absolute right-0 top-full z-50 mt-space-xs w-64 max-w-[calc(100vw-2rem)] rounded-lg border border-primary bg-surface-pure p-space-xs shadow-level-3"
+          className="absolute bottom-full left-0 z-50 mb-space-xs w-full rounded-lg border border-primary bg-surface-pure p-space-xs shadow-level-3"
         >
           <Link
             to="/settings"
-            onClick={() => setOpen(false)}
+            onClick={() => {
+              setOpen(false);
+              onNavigate?.();
+            }}
             aria-current={pathname === "/settings" ? "page" : undefined}
             className={actionClass(pathname === "/settings")}
           >
@@ -79,7 +85,10 @@ export function UserMenu() {
           </Link>
           <Link
             to="/settings/preferences"
-            onClick={() => setOpen(false)}
+            onClick={() => {
+              setOpen(false);
+              onNavigate?.();
+            }}
             aria-current={
               pathname.startsWith("/settings/preferences") ? "page" : undefined
             }

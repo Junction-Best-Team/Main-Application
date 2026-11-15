@@ -140,7 +140,7 @@ export function OverviewPanel({
   cartEdit?: { editable: boolean; reason: string | null };
   onPrepared?: (proposal: Proposal) => void;
 }) {
-  const { p, error } = flow;
+  const { p, error, errorDebug } = flow;
   const [storedOpen, toggleOpen] = useCartOpen();
   const open = drawer ? storedOpen : true;
   const closed =
@@ -182,7 +182,7 @@ export function OverviewPanel({
           )}
         </span>
       </div>
-      <ErrorMessage message={error} />
+      <ErrorMessage message={error} debug={errorDebug} />
       <div className="flex flex-col gap-space-sm pt-space-sm">
         {!p && draft ? (
           <div className={drawer && !open ? "hidden" : ""}>

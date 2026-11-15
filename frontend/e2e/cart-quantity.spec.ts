@@ -616,6 +616,52 @@ test("Confirm purchase answered with REQUEST_REVISED shows the server's sentence
   ).toBeEnabled();
 });
 
+// --- debug mode: the Copy link works on the cart's error paths (shared ErrorMessage) -------------
+
+test("in debug mode a refused edit and a refused delivery change offer Copy; without debug mode they do not", async ({
+  page,
+}) => {
+  await page.addInitScript(() => localStorage.setItem("aimo.debug", "1"));
+  const world = newCart();
+  world.failNext = { status: 500, code: "INTERNAL", message: "boom" };
+  await open(page, world);
+  await qty(page, PASTA.name).fill("9");
+  await tick(page, 650);
+  const alert = overview(page).getByRole("alert");
+  await expect(alert).toContainText("The quantity could not be saved.");
+  await expect(
+    alert.getByRole("button", { name: "Copy", exact: true }),
+  ).toBeVisible();
+  await page.route(
+    `**/api/conversations/${ids.conversation}/prepare-from-cart`,
+    (route) => problem(route, 409, "CART_NOT_VERIFIED", "The cart changed."),
+  );
+  await overview(page).getByLabel("Delivery date").fill("2026-11-20");
+  await overview(page)
+    .getByRole("button", { name: "Update delivery details" })
+    .click();
+  const second = overview(page)
+    .getByRole("alert")
+    .filter({ hasText: "The cart changed." });
+  await expect(
+    second.getByRole("button", { name: "Copy", exact: true }),
+  ).toBeVisible();
+});
+
+test("without debug mode there is no Copy link on a cart error", async ({
+  page,
+}) => {
+  const world = newCart();
+  world.failNext = { status: 500, code: "INTERNAL", message: "boom" };
+  await open(page, world);
+  await qty(page, PASTA.name).fill("9");
+  await tick(page, 650);
+  await expect(overview(page).getByRole("alert")).toBeVisible();
+  await expect(
+    overview(page).getByRole("button", { name: "Copy", exact: true }),
+  ).toHaveCount(0);
+});
+
 test("on a phone the controls fit the card and nothing scrolls sideways", async ({
   page,
 }) => {

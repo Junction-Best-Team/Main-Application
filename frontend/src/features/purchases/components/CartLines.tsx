@@ -104,7 +104,7 @@ export function CartLines({
           {why}
         </p>
       )}
-      <ErrorMessage message={message} />
+      <ErrorMessage message={message} debug={edit.errorDebug} />
       {edit.error && (
         <button
           type="button"

@@ -5,6 +5,7 @@ import { currency, dateTime } from "../../../shared/lib/format";
 import { useCartOpen } from "../hooks/useCartOpen";
 import { useDestinations } from "../hooks/useDestinations";
 import { usePrepareFromCart } from "../hooks/usePrepareFromCart";
+import { ErrorMessage } from "../../../shared/components/ErrorMessage";
 import { NotIncluded } from "./NotIncluded";
 import {
   cartBlockedReason,
@@ -49,7 +50,7 @@ export function DraftCartPanel({
       ? pickedDestination
       : (destinations[0] ?? CART_COPY.defaultDestination);
   const reason = cartBlockedReason(cart, date, earliest, working);
-  const { prepare, busy, error } = usePrepareFromCart(
+  const { prepare, busy, error, errorDebug } = usePrepareFromCart(
     conversationId,
     onPrepared,
   );
@@ -175,14 +176,7 @@ export function DraftCartPanel({
         </div>
       )}
       <div className="mt-space-sm flex flex-col gap-space-xs">
-        {error && (
-          <p
-            role="alert"
-            className="m-0 rounded-lg bg-error-container p-space-sm text-body-sm text-on-error-container"
-          >
-            {error}
-          </p>
-        )}
+        <ErrorMessage message={error} debug={errorDebug} />
         <button
           type="button"
           disabled={Boolean(reason) || busy}
