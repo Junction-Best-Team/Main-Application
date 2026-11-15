@@ -284,6 +284,11 @@ def render(
     }
 
 
+def is_expired(c, identity, pid):
+    """True if the proposal's current revision renders as expired (read inside the caller's transaction)."""
+    return render(c, *proposal(c, pid, identity), identity)["approval_status"] == "expired"
+
+
 def get_proposal(identity, pid, revision=None):
     """A proposal by ID: the current revision, or an earlier one by number (PER-003).
 

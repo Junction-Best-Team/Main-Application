@@ -176,6 +176,12 @@ def prepare_basket(
             ).fetchone()
             if busy:
                 raise Problem("CONVERSATION_BUSY", "A response is in progress.", 409, 3)
+        if link.get("require_expired"):
+            # A refresh only replaces an expired basket. Checked here, under the conversation lock,
+            # so of several refreshes at once only the first prepares and the rest are refused.
+            latest = latest_terms(c, cid)
+            if not latest or not workflow.is_expired(c, identity, latest["id"]):
+                raise Problem("BASKET_NOT_EXPIRED", "This basket has not expired.", 409)
         if link.get("basis") is not None and read_basis(c, cid) != link["basis"]:
             raise Problem(
                 "CART_CHANGED", "The cart changed while the basket was prepared. Try again.", 409
@@ -298,8 +304,10 @@ def retrying(attempt, tries=3):
                 raise
 
 
-def prepare_from_cart(identity, cid, body, service, summary=None):
-    return retrying(lambda: prepare_from_cart_once(identity, cid, body, service, summary))
+def prepare_from_cart(identity, cid, body, service, summary=None, require_expired=False):
+    return retrying(
+        lambda: prepare_from_cart_once(identity, cid, body, service, summary, require_expired)
+    )
 
 
 def refresh_basket(identity, cid, body, service):
@@ -333,10 +341,10 @@ def refresh_basket(identity, cid, body, service):
         delivery_date=when, destination=destination, request_id=body.request_id
     )
     summary = f"Refreshed my cart's prices and stock for {when} to {destination}."
-    return prepare_from_cart(identity, cid, prepared, service, summary)
+    return prepare_from_cart(identity, cid, prepared, service, summary, require_expired=not retried)
 
 
-def prepare_from_cart_once(identity, cid, body, service, summary=None):
+def prepare_from_cart_once(identity, cid, body, service, summary=None, require_expired=False):
     if identity["role"] != "approver":
         raise Problem("FORBIDDEN", "Only a buyer session can prepare a purchase.", 403)
     digest = fingerprint(
@@ -381,6 +389,7 @@ def prepare_from_cart_once(identity, cid, body, service, summary=None):
     link = {
         "check_busy": True,
         "check_ordered": True,
+        "require_expired": require_expired,
         "basis": basis_of(messages),
         "write": {"key": body.request_id, "digest": digest, "summary": summary, "plan": None},
     }

@@ -7,6 +7,7 @@ authorizes and orders nothing: the customer still confirms the new revision. Onl
 status is expired can be refreshed.
 """
 
+import threading
 import time
 from decimal import Decimal
 from uuid import uuid4
@@ -22,6 +23,8 @@ from test_draft_cart_purchase import (  # noqa: F401
     tool_reply,
 )
 
+from aimo import cart_purchase
+from aimo.chat_schemas import CartRefreshRequest
 from aimo.config import settings
 
 
@@ -94,3 +97,49 @@ def test_a_refresh_needs_the_customers_csrf_session(auto, monkeypatch):
     expire(auto, monkeypatch, lambda: start(auto))
     assert refresh(auto, headers=False).status_code in (401, 403)
     assert len(baskets(data(auto))) == 1
+
+
+def open_baskets(chat):
+    return [b for b in baskets(data(chat)) if state(b) != "cancelled"]
+
+
+def test_a_refresh_that_lands_between_the_lookup_and_the_write_leaves_one_basket(
+    auto, monkeypatch, buyer
+):
+    """Deterministic interleave: while the first refresh waits for the supplier, a second one (another
+    key) completes. The first must notice, inside the locked write, that the basket is no longer
+    expired and make no second basket."""
+    expire(auto, monkeypatch, lambda: start(auto))
+    connector = auto.service.connector
+    real = connector.lookup
+    state_ = {"first": True}
+
+    def lookup(customer, ids, delivery_date):
+        if state_["first"]:
+            state_["first"] = False
+            body = CartRefreshRequest(request_id=str(uuid4()))
+            cart_purchase.refresh_basket(buyer, auto.turn.cid, body, auto.service)
+        return real(customer, ids, delivery_date)
+
+    connector.lookup = lookup
+    sent = refresh(auto)
+    assert sent.status_code == 409 and sent.json()["error"]["code"] == "BASKET_NOT_EXPIRED"
+    assert len(open_baskets(auto)) == 1
+    assert len(baskets(data(auto))) == 2  # the expired one (cancelled) and the single refresh
+
+
+def test_five_refreshes_at_once_with_different_keys_make_one_basket(auto, monkeypatch):
+    expire(auto, monkeypatch, lambda: start(auto))
+    gate = threading.Barrier(5)
+    out = []
+
+    def press():
+        gate.wait()
+        out.append(refresh(auto))
+
+    threads = [threading.Thread(target=press) for _ in range(5)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    codes = sorted(r.status_code for r in out)
+    assert codes == [200, 409, 409, 409, 409], codes
+    assert len(open_baskets(auto)) == 1 and len(baskets(data(auto))) == 2
