@@ -1175,3 +1175,8 @@ Add new findings below, under your track heading.
 
 - Date: 2026-11-15. Implemented the owner's revised mockup: removed the customer-account badge, reduced title/vertical spacing, and aligned an outlined refresh button with the heading. Mobile stacks the heading and button. Removed the unused account placeholder.
 - Verification: frontend `npm run check` and all 24 fixture-backed `orders.spec.ts` / `purchases.spec.ts` checks passed on a dedicated worktree server. Inspected desktop/390px screenshots; checked 1440/390/320px layouts for absent account labels, visible keyboard focus and no horizontal overflow. No backend/API changes or live supplier calls.
+
+### F-COMPOSER-COLORS-001: Consistent voice and send actions
+
+- Date: 2026-11-15. Unified the home/chat voice and send buttons around the existing lime background and navy icon, including hover, focus and disabled styles. Both send buttons use the same upward arrow; removed unused home-only action styles.
+- Verification: frontend `npm run check` and seven focused fixture-backed Playwright home/navigation and composer checks passed across 1440/1024/390/320px layouts. Browser color checks confirmed matching normal/hover/icon colors for both actions on home/chat at 1440/390px; desktop/mobile screenshots inspected. No backend/API changes or live provider calls.
