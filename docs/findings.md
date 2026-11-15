@@ -1160,7 +1160,23 @@ Add new findings below, under your track heading.
 - Date: 2026-11-15. Added a full-height 1px right border to the desktop sidebar using the existing `border-subtle` token, matching the header separator.
 - Verification: frontend `npm run check` and both fixture-backed `minimal Home and navigation work` Playwright checks passed at 1440/390px; screenshots inspected. No merge or deployment.
 
+
+### F-COMPOSER-ATTACHMENT-001: Remove the paperclip button
+
+- Date: 2026-11-15. Removed the owner-identified attachment button and its unused file picker from chat. Drag/drop and paste retain attachment previews, limits, removal and file-only submission; attachment instructions now describe those entry points.
+- Verification: frontend `npm run check` and all 53 fixture-backed `chat.spec.ts` / `conversation.spec.ts` browser checks passed on a dedicated worktree server. Desktop/320px composer screenshots inspected. An initial browser run hit another worktree's occupied port and was discarded; the dedicated-server rerun passed. No backend/API changes, merge or deployment.
+
 ### F-NAV-REQUESTS-001: Keep expanded conversations inside Requests
 
 - Date: 2026-11-15. Moved the expanded Recent list from the bottom of navigation into its Requests parent, before Schedule and Orders. Indentation and a bounded scrolling area keep long histories grouped and the following navigation reachable on desktop and mobile; pagination, errors and collapse controls stay together.
 - Verification: frontend `npm run check` and four focused fixture-backed Playwright checks passed at 1440/390px. Covered 31 requests, ordering/indentation, internal scrolling, collapse/reopen, loading older records, selection and mobile-menu dismissal; desktop/mobile screenshots inspected. No backend/schema changes, merge or deployment.
+
+### F-PAST-ORDERS-HEADER-001: Simplify the order-history header
+
+- Date: 2026-11-15. Implemented the owner's revised mockup: removed the customer-account badge, reduced title/vertical spacing, and aligned an outlined refresh button with the heading. Mobile stacks the heading and button. Removed the unused account placeholder.
+- Verification: frontend `npm run check` and all 24 fixture-backed `orders.spec.ts` / `purchases.spec.ts` checks passed on a dedicated worktree server. Inspected desktop/390px screenshots; checked 1440/390/320px layouts for absent account labels, visible keyboard focus and no horizontal overflow. No backend/API changes or live supplier calls.
+
+### F-COMPOSER-COLORS-001: Consistent voice and send actions
+
+- Date: 2026-11-15. Unified the home/chat voice and send buttons around the existing lime background and navy icon, including hover, focus and disabled styles. Both send buttons use the same upward arrow; removed unused home-only action styles.
+- Verification: frontend `npm run check` and seven focused fixture-backed Playwright home/navigation and composer checks passed across 1440/1024/390/320px layouts. Browser color checks confirmed matching normal/hover/icon colors for both actions on home/chat at 1440/390px; desktop/mobile screenshots inspected. No backend/API changes or live provider calls.

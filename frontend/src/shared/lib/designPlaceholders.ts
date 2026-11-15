@@ -19,12 +19,8 @@ export const DESIGN_PLACEHOLDERS = {
     substitutionsLabel: "Substitutions allowed",
     substitutionsOn: true,
   },
-  /** Past Orders screen (search/filter labels and account chips). */
+  /** Past Orders screen (search/filter labels). */
   pastOrders: {
-    account: {
-      label: "Customer Account",
-      value: "Demo restaurant (#FI-94812)",
-    },
     searchPlaceholder: "Search past orders or invoice number (e.g. VA-8921)...",
     searchLabel: "Search past orders",
     periodLabel: "Last 90 days",
