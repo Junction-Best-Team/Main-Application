@@ -16,7 +16,7 @@ from uuid import UUID, uuid4
 from pydantic import ValidationError
 
 from aimo import approval_workflow as workflow
-from aimo import auth, catalog, scheduler
+from aimo import auth, catalog, request_brief, scheduler
 from aimo.agent_tools import PrepareOrderInput, ToolSession, is_zero
 from aimo.chat_schemas import CartNotIncluded, MealPlan
 from aimo.config import settings
@@ -164,6 +164,10 @@ def prepare_basket(
     meanwhile (`check_ordered`). Returns (proposal_id, not_included, notice)."""
     actor = auth.internal_agent(identity) | {"_turn_id": str(tid)}
     session = ToolSession(actor, service, constraints=limits or None)
+    with connection() as c:
+        brief = request_brief.load(c, cid)
+    if brief:
+        session.brief = brief
     session.preparation_key = key
     left_out_box = []
 
@@ -457,12 +461,18 @@ def auto_prepare(identity, cid, tid, result, service):
         with connection() as c:
             _, policy, _, _ = context(c, identity)
             limits = customer_constraints(c, cid, tid)
+            brief = request_brief.load(c, cid, tid)
+            recorded = c.execute("SELECT request_brief FROM conversation_turns WHERE id=%s", (tid,)).fetchone()
             latest = latest_terms(c, cid)
             ordered = placed_order(c, cid)
             current = c.execute(
                 "SELECT meal_plan FROM conversation_messages WHERE conversation_id=%s AND meal_plan IS NOT NULL ORDER BY id DESC LIMIT 1",
                 (cid,),
             ).fetchone()
+        if brief and not brief.can_build:
+            return None
+        if (settings().guardrail_mode == "enforce" or brief) and not recorded["request_brief"]:
+            return None, [], "Your ingredient list is saved; the request still needs checking before a basket can be prepared."
         if ordered and (
             not current or plan_signature(current["meal_plan"]) == plan_signature(stored)
         ):
@@ -491,10 +501,11 @@ def auto_prepare(identity, cid, tid, result, service):
     except Problem as exc:
         if exc.code not in ("EMPTY_CART", "CART_INCOMPLETE"):
             event("cart.auto_prepare_failed", error_code=exc.code, conversation_id=str(cid))
+            return None, [], "Your ingredient list is saved, but I couldn’t finish checking the basket. Please try again."
         return None
     except Exception as exc:  # a display convenience: it must never fail the customer's turn
         event("cart.auto_prepare_failed", error_code=type(exc).__name__, conversation_id=str(cid))
-        return None
+        return None, [], "Your ingredient list is saved, but I couldn’t finish checking the basket. Please try again."
     if latest and str(latest["id"]) == str(pid):
         return None
     return pid, left_out, notice

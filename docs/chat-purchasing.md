@@ -8,6 +8,30 @@ The root opens chat after sign-in. Conversations have stable URLs and persisted 
 
 Purchase history includes existing proposals and accepted mock purchases. The exact old approval URL still loads its stored revision, preserving superseded/rejected/expired/accepted states and an explicit link to current terms. It never silently substitutes new terms.
 
+## Conversational request understanding
+
+The customer may start with an undecided idea, a named dish, their own recipe or a
+product list. `record_request` retains the goal, starting point, portions, recipe
+reference, budget, requirements, material missing facts and labelled assumptions.
+It is conversation-scoped working state, separate from long-term memory and
+purchase authority. Migration `026_request_brief.sql` adds the per-turn snapshot.
+Writes are fenced to the running attempt and authenticated message author; semantic
+review must preserve earlier facts and requirements unless the customer changed them.
+Under enforcement, a fresh reviewed understanding is required for preparation.
+
+Exploration can use discovery tools without selecting a meal or changing the cart.
+Once the meal/products and required quantities are clear, the assistant builds the
+list, retaining all requirements in both tool-driven and background preparation.
+Customer recipes use their supplied base quantities and server scaling, with added
+estimates identified separately. `resize_plan` recalculates portions, including a new
+saved plan for a locked recipe basket; `revise_recipe` supports explicit ingredient
+changes as a reviewed estimate and keeps unchanged product matches. Old proposals
+and receipts remain historical. Equivalent SKU changes still require product evidence.
+
+The cart owns SKU, pack and price details. Chat contains the conversation and optional
+collapsed recipe quantities, without a second set of SKU cards. Failed background
+preparation keeps the draft and explains that basket checking could not finish.
+
 ## Contracts and authorization
 
 `chat_schemas.py` owns MealPlan, AgentTurn, MessageRequest and conversation responses; `schemas.py` retains purchasing contracts. The backend owns routes and generated OpenAPI. The agent owns direct typed Service tools; the frontend consumes generated types. The agent cannot select an authorization identity, edit policy, approve or commit. Its provider credentials remain server-only. Missing provider configuration fails with an actionable error; there is no pretend response fallback.

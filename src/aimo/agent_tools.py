@@ -9,7 +9,7 @@ from uuid import UUID
 
 from pydantic import ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 
-from aimo import memory
+from aimo import memory, request_brief
 from aimo.basket_errors import mismatch_problem, required_basket
 from aimo.chat_schemas import AgentTurn, MealPlan
 from aimo.config import settings
@@ -30,6 +30,7 @@ from aimo.recipe_schemas import (
     ScaleRecipe,
 )
 from aimo.recipes import combine_by_product, scaled_plan
+from aimo.request_brief import RequestBrief
 from aimo.schemas import (
     Amount,
     Contribution,
@@ -58,6 +59,10 @@ CATALOG_TOOLS = frozenset({
 
 class EmptyRequest(Model):
     pass
+
+
+class ResizePlan(Model):
+    portions: int = Field(ge=1, le=10000)
 
 
 class ProductRequest(Model):
@@ -324,6 +329,8 @@ class ToolSession:
         # POL-008: the customer's stated limits, supplied by the server and never by the model.
         # No tool input accepts it; prepare forwards it so policy can stop a loosened request.
         self.constraints = constraints
+        self.brief = RequestBrief.model_validate(identity["_request_brief"]) if identity.get("_request_brief") else None
+        self.brief_recorded = False
         self.supersede = None  # cart baskets only: cancel the conversation's older open baskets
         # Optional semantic review; deterministic checks here and in Service always apply.
         self.guard = guard
@@ -344,6 +351,34 @@ class ToolSession:
         self.memory_changes = []
         self.image = None
         self.registry = {
+            "record_request": ToolSpec(
+                RequestBrief,
+                "Save the current understanding of the customer's request before changing a plan "
+                "or preparing a basket. Keep prior facts and all requirements unless the customer "
+                "changed them. Distinguish exploration from building the chosen meal/product list; "
+                "record material missing facts and label estimates as assumptions. This is not "
+                "long-term memory, policy or purchase authorization.",
+                self.record_request,
+                RequestBrief,
+            ),
+            "resize_plan": ToolSpec(
+                ResizePlan,
+                "Recalculate the existing plan for a customer-requested portion change in a new "
+                "turn. Keep existing product selections where evidence still supports them. "
+                "Saved recipes get a new plan; previous baskets/history remain unchanged.",
+                self.resize_plan,
+                MealPlanResult,
+            ),
+            "revise_recipe": ToolSpec(
+                DraftRecipe,
+                "Revise an existing recipe in a new customer turn after an explicit ingredient "
+                "change (for example make it vegetarian or use pantry ingredients). Preserve "
+                "unaffected facts. The result is a labelled estimate with a title reflecting the "
+                "changed dish, not a claim that the saved source recipe was edited. Use "
+                "resize_plan for portion changes alone and matching tools for equivalent SKU swaps.",
+                self.revise_recipe,
+                MealPlanResult,
+            ),
             "generate_recipe_image": ToolSpec(
                 GenerateRecipeImage,
                 "Generate and host one AI recipe illustration for this customer message. "
@@ -507,6 +542,89 @@ class ToolSession:
             self.plan = MealPlan.model_validate(checked)
         return {"meal_plan": checked, "purchase_authorized": False}
 
+    def record_request(self, brief):
+        if self.prepared_digest is not None:
+            raise Problem("MEAL_PLAN_LOCKED", "Change the request in a new customer message.", 422)
+        if self.guard:
+            self.guard.check_request_brief(
+                self.brief, brief, self.identity.get("_current_constraints", [])
+            )
+        request_brief.save(self.identity, brief)
+        self.brief, self.brief_recorded = brief.model_copy(deep=True), True
+        return self.brief.model_dump(mode="json")
+
+    def resize_plan(self, request):
+        if not self.plan or self.prepared_digest is not None or self.draft_basis is not None:
+            raise Problem("MEAL_PLAN_LOCKED", "Resize an existing plan in a new customer turn.", 422)
+        old = self.plan.model_copy(deep=True)
+        if old.recipe_plan_id:
+            self.scale_recipe(
+                ScaleRecipe(
+                    recipe_id=old.recipe_id,
+                    version=old.recipe_version,
+                    portions=request.portions,
+                )
+            )
+            for item in old.ingredients:
+                if item.product_id and item.status == "matched" and item.product_id in self.products:
+                    self.match_ingredient(
+                        MatchIngredient(
+                            plan_id=self.plan.recipe_plan_id,
+                            revision=self.plan.recipe_plan_revision,
+                            ingredient_id=item.ingredient_id,
+                            product_id=item.product_id,
+                        )
+                    )
+            return {"meal_plan": self.plan.model_dump(mode="json"), "purchase_authorized": False}
+        ratio = Decimal(request.portions) / old.portions
+        revised = old.model_copy(deep=True, update={"portions": request.portions})
+        for item in revised.ingredients:
+            if item.amount is not None:
+                item.amount = format(
+                    (Decimal(item.amount) * ratio).quantize(Decimal("0.0001")).normalize(), "f"
+                )
+        revised.notes = [
+            *old.notes,
+            f"Server-rescaled from {old.portions} to {request.portions} portions.",
+        ][-20:]
+        return self.publish(revised)
+
+    def revise_recipe(self, request):
+        if self.brief and not self.brief.can_build:
+            raise Problem("REQUEST_NOT_READY", "Clarify the requested recipe change first.", 422)
+        if not self.plan or self.prepared_digest is not None or not self.brief_recorded:
+            raise Problem(
+                "RECIPE_REVISION_REQUIRED",
+                "Record the customer's changed recipe request in a new turn first.",
+                422,
+            )
+        if self.guard:
+            self.guard.check_recipe_revision(self.plan, request)
+        old_plan, old_basis, old_totals = self.plan, self.draft_basis, self.draft_totals
+        self.plan, self.draft_basis, self.draft_totals = None, None, None
+        try:
+            result = self.draft_recipe(request)
+        except Exception:
+            self.plan, self.draft_basis, self.draft_totals = old_plan, old_basis, old_totals
+            raise
+        # Keep inspected selections for unchanged ingredients; replacements need new matches.
+        previous = {i.name.casefold(): i for i in old_plan.ingredients}
+        ratio = Decimal(self.plan.portions) / old_plan.portions
+        for item in self.plan.ingredients:
+            old = previous.get(item.name.casefold())
+            if (
+                old
+                and old.amount is not None
+                and old.unit == item.unit
+                and Decimal(old.amount) * ratio == Decimal(item.amount)
+                and old.product_id in self.products
+            ):
+                item.product_id = old.product_id
+        self.plan.notes.append(f"Revised from: {old_plan.title}; previous baskets remain in history.")
+        self.plan.notes = self.plan.notes[-20:]
+        self.draft_totals = self.plan.model_copy(deep=True)
+        return {**result, "meal_plan": self.plan.model_dump(mode="json")}
+
     def generate_recipe_image(self, request):
         if self.image is None:
             self.image = RecipeImage.model_validate(
@@ -515,6 +633,8 @@ class ToolSession:
         return {"image": self.image.model_dump(), "illustration_only": True}
 
     def scale_recipe(self, request):
+        if self.brief and not self.brief.can_build:
+            raise Problem("REQUEST_NOT_READY", "Discuss the meal choice or missing quantities first.", 422)
         if self.prepared_digest is not None:
             raise Problem("MEAL_PLAN_LOCKED", "Request recipe changes in a new customer message.")
         detail = self.recipe_detail(request)
@@ -562,6 +682,9 @@ class ToolSession:
         return result
 
     def draft_recipe(self, request):
+        if (request.source == "customer_recipe"
+                and (not self.brief or self.brief.starting_point != "customer_recipe")):
+            raise Problem("CUSTOMER_RECIPE_REQUIRED", "Record the customer's supplied recipe before using this source label.", 422)
         if self.draft_basis is not None:
             if request != self.draft_basis:
                 raise Problem("MEAL_PLAN_LOCKED", "Change the recipe in a new customer message.")
@@ -662,14 +785,19 @@ class ToolSession:
 
     @property
     def needs_recipe_plan(self):
-        return self.recipe_discovery_started and self.plan is None
+        return (self.recipe_discovery_started and self.plan is None
+                and not (self.brief and (not self.brief.can_build)))
 
     def execution_guidance(self, remaining):
         """Server-owned workflow state; candidate discovery never selects a product."""
         clock = f"Turn time remaining: {max(0, int(remaining))} seconds. "
+        if self.identity.get("_conversation_id") and not self.brief_recorded:
+            clock += "Use record_request to carry forward and update the customer's known facts before changing their plan. "
+        if self.brief and not self.brief.can_build:
+            return clock + "Help the customer explore or resolve the next material missing fact. Reads are available; do not publish a cart or prepare a basket yet."
         if self.needs_recipe_plan:
             return clock + (
-                "Recipe discovery has run. Publish the quantity plan now using scale_recipe "
+                "If the customer has chosen the meal and portions, publish its quantity plan using scale_recipe "
                 "for a complete saved recipe or draft_recipe for a labelled estimate. "
                 "Catalog tools become available after the plan is published."
             )
@@ -868,6 +996,8 @@ class ToolSession:
         return True
 
     def publish(self, plan):
+        if self.brief and not self.brief.can_build:
+            raise Problem("REQUEST_NOT_READY", "Explore the options or clarify the missing fact before creating the product list.", 422)
         # The tool input is a subclass that only adds examples; compare and store the plain model.
         plan = MealPlan.model_validate(plan.model_dump())
         if plan.recipe_plan_id or (self.plan and self.plan.recipe_plan_id):
@@ -935,6 +1065,11 @@ class ToolSession:
         return {"meal_plan": self.plan.model_dump(mode="json"), "purchase_authorized": False}
 
     def prepare(self, request):
+        if self.brief:
+            request = request_brief.apply(self.brief, request, self.plan)
+        if (self.guard and self.guard.enforcing and self.identity.get("_conversation_id")
+                and not self.brief_recorded):
+            raise Problem("REQUEST_BRIEF_REQUIRED", "Call record_request to retain the current customer requirements before preparing.", 422)
         if not self.plan or any(not item.product_id for item in self.plan.ingredients):
             raise Problem(
                 "INCOMPLETE_MEAL_PLAN",

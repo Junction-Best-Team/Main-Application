@@ -1,5 +1,13 @@
 # What the tests really check
 
+Conversational journeys: `test_request_brief.py` covers readiness, source-preserving
+scaling and request limits; `test_request_journey.py` runs idea → chosen meal → resized
+product list through the worker, including requirements, history and failure recovery.
+`test_request_live.py` evaluates actual Google replies with isolated fixture prices.
+It is opt-in only: set `AIMO_LIVE_JOURNEYS=1`, `AIMO_EVAL_ENV_FILE` to a private `.env`
+containing `GEMINI_API_KEY`, and a dedicated `TEST_DATABASE_URL` ending in `_test`.
+These evaluations make paid model calls, never live supplier calls or supplier orders.
+
 Current hackathon CI: PRs run the explicit core-flow selection in `tests/pr-tests.sh`, lint, strict HTTP sweep and applicable frontend/infrastructure checks. The full pytest suite described below runs locally or on manual CI. Historical per-test descriptions below do not imply every test is a required PR check.
 
 Written by reading the test code, not the test names. Branch `tests-ci-coverage`, rewritten after the chat-purchasing cutover (PR #15) removed the external agent API and MCP. If a claim says "unclear from the code", I could not settle it by reading.

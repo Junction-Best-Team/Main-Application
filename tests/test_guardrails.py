@@ -28,6 +28,7 @@ from test_agent import (
 )
 
 from aimo import agent, guardrails
+from aimo.chat_schemas import MealPlan
 from aimo.db import Problem
 from aimo.guardrails import (
     INPUT_BLOCKED_REPLY,
@@ -572,6 +573,25 @@ def test_output_review_failure_keeps_the_trusted_link(monkeypatch, config, guard
     assert result.text.startswith(OUTPUT_FALLBACK) and "Your basket is ready to review" in result.text
 
 
+def test_rejected_final_prose_keeps_an_identical_previously_reviewed_plan(
+    monkeypatch, config, guard, identity
+):
+    fake_jev(monkeypatch, false_status=lambda state: (
+        0.98 if "paid" in state["assistant_output"]["reply"].lower() else 0.02
+    ))
+    service = FakeService(identity)
+    scripted(monkeypatch, [
+        reply(*[call("get_product", {"product_id": n}) for n in NAMES]),
+        reply(call("publish_meal_plan", meal())),
+        reply(text="Paid and ordered."),
+    ])
+    result = run(identity, service)
+    assert result.text == "Your ingredient plan is saved."
+    assert result.meal_plan == MealPlan(**meal())
+    assert result.proposal_id is None
+    assert not any(c[0] == "prepare" for c in service.calls)
+
+
 def test_fake_approval_without_records_and_oversized_reply(monkeypatch, config, guard, identity):
     fake_jev(monkeypatch, false_status=0.97)
     scripted(monkeypatch, [reply(text="Approved! Order #123 is confirmed.")])
@@ -588,7 +608,8 @@ def test_fake_approval_without_records_and_oversized_reply(monkeypatch, config, 
         monkeypatch, [reply(call("publish_meal_plan", plan)), reply(text="x" * 20_000)]
     )
     result = run(identity, FakeService(identity))
-    assert result.text == OUTPUT_FALLBACK and result.meal_plan is None
+    assert result.text == "Your ingredient plan is saved."
+    assert result.meal_plan == MealPlan(**plan)
     # The plan alone is reviewed for recoverable progress. Oversized final prose is
     # refused locally, without a second classifier request.
     assert [s["boundary"] for s in seen].count("assistant_output") == 1

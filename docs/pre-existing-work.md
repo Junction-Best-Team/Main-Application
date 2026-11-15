@@ -18,6 +18,12 @@ Add any starter code or earlier prototypes separately. Describe which parts exis
 
 ## Reused code, data, models, and assets
 
+On 2026-11-15, conversational journey tests reuse the repository's authored catalog,
+recipe and supplier fixtures. Opt-in live-model evaluations use the private Google
+account with those isolated test fixtures; they never call supplier endpoints or
+create supplier orders. Request understanding, revision tools and the regressions
+were authored during the event; no additional dataset or dependency was introduced.
+
 On 2026-11-15, Codex matched the shared voice/send composer actions to the
 owner's supplied robot color reference, reusing the existing `#005670` teal,
 white icon and navy hover tokens. No image asset or dependency was added.

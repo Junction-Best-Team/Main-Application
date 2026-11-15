@@ -15,6 +15,15 @@ Mocks only: nothing here orders anything. The customer's Confirm purchase press 
 ## Not the same as a chat basket
 A server-originated prepare does not run the model-level semantic check of the prepare tool call (destination, date, budget and items match what the customer said). All fixed rules still apply. The date may be the default (tomorrow) if the customer named another day only in chat and the model did not prepare; the panel shows it and the date field changes it.
 
+## Request readiness and requirements
+
+An exploring request or one missing material meal/quantity facts does not prepare a
+basket. With guardrails enforced, preparation requires the current turn's reviewed
+`record_request` snapshot. Its budget, dietary/allergen, origin and unsupported
+requirements apply to background preparation, manual cart preparation and agent tools;
+none of these paths may loosen them. A supplier/preparation failure keeps the draft
+and adds one brief retry notice. See [chat purchasing](chat-purchasing.md).
+
 ## Supplier calls
 One prepare = two sequential supplier requests (price and availability, up to 100 product ids each) plus retries; made once per changed turn, never on read or reload.
 

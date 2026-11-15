@@ -6,6 +6,9 @@ from aimo.db import connection, js, now
 # Product copy is server-owned. No provider-supplied names, arguments or errors; completed
 # tools may add a short detail built from their validated server result (tool_detail).
 TOOL_LABELS = {
+    "record_request": "Understanding your request",
+    "resize_plan": "Adjusting portions",
+    "revise_recipe": "Updating your recipe",
     "search_recipes": "Searching recipes",
     "get_recipe": "Checking a recipe",
     "scale_recipe": "Scaling recipe portions",
