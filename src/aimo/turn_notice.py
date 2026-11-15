@@ -13,6 +13,11 @@ NOTICE_TEXT = {
     "fi": "En saanut yhteyttä avustajaan juuri nyt. Yritä uudelleen.",
     "sv": "Jag kunde inte nå assistenten just nu. Försök igen.",
 }
+TIMEOUT_TEXT = {
+    "en": "The assistant reached its time limit. Please retry this request.",
+    "fi": "Avustajan aikaraja tuli vastaan. Yritä tätä pyyntöä uudelleen.",
+    "sv": "Assistentens tidsgräns nåddes. Försök med den här begäran igen.",
+}
 
 FINNISH = frozenset(
     "ja tai ei ole olen on että mitä miten minulle meille tarvitsen haluan haluaisin kiitos kyllä "
@@ -45,5 +50,5 @@ def language_of(text):
     return "en"
 
 
-def failure_notice(text):
-    return NOTICE_TEXT[language_of(text)]
+def failure_notice(text, code=None):
+    return (TIMEOUT_TEXT if code == "LLM_TIMEOUT" else NOTICE_TEXT)[language_of(text)]

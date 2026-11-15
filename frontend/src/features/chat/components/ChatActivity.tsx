@@ -9,7 +9,7 @@ type Step = {
   status: "running" | "complete" | "failed" | "interrupted";
 };
 
-// Each of these events starts a new visible step and finishes the one before it.
+// Model stages run in sequence; independent tool steps can overlap.
 const STEP_KINDS = new Set([
   "started",
   "thinking",
@@ -19,25 +19,43 @@ const STEP_KINDS = new Set([
 
 function activitySteps(activity: Activity | undefined, busy: boolean): Step[] {
   const steps: Step[] = [];
-  const finishRunning = (status: Step["status"]) => {
-    const current = steps.at(-1);
-    if (current?.status === "running") current.status = status;
+  const tools: Step[] = [];
+  let stage: Step | undefined;
+  const finishStage = (status: Step["status"]) => {
+    if (stage?.status === "running") stage.status = status;
   };
   for (const event of activity?.events ?? []) {
     if (STEP_KINDS.has(event.kind)) {
-      finishRunning("complete");
-      steps.push({
+      finishStage("complete");
+      const step: Step = {
         sequence: event.sequence,
         label: event.label,
         status: "running",
-      });
-    } else if (event.kind === "tool_completed" || event.kind === "complete") {
-      finishRunning("complete");
-    } else if (event.kind === "tool_failed" || event.kind === "error") {
-      finishRunning("failed");
+      };
+      steps.push(step);
+      if (event.kind === "tool_started") tools.push(step);
+      else stage = step;
+    } else if (
+      event.kind === "tool_completed" ||
+      event.kind === "tool_failed"
+    ) {
+      // Parallel reads start together and finish in request order. Match the
+      // earliest unfinished call with this fixed server-owned display label.
+      const current = tools.find(
+        (step) => step.status === "running" && step.label === event.label,
+      );
+      if (current)
+        current.status =
+          event.kind === "tool_completed" ? "complete" : "failed";
+    } else if (event.kind === "complete") {
+      finishStage("complete");
+    } else if (event.kind === "error") {
+      finishStage("failed");
     }
   }
-  if (!busy) finishRunning("interrupted");
+  if (!busy)
+    for (const step of steps)
+      if (step.status === "running") step.status = "interrupted";
   return steps;
 }
 

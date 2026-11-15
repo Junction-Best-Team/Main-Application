@@ -333,3 +333,12 @@ Requests nesting fix (2026-11-15): reused the existing app shell, conversation n
 Past Orders header (2026-11-15): implemented the owner's revised in-chat mockup using existing typography, spacing, icons and order-history fixtures. No generated bitmap, external material or new dependency is shipped.
 
 Sidebar account menu (2026-11-15): used the owner's attached account-menu reference and reused the existing UserMenu, routes, session/CSRF sign-out, design tokens and authored browser fixtures. No new dependency, generated bitmap or external material is shipped.
+
+## Parallel chat harness — 2026-11-15
+
+Reused the typed tool registry, catalog readers, guardrail reviews, saved recipe
+revisions, draft projection and durable turn persistence. Added bounded concurrency
+with Python's standard library and authored fixture/provider/clock regressions. No
+new dependency, external asset, model training or copied implementation was added.
+The reported hosted conversation was inspected read-only; test commerce remains
+authored fixtures and orders remain mocks.
