@@ -134,6 +134,8 @@ def test_activity_is_scoped_and_in_the_authenticated_sse_snapshot(buyer, service
         signed(client)
         response = client.get(f"/api/conversations/{cid}/events")
     assert response.status_code == 200
+    # Streams end by design, so the browser is told to reconnect after one second.
+    assert response.text.startswith("retry: 1000\n\n")
     data = json.loads(response.text.split("data: ")[1].split("\n")[0])
     assert data["busy"] and data["activity"]["events"][0]["label"] == "Searching recipes"
     assert response.headers["x-accel-buffering"] == "no"

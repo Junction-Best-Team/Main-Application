@@ -42,6 +42,8 @@ function takeSendFailure(id: string | undefined) {
   return failure;
 }
 
+/** How long the update stream may stay down before the reconnect notice shows. */
+const RECONNECT_NOTICE_MS = 5_000;
 export function useChat(conversationId?: string) {
   const { session, setSession } = useAuth();
   const navigate = useNavigate();
@@ -146,6 +148,14 @@ export function useChat(conversationId?: string) {
   useEffect(() => {
     if (!conversationId) return;
     let stream: EventSource | null = null;
+    // The server ends each stream after about 25 seconds and the browser reconnects
+    // on its own, so only a stream that stays down is worth telling the customer about.
+    let reconnectNotice: number | undefined;
+    const connected = () => {
+      window.clearTimeout(reconnectNotice);
+      reconnectNotice = undefined;
+      setReconnecting(false);
+    };
     const open = () => {
       stream?.close();
       stream = null;
@@ -157,18 +167,25 @@ export function useChat(conversationId?: string) {
           const data: Conversation = JSON.parse((event as MessageEvent).data);
           snapshotVersion.current++;
           setConversation(data);
-          setReconnecting(false);
+          connected();
         } catch {
           void load();
         }
       });
       stream.addEventListener("expired", () => setSession(null));
-      stream.onerror = () => setReconnecting(true);
+      stream.onopen = connected;
+      stream.onerror = () => {
+        reconnectNotice ??= window.setTimeout(
+          () => setReconnecting(true),
+          RECONNECT_NOTICE_MS,
+        );
+      };
     };
     open();
     document.addEventListener("visibilitychange", open);
     return () => {
       stream?.close();
+      window.clearTimeout(reconnectNotice);
       document.removeEventListener("visibilitychange", open);
     };
   }, [conversationId, load, setSession]);
