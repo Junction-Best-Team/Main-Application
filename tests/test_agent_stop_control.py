@@ -391,3 +391,139 @@ def test_an_uncertain_or_blocked_input_check_never_continues(identity, config, m
     seen = scripted(monkeypatch, [reply(text="Shall I prepare it?")])
     result = run(identity, FakeService(identity), user("order it"), stored_plan=meal())
     assert len(seen) == 1 and result.proposal_id is None
+
+
+# --- 4. end reason, counters and the fixed texts ------------------------------------------------------
+
+
+def ended(caplog):
+    events = [
+        json.loads(r.message)
+        for r in caplog.records
+        if r.name == "aimo.operations" and '"agent.turn.ended"' in r.message
+    ]
+    assert len(events) == 1, events
+    return events[0]
+
+
+def with_logs(caplog):
+    import logging
+
+    caplog.set_level(logging.INFO, logger="aimo.operations")
+
+
+def test_a_plain_answer_and_a_question_end_with_their_reasons(
+    identity, config, monkeypatch, caplog
+):
+    with_logs(caplog)
+    scripted(monkeypatch, [reply(text="Pasta keeps about a week.")])
+    run(identity, FakeService(identity), user("how long does dry pasta keep"))
+    first = ended(caplog)
+    assert first["stop_reason"] == "answered" and first["rounds"] == 1 and first["tool_calls"] == 0
+    assert first["continued_once"] is False
+    caplog.clear()
+    scripted(monkeypatch, [reply(text="Which pepper do you want?")])
+    run(identity, FakeService(identity), user("add pepper"))
+    assert ended(caplog)["stop_reason"] == "question"
+
+
+def test_a_blocked_basket_ends_blocked_and_counts_the_calls_after_preparation(
+    identity, config, monkeypatch, caplog
+):
+    with_logs(caplog)
+    service = FakeService(identity)
+    service.saved = proposal(identity, outcome="denied")
+    scripted(
+        monkeypatch,
+        prepared_script()
+        + [reply(call("get_purchase_policy")), reply(text="Blocked by the destination rule.")],
+    )
+    run(identity, service, user("order it"))
+    event = ended(caplog)
+    assert event["stop_reason"] == "blocked" and event["calls_after_prepare"] == 1
+    assert event["tool_calls"] >= 4 and event["rounds"] == 5
+
+
+def test_overshoot_counters_show_the_repeats_and_the_refused_calls(
+    identity, config, monkeypatch, caplog
+):
+    with_logs(caplog)
+    scripted(
+        monkeypatch,
+        prepared_script()
+        + [
+            reply(call("get_purchase_policy")),
+            reply(call("get_purchase_policy")),
+            reply(text="Done."),
+        ],
+    )
+    run(identity, FakeService(identity), user("order it"))
+    event = ended(caplog)
+    assert event["calls_after_prepare"] == 2 and event["repeated_calls"] == 1
+
+
+def test_the_continuation_is_reported(identity, config, monkeypatch, caplog):
+    with_logs(caplog)
+    scripted(
+        monkeypatch,
+        [
+            reply(text="Shall I prepare the order?"),
+            reply(call("prepare_order", purchase())),
+            reply(text="Prepared; press Confirm purchase."),
+        ],
+    )
+    run(identity, FakeService(identity), user("confirm my order"), stored_plan=meal())
+    event = ended(caplog)
+    assert (
+        event["continued_once"] is True
+        and event["rounds"] == 3
+        and event["stop_reason"] == "answered"
+    )
+
+
+def test_a_time_out_and_a_tool_error_limit_name_their_reasons(
+    identity, config, monkeypatch, caplog
+):
+    from aimo.db import Problem
+
+    with_logs(caplog)
+    scripted(monkeypatch, [Problem("LLM_TIMEOUT", "The assistant timed out.", 504)])
+    with pytest.raises(Problem):
+        run(identity, FakeService(identity), user("plan carbonara"))
+    assert ended(caplog)["stop_reason"] == "time_limit"
+    caplog.clear()
+    bad = [reply(call("get_product", {"product_id": ""})) for _ in range(4)]
+    scripted(monkeypatch, bad)
+    run(identity, FakeService(identity), user("check it"))
+    assert ended(caplog)["stop_reason"] == "error"
+
+
+def test_the_round_limit_says_what_was_done(identity, config, monkeypatch, caplog):
+    with_logs(caplog)
+    config.llm_max_tool_rounds = 2
+    # nothing planned yet
+    scripted(
+        monkeypatch,
+        [reply(call("get_purchase_policy")), reply(call("get_product", {"product_id": "pasta"}))],
+    )
+    text = run(identity, FakeService(identity), user("plan carbonara")).text
+    assert "step limit" in text and "No plan or basket was made yet" in text
+    assert ended(caplog)["stop_reason"] == "round_limit"
+    # a plan with two items open
+    partial = meal()
+    for item in partial["ingredients"][-2:]:
+        item["product_id"] = None
+    scripted(
+        monkeypatch,
+        [reply(call("get_purchase_policy")), reply(call("get_product", {"product_id": "pasta"}))],
+    )
+    text = run(identity, FakeService(identity), user("continue"), stored_plan=partial).text
+    assert "3 of 5 ingredients matched" in text and "2 still need a product" in text
+
+
+def test_the_round_limit_after_the_basket_points_to_confirm_purchase(identity, config, monkeypatch):
+    config.llm_max_tool_rounds = 3
+    scripted(monkeypatch, prepared_script())
+    result = run(identity, FakeService(identity), user("order it"))
+    assert result.proposal_id and "step limit" in result.text
+    assert "The basket is prepared" in result.text and "Confirm purchase" in result.text

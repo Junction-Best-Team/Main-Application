@@ -12,7 +12,7 @@ import httpx
 
 from aimo.agent_provider import chat_provider, check_deadline, encode
 from aimo.agent_reads import executions
-from aimo.agent_recovery import partial_notice
+from aimo.agent_recovery import partial_notice, progress_status
 from aimo.agent_stop import (
     CONTINUE_NOTICE,
     MIN_SECONDS_TO_CONTINUE,
@@ -447,6 +447,17 @@ def run_turn(
     tool_log = []
     guard = None
     continued = False
+    rounds = 0
+
+    def end(reason):
+        # One line per turn: why it ended and how much work it took (no arguments, no content).
+        event(
+            "agent.turn.ended",
+            stop_reason=reason,
+            continued_once=continued,
+            rounds=rounds,
+            **session.stats,
+        )
 
     reviewed_draft = None
     reviewed_plan = None
@@ -482,6 +493,7 @@ def run_turn(
             early = guard.input_reply()
             if early:
                 result = finish(early)
+                end("blocked")
                 progress.emit(
                     "complete", error_code="GUARDRAIL_" + guard.input_result.verdict.upper()
                 )
@@ -489,6 +501,7 @@ def run_turn(
             for round_number in range(1, cfg.llm_max_tool_rounds + 1):
                 check_deadline(deadline)
                 live()
+                rounds = round_number
                 progress.emit("thinking", round_number=round_number)
                 # Refresh execution guidance without adding a model round or
                 # changing the persisted customer history.
@@ -533,6 +546,17 @@ def run_turn(
                     if guard.prepare_refused and not session.proposal:
                         narrative += "\n\n" + PREPARE_NOTICE
                     result = finish(narrative)
+                    blocked = session.proposal and session.proposal.get("policy_outcome") in (
+                        "denied",
+                        "needs_resolution",
+                    )
+                    end(
+                        "blocked"
+                        if blocked
+                        else "question"
+                        if reply.content.strip().endswith("?")
+                        else "answered"
+                    )
                     progress.emit("complete")
                     return result
                 outputs = []
@@ -591,6 +615,7 @@ def run_turn(
                             "The assistant could not resolve the tool errors. "
                             "Clarify the requirements and retry."
                         )
+                        end("error")
                         progress.emit("complete", error_code="TOOL_ERROR_LIMIT")
                         return result
                 # Tool -> LLM: minimised, screened views, batched once per model reply.
@@ -601,12 +626,15 @@ def run_turn(
                         {"role": "tool", "tool_call_id": call_id, "content": encode(content)}
                     )
             result = finish(
-                "The assistant reached its step limit. Clarify missing "
-                "requirements and continue. No purchase was authorized."
+                "The assistant reached its step limit. "
+                + (progress_status(session) + " " if stop_control_on() else "")
+                + "Clarify missing requirements and continue. No purchase was authorized."
             )
+            end("round_limit")
             progress.emit("complete", error_code="TOOL_ROUND_LIMIT")
             return result
     except Problem as exc:
+        end("time_limit" if exc.code == "LLM_TIMEOUT" else "error")
         progress.emit("error", error_code=exc.code)
         if exc.code.startswith("LLM_") and reviewed_plan and not session.proposal and not session.receipt:
             text = partial_notice(reviewed_plan, exc.code)
@@ -622,6 +650,7 @@ def run_turn(
         raise
     except Exception as exc:
         log_failure("agent.turn.unexpected", exc)
+        end("error")
         progress.emit("error", error_code="AGENT_FAILED")
         if session.proposal or session.receipt or session.image:
             result = finish()

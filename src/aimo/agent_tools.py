@@ -724,6 +724,10 @@ class ToolSession:
         if name not in self.registry or not settings().agent_stop_control:
             return None
         self.stats["tool_calls"] += 1
+        key = agent_stop.call_key(name, arguments)
+        repeated = key in self.called_before or key in self.called_now
+        if repeated:
+            self.stats["repeated_calls"] += 1
         if self.prepared_digest is not None:
             self.stats["calls_after_prepare"] += 1
             pattern = agent_stop.OPTIONAL_AFTER_PREPARE.get(name)
@@ -733,6 +737,7 @@ class ToolSession:
                 "needs_resolution",
             )
             if pattern and not asked and not (name == "get_purchase_policy" and blocked):
+                self.called_now.add(key)  # a refused call still counts as tried
                 return Problem(
                     "TOOL_NOT_ALLOWED",
                     f"The basket is already prepared in this turn. Do not call {name} unless the "
@@ -740,9 +745,6 @@ class ToolSession:
                     "Confirm purchase.",
                     422,
                 )
-        key = agent_stop.call_key(name, arguments)
-        if key in self.called_before or key in self.called_now:
-            self.stats["repeated_calls"] += 1
         if key in self.called_before and name not in agent_stop.REPEATABLE:
             return Problem(
                 "TOOL_REPEATED",
