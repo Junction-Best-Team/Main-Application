@@ -165,10 +165,31 @@ esac
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("cronjob", calls)
 
+    def test_release_keeps_the_api_voice_key_reference(self):
+        # Releases never re-apply Terraform, so the API's optional Google key reference
+        # (infra/kubernetes/main.tf) must be ensured by the release itself.
+        for previous in (None, "ghcr.io/team/app@sha256:" + "a" * 64):
+            with self.subTest(same_image=previous is not None):
+                result, calls = self.run_deploy(previous_image=previous)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                line = next(c for c in calls.splitlines() if c.startswith(
+                    "-n junction patch deployment aimo-api --type=strategic -p "))
+                patch = json.loads(line.split(" -p ", 1)[1])
+                container, = patch["spec"]["template"]["spec"]["containers"]
+                self.assertEqual(container, {"name": "api", "env": [{
+                    "name": "GEMINI_API_KEY", "valueFrom": {"secretKeyRef": {
+                        "name": "aimo-worker-runtime", "key": "GEMINI_API_KEY",
+                        "optional": True}}}]})
+                self.assertLess(calls.index("get job"), calls.index("patch deployment"))
+                self.assertLess(calls.index("patch deployment"), calls.index("rollout status"))
+                if previous is None:
+                    self.assertLess(calls.index("patch deployment"), calls.index("set image"))
+
     def test_migration_failure_prevents_any_rollout_or_restart(self):
         result, calls = self.run_deploy(migration_status="Failed", llm_refreshed=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("create -f -", calls)
+        self.assertNotIn("patch deployment", calls)
         self.assertNotIn("set image", calls)
         self.assertNotIn("rollout", calls)
 
