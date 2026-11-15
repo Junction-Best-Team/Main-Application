@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { KitchenPattern } from "../../../shared/components/KitchenPattern";
+import { useLayoutEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Badge } from "../../../shared/components/Badge";
 import { ErrorMessage } from "../../../shared/components/ErrorMessage";
@@ -11,6 +12,10 @@ import { StagedOverview } from "../../purchases/components/StagedOverview";
 import { useChat } from "../hooks/useChat";
 import { ConversationTranscript } from "../components/ConversationTranscript";
 import { ChatComposer } from "../components/ChatComposer";
+import {
+  finishChatExpansion,
+  hasChatExpansion,
+} from "../../home/model/expandToChat";
 export function ChatPage() {
   const { conversationId } = useParams();
   const [selection, setSelection] = useState<{
@@ -18,6 +23,11 @@ export function ChatPage() {
     proposalId: string;
   } | null>(null);
   const { session } = useAuth();
+  // Arriving from Home's expand animation: fade the chat in over the expanded card.
+  const [entering] = useState(hasChatExpansion);
+  useLayoutEffect(() => {
+    if (entering) finishChatExpansion();
+  }, [entering]);
   const {
     conversation,
     text,
@@ -40,10 +50,15 @@ export function ChatPage() {
   } = useChat(conversationId);
   return (
     <main
-      className={`mx-auto flex min-h-0 w-full max-w-[1720px] flex-1 flex-col gap-space-md p-margin-sm lg:flex-row lg:items-start md:gap-space-lg md:p-space-lg ${conversation?.purchases.length ? "pb-28 md:pb-28 lg:pb-space-lg" : ""}`}
+      className={`chat-page isolate ${entering ? "chat-enter " : ""}mx-auto flex min-h-0 w-full max-w-[1720px] flex-1 flex-col gap-space-md p-margin-sm lg:flex-row lg:items-stretch md:gap-space-lg lg:gap-0 md:p-space-lg ${conversation?.purchases.length ? "pb-28 md:pb-28 lg:pb-space-lg" : ""}`}
     >
+      {/* Kitchen tools behind the page, cut away around the assistant heading. */}
+      <KitchenPattern seed={5} avoid="[data-pattern-avoid]" />
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-space-sm md:gap-space-md">
-        <header className="flex shrink-0 items-center gap-space-md [@media(max-height:650px)]:hidden">
+        <header
+          data-pattern-avoid
+          className="flex shrink-0 items-center gap-space-md [@media(max-height:650px)]:hidden"
+        >
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary-container text-on-primary shadow-sm">
             <Icon name="smart_toy" className="text-[26px]" />
           </div>
@@ -57,7 +72,7 @@ export function ChatPage() {
           </div>
         </header>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface-pure shadow-sm">
+        <div className="chat-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface-pure shadow-[0_-4px_14px_-6px_rgba(30,61,72,0.22),0_1px_2px_rgba(0,0,0,0.05)] dark:shadow-sm">
           <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-space-md gap-y-space-xs bg-surface-container-low px-space-md py-space-sm">
             <div className="flex min-w-0 flex-1 items-center gap-space-xs">
               <Icon

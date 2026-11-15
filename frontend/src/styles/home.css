@@ -1,10 +1,58 @@
 .home-workspace {
+  --home-card-height: 8.75rem;
+
+  position: relative;
   display: flex;
   min-height: 100dvh;
   flex-direction: column;
   padding: clamp(1.25rem, 3dvh, 2.5rem) 2.5rem 1.5rem;
-  background: var(--color-surface-pure);
   color: var(--color-primary);
+}
+
+/* A fresh photo per page load (features/home/model/backgroundPhoto.ts), right of the sidebar.
+   Rendered by the app shell on Home only. */
+.home-background {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: var(--color-deep-ocean-navy);
+}
+
+@media (min-width: 768px) {
+  .home-background {
+    left: 15rem;
+  }
+}
+
+.home-background-photo {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+  opacity: 0;
+  transform: scale(1.03);
+  transition:
+    opacity 0.9s ease,
+    transform 2.4s ease-out;
+}
+
+.home-background-photo.is-loaded {
+  opacity: 1;
+  transform: none;
+}
+
+/* Darkens busy photos so the white heading stays readable. */
+.home-background::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgb(0 31 42 / 0.5) 0%,
+    rgb(0 31 42 / 0.3) 45%,
+    rgb(0 31 42 / 0.7) 100%
+  );
+  content: "";
 }
 
 .home-content {
@@ -15,7 +63,9 @@
 
 .home-intro {
   margin-bottom: clamp(1.5rem, 4dvh, 2.75rem);
+  color: var(--color-text-on-dark);
   text-align: center;
+  text-shadow: 0 1px 12px rgb(0 0 0 / 0.35);
 }
 
 .home-intro h1 {
@@ -27,24 +77,34 @@
 
 .home-intro p {
   margin-top: 0.875rem;
-  color: var(--color-secondary);
+  color: rgb(255 255 255 / 0.85);
   font-size: 1.25rem;
   line-height: 1.5;
+}
+
+/* Frosted cards over the photo. */
+.home-composer,
+.home-schedule {
+  background: color-mix(in srgb, var(--color-surface-pure) 90%, transparent);
+  box-shadow: 0 12px 40px rgb(0 20 30 / 0.25);
+  backdrop-filter: blur(14px) saturate(1.2);
 }
 
 .home-composer {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  padding: 1.25rem;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 1rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid
+    color-mix(in srgb, var(--color-surface-pure) 60%, transparent);
+  border-radius: 0.75rem;
 }
 
 .home-composer textarea {
   display: block;
   width: 100%;
-  min-height: 4rem;
+  min-height: 2.5rem;
+  flex: 1;
   resize: none;
   background: transparent;
   font: inherit;
@@ -61,14 +121,13 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  margin-top: 0.75rem;
+  margin-top: 0.5rem;
 }
 
 .home-schedule {
   margin-top: clamp(1rem, 3dvh, 2rem);
   padding: 1.25rem 1.5rem 1.5rem;
-  border-radius: 0.875rem;
-  background: var(--color-workspace-panel);
+  border-radius: 0.75rem;
   font-size: 0.9375rem;
   line-height: 1.5;
 }
@@ -116,14 +175,24 @@
 
 .home-demo-note {
   padding-top: clamp(1rem, 3dvh, 3rem);
-  color: var(--color-secondary);
+  color: rgb(255 255 255 / 0.75);
   font-size: 0.75rem;
   line-height: 1.5;
   text-align: center;
 }
 
+/* The message box is as tall as the deliveries card. On phones the deliveries stack into one
+   column and grow, so the box keeps its own height there. */
+@media (min-width: 768px) {
+  .home-composer,
+  .home-schedule {
+    min-height: var(--home-card-height);
+  }
+}
+
 @media (max-width: 767px) {
   .home-workspace {
+    /* The phone keeps its 4rem top bar. */
     min-height: calc(100dvh - 4rem);
     padding: 4rem 1.25rem 1.25rem;
   }
@@ -144,5 +213,94 @@
     grid-template-columns: 1fr;
     gap: 1rem;
     margin-top: 1.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-background-photo {
+    transition: none;
+    transform: none;
+  }
+}
+
+/* ---------- Home -> chat expand (features/home/model/expandToChat.ts) ---------- */
+.chat-expand-ghost {
+  position: fixed;
+  z-index: 35; /* over the page, under the sidebar (z-50) and phone top bar (z-40) */
+  box-shadow: 0 12px 40px rgb(0 20 30 / 0.25);
+  pointer-events: none;
+}
+
+.chat-enter > div > header,
+.chat-enter .chat-panel > *,
+.chat-enter > .cart-column {
+  animation: chat-content-in 0.35s ease-out 0.1s both;
+}
+
+@keyframes chat-content-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-enter > div > header,
+  .chat-enter .chat-panel > *,
+  .chat-enter > .cart-column {
+    animation: none;
+  }
+}
+
+/* Back from a chat: hidden until the card has shrunk into the message box, then fade in. */
+.home-composer > *,
+.home-intro p,
+.home-demo-note {
+  transition: opacity 0.3s ease-out;
+}
+
+.home-entering .home-composer > *,
+.home-entering .home-intro p,
+.home-entering .home-demo-note {
+  opacity: 0;
+}
+
+/* Deliveries card (StandingOrdersCard) can wait below the screen: no scrollbar for it. */
+.home-workspace {
+  overflow: clip;
+}
+
+/* Typewriter cursor (TypewriterHeading): zero width so the heading never shifts. */
+.typewriter-cursor {
+  position: relative;
+  display: inline-block;
+  width: 0;
+  height: 1em;
+  vertical-align: -0.12em;
+}
+
+.typewriter-cursor::after {
+  position: absolute;
+  inset: 0 auto 0 0.06em;
+  width: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  content: "";
+  animation: typewriter-blink 1s steps(1) infinite;
+  transition: opacity 0.4s ease-out;
+}
+
+.typewriter-cursor.is-typing::after {
+  animation: none; /* solid while typing, like a real caret */
+}
+
+.typewriter-cursor.is-done::after {
+  opacity: 0;
+  animation: none;
+}
+
+@keyframes typewriter-blink {
+  50% {
+    opacity: 0;
   }
 }

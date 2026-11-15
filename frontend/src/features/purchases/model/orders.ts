@@ -45,3 +45,38 @@ export function placedItemFromProposal(p: Proposal): OrderListItem {
     updated_at: placedAt(p),
   };
 }
+
+// The list has no delivery date for placed orders, but its simulated fulfilment follows fixed
+// rules (aimo/clock.py): preparing from D-1 00:00, out for delivery from D 06:00, delivered
+// from D 12:00 (Helsinki). So the delivery day D can be read off the stage's start or end.
+const helsinkiDay = (iso: string) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Helsinki",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(iso));
+  return parts; // YYYY-MM-DD
+};
+const nextDay = (day: string) => {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+};
+
+/** The delivery date (YYYY-MM-DD) of a placed order, from its fulfilment; null if unknown. */
+export function deliveryDay(
+  fulfilment?: {
+    status: string;
+    since?: string | null;
+    next_at?: string | null;
+  } | null,
+): string | null {
+  if (!fulfilment) return null;
+  const { status, since, next_at } = fulfilment;
+  if (status === "accepted" && next_at) return nextDay(helsinkiDay(next_at));
+  if ((status === "preparing" || status === "out_for_delivery") && next_at)
+    return helsinkiDay(next_at);
+  if (status === "delivered" && since) return helsinkiDay(since);
+  return null;
+}
