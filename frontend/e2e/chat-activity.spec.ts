@@ -91,7 +91,8 @@ for (const width of [1440, 390, 320]) {
     await expect(
       page.getByRole("button", { name: "Start voice mode" }),
     ).toBeDisabled();
-    await expect(page.getByLabel("Continue the conversation")).toBeDisabled();
+    // The composer stays enabled while Aimo works so messages can be queued.
+    await expect(page.getByLabel("Continue the conversation")).toBeEnabled();
     await expect(activity.locator(".activity-dot").first()).toHaveCSS(
       "animation-name",
       "activity-dot",

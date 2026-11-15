@@ -882,6 +882,73 @@ test("composer clears as soon as send starts", async ({ page }) => {
   await expect(composer).toHaveValue("");
 });
 
+test("messages typed while Aimo works queue above the composer and send in order", async ({
+  page,
+}) => {
+  await mockSession(page);
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: blankConversation }),
+  );
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const posted: string[] = [];
+  await page.route(
+    `**/api/conversations/${conversationId}/messages`,
+    async (route) => {
+      const text = route.request().postDataJSON().text as string;
+      posted.push(text);
+      if (posted.length === 1) await gate;
+      await route.fulfill({
+        json: {
+          ...blankConversation,
+          messages: posted.map((message, index) => ({
+            id: index + 1,
+            role: "user",
+            text: message,
+            created_at: timestamp,
+          })),
+        },
+      });
+    },
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  const composer = page.getByLabel("Continue the conversation");
+  await expect(composer).toBeFocused();
+  await composer.fill("Carbonara for 200");
+  await composer.press("Enter");
+  await expect(composer).toHaveValue("");
+  await expect(composer).toBeFocused();
+
+  await composer.fill("Add a vegetarian option");
+  await composer.press("Enter");
+  await composer.fill("Never mind this one");
+  await page.getByRole("button", { name: "Queue message" }).click();
+  await expect(composer).toBeFocused();
+  const queued = page.getByRole("list", { name: "Queued messages" });
+  await expect(queued.getByRole("listitem")).toContainText([
+    "Add a vegetarian option",
+    "Never mind this one",
+  ]);
+
+  await page
+    .getByRole("button", {
+      name: "Remove queued message: Never mind this one",
+    })
+    .click();
+  await expect(composer).toBeFocused();
+  await expect(queued.getByRole("listitem")).toHaveCount(1);
+  expect(posted).toEqual(["Carbonara for 200"]);
+
+  release();
+  await expect(queued).toHaveCount(0);
+  await expect
+    .poll(() => posted)
+    .toEqual(["Carbonara for 200", "Add a vegetarian option"]);
+  await expect(composer).toBeFocused();
+});
+
 test("purchase deep links survive sign-in and confirmation requires an explicit click", async ({
   page,
 }) => {
