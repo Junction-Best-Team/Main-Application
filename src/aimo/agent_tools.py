@@ -685,7 +685,7 @@ class ToolSession:
         texts = self.customer_texts
         if self.prepared_digest is not None and self.proposal:
             return "finish"
-        if agent_stop.advice_only(texts):
+        if agent_stop.advice_only(texts) or agent_stop.is_advice_question(texts):
             return "advice"
         if not self.plan:
             return "recipe" if self.recipe_discovery_started else "understand"
@@ -736,12 +736,14 @@ class ToolSession:
         self.phase_refusals += 1
         phase = self.phase
         available = sorted(set(self.registry) - set(self.hidden_tools()))
-        return Problem(
+        refusal = Problem(
             "TOOL_NOT_ALLOWED",
             f"This step is {phase.upper()}: {name} is not available now. Available tools: "
             f"{', '.join(available) or 'none; reply to the customer'}. No purchase was made.",
             422,
         )
+        refusal.phase = True  # the call never ran: it may be tried again once the phase allows it
+        return refusal
 
     @property
     def needs_recipe_plan(self):
@@ -826,7 +828,7 @@ class ToolSession:
         # other call is checked in invoke, after its arguments were validated.
         phase_problem = self.phase_refusal(name) if parallel and self.enforce_phases else None
         if phase_problem is not None:
-            self.called_now.add(key)
+            self.called_now.discard(key)  # refused, never ran: not a "tried" call
             return phase_problem
         if key in self.called_before and name not in agent_stop.REPEATABLE:
             return Problem(

@@ -194,3 +194,17 @@ CONTINUE_PHASE_NOTICE = (
     "the existing plan. The delivery date and destination are never asked: they default to tomorrow and "
     "the policy's destination, and the customer edits them on the card."
 )
+
+
+def is_advice_question(customer_texts):
+    """A question with no quantity in it that is not a request to buy ("How should I store salmon?",
+    "What is the order deadline?"): advice, even when a plan was published in the same turn. When
+    unsure, advice wins (nothing is prepared; the customer can say "order it")."""
+    texts = [t for t in customer_texts if t]
+    if not texts:
+        return False
+    latest = texts[-1]
+    asks = QUESTION_FORM.search(latest) or latest.strip().endswith("?")
+    return bool(asks) and not re.search(r"\d", latest) and not wants_to_buy(customer_texts) and not is_card_edit(
+        customer_texts
+    )

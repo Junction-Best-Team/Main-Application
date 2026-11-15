@@ -615,7 +615,9 @@ def run_turn(
                         if exc.code == "LLM_TIMEOUT":
                             raise
                         errors += 1
-                        if exc.code not in ("TOOL_REPEATED", "TOOL_NOT_ALLOWED"):
+                        if exc.code != "TOOL_REPEATED" and (
+                            exc.code != "TOOL_NOT_ALLOWED" or getattr(exc, "phase", False)
+                        ):
                             session.forget(name, call.function.arguments)
                         progress.emit("tool_failed", visible_name, exc.code)
                         tool_log.append(

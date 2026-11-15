@@ -56,6 +56,7 @@ def executions(session, calls, deadline, live, progress, *, max_errors, round_nu
                 check_deadline(deadline)
                 live()
                 name = call.function.name
+                phase_now = session.phase if session.phases_on and session.enforce_phases else None
                 refusal = session.discipline(
                     name, call.function.arguments, parallel=name in PARALLEL_READS
                 )
@@ -75,7 +76,9 @@ def executions(session, calls, deadline, live, progress, *, max_errors, round_nu
                         child.recipe_discovery_started = session.recipe_discovery_started
                         child.plan = deepcopy(session.plan)
                         context = copy_context()
-                        future = executor.submit(context.run, invoke, child, call, round_number)
+                        future = executor.submit(
+                            context.run, invoke, child, call, round_number, phase_now
+                        )
                         reads[key] = (child, future)
                     child, future = reads[key]
                     jobs.append((call, child, future))
@@ -99,7 +102,7 @@ def executions(session, calls, deadline, live, progress, *, max_errors, round_nu
                                 if future.done():
                                     raise
                     else:
-                        result = invoke(session, call, round_number)
+                        result = invoke(session, call, round_number, phase_now_of(session))
                 except Exception as exc:
                     error = exc
                 # Cancellation/reclaim must win even after an already-finished read.
@@ -119,10 +122,15 @@ def executions(session, calls, deadline, live, progress, *, max_errors, round_nu
                 executor.shutdown(wait=False, cancel_futures=True)
 
 
-def invoke(session, call, round_number):
+def phase_now_of(session):
+    return session.phase if session.phases_on and session.enforce_phases else None
+
+
+def invoke(session, call, round_number, phase=None):
     with log_context(
         round=round_number,
         tool=call.function.name if call.function.name in session.registry else "unavailable",
         args_fingerprint=call_key(call.function.name, call.function.arguments)[1],
+        **({"phase": phase} if phase else {}),
     ):
         return session.invoke(call.function.name, call.function.arguments)

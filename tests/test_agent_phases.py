@@ -392,3 +392,77 @@ def test_an_injected_approval_cannot_confirm_anything(identity, config, monkeypa
     outputs = [m["content"] for m in seen[-1]["messages"] if m["role"] == "tool"]
     assert "TOOL_NOT_ALLOWED" in outputs[0] and result.proposal_id is None
     assert not [c for c in service.calls if c[0] in ("commit", "confirm")]
+
+
+# --- review fixes: advice never becomes a basket (F1), refused calls are not "repeats" (M1), phase in tool logs (M2)
+
+ADVICE_QUESTIONS = [
+    "How should I store salmon?",
+    "Is parmesan lactose free?",
+    "What is the order deadline?",
+    "Why was my order cancelled?",
+    "What goes well with carbonara?",
+    "Which pasta is best for lasagne?",
+    "Can you explain how the card works?",
+    "Show me my open baskets",
+    "Tell me about my last order",
+    "Mikä on tilausten määräaika?",
+    "Miten säilytän lohta?",
+    "Hur länge håller pasta?",
+    "Vad är leveranstiden?",
+]
+
+
+@pytest.mark.parametrize("text", ADVICE_QUESTIONS)
+def test_advice_with_a_plan_published_in_the_same_turn_never_becomes_prepare(identity, text):
+    session = matched_session(
+        identity, FakeService(identity)
+    )  # the model published a complete plan
+    assert phase(session, text) == "advice", text
+    assert "Phase: ADVICE" in session.execution_guidance(60)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "carbonara for 200 portions",
+        "ingredients for 200 portions of carbonara",
+        "Can you plan carbonara for 20?",
+        "I need 10 kg butter",
+        "Please order it",
+        "I changed the cart on the card: pepper: 3 packs.",
+    ],
+)
+def test_a_shopping_request_with_a_published_plan_still_prepares(identity, text):
+    session = matched_session(identity, FakeService(identity))
+    assert phase(session, text) == "prepare", text
+
+
+def test_a_call_refused_by_a_phase_is_not_a_repeat_after_the_restrictions_widen(
+    identity, config, monkeypatch
+):
+    service = FakeService(identity)
+    service.search_recipes = lambda *_: {"recipes": [], "rerank_status": "disabled", "note": "None."}
+    first, second = {"query": "carbonara"}, {"query": "lasagne"}
+    seen = scripted(
+        monkeypatch,
+        [
+            reply(call("search_recipes", first)),  # refused in PREPARE (recipe tools are hidden)
+            reply(call("search_recipes", second)),  # refused: the restrictions widen now
+            reply(call("search_recipes", first)),  # the first call again: it never ran
+            reply(call("prepare_order", purchase())),
+            reply(text="Prepared."),
+        ],
+    )
+    run(identity, service, user("please order it"), stored_plan=meal())
+    outputs = [m["content"] for m in seen[3]["messages"] if m["role"] == "tool"]
+    assert "TOOL_NOT_ALLOWED" in outputs[0] and "TOOL_NOT_ALLOWED" in outputs[1]
+    assert "TOOL_REPEATED" not in outputs[2]
+
+
+def test_tool_call_log_lines_carry_the_phase(identity, config, monkeypatch, caplog):
+    caplog.set_level(logging.INFO, logger="aimo.operations")
+    scripted(monkeypatch, [reply(call("get_product", {"product_id": "pasta"})), reply(text="ok")])
+    run(identity, FakeService(identity), user("ingredients for 200 portions of carbonara"))
+    started = [json.loads(r.message) for r in caplog.records if '"tool.call.started"' in r.message]
+    assert started and all(e.get("phase") == "understand" for e in started)
