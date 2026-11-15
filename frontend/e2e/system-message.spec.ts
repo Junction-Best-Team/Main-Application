@@ -18,7 +18,6 @@ const disrupted: Conversation = {
   updated_at: at,
   cart_editable: false,
   busy: false,
-  cart_editable: false,
   purchases: [proposal],
   messages: [
     { id: 1, role: "system", text: systemText, created_at: at },

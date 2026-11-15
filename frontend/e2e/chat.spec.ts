@@ -27,7 +27,6 @@ const blankConversation: Conversation = {
   cart_editable: false,
   messages: [],
   purchases: [],
-  cart_editable: false,
   busy: false,
 };
 const proposal: Proposal = {
@@ -123,6 +122,19 @@ async function mockSession(page: Page, signedIn = true) {
     route.fulfill({
       status: authenticated ? 200 : 401,
       json: authenticated ? currentSession : { error: { message: "Sign in" } },
+    }),
+  );
+  // The cart card reads the buyer's destinations; an unmocked request would fall through to a dead proxy.
+  await page.route("**/api/settings/policy", (route) =>
+    route.fulfill({
+      json: {
+        buyer_id: "demo-hotel",
+        policy_version: 1,
+        rules: { currency: "EUR", destinations: ["hotel-helsinki"] },
+        can_edit: true,
+        approval_authority: { can_approve: true },
+        history: [],
+      },
     }),
   );
   await page.route("**/api/login", async (route) => {
@@ -2103,13 +2115,20 @@ test("home hands a failed first message back to the chat composer", async ({
   await page.route(`**/api/conversations/${conversationId}`, (route) =>
     route.fulfill({ json: blankConversation }),
   );
-  await page.route(`**/api/conversations/${conversationId}/messages`, (route) =>
-    route.fulfill({
-      status: 503,
-      json: {
-        error: { code: "UNAVAILABLE", message: "Try again shortly." },
-      },
-    }),
+  // A real network takes a moment to fail. The chat page's mount effect runs twice in development
+  // (StrictMode) and the second run clears the error, so an instant failure that lands before the
+  // chat page has mounted would be lost; this keeps the test about the hand-over, not about that race.
+  await page.route(
+    `**/api/conversations/${conversationId}/messages`,
+    async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await route.fulfill({
+        status: 503,
+        json: {
+          error: { code: "UNAVAILABLE", message: "Try again shortly." },
+        },
+      });
+    },
   );
   await page.goto("/");
   await page
