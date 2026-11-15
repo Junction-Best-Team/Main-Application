@@ -8,7 +8,7 @@ The request composer also offers [voice mode](docs/voice.md): while the composer
 the microphone and speak with Aimo using Gemini 3.8 Live. Voice uses the same saved
 chat and purchasing controls; baskets still require confirmation on screen.
 
-The current [product migration](docs/chat-purchasing.md) overrides the external-agent entry points in the [original brief](docs/brief.md). The underlying purchasing controls remain. [Infrastructure](infra/README.md) is optional and operator-managed; this migration does not apply Terraform, deploy or enable releases.
+The [product brief](docs/brief.md) defines the current purchasing controls; [chat behavior](docs/chat-purchasing.md) describes conversations and confirmation. [Infrastructure](infra/README.md) is operator-managed.
 
 See the [architecture diagrams](docs/architecture.md) for the system overview, purchase confirmation flow and code map. The assistant keeps explicitly saved buyer-shared and personal preferences across conversations; see [buyer and user memory](docs/memory.md) (`/api/memories`, migration 012). Memory never grants purchasing authority. [Agent guardrails](docs/guardrails.md) separates deterministic controls from the Gemini Decision 1 checks, which enforce by default using the server-side `GEMINI_API_KEY` (`GUARDRAIL_MODE=enforce|shadow|off`).
 
@@ -35,7 +35,7 @@ One workflow, `.github/workflows/ci.yml`, runs on PRs into `develop` and `main`,
 
 Frontend-only PRs skip backend tests, except the shared OpenAPI contract; documentation-only PRs skip application checks. Python source changes run both application jobs; tests, migrations and Python dependencies run backend checks. Infrastructure changes run Terraform; workflow changes and unknown paths run conservative checks. The gate accepts a skip only when change detection explicitly marked that check unrelated. Manual CI runs every check and the full pytest suite. PRs use `tests/pr-tests.sh`: login/CSRF, buyer isolation, persistent chat/retries, worker recovery, scripted-agent checkout, exact-revision confirmation, purchase limits, migrations/runtime grants and a scheduling flow. Exhaustive edge-case tests stay available locally and on manual CI; they no longer block ordinary contributions.
 
-The API sweep shares the backend job's Python environment and temporary, memory-backed PostgreSQL service. Coverage is an optional local diagnostic, with no percentage requirement or coverage artifact jobs in CI. Dependencies are locked and cached; new commits cancel outdated PR runs. CI uses fixtures, without supplier keys, model downloads or full catalog imports. The live check is local: `tests/ci.sh --live`. See [tests/README.md](tests/README.md) and [tests/TEST-GUIDE.md](tests/TEST-GUIDE.md).
+The API sweep shares the backend job's Python environment and temporary, memory-backed PostgreSQL service. Coverage is an optional local diagnostic, with no percentage requirement or coverage artifact jobs in CI. Dependencies are locked and cached; new commits cancel outdated PR runs. CI uses fixtures, without supplier keys, model downloads or full catalog imports. The live check is local: `tests/ci.sh --live`. See [tests/README.md](tests/README.md).
 
 Our workflow is **task PR → green CI → self-merge**. Repository rules require the CI gate plus the three existing application check names; reviews are optional and the `skip-review` label does not bypass CI. If adding a job, include its result in the gate.
 
@@ -104,8 +104,6 @@ CI stays offline through `tests/supplier_fixture.py` and the explicit
 `tests/fixture_app.py` API harness, which are excluded from application images.
 For a dedicated fixture database, use `UPSTREAM_MODE=fixture uv run uvicorn
 --app-dir tests fixture_app:app`; `tests/ci.sh` configures that harness automatically.
-
-**Open decision for the full product:** how a distributor supplies this key. Options: an admin UI where the distributor enters it (stored server-side, never sent to browsers), or deployment configuration as today (an environment variable or Kubernetes Secret). The MVP uses the environment variable. This must be resolved before production; see `docs/brief.md` section 12.
 
 ## Demo
 
@@ -182,9 +180,9 @@ offline and consumes durable chat jobs. Each app has its own health endpoints.
 API readiness checks schema/catalog compatibility; worker readiness also requires
 model initialization and a recent successful database poll.
 
-[Deployment instructions](deploy/README.md) and [the cutover runbook](docs/separate-apps.md)
-cover independent Kubernetes Deployments, Services, path routing, migration 004,
-and rollback while preserving the existing managed database and purchase history.
+[Deployment instructions](deploy/README.md) and [app operations](docs/separate-apps.md)
+cover independent Kubernetes Deployments, Services, path routing and durable jobs
+while preserving the existing managed database and purchase history.
 The separate-app rollout is not implied by a successful local build or PR check.
 [Release migration operations](docs/release-migrations.md) covers the automatic
 schema/grant Job, its one-time Secret provisioning, and image rollback limitations.

@@ -1,7 +1,7 @@
 # Aimo chat purchasing architecture
 
-This describes the implemented chat product. The [chat purchasing migration](chat-purchasing.md)
-supersedes the external-agent/MCP entry points in the [original brief](brief.md).
+This describes the implemented chat product. See the [product brief](brief.md) for
+purchasing controls and [chat behavior](chat-purchasing.md) for conversation contracts.
 GitHub renders the Mermaid diagrams directly; edit their text here when the architecture changes.
 This describes the repository implementation and deployment configuration, not a live cluster inventory.
 
@@ -28,7 +28,7 @@ flowchart TB
     Images[Google Nano Banana image generation]
     CDN[Cloudinary image hosting]
     Voice[Google Gemini 3.8 Live voice]
-    Supplier[Valio price / availability or labelled fixtures]
+    Supplier[Live Valio price / availability]
     Catalog[Verified product / recipe datasets]
 
     Buyer <-->|HTTPS| Ingress
@@ -72,7 +72,7 @@ cluster as the existing managed database.
 The agent can plan, search and prepare; its tool registry has no approval or
 commit operation. Policy/identity provisioning remain privileged setup operations.
 Even with live price/availability, orders are persistent **mocks**, without supplier
-checkout or stock reservation. See [cutover and recovery](separate-apps.md).
+checkout or stock reservation. See [app operations and recovery](separate-apps.md).
 
 Exact product ID/GTIN matches stay local. Descriptive hosted searches combine keyword and
 exact cosine ranking in pgvector, then rerank a filtered shortlist. Dietary exclusions apply
