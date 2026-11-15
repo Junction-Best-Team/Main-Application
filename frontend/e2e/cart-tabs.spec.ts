@@ -22,7 +22,8 @@ import { ids, json, problem } from "./support/schedulerFixtures";
 //  - a blocker is never only under Checks: it is in card-reason and the Checks tab has a badge
 //    (card-checks-badge);
 //  - delivery is one line (card-delivery-line) "Tue 17 Nov · hotel-helsinki" with an "Edit delivery"
-//    button that opens the Delivery tab; "Left out: ..." is one muted line (card-left-out);
+//    link that opens the Delivery tab and focuses the date; the Delivery tab edits in place (no Edit,
+//    Save or Cancel buttons): Enter or leaving the field saves; "Left out: ..." is one muted line (card-left-out);
 //  - short product names (weights removed) are shown; the number input keeps its full accessible name
 //    "Quantity of <full product name>". No item count in the header, "Empty" for an empty card.
 // The style of the number controls is NOT specified here (separate spec). Mocked API, typed fixtures,
@@ -30,9 +31,9 @@ import { ids, json, problem } from "./support/schedulerFixtures";
 
 const card = (page: Page) =>
   page.locator("aside#overview, aside[aria-label='Your order']").first();
-const tab = (page: Page, name: "Items" | "Delivery" | "Checks") =>
+const tab = (page: Page, name: "Items" | "Delivery" | "Checks" | "Details") =>
   card(page).getByRole("tab", { name: new RegExp(`^${name}`) });
-const panel = (page: Page, name: "items" | "delivery" | "checks") =>
+const panel = (page: Page, name: "items" | "delivery" | "checks" | "details") =>
   card(page).locator(`[data-testid="card-panel-${name}"]`);
 const footer = (page: Page) => card(page).getByTestId("card-footer");
 const confirmButton = (page: Page) =>
@@ -63,29 +64,38 @@ async function open(page: Page, over: Partial<CartWorld> = {}) {
   await expect(card(page)).toBeVisible();
   return world;
 }
-const selected = (page: Page, name: "Items" | "Delivery" | "Checks") =>
-  expect(tab(page, name)).toHaveAttribute("aria-selected", "true");
+const selected = (
+  page: Page,
+  name: "Items" | "Delivery" | "Checks" | "Details",
+) => expect(tab(page, name)).toHaveAttribute("aria-selected", "true");
 
 // --- the tabs -------------------------------------------------------------------------------
 
-test("the prepared card has the tabs Items, Delivery and Checks; Items is selected and its panel shown", async ({
+test("the prepared card has the tabs Items, Delivery, Details and Checks in that order; Items is selected and its panel shown", async ({
   page,
 }) => {
   await open(page);
   await expect(
     card(page).getByRole("tablist", { name: "Order sections" }),
   ).toBeVisible();
-  for (const name of ["Items", "Delivery", "Checks"] as const)
+  for (const name of ["Items", "Delivery", "Details", "Checks"] as const)
     await expect(tab(page, name)).toBeVisible();
+  expect(await card(page).getByRole("tab").allInnerTexts()).toEqual([
+    "Items",
+    "Delivery",
+    "Details",
+    "Checks",
+  ]);
   await selected(page, "Items");
   await expect(tab(page, "Delivery")).toHaveAttribute("aria-selected", "false");
   await expect(panel(page, "items")).toBeVisible();
   await expect(panel(page, "delivery")).toBeHidden();
   await expect(panel(page, "checks")).toBeHidden();
+  await expect(panel(page, "details")).toBeHidden();
   // All panels stay mounted: the hidden ones are in the page, not removed.
-  for (const name of ["items", "delivery", "checks"] as const)
+  for (const name of ["items", "delivery", "checks", "details"] as const)
     await expect(panel(page, name)).toHaveCount(1);
-  await expect(card(page).getByLabel("Delivery date")).toHaveCount(1);
+  await expect(panel(page, "delivery")).toContainText("hotel-helsinki");
 });
 
 test("clicking a tab shows its panel and hides the others; the tab and its panel are linked", async ({
@@ -96,7 +106,7 @@ test("clicking a tab shows its panel and hides the others; the tab and its panel
   await selected(page, "Delivery");
   await expect(panel(page, "delivery")).toBeVisible();
   await expect(panel(page, "items")).toBeHidden();
-  await expect(card(page).getByLabel("Delivery date")).toBeVisible();
+  await expect(panel(page, "delivery")).toContainText("hotel-helsinki");
   await tab(page, "Checks").click();
   await selected(page, "Checks");
   await expect(panel(page, "checks")).toBeVisible();
@@ -117,6 +127,8 @@ test("the tabs work from the keyboard: arrows, Home and End", async ({
   await page.keyboard.press("ArrowRight");
   await selected(page, "Delivery");
   await expect(tab(page, "Delivery")).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await selected(page, "Details");
   await page.keyboard.press("End");
   await selected(page, "Checks");
   await page.keyboard.press("ArrowRight");
@@ -332,18 +344,83 @@ test("a ready order has no badge on Checks and no blocker line", async ({
   await expect(reason(page)).toHaveCount(0);
 });
 
-test("Checks has the purchasing checks and More opens the details", async ({
+test("Checks has only the purchasing checks and the approval status", async ({
   page,
 }) => {
-  await open(page);
+  await open(page, { outcome: "approval_required" });
   await tab(page, "Checks").click();
   await expect(
     panel(page, "checks").getByRole("heading", { name: "Purchasing checks" }),
   ).toBeVisible();
-  const more = panel(page, "checks").getByRole("button", { name: "More" });
-  await expect(panel(page, "checks").locator(".purchase-sheet")).toBeHidden();
-  await more.click();
-  await expect(panel(page, "checks").locator(".purchase-sheet")).toBeVisible();
+  await expect(card(page).getByTestId("card-approval")).toHaveText(
+    "Approval: pending",
+  );
+  await expect(panel(page, "checks").getByRole("button")).toHaveCount(0);
+  await expect(panel(page, "checks")).not.toContainText(
+    /Fixture prices|Revision/,
+  );
+});
+
+// --- the Details tab: only what the proposal carries -------------------------------------------------
+
+test("Details shows the reference, revision, how long the prices hold, the policy and the substitutions switch", async ({
+  page,
+}) => {
+  await open(page);
+  await tab(page, "Details").click();
+  const details = panel(page, "details");
+  await expect(details).toContainText("Order reference");
+  await expect(details).toContainText(ids.proposal.slice(0, 8).toUpperCase());
+  await expect(details).toContainText("Revision");
+  await expect(details).toContainText(/1 · created/);
+  await expect(details).toContainText("Prices valid until");
+  await expect(details).toContainText("Policy");
+  await expect(details).toContainText("v1 · approval not required");
+  const sub = details.getByRole("switch", { name: "Allow substitutions" });
+  await expect(sub).toBeDisabled(); // read-only: shows the request, changes nothing
+  await expect(sub).toHaveAttribute("aria-checked", "true");
+  // The sample notice is here, not on the Checks tab.
+  await expect(details).toContainText("Fixture prices and stock");
+});
+
+test("the Cut-off row appears only when the lines carry a supplier cut-off", async ({
+  page,
+}) => {
+  await open(page);
+  await tab(page, "Details").click();
+  await expect(panel(page, "details")).not.toContainText("Cut-off");
+});
+
+test("with a supplier cut-off in the evidence the Details tab shows it", async ({
+  page,
+}) => {
+  await open(page, { cutoff: "2026-11-16T14:00:00+02:00" });
+  await tab(page, "Details").click();
+  await expect(panel(page, "details")).toContainText("Cut-off");
+  await expect(panel(page, "details")).toContainText(/16 Nov 2026/);
+});
+
+test("an order that was placed shows its order id as the reference", async ({
+  page,
+}) => {
+  await open(page, { orderPlaced: true, editable: false });
+  await tab(page, "Details").click();
+  await expect(panel(page, "details")).toContainText(ids.sourceOrder);
+});
+
+test("Details has no Export manifest and no History link; More opens the full sheet", async ({
+  page,
+}) => {
+  await open(page);
+  await tab(page, "Details").click();
+  const details = panel(page, "details");
+  await expect(
+    details.getByRole("button", { name: /Export manifest/ }),
+  ).toHaveCount(0);
+  await expect(details.getByRole("button", { name: "History" })).toHaveCount(0);
+  await expect(details.locator(".purchase-sheet")).toBeHidden();
+  await details.getByRole("button", { name: "More" }).click();
+  await expect(details.locator(".purchase-sheet")).toBeVisible();
 });
 
 // --- delivery in one line ---------------------------------------------------------------------
@@ -357,37 +434,167 @@ test("delivery is one line with the date and the destination, and Edit delivery 
   await line.getByRole("button", { name: "Edit delivery" }).click();
   await selected(page, "Delivery");
   await expect(card(page).getByLabel("Delivery date")).toBeVisible();
+  await expect(card(page).getByLabel("Delivery date")).toBeFocused();
 });
 
-test("Update delivery details sends one request id; its error shows in the footer and brings the tab back to Items", async ({
+const PREPARE = `**/api/conversations/${ids.conversation}/prepare-from-cart`;
+
+test("the Delivery tab is a labelled list whose values are edited in place: no Edit, Save or Cancel buttons", async ({
+  page,
+}) => {
+  await open(page);
+  await tab(page, "Delivery").click();
+  const delivery = panel(page, "delivery");
+  await expect(delivery.getByText("Date", { exact: true })).toBeVisible();
+  await expect(
+    delivery.getByText("Destination", { exact: true }),
+  ).toBeVisible();
+  await expect(card(page).getByLabel("Delivery date")).toHaveValue(
+    "2026-11-17",
+  );
+  await expect(delivery.getByText("hotel-helsinki")).toBeVisible();
+  await expect(delivery.getByRole("button")).toHaveCount(0);
+  // No address, contact or note: the backend has none, so no such rows and nothing invented.
+  await expect(delivery).not.toContainText(/Address|Contact|Phone|Note/);
+  // Plain text until it is hovered or focused: no dashed underline.
+  const date = card(page).getByLabel("Delivery date");
+  expect(
+    await date.evaluate((e) => getComputedStyle(e).borderBottomStyle),
+  ).not.toBe("dashed");
+  expect(await date.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(
+    "rgba(0, 0, 0, 0)",
+  );
+  await date.hover();
+  expect(
+    await date.evaluate((e) => getComputedStyle(e).backgroundColor),
+  ).not.toBe("rgba(0, 0, 0, 0)");
+});
+
+test("Enter in the date saves it: one prepare-from-cart request with one request id", async ({
   page,
 }) => {
   const requests: Record<string, unknown>[] = [];
-  await open(page);
-  await page.route(
-    `**/api/conversations/${ids.conversation}/prepare-from-cart`,
-    (route) => {
-      requests.push(route.request().postDataJSON());
-      return problem(route, 409, "CART_NOT_VERIFIED", "The cart changed.");
-    },
-  );
-  await card(page)
-    .getByTestId("card-delivery-line")
-    .getByRole("button", { name: "Edit delivery" })
-    .click();
-  await card(page).getByLabel("Delivery date").fill("2026-11-20");
-  await card(page)
-    .getByRole("button", { name: "Update delivery details" })
-    .click();
-  await expect(footer(page).getByRole("alert")).toContainText(
-    "The cart changed.",
-  );
-  expect(requests).toHaveLength(1);
+  const world = await open(page);
+  await page.route(PREPARE, (route) => {
+    requests.push(route.request().postDataJSON());
+    return problem(route, 409, "CART_NOT_VERIFIED", "The cart changed.");
+  });
+  await tab(page, "Delivery").click();
+  const date = card(page).getByLabel("Delivery date");
+  await date.fill("2026-11-20");
+  expect(requests).toHaveLength(0); // typing alone saves nothing
+  await date.press("Enter");
+  await expect.poll(() => requests.length).toBe(1);
   expect(requests[0]).toMatchObject({
     delivery_date: "2026-11-20",
     destination: "hotel-helsinki",
   });
   expect(requests[0].request_id).toEqual(expect.stringMatching(/^.{8,120}$/));
+  expect(world.puts).toHaveLength(0);
+});
+
+test("leaving the date field saves it too; an unchanged date sends nothing", async ({
+  page,
+}) => {
+  const requests: Record<string, unknown>[] = [];
+  await open(page);
+  await page.route(PREPARE, (route) => {
+    requests.push(route.request().postDataJSON());
+    return problem(route, 409, "CART_NOT_VERIFIED", "The cart changed.");
+  });
+  await tab(page, "Delivery").click();
+  const date = card(page).getByLabel("Delivery date");
+  await date.focus();
+  await date.blur();
+  await page.waitForTimeout(300);
+  expect(requests).toHaveLength(0);
+  await date.fill("2026-11-21");
+  await date.blur();
+  await expect.poll(() => requests.length).toBe(1);
+  expect(requests[0]).toMatchObject({ delivery_date: "2026-11-21" });
+});
+
+test("a date before tomorrow is not sent: a hint says why, Escape puts the old date back", async ({
+  page,
+}) => {
+  const requests: Record<string, unknown>[] = [];
+  await open(page);
+  await page.route(PREPARE, (route) => {
+    requests.push(route.request().postDataJSON());
+    return problem(route, 409, "X", "x");
+  });
+  await tab(page, "Delivery").click();
+  const date = card(page).getByLabel("Delivery date");
+  await date.fill("2026-11-14");
+  await date.press("Enter");
+  await expect(card(page).getByTestId("delivery-hint")).toContainText(
+    "Choose a delivery date on or after",
+  );
+  expect(requests).toHaveLength(0);
+  await date.press("Escape");
+  await expect(date).toHaveValue("2026-11-17");
+  await expect(card(page).getByTestId("delivery-hint")).toHaveCount(0);
+});
+
+test("with several destinations the destination is a list that saves when a different one is picked", async ({
+  page,
+}) => {
+  const requests: Record<string, unknown>[] = [];
+  await open(page);
+  await page.route("**/api/settings/policy", (route) =>
+    json(route, {
+      buyer_id: "demo-hotel",
+      policy_version: 1,
+      rules: {
+        currency: "EUR",
+        destinations: ["hotel-helsinki", "hotel-espoo"],
+      },
+      can_edit: true,
+      approval_authority: { can_approve: true },
+      history: [],
+    }),
+  );
+  await page.reload();
+  await expect(card(page)).toBeVisible();
+  await page.route(PREPARE, (route) => {
+    requests.push(route.request().postDataJSON());
+    return problem(route, 409, "X", "x");
+  });
+  await tab(page, "Delivery").click();
+  await card(page).getByLabel("Destination").selectOption("hotel-espoo");
+  await expect.poll(() => requests.length).toBe(1);
+  expect(requests[0]).toMatchObject({
+    destination: "hotel-espoo",
+    delivery_date: "2026-11-17",
+  });
+});
+
+test("the Delivery values are plain text once the order is placed", async ({
+  page,
+}) => {
+  await open(page, { orderPlaced: true, editable: false });
+  await tab(page, "Delivery").click();
+  await expect(panel(page, "delivery")).toContainText("Tue 17 Nov 2026");
+  await expect(panel(page, "delivery")).toContainText("hotel-helsinki");
+  await expect(card(page).getByLabel("Delivery date")).toHaveCount(0);
+  await expect(
+    panel(page, "delivery").locator("input, select, button"),
+  ).toHaveCount(0);
+});
+
+test("a saved date that fails shows its error in the footer and brings the tab back to Items", async ({
+  page,
+}) => {
+  await open(page);
+  await page.route(PREPARE, (route) =>
+    problem(route, 409, "CART_NOT_VERIFIED", "The cart changed."),
+  );
+  await tab(page, "Delivery").click();
+  await card(page).getByLabel("Delivery date").fill("2026-11-20");
+  await card(page).getByLabel("Delivery date").press("Enter");
+  await expect(footer(page).getByRole("alert")).toContainText(
+    "The cart changed.",
+  );
   await selected(page, "Items"); // an error brings the tab back to Items
 });
 
@@ -518,7 +725,8 @@ test("on a phone the tabs and the pinned footer fit the open drawer", async ({
 }) => {
   await page.setViewportSize({ width: 390, height: 800 });
   await open(page);
-  await expect(tab(page, "Items")).toBeInViewport();
+  for (const name of ["Items", "Delivery", "Details", "Checks"] as const)
+    await expect(tab(page, name)).toBeInViewport(); // four labels fit in 390 px
   await expect(footer(page)).toBeInViewport();
   await expect(confirmButton(page)).toBeInViewport();
   const overflow = await page.evaluate(
@@ -693,11 +901,13 @@ test("an unresolved total has no i at all", async ({ page }) => {
   await expect(vatButton(page)).toHaveCount(0);
 });
 
-test("nothing about VAT in Checks or in More", async ({ page }) => {
+test("nothing about VAT in Checks, in Details or in More", async ({ page }) => {
   await open(page);
   await tab(page, "Checks").click();
-  await panel(page, "checks").getByRole("button", { name: "More" }).click();
   await expect(panel(page, "checks")).not.toContainText(/\bVAT\b/i);
+  await tab(page, "Details").click();
+  await panel(page, "details").getByRole("button", { name: "More" }).click();
+  await expect(panel(page, "details")).not.toContainText(/\bVAT\b/i);
 });
 
 // --- the number control: carets on hover ----------------------------------------------------------
@@ -771,4 +981,34 @@ test.describe("on a touch screen", () => {
     expect(opacity).toBeGreaterThan(0.2);
     expect(opacity).toBeLessThan(0.8);
   });
+});
+
+// --- names that differ only by pack size ------------------------------------------------------------
+
+test("two products that differ only by pack size keep their weights so they can be told apart; the full name is the row's title", async ({
+  page,
+}) => {
+  await open(page, { names: { bacon: "Spaghetti 500 g" } }); // pasta stays "Spaghetti 5 kg"
+  const rows = panel(page, "items").locator('[data-testid="cart-line"]');
+  await expect(rows.nth(0)).toContainText("Spaghetti 5 kg");
+  await expect(rows.nth(1)).toContainText("Spaghetti 500 g");
+  await expect(rows.nth(0).getByTitle("Spaghetti 5 kg")).toHaveCount(1);
+  await expect(rows.nth(1).getByTitle("Spaghetti 500 g")).toHaveCount(1);
+  // The other rows still show the short name.
+  await expect(rows.nth(2)).toContainText("Eggs");
+  await expect(rows.nth(2)).not.toContainText("30 pcs");
+});
+
+test("a short name keeps the full name as its title and in the More sheet", async ({
+  page,
+}) => {
+  await open(page);
+  await expect(panel(page, "items").getByTitle("Spaghetti 5 kg")).toHaveCount(
+    1,
+  );
+  await tab(page, "Details").click();
+  await panel(page, "details").getByRole("button", { name: "More" }).click();
+  await expect(panel(page, "details").locator(".purchase-sheet")).toContainText(
+    "Spaghetti 5 kg",
+  );
 });

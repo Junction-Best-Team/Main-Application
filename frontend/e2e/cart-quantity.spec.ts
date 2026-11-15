@@ -36,7 +36,7 @@ const REQUEST_ID = /^.{8,120}$/;
 
 async function open(page: Page, world: CartWorld = newCart()) {
   await openCart(page, world);
-  await expect(overview(page)).toContainText("Total estimated");
+  await expect(overview(page)).toContainText("Total");
   return world;
 }
 
@@ -74,7 +74,7 @@ test("there are no number controls once the purchase is an order", async ({
 }) => {
   await open(page, newCart({ orderPlaced: true, editable: false }));
   await expect(overview(page).getByLabel(/^Quantity of /)).toHaveCount(0);
-  await expect(overview(page)).toContainText("Spaghetti 5 kg");
+  await expect(overview(page)).toContainText("Spaghetti");
   await expect(overview(page)).toContainText("4 BAG");
 });
 
@@ -430,7 +430,7 @@ test("a line set to 0 stays as a greyed ghost that says what it was; the server 
   ]);
   const g = ghost(page, "pasta");
   await expect(g).toHaveAttribute("data-state", "ghost");
-  await expect(g).toContainText("Spaghetti 5 kg");
+  await expect(g).toContainText("Spaghetti");
   await expect(g).toContainText("was 4 BAG");
   await expect(g).toHaveCSS("opacity", "0.5"); // greyed
   await expect(row(page, "pasta")).toHaveCount(0); // a ghost is not a normal line
@@ -438,7 +438,9 @@ test("a line set to 0 stays as a greyed ghost that says what it was; the server 
     g.getByRole("button", { name: "Put Spaghetti 5 kg back" }),
   ).toBeEnabled();
   // The basket is the server's: two lines left, and the total is only bacon and eggs (22.00).
-  await expect(overview(page)).toContainText("2 items staged");
+  await expect(overview(page).locator('[data-testid="cart-line"]')).toHaveCount(
+    2,
+  );
   await expect(overview(page)).toContainText(/22[.,]00/);
   await expect(overview(page)).not.toContainText(/114[.,]00/);
   // The other line is a normal line and keeps its controls.
@@ -470,7 +472,9 @@ test("clicking the ghost puts the line back with 1 pack and prepares again", asy
   await expect(row(page, "pasta")).toHaveCount(1);
   await expect(qty(page, PASTA.name)).toHaveValue("1");
   await expect(ghost(page, "pasta")).toHaveCount(0);
-  await expect(overview(page)).toContainText("3 items staged");
+  await expect(overview(page).locator('[data-testid="cart-line"]')).toHaveCount(
+    3,
+  );
   // The old timer is gone: nothing fades or is announced later.
   await tick(page, 30_000);
   await expect(row(page, "pasta")).toHaveCount(1);
@@ -506,7 +510,9 @@ test("after 15 seconds the ghost fades away and a polite note says it was remove
   await expect(note(page)).toHaveText("Removed Spaghetti 5 kg");
   await expect(note(page)).toHaveAttribute("aria-live", "polite");
   await expect(row(page, "pasta")).toHaveCount(0);
-  await expect(overview(page)).toContainText("2 items staged");
+  await expect(overview(page).locator('[data-testid="cart-line"]')).toHaveCount(
+    2,
+  );
 });
 
 test("with reduced motion the ghost is removed at 15 seconds without a fade", async ({
@@ -593,10 +599,9 @@ test("changing the delivery date of an order that was placed meanwhile shows the
         { order_id: ids.sourceOrder },
       ),
   );
+  await overview(page).getByRole("button", { name: "Edit delivery" }).click();
   await overview(page).getByLabel("Delivery date").fill("2026-11-20");
-  await overview(page)
-    .getByRole("button", { name: "Update delivery details" })
-    .click();
+  await overview(page).getByLabel("Delivery date").press("Enter");
   await expect(overview(page).getByRole("alert")).toHaveText(
     "This order was already placed. Start a new request for another order.",
   );
@@ -622,7 +627,8 @@ test("Confirm purchase answered with REQUEST_REVISED shows the server's sentence
   await expect(overview(page).getByRole("alert")).toHaveText(
     "The basket changed while you were confirming. Review it and confirm again.",
   );
-  await expect(overview(page)).toContainText("Revision 2");
+  await overview(page).getByRole("tab", { name: "Details" }).click();
+  await expect(overview(page)).toContainText("2 · created");
   await expect(
     overview(page).getByRole("button", { name: "Confirm purchase" }),
   ).toBeEnabled();
@@ -648,10 +654,9 @@ test("in debug mode a refused edit and a refused delivery change offer Copy; wit
     `**/api/conversations/${ids.conversation}/prepare-from-cart`,
     (route) => problem(route, 409, "CART_NOT_VERIFIED", "The cart changed."),
   );
+  await overview(page).getByRole("button", { name: "Edit delivery" }).click();
   await overview(page).getByLabel("Delivery date").fill("2026-11-20");
-  await overview(page)
-    .getByRole("button", { name: "Update delivery details" })
-    .click();
+  await overview(page).getByLabel("Delivery date").press("Enter");
   const second = overview(page)
     .getByRole("alert")
     .filter({ hasText: "The cart changed." });

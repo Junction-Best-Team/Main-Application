@@ -78,6 +78,10 @@ export type CartWorld = {
   unresolved: string | null;
   /** The proposal's own totals when they must NOT follow from the lines (the browser must not recompute VAT). */
   totals: { net: string; tax: string; gross: string } | null;
+  /** The supplier order cut-off carried by the lines' commercial evidence (shown as Cut-off on the Details tab). */
+  cutoff: string | null;
+  /** Other display names for some products (id -> name), to test names that differ only by pack size. */
+  names: Record<string, string> | null;
   /** Serve the conversation snapshot on the SSE stream too (reconnects every 300 ms) so a state change shows at once. */
   stream: boolean;
   /** Items without a product or quantity, listed by the conversation as `cart_not_included` (reason no_product / no_quantity). */
@@ -107,6 +111,8 @@ export const newCart = (over: Partial<CartWorld> = {}): CartWorld => ({
   expired: false,
   unresolved: null,
   totals: null,
+  cutoff: null,
+  names: null,
   stream: false,
   unmatched: [],
   renew: true,
@@ -130,7 +136,7 @@ export function proposalOf(w: CartWorld): Proposal {
     const net = gross / 1.14;
     return {
       product_id: p.id,
-      name: p.name,
+      name: w.names?.[p.id] ?? p.name,
       quantity: {
         requested_amount: String(q * p.amountPerPack),
         requested_unit: p.unit,
@@ -149,7 +155,12 @@ export function proposalOf(w: CartWorld): Proposal {
       deposits_gross: "0",
       deposit_lines: [],
       product_evidence: {},
-      commercial_evidence: { tax_rate: "14" },
+      commercial_evidence: {
+        tax_rate: "14",
+        ...(w.cutoff
+          ? { source: { availability: { closingTime: w.cutoff } } }
+          : {}),
+      },
     };
   });
   const gross = lines.reduce((sum, l) => sum + Number(l.gross), 0);

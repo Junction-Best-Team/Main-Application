@@ -1,11 +1,6 @@
 import type { KeyboardEvent, ReactNode } from "react";
 import type { CardTabName } from "../hooks/useCardTab";
-
-const TABS: { name: CardTabName; label: string }[] = [
-  { name: "items", label: "Items" },
-  { name: "delivery", label: "Delivery" },
-  { name: "checks", label: "Checks" },
-];
+import { CARD_TABS as TABS } from "../model/cardTabs";
 
 /** The tab buttons of the card: role=tablist, arrow keys, Home and End. */
 export function CardTabList({
@@ -52,7 +47,7 @@ export function CardTabList({
           tabIndex={active === t.name ? 0 : -1}
           onClick={() => onSelect(t.name)}
           onKeyDown={(e) => move(e, i)}
-          className={`flex cursor-pointer items-center gap-1 border-0 border-b-2 bg-transparent px-space-sm py-2 font-label text-label-md ${active === t.name ? "border-primary font-bold text-primary" : "border-transparent text-secondary"}`}
+          className={`flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-1 border-0 border-b-2 bg-transparent px-1 py-2 font-label text-label-md ${active === t.name ? "border-primary font-bold text-primary" : "border-transparent text-secondary"}`}
         >
           {t.label}
           {t.name === "checks" && badge && (

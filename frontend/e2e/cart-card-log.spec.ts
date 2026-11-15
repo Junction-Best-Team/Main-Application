@@ -49,7 +49,7 @@ test("outside debug mode nothing is logged and there is no Copy card log action"
   const messages: string[] = [];
   page.on("console", (m) => messages.push(m.text()));
   await open(page, { view: "prepared" }, false);
-  await expect(card(page).getByText("Total estimated")).toBeVisible();
+  await expect(card(page).getByTestId("card-total-row")).toBeVisible();
   expect(await log(page)).toBeNull();
   await expect(copyLog(page)).toHaveCount(0);
   expect(messages.filter((m) => m.includes("[aimo-card]"))).toEqual([]);

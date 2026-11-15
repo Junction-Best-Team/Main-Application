@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useCardLog } from "../model/cardLog";
 
-export type CardTabName = "items" | "delivery" | "checks";
+export type CardTabName = "items" | "delivery" | "checks" | "details";
 export type TabWhy = "default" | "user click" | "edit" | "error" | "new basket";
 
 /**

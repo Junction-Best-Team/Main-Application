@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { MealPlan, Proposal } from "../../../shared/api/types";
 import type { DraftCart } from "../model/cart";
 import { currency } from "../../../shared/lib/format";
@@ -15,7 +16,8 @@ import { CardFooter } from "./CardFooter";
 import { CardLogCopy } from "./CardLogCopy";
 import { CardPanel, CardTabList } from "./CardTabs";
 import { CartLines } from "./CartLines";
-import { DeliveryDetails } from "./DeliveryDetails";
+import { DeliveryPanel } from "./DeliveryPanel";
+import { DetailsPanel } from "./DetailsPanel";
 import { DeliveryLine } from "./DeliveryLine";
 import { DisabledConfirm } from "./DisabledConfirm";
 import { LeftOutLine, type CartNotIncludedItem } from "./LeftOutLine";
@@ -118,6 +120,7 @@ export function OverviewPanel({
     onUpdated: onPrepared,
   });
   const prep = usePrepareFromCart(conversationId, onPrepared);
+  const [focusDate, setFocusDate] = useState(0);
   const p = edit.shown;
   const updating = !flow.p && Boolean(p); // the new proposal is loading; the answer is shown meanwhile
   const editMessage =
@@ -230,7 +233,10 @@ export function OverviewPanel({
             <DeliveryLine
               p={p}
               editable={Boolean(conversationId) && !p.order_id}
-              onEdit={() => tabs.select("delivery", "user click")}
+              onEdit={() => {
+                tabs.select("delivery", "user click");
+                setFocusDate((n) => n + 1);
+              }}
             />
             <CardTabList
               active={tabs.tab}
@@ -254,23 +260,21 @@ export function OverviewPanel({
                 )}
               </CardPanel>
               <CardPanel name="delivery" active={tabs.tab === "delivery"}>
-                {conversationId && !p.order_id ? (
-                  <DeliveryDetails
-                    key={`${p.proposal_id}-${p.revision}-${p.request.delivery_date}-${p.request.destination}`}
-                    p={p}
-                    cart={cart}
-                    working={working}
-                    prep={prep}
-                  />
-                ) : (
-                  <p className="m-0 text-body-sm text-secondary">
-                    Delivery to {p.request.destination} on{" "}
-                    {p.request.delivery_date}.
-                  </p>
-                )}
+                <DeliveryPanel
+                  key={`${p.proposal_id}-${p.revision}-${p.request.delivery_date}-${p.request.destination}`}
+                  p={p}
+                  cart={cart}
+                  working={working}
+                  prep={prep}
+                  canEdit={Boolean(conversationId) && !p.order_id}
+                  focusDate={focusDate}
+                />
               </CardPanel>
               <CardPanel name="checks" active={tabs.tab === "checks"}>
-                <PurchaseChecks
+                <PurchaseChecks p={p} />
+              </CardPanel>
+              <CardPanel name="details" active={tabs.tab === "details"}>
+                <DetailsPanel
                   p={p}
                   canConfirm={flow.canConfirm}
                   showEvidence={showEvidence}

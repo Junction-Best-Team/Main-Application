@@ -82,14 +82,6 @@ export function PurchaseSheet({ p }: { p: Proposal }) {
       </div>
       <div className="my-6 ml-auto max-w-sm rounded-lg bg-surface-container-low p-4 [&>div]:flex [&>div]:justify-between [&>div]:gap-4 [&>div]:py-1 [&>div]:text-body-sm [&>div>span:last-child]:font-label">
         <div>
-          <span>Net total</span>
-          <span>{currency(p.snapshot.net_total)}</span>
-        </div>
-        <div>
-          <span>Tax</span>
-          <span>{currency(p.snapshot.tax_total)}</span>
-        </div>
-        <div>
           <span>Deposits (included)</span>
           <span>{currency(p.snapshot.deposits_gross)}</span>
         </div>
