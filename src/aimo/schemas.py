@@ -538,6 +538,10 @@ class OrderResponse(Model):
     approval_status: Literal["not_required", "approved"]
     order_status: Literal["accepted_mock"]
     reasons: list[Reason]
+    approved_exceptions: list[str] = Field(
+        default_factory=list,
+        description="The exceptions the customer approved with this exact revision (for example substitution, overbuy, unverified_stock). Absent on older receipts.",
+    )
     expires_at: datetime
     next_action: NextAction
     label: str

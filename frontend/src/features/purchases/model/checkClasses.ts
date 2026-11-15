@@ -3,7 +3,7 @@ import { shortName } from "./cardState";
 
 // The purchasing checks, grouped by what the customer can do about them (c5's checkout-blockers report):
 //   blocker   the customer cannot approve: choose another product or ask the assistant
-//   exception the customer can approve: SUBSTITUTION / OVERBUY
+//   exception the customer can approve: SUBSTITUTION / OVERBUY / UNVERIFIED_STOCK
 //   warning   blocks nothing: the amount is an estimate
 //   expired   the approval ran out: refresh
 // The class comes from ONE function, `classOf`: the proposal's `reason_classes[code]` when the server sends
@@ -13,7 +13,7 @@ export type CheckClass =
 type Reason = Proposal["reasons"][number];
 
 const BY_CODE: Record<string, CheckClass> = {
-  UNVERIFIED_STOCK: "blocker",
+  UNVERIFIED_STOCK: "exception",
   QUANTITY_UNRESOLVED: "blocker",
   TOTAL_UNRESOLVED: "blocker",
   CUTOFF_PASSED: "blocker",
@@ -37,7 +37,8 @@ const CLASSES: CheckClass[] = [
 
 /** Short human text per code (minimal on purpose); unknown codes show the server's own message. */
 const SHORT: Record<string, string> = {
-  UNVERIFIED_STOCK: "Stock not confirmed",
+  UNVERIFIED_STOCK:
+    "Stock not confirmed by the supplier. Approve to order anyway.",
   QUANTITY_UNRESOLVED: "No pack size",
   TOTAL_UNRESOLVED: "Total unknown",
   CUTOFF_PASSED: "Order cutoff passed",

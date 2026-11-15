@@ -3,6 +3,10 @@
 from decimal import Decimal
 
 DIETARY_FLAGS = ("lactose_free", "milk_free")
+UNVERIFIED_STOCK = "UNVERIFIED_STOCK"
+# An exception any current approver may approve within their amount limit: it is the customer's own
+# decision about the supplier's stock, not a spending exception that authority has to list.
+CUSTOMER_APPROVED_EXCEPTION = "unverified_stock"
 
 
 def trusted_constraints(constraints: list[dict] | None) -> list[dict]:
@@ -162,6 +166,9 @@ def evaluate_purchase(
                             severity="exception",
                         )
                     )
+    if any(r["code"] == UNVERIFIED_STOCK for r in reasons):
+        # Owner decision Q-134 (b): unconfirmed supplier stock needs the customer's own approval.
+        exceptions.append(CUSTOMER_APPROVED_EXCEPTION)
     if total is not None and not any(
         can_approve(a, total, rules.get("currency"), exceptions) for a in approvers
     ):
@@ -190,5 +197,5 @@ def can_approve(authority: dict, total: Decimal, currency: str, exceptions: list
     return (
         authority.get("currency") == currency
         and total <= Decimal(authority.get("max_gross", "0"))
-        and set(exceptions) <= set(authority.get("exceptions", []))
+        and set(exceptions) - {CUSTOMER_APPROVED_EXCEPTION} <= set(authority.get("exceptions", []))
     )
