@@ -6,6 +6,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 from dotenv import load_dotenv
+from supplier_fixture import FixtureClient
 
 from aimo import conversations
 from aimo.auth import internal_agent
@@ -13,7 +14,6 @@ from aimo.config import settings
 from aimo.db import connection
 from aimo.schemas import CommitRequest, PrepareRequest
 from aimo.service import Service
-from aimo.upstream import FixtureClient
 
 
 def main():

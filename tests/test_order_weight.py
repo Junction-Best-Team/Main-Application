@@ -15,13 +15,13 @@ from datetime import date, timedelta
 from fractions import Fraction
 
 import pytest
+from supplier_fixture import FixtureClient
 
 from aimo import purchases
 from aimo.catalog import line_weight_kg
 from aimo.db import Problem
 from aimo.purchases import MAX_ORDER_WEIGHT_KG, build_snapshot
 from aimo.schemas import PrepareRequest
-from aimo.upstream import FixtureClient
 
 
 def patch_products(monkeypatch, mutate):

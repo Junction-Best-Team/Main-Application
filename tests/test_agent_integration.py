@@ -13,6 +13,7 @@ from uuid import uuid4
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from supplier_fixture import FixtureClient
 
 from aimo import agent as internal
 from aimo import auth, fixtures
@@ -21,7 +22,6 @@ from aimo.db import Problem, close_pools, connection, fingerprint
 from aimo.ingest import publish
 from aimo.schemas import CommitRequest
 from aimo.service import Service
-from aimo.upstream import FixtureClient
 from aimo.worker import run_once
 
 INGREDIENTS = [("pasta", "20"), ("eggs", "12"), ("pork", "6"), ("cheese", "4"), ("pepper", "0.2")]

@@ -303,7 +303,7 @@ def test_the_api_does_not_start_with_the_clock_and_the_live_supplier(service, mo
             pass
 
 
-def test_the_clock_is_allowed_with_fixture_mode_and_with_auto_without_a_key(monkeypatch):
+def test_the_clock_is_test_only_and_auto_without_a_key_is_still_live(monkeypatch):
     from aimo import upstream
 
     monkeypatch.setattr(settings(), "demo_clock_enabled", True)
@@ -312,7 +312,8 @@ def test_the_clock_is_allowed_with_fixture_mode_and_with_auto_without_a_key(monk
     upstream.check_supplier_startup()
     monkeypatch.setattr(settings(), "upstream_mode", "auto")
     monkeypatch.setattr(settings(), "valio_aimo_api_key", "")
-    upstream.check_supplier_startup()
+    with pytest.raises(RuntimeError, match="DEMO_CLOCK_ENABLED"):
+        upstream.check_supplier_startup()
 
 
 def test_a_live_supplier_at_run_time_also_turns_the_routes_off(http, csrf, enabled, monkeypatch):

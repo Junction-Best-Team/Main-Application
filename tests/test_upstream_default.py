@@ -1,23 +1,14 @@
-"""JNP3-SUP-005: fixture mode only in tests and explicit offline runs; live otherwise.
-
-Owner decisions 2026-11-14 (Q-01, Q-55): local runs stay on `auto` (live with a key, labelled fixture
-without one); a deployment defaults to LIVE (the Terraform default is `live`, checked here and in
-infra/tests) and a hosted deployment without a key must fail at startup. The startup guard is person
-1's (issue #73, marker `secure_cookies`): that test stays a strict xfail until it exists, and it must
-set SECURE_COOKIES itself, because a guard that raises at import would break any process importing
-aimo.api with secure cookies on and no key. No supplier call.
-"""
+"""Application defaults, official supplier destination and missing-key failures."""
 
 import re
 from pathlib import Path
 
 import pytest
+from supplier_fixture import runtime_client, runtime_startup_check
 
 from aimo import upstream
 from aimo.config import Settings
-from aimo.db import Problem
-from aimo.service import Service
-from aimo.upstream import FixtureClient, ValioClient
+from aimo.upstream import ValioClient
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -29,104 +20,36 @@ def configured(monkeypatch, **values):
     return cfg
 
 
-def test_kubernetes_variable_default_is_not_an_explicit_fixture():
-    """Deployment default must not be an explicit fixture (owner: live; `auto` is undecided)."""
-    block = re.search(
-        r'variable "upstream_mode" \{(.*?)\n\}',
-        (ROOT / "infra/kubernetes/variables.tf").read_text(),
-        re.S,
-    )
-    assert block and not re.search(r'default\s*=\s*"fixture"', block.group(1))
+def test_code_env_and_compose_default_to_live(monkeypatch):
+    cfg = configured(monkeypatch)
+    assert cfg.upstream_mode == "live"
+    assert cfg.valio_aimo_base_url == "https://junction26.valioaimo.fi"
+    assert re.search(r"^UPSTREAM_MODE=live\s*$", (ROOT / ".env.example").read_text(), re.M)
+    assert "${UPSTREAM_MODE:-live}" in (ROOT / "compose.yaml").read_text()
+    assert isinstance(runtime_client(), ValioClient)
 
 
-def test_code_and_env_example_default_to_auto_not_fixture(monkeypatch):
-    """Records the state on develop `efedf8f`; whether `auto` is acceptable is the owner's call."""
-    assert configured(monkeypatch).upstream_mode == "auto"
-    assert re.search(r"^UPSTREAM_MODE=auto\s*$", (ROOT / ".env.example").read_text(), re.M)
+@pytest.mark.parametrize("secure", [False, True])
+@pytest.mark.parametrize("mode", ["live", "auto"])
+def test_missing_key_fails_startup_locally_and_when_hosted(monkeypatch, secure, mode):
+    configured(monkeypatch, upstream_mode=mode, secure_cookies=secure, valio_aimo_api_key=" ")
+    with pytest.raises(RuntimeError, match="VALIO_AIMO_API_KEY"):
+        runtime_startup_check()
 
 
-def test_auto_without_a_key_is_logged_and_every_result_is_labelled_fixture(monkeypatch, caplog):
-    configured(monkeypatch, upstream_mode="auto", valio_aimo_api_key="")
-    with caplog.at_level("WARNING", logger="aimo.upstream"):
-        service = Service()
-    assert "FIXTURE" in caplog.text
-    from datetime import date, timedelta
-
-    from aimo.schemas import LookupRequest
-
-    identity = {"id": "demo-agent", "buyer_id": "demo-hotel", "role": "agent"}
-    result = service.check_price_and_availability(
-        identity,
-        LookupRequest(product_ids=["464306"], delivery_date=date.today() + timedelta(days=2)),
-    )
-    assert result["mode"] == "fixture" and result["products"]["464306"]["mode"] == "fixture"
+@pytest.mark.parametrize("url", ["http://junction26.valioaimo.fi", "https://wrong.example"])
+def test_startup_refuses_the_wrong_supplier_target(monkeypatch, url):
+    configured(monkeypatch, valio_aimo_api_key="not-a-real-key", valio_aimo_base_url=url)
+    with pytest.raises(RuntimeError, match="VALIO_AIMO_BASE_URL") as error:
+        runtime_startup_check()
+    assert "not-a-real-key" not in str(error.value)
 
 
-def test_unset_mode_never_resolves_to_fixture_when_a_key_is_configured(monkeypatch):
+def test_official_target_with_key_passes_without_a_lookup(monkeypatch):
     configured(monkeypatch, valio_aimo_api_key="not-a-real-key")
-    assert upstream.effective_mode() == "live"
-    assert isinstance(upstream.client(), ValioClient)
+    runtime_startup_check()
 
 
-def test_fixture_is_chosen_only_by_explicit_setting_or_a_missing_key(monkeypatch):
-    configured(monkeypatch, upstream_mode="fixture", valio_aimo_api_key="not-a-real-key")
-    assert upstream.effective_mode() == "fixture"
-    assert isinstance(upstream.client(), FixtureClient)
-
-
-def test_live_without_a_key_fails_closed_never_falls_back_to_fixtures(monkeypatch):
-    configured(monkeypatch, upstream_mode="live", valio_aimo_api_key="")
-    assert isinstance(upstream.client(), ValioClient)
-    with pytest.raises(Problem) as error:
-        upstream.client().post("/api/price", {})
-    assert error.value.code == "UPSTREAM_CREDENTIALS_MISSING"
-
-
-def test_an_unknown_mode_value_is_rejected_by_settings(monkeypatch):
-    monkeypatch.delenv("UPSTREAM_MODE", raising=False)
+def test_unknown_mode_is_rejected(monkeypatch):
     with pytest.raises(ValueError):
-        Settings(_env_file=None, upstream_mode="sandbox")
-
-
-@pytest.fixture
-def hosted_env(monkeypatch):
-    """Environment variables only, so any implementation that reads `settings()` sees them."""
-    from aimo.config import settings
-
-    monkeypatch.setenv("UPSTREAM_MODE", "auto")
-    monkeypatch.setenv("VALIO_AIMO_API_KEY", "")
-    monkeypatch.setenv("SECURE_COOKIES", "true")  # .env.example: hosted deployments MUST use true
-    settings.cache_clear()
-    yield
-    monkeypatch.undo()
-    settings.cache_clear()
-
-
-def test_hosted_deployment_without_a_key_fails_at_startup(hosted_env):
-    from fastapi.testclient import TestClient
-
-    from aimo.api import create_app
-
-    with pytest.raises(Exception):  # noqa: B017 - the exact type is person 1's choice
-        with TestClient(create_app()):  # entering the client runs the app lifespan (startup)
-            pass
-
-
-def test_local_run_without_a_key_still_starts_on_labelled_fixtures(monkeypatch):
-    """The other half of Q-01: local runs (SECURE_COOKIES=false) stay on auto with fixtures."""
-    from fastapi.testclient import TestClient
-
-    from aimo.api import create_app
-    from aimo.config import settings
-
-    monkeypatch.setenv("UPSTREAM_MODE", "auto")
-    monkeypatch.setenv("VALIO_AIMO_API_KEY", "")
-    monkeypatch.setenv("SECURE_COOKIES", "false")
-    settings.cache_clear()
-    try:
-        with TestClient(create_app()) as client:
-            assert client.get("/health/live").status_code == 200
-        assert upstream.effective_mode() == "fixture"
-    finally:
-        monkeypatch.undo()
-        settings.cache_clear()
+        configured(monkeypatch, upstream_mode="sandbox")

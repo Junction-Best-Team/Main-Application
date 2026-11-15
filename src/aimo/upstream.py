@@ -17,7 +17,6 @@ from aimo.db import Problem, now
 from aimo.numeric import D
 from aimo.observability import elapsed, event, failure, operation
 
-log = logging.getLogger(__name__)
 HELSINKI = ZoneInfo("Europe/Helsinki")
 # Supplier accepts 1 to 1000 product ids per price or availability request (JNP3-SUP-007).
 # Default used until Settings carries `supplier_lookup_batch_size` (read via getattr below).
@@ -55,7 +54,7 @@ class ValioClient:
     @operation("supplier.request")
     def post(self, endpoint, payload):
         cfg = settings()
-        if not cfg.valio_aimo_api_key:
+        if not cfg.valio_aimo_api_key.strip():
             raise Problem(
                 "UPSTREAM_CREDENTIALS_MISSING",
                 "Live mode needs the server-side Valio API key.",
@@ -67,7 +66,7 @@ class ValioClient:
                 started = time.monotonic()
                 try:
                     response = client.post(
-                        cfg.valio_aimo_base_url + endpoint,
+                        cfg.valio_aimo_base_url.rstrip("/") + endpoint,
                         json=payload,
                         headers={
                             "X-API-Key": cfg.valio_aimo_api_key,
@@ -202,137 +201,29 @@ class ValioClient:
         }
 
 
-class FixtureClient:
-    """Deliberately invented commercial responses; never presented as live stock."""
-
-    mode = "fixture"
-
-    def __init__(self):
-        self.price_multiplier = D(1)
-        self.product_multipliers = {}  # per-product factor on top of price_multiplier
-        self.stock = {}
-
-    def lookup(self, customer: str, ids: list[str], delivery_date: date):
-        current = now()
-        prices, availability = [], []
-        from aimo.fixtures import fixture_facts
-
-        facts = {p["id"]: p for p in fixture_facts()}
-        for pid in ids:
-            p = facts.get(pid)
-            net = D("1.50") * self.price_multiplier * self.product_multipliers.get(pid, 1)
-            if pid == "demo-deposit":
-                net = D(".10")
-            rate = D("13.5") if pid != "demo-deposit" else D("25.5")
-            gross = (net * (1 + rate / 100)).quantize(D(".01"))
-            prices.append(
-                {
-                    "productId": pid,
-                    "quantity": 1,
-                    "error": p is None and pid != "demo-deposit",
-                    "netPriceFound": False,
-                    "catalogPrice": {
-                        "value": str(net),
-                        "valueWithTax": str(gross),
-                        "currency": "EUR",
-                        "validFrom": "2020-01-01",
-                        "validTo": "2099-12-31",
-                    },
-                    "priceWithTax": {
-                        "value": str(gross),
-                        "currency": "EUR",
-                        "validFrom": "2020-01-01",
-                        "validTo": "2099-12-31",
-                    },
-                    "tax": {"taxRate": str(rate), "taxValue": str(gross - net)},
-                }
-            )
-            stock = self.stock.get(
-                pid, {"464306": "600", "464398": "400", "463380": "698"}.get(pid, "5000")
-            )
-            availability.append(
-                {
-                    "productId": pid,
-                    "salesBlock": False,
-                    "logisticModel": "Stock",
-                    "closingTime": datetime.combine(
-                        delivery_date, daytime(17), HELSINKI
-                    ).isoformat(),
-                    "scheduleLines": [
-                        {
-                            "availableAmount": stock,
-                            "availableDate": delivery_date.isoformat(),
-                            "salesUnit": p["sales_unit"] if p else "ST",
-                            "salesBlock": False,
-                        }
-                    ],
-                }
-            )
-        return {
-            "mode": self.mode,
-            "observed_at": current.isoformat(),
-            "price": {
-                "customerId": customer,
-                "pricingDate": delivery_date.isoformat(),
-                "currency": "EUR",
-                "products": prices,
-            },
-            "availability": {
-                "timeNow": current.isoformat(),
-                "requestedDate": delivery_date.isoformat(),
-                "products": availability,
-            },
-        }
-
-
 def check_supplier_startup():
-    """Fail startup when a hosted deployment would serve the supplier without a key (SUP-005).
-
-    Hosted = `SECURE_COOKIES=true`. Applies to the `live` and `auto` modes only: `fixture` is an
-    explicit choice and always starts, and local runs (secure cookies off) keep their labelled
-    fixtures. Called at API startup and in the worker readiness check, never at import.
-    """
+    """Application pricing is live only; tests install their own supplier harness."""
     cfg = settings()
-    if cfg.demo_clock_enabled and effective_mode() == "live":
-        # Owner Q-115: the demo clock never runs with live supplier lookups (their validity and
-        # real orders depend on real time); the hosted fixture deployment may enable it.
+    if cfg.upstream_mode == "fixture":
         raise RuntimeError(
-            "DEMO_CLOCK_ENABLED=true is refused while supplier lookups are live "
-            f"(UPSTREAM_MODE={cfg.upstream_mode}); set UPSTREAM_MODE=fixture or unset "
-            "DEMO_CLOCK_ENABLED."
+            "UPSTREAM_MODE=fixture is test-only and is not supported by the application. "
+            "Set UPSTREAM_MODE=live and VALIO_AIMO_API_KEY."
         )
-    if (
-        cfg.secure_cookies
-        and cfg.upstream_mode in ("live", "auto")
-        and not cfg.valio_aimo_api_key.strip()
-    ):
-        raise RuntimeError(
-            f"A hosted deployment (SECURE_COOKIES=true) with UPSTREAM_MODE={cfg.upstream_mode} "
-            "needs VALIO_AIMO_API_KEY; set the key, or set UPSTREAM_MODE=fixture explicitly "
-            "for a deployment on labelled mock supplier data."
-        )
+    if cfg.demo_clock_enabled:
+        raise RuntimeError("DEMO_CLOCK_ENABLED=true is refused with live supplier lookups.")
+    if cfg.valio_aimo_base_url.rstrip("/") != "https://junction26.valioaimo.fi":
+        raise RuntimeError("VALIO_AIMO_BASE_URL must point to https://junction26.valioaimo.fi.")
+    if not cfg.valio_aimo_api_key.strip():
+        raise RuntimeError("Live supplier lookups require VALIO_AIMO_API_KEY; no fixture fallback.")
 
 
 def effective_mode() -> str:
-    """`auto` uses the live API when a key is configured and labelled fixtures when it is not.
-
-    The key exists and teammates have it (see README.md); the fixture fallback only keeps
-    the app runnable without it. Fixture evidence is always labelled `mode: fixture`.
-    """
-    cfg = settings()
-    if cfg.upstream_mode == "auto":
-        return "live" if cfg.valio_aimo_api_key else "fixture"
-    return cfg.upstream_mode
+    """The application always uses the real supplier, including legacy `auto` configuration."""
+    return "live"
 
 
 def client():
-    if effective_mode() == "live":
-        return ValioClient()
-    if settings().upstream_mode == "auto":
-        log.warning(
-            "No VALIO_AIMO_API_KEY: using authored FIXTURE price/availability, not live data."
-        )
-    return FixtureClient()
+    return ValioClient()
 
 
 def validate_lookup(

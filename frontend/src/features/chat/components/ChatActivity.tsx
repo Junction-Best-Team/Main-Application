@@ -117,8 +117,8 @@ export function ChatActivity({
 }) {
   const listId = useId();
   const listRef = useRef<HTMLOListElement>(null);
-  // Open while the turn runs so every step is visible as it happens; once the reply
-  // arrives it folds back to one line. A customer's own toggle wins for this turn.
+  // Collapsed to one live status line by default; the customer can expand the
+  // step list, and that toggle wins for this turn.
   const [toggled, setToggled] = useState<{
     turn: string | undefined;
     open: boolean;
@@ -131,7 +131,7 @@ export function ChatActivity({
   const elapsed = useElapsed(current?.turn_id, busy);
   const steps = activitySteps(current, busy);
   const open =
-    toggled && toggled.turn === current?.turn_id ? toggled.open : busy;
+    toggled && toggled.turn === current?.turn_id ? toggled.open : false;
   const stepCount = steps.length;
   // Follow the newest step while the turn runs.
   useEffect(() => {

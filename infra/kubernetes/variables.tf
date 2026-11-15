@@ -77,8 +77,8 @@ variable "upstream_mode" {
   type        = string
   default     = "live"
   validation {
-    condition     = contains(["fixture", "live"], var.upstream_mode)
-    error_message = "Use live (the default) or fixture; fixture is an explicit opt-in that uses labeled mock supplier responses."
+    condition     = var.upstream_mode == "live"
+    error_message = "Use live; supplier fixtures exist only in the test harness."
   }
 }
 

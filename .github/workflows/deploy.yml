@@ -18,6 +18,8 @@ on:
         required: false
       CLOUDINARY_URL:
         required: false
+      VALIO_AIMO_API_KEY:
+        required: false
   workflow_dispatch:
     inputs:
       deploy:
@@ -98,6 +100,7 @@ jobs:
       LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
+      VALIO_AIMO_API_KEY: ${{ secrets.VALIO_AIMO_API_KEY }}
       LLM_BASE_URL: ${{ vars.LLM_BASE_URL || 'https://openrouter.ai/api/v1' }}
       LLM_MODEL: ${{ vars.LLM_MODEL || 'openai/gpt-4.1-mini' }}
     steps:
@@ -123,6 +126,7 @@ jobs:
           echo "ACCESS_STATE=$RUNNER_TEMP/junction-runner-access.json" >> "$GITHUB_ENV"
           test -n "$DIGITALOCEAN_TOKEN" || { echo '::error::Set the DIGITALOCEAN_TOKEN repository secret.'; exit 1; }
           test -n "$DIGITALOCEAN_CLUSTER_ID" || { echo '::error::Set the DIGITALOCEAN_CLUSTER_ID repository variable.'; exit 1; }
+          test -n "$VALIO_AIMO_API_KEY" || { echo '::error::Set the VALIO_AIMO_API_KEY repository secret for live prices and stock.'; exit 1; }
       - uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4
         with:
           version: v1.35.10
@@ -131,9 +135,13 @@ jobs:
       - name: Configure server-side chat and image providers
         id: llm
         run: python3 infra/scripts/sync-llm-secret.py
+      - name: Configure and verify live supplier access for API and worker
+        id: supplier
+        run: python3 infra/scripts/sync-supplier-config.py
       - name: Migrate database, then update images and wait for readiness
         env:
           LLM_REFRESHED: ${{ steps.llm.outputs.changed }}
+          SUPPLIER_REFRESHED: ${{ steps.supplier.outputs.changed }}
         run: bash infra/scripts/deploy-app.sh
       - name: Remove temporary API access and local credentials
         if: always() && steps.config.outcome == 'success'

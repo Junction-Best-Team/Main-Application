@@ -27,6 +27,8 @@ os.environ["LLM_PROVIDER"] = "openrouter"
 os.environ["GUARDRAIL_PROVIDER"] = "openrouter"
 os.environ["GEMINI_API_KEY"] = ""
 
+from supplier_fixture import FixtureClient, install
+
 from aimo.cli import migrate, seed
 from aimo.config import settings
 from aimo.db import connection, fingerprint
@@ -35,7 +37,8 @@ from aimo.ingest import publish
 from aimo.scheduler import helsinki_today
 from aimo.schemas import PrepareRequest
 from aimo.service import Service
-from aimo.upstream import FixtureClient
+
+install()
 
 
 @pytest.fixture(scope="session", autouse=True)
