@@ -348,7 +348,6 @@ def enqueue(identity, cid, body):
 
 
 # Per-buyer chat bounds across conversations; accepted retries are never counted again.
-MAX_ACTIVE_TURNS = 3
 
 
 def limit_turns(c, identity, new):
@@ -361,7 +360,7 @@ def limit_turns(c, identity, new):
         WHERE c.buyer_id=%s""",
         (now(), now() - timedelta(hours=1), identity["buyer_id"]),
     ).fetchone()
-    if counts["active"] >= MAX_ACTIVE_TURNS:
+    if counts["active"] >= settings().chat_active_turns_per_buyer:
         raise Problem(
             "CHAT_BUSY",
             "Other responses are still in progress for this account. Wait for one to finish.",

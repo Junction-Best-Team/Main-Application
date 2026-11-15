@@ -154,7 +154,7 @@ def test_enforced_guard_turn_still_needs_exact_customer_confirmation(
 
 def limits(monkeypatch, messages, active):
     monkeypatch.setattr(settings(), "chat_messages_per_hour", messages)
-    monkeypatch.setattr(conversations, "MAX_ACTIVE_TURNS", active)
+    monkeypatch.setattr(settings(), "chat_active_turns_per_buyer", active)
 
 
 def test_hourly_chat_limit_spans_conversations_but_not_retries(monkeypatch, service, buyer):

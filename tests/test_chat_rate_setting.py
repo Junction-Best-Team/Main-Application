@@ -74,3 +74,53 @@ def test_the_setting_range_is_one_to_two_thousand(value):
         Settings(chat_messages_per_hour=value)
     assert Settings(chat_messages_per_hour=1).chat_messages_per_hour == 1
     assert Settings(chat_messages_per_hour=2000).chat_messages_per_hour == 2000
+
+
+# --- the unfinished turns one account may have at once (CHAT_ACTIVE_TURNS_PER_BUYER, default 3) ---------
+
+
+def queued_turns(buyer, count):
+    cid = conversations.create(
+        buyer, ConversationCreate(title="busy", idempotency_key=str(uuid4()))
+    )["id"]
+    with connection() as c:
+        for n in range(count):
+            other = uuid4()
+            c.execute(
+                "INSERT INTO conversations(id,buyer_id,title,create_key,create_hash) "
+                "SELECT %s,buyer_id,'q',%s,'h' FROM conversations WHERE id=%s",
+                (other, f"q-{uuid4()}", cid),
+            )
+            c.execute(
+                """INSERT INTO conversation_turns(id,conversation_id,key,payload_hash,state,lease_until,
+                attempt,requested_by,worker_attempts,submitted_by) VALUES(%s,%s,%s,'h','queued',now(),%s,%s,0,%s)""",
+                (uuid4(), other, f"queued-{n}", uuid4(), buyer["id"], buyer["id"]),
+            )
+    return cid
+
+
+def test_the_active_turns_default_is_three_and_the_fourth_is_refused(buyer):
+    assert Settings.model_fields["chat_active_turns_per_buyer"].default == 3
+    cid = queued_turns(buyer, 3)
+    with pytest.raises(Problem) as error:
+        send(buyer, cid)
+    assert error.value.code == "CHAT_BUSY" and error.value.status == 429
+
+
+def test_two_queued_turns_leave_room_for_a_third(buyer):
+    cid = queued_turns(buyer, 2)
+    assert send(buyer, cid)["busy"] is True
+
+
+def test_a_setting_of_six_allows_more_unfinished_turns(buyer, monkeypatch):
+    monkeypatch.setattr(settings(), "chat_active_turns_per_buyer", 6)
+    cid = queued_turns(buyer, 3)
+    assert send(buyer, cid)["busy"] is True
+
+
+@pytest.mark.parametrize("value", [0, -1, 13])
+def test_the_active_turns_range_is_one_to_twelve(value):
+    with pytest.raises(ValueError):
+        Settings(chat_active_turns_per_buyer=value)
+    assert Settings(chat_active_turns_per_buyer=1).chat_active_turns_per_buyer == 1
+    assert Settings(chat_active_turns_per_buyer=12).chat_active_turns_per_buyer == 12
