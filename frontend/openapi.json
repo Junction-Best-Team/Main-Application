@@ -1741,6 +1741,66 @@
         }
       }
     },
+    "/api/conversations/{conversation_id}/cancel": {
+      "post": {
+        "summary": "Cancel Conversation",
+        "operationId": "cancel_conversation_api_conversations__conversation_id__cancel_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationResponse"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error. Every error body is an ErrorResponse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error. Every error body is an ErrorResponse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/conversations/{conversation_id}/voice-session": {
       "post": {
         "summary": "Voice Session",
@@ -3162,14 +3222,17 @@
             "anyOf": [
               {
                 "type": "string",
-                "const": "provider_unavailable"
+                "enum": [
+                  "provider_unavailable",
+                  "order_confirmed"
+                ]
               },
               {
                 "type": "null"
               }
             ],
             "title": "Notice",
-            "description": "Set on a plain assistant notice stored when the model provider failed; show it as a notice, not as an answer. The unfinished message keeps its retry offer."
+            "description": "Set on a plain notice, not an answer. provider_unavailable: stored when the model provider failed (the unfinished message keeps its retry offer). order_confirmed (role system): one line stored after the customer's confirm placed a demo order, in the customer's language, with the delivery date."
           }
         },
         "additionalProperties": false,

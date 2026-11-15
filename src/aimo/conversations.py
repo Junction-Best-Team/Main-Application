@@ -1,20 +1,22 @@
 """Buyer-scoped persisted chat, bounded turn leases, and exact purchase confirmation."""
 
+import logging
 from datetime import timedelta
 from decimal import Decimal
 from functools import partial
 from uuid import uuid4
 
 from aimo import approval_workflow as workflow
-from aimo import attachments, auth, cancellations, scheduler
+from aimo import attachments, auth, cancellations, order_notice, scheduler
 from aimo.approval_policy import can_approve
 from aimo.chat_activity import record_progress
 from aimo.chat_schemas import AgentTurn
 from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, js, now
 from aimo.guardrails import encode, proposal_view
-from aimo.observability import event, operation
+from aimo.observability import event, failure, operation
 from aimo.purchases import context
+from aimo.schemas import ProposalResponse
 from aimo.turn_notice import NOTICE_KIND, failure_notice
 
 RECIPE_LOCKED_REASON = (
@@ -142,7 +144,23 @@ def detail(identity, cid, *, internal=False):
             (cid, now()),
         ).fetchone()
     pids = list(dict.fromkeys(str(m["proposal_id"]) for m in messages if m["proposal_id"]))
-    purchases = [workflow.get_proposal(identity, pid) for pid in pids]
+    purchases = []
+    for pid in pids:
+        try:
+            view = workflow.get_proposal(identity, pid)
+            ProposalResponse.model_validate(view)
+        except (ValueError, TypeError, KeyError, LookupError) as exc:
+            # One stored purchase that no longer fits the response models (an older revision shape)
+            # must not make every read and send of the whole conversation fail: leave it out, log it.
+            event(
+                "chat.purchase_unreadable",
+                level=logging.WARNING,
+                conversation_id=str(cid),
+                proposal_id=pid,
+                **failure(exc),
+            )
+            continue
+        purchases.append(view)
     ordered = {p["proposal_id"] for p in purchases if p["order_id"]}
     draft_cart = draft["draft_cart"] if draft else None
     if draft_cart:
@@ -196,6 +214,55 @@ def detail(identity, cid, *, internal=False):
         if retry and (not busy or not retry["attachments"])
         else None,
     }
+
+
+def cancel_turn(identity, cid):
+    """Buyer interrupt of a queued or running turn; reuse the failed/retry recovery path.
+
+    Cooperative only: a tool call already in flight finishes, then the worker fence
+    or ensure_attempt stops further rounds. Idempotent when the conversation is idle.
+    """
+    with connection() as c:
+        context(c, identity)
+        c.execute("SELECT id FROM buyers WHERE id=%s FOR UPDATE", (identity["buyer_id"],))
+        owned(c, identity, cid, lock=True)
+        turn = c.execute(
+            """SELECT * FROM conversation_turns WHERE conversation_id=%s
+            AND state IN ('queued','running') ORDER BY created_at LIMIT 1 FOR UPDATE""",
+            (cid,),
+        ).fetchone()
+        if turn:
+            c.execute(
+                """UPDATE conversation_turns SET state='failed',lease_until=%s
+                WHERE id=%s AND state IN ('queued','running')""",
+                (now(), turn["id"]),
+            )
+            # System-authored turns have no customer retry payload; settle closes them.
+            scheduler.settle_failed_system_turn(c, turn["id"], cid)
+            c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
+            event(
+                "chat.cancelled",
+                conversation_id=str(cid),
+                turn_id=str(turn["id"]),
+                previous_state=turn["state"],
+            )
+    return detail(identity, cid)
+
+
+def ensure_attempt(turn):
+    """Raise when this claimed attempt is no longer the live running lease (cancel/reclaim)."""
+    with connection() as c:
+        current = c.execute(
+            "SELECT attempt,state,lease_until FROM conversation_turns WHERE id=%s",
+            (turn["id"],),
+        ).fetchone()
+    if (
+        not current
+        or current["attempt"] != turn["attempt"]
+        or current["state"] != "running"
+        or current["lease_until"] <= now()
+    ):
+        raise Problem("TURN_REPLACED", "This response was replaced; reload the conversation.")
 
 
 def enqueue(identity, cid, body):
@@ -283,7 +350,7 @@ def limit_turns(c, identity, new):
     counts = c.execute(
         """SELECT count(*) FILTER (WHERE t.state='queued'
              OR (t.state='running' AND t.lease_until>%s)) AS active,
-           count(*) FILTER (WHERE t.created_at>%s) AS recent
+           count(*) FILTER (WHERE t.created_at>%s AND t.key NOT LIKE 'confirm-%%') AS recent
         FROM conversation_turns t JOIN conversations c ON c.id=t.conversation_id
         WHERE c.buyer_id=%s""",
         (now(), now() - timedelta(hours=1), identity["buyer_id"]),
@@ -422,7 +489,13 @@ def restorable_plan(messages, live_cart=False):
         return None
     if not isinstance(plan, dict) or plan.get("recipe_plan_id"):
         return None
-    if not plan.get("ingredients"):
+    items = plan.get("ingredients")
+    # Stored JSON is data from an earlier turn: anything but a list of ingredient objects is not offered.
+    if (
+        not isinstance(items, list)
+        or not items
+        or any(not isinstance(i, dict) or not i.get("product_id") for i in items)
+    ):
         return None
     return plan  # a partly matched plan too: unmatched items stay unmatched and are not bought
 
@@ -433,7 +506,11 @@ def execute_turn(turn, service, runner=None):
     if runner is None:
         from aimo.agent import run_turn
 
-        runner = partial(run_turn, on_progress=partial(record_progress, turn))
+        runner = partial(
+            run_turn,
+            on_progress=partial(record_progress, turn),
+            ensure_live=partial(ensure_attempt, turn),
+        )
     cid, tid, attempt = turn["conversation_id"], turn["id"], turn["attempt"]
     try:
         with connection() as c:
@@ -709,4 +786,62 @@ def confirm(identity, pid, body, service):
         ).fetchone()
     # This direct call resumes the persisted decision, with existing atomic revalidation
     # and commit retries. Changed prices/authority produce a new UNCONFIRMED revision.
-    return service.commit_order(internal, body)
+    result = service.commit_order(internal, body)
+    if (
+        result.get("status") == "accepted_mock"
+    ):  # an order was placed now (not a revision, not a replay)
+        store_confirmation_line(identity, pid, result["order_id"], r["request"]["delivery_date"])
+    return result
+
+
+def store_confirmation_line(identity, pid, order_id, delivery_date):
+    """Owner Q-121: ONE plain system line in the chat that holds the basket, after the customer's
+    confirm placed the order. A closed turn keyed by the order makes it exactly once (a race or a
+    retry adds nothing); no model call; a failure here never fails the confirmation."""
+    try:
+        with connection() as c:
+            chat = c.execute(
+                """SELECT m.conversation_id FROM conversation_messages m
+                JOIN conversations cv ON cv.id=m.conversation_id
+                WHERE m.proposal_id=%s AND cv.buyer_id=%s ORDER BY m.id DESC LIMIT 1""",
+                (pid, identity["buyer_id"]),
+            ).fetchone()
+            if not chat:
+                return  # the basket was not made in a chat
+            cid = chat["conversation_id"]
+            last = c.execute(
+                "SELECT text FROM conversation_messages WHERE conversation_id=%s AND role='user' "
+                "ORDER BY id DESC LIMIT 1",
+                (cid,),
+            ).fetchone()
+            tid, key = uuid4(), f"confirm-{order_id}"
+            made = c.execute(
+                """INSERT INTO conversation_turns(id,conversation_id,key,payload_hash,state,
+                lease_until,attempt,requested_by,worker_attempts)
+                VALUES(%s,%s,%s,%s,'complete',%s,%s,%s,0)
+                ON CONFLICT(conversation_id,key) DO NOTHING RETURNING id""",
+                (
+                    tid,
+                    cid,
+                    key,
+                    fingerprint({"order": str(order_id)}),
+                    now(),
+                    uuid4(),
+                    identity["id"],
+                ),
+            ).fetchone()
+            if not made:
+                return
+            c.execute(
+                """INSERT INTO conversation_messages(conversation_id,turn_id,role,text,notice)
+                VALUES(%s,%s,'system',%s,%s)""",
+                (
+                    cid,
+                    tid,
+                    order_notice.confirmation_text(last["text"] if last else "", delivery_date),
+                    order_notice.NOTICE_KIND,
+                ),
+            )
+            c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
+    except Exception:  # the order is placed; a missing line must never undo or fail it
+        event("chat.confirmation_line_failed", order_id=str(order_id))

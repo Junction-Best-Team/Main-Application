@@ -18,6 +18,10 @@ Add any starter code or earlier prototypes separately. Describe which parts exis
 
 ## Reused code, data, models, and assets
 
+On 2026-11-15, Codex matched the shared voice/send composer actions to the
+owner's supplied robot color reference, reusing the existing `#005670` teal,
+white icon and navy hover tokens. No image asset or dependency was added.
+
 The voice entry button uses an SVG waveform authored during the event on
 2026-11-14 from the owner's circular waveform reference image. It adds no asset
 or icon dependency and retains the composer introduced by merged PR #162.
@@ -325,3 +329,7 @@ Sidebar divider follow-up (2026-11-15): reused the existing shell and border tok
 no new dependencies, assets or external material.
 
 Requests nesting fix (2026-11-15): reused the existing app shell, conversation navigation/pagination and authored browser fixtures. No new dependencies, assets or external material.
+
+Past Orders header (2026-11-15): implemented the owner's revised in-chat mockup using existing typography, spacing, icons and order-history fixtures. No generated bitmap, external material or new dependency is shipped.
+
+Sidebar account menu (2026-11-15): used the owner's attached account-menu reference and reused the existing UserMenu, routes, session/CSRF sign-out, design tokens and authored browser fixtures. No new dependency, generated bitmap or external material is shipped.

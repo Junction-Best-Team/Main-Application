@@ -123,7 +123,7 @@ export function OverviewPanel({
   showEvidence?: boolean;
   draft?: MealPlan;
 }) {
-  const { p, error } = flow;
+  const { p, error, errorDebug } = flow;
   const [open, setOpen] = useState(false);
   const closed =
     p &&
@@ -163,7 +163,7 @@ export function OverviewPanel({
           )}
         </span>
       </div>
-      <ErrorMessage message={error} />
+      <ErrorMessage message={error} debug={errorDebug} />
       <div className="flex flex-col gap-space-sm pt-space-sm">
         {!p && draft ? (
           <div className={drawer && !open ? "hidden lg:block" : ""}>

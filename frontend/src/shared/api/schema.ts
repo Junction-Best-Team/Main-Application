@@ -440,6 +440,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/conversations/{conversation_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Conversation */
+        post: operations["cancel_conversation_api_conversations__conversation_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/conversations/{conversation_id}/voice-session": {
         parameters: {
             query?: never;
@@ -844,9 +861,9 @@ export interface components {
             attachments?: components["schemas"]["AttachmentInfo"][];
             /**
              * Notice
-             * @description Set on a plain assistant notice stored when the model provider failed; show it as a notice, not as an answer. The unfinished message keeps its retry offer.
+             * @description Set on a plain notice, not an answer. provider_unavailable: stored when the model provider failed (the unfinished message keeps its retry offer). order_confirmed (role system): one line stored after the customer's confirm placed a demo order, in the customer's language, with the delivery date.
              */
-            notice?: "provider_unavailable" | null;
+            notice?: ("provider_unavailable" | "order_confirmed") | null;
         };
         /** CommitRequest */
         CommitRequest: {
@@ -3729,6 +3746,55 @@ export interface operations {
                 "application/json": components["schemas"]["MessageRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationResponse"];
+                };
+            };
+            /** @description Validation error. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    cancel_conversation_api_conversations__conversation_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

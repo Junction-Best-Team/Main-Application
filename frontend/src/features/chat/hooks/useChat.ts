@@ -6,7 +6,12 @@ import {
   type FormEvent,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { ApiError } from "../../../shared/api/client";
+import {
+  ApiError,
+  noError,
+  toErrorInfo,
+  type ErrorInfo,
+} from "../../../shared/api/client";
 import type { Conversation } from "../../../shared/api/types";
 import { useRefresh } from "../../../shared/hooks/useRefresh";
 import { useAuth } from "../../auth/useAuth";
@@ -14,9 +19,28 @@ import {
   getConversation,
   createConversation,
   sendMessage,
+  cancelConversation,
   openConversationEvents,
 } from "../api/chatApi";
 import { draftSignature, type ChatAttachment } from "../model/attachments";
+
+// A send started on Home keeps running after Home navigates into the chat page,
+// which has its own useChat. The chat page must not restore that in-flight
+// message as a draft. If the send fails, the sender leaves the draft and error
+// in sendFailures for the chat page to take, on mount or via SEND_FAILED_EVENT.
+const sendsInFlight = new Set<string>();
+const SEND_FAILED_EVENT = "aimo-send-failed";
+type SendFailure = {
+  text: string;
+  attachments: ChatAttachment[];
+  error: ErrorInfo;
+};
+const sendFailures = new Map<string, SendFailure>();
+function takeSendFailure(id: string | undefined) {
+  const failure = id ? sendFailures.get(id) : undefined;
+  if (id) sendFailures.delete(id);
+  return failure;
+}
 
 export function useChat(conversationId?: string) {
   const { session, setSession } = useAuth();
@@ -24,22 +48,26 @@ export function useChat(conversationId?: string) {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
-  const [error, setError] = useState("");
+  const [errorInfo, setError] = useState<ErrorInfo>(noError);
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const sendingRef = useRef(false);
+  const cancellingRef = useRef(false);
   const createKey = useRef(crypto.randomUUID());
   const messageViewport = useRef<HTMLDivElement>(null);
   const loadedConversation = useRef<string | null>(null);
   const snapshotVersion = useRef(0);
   const activeConversation = useRef(conversationId);
   activeConversation.current = conversationId;
+  // Unlike activeConversation, send() never moves this ahead of the route.
+  const routeConversation = useRef(conversationId);
+  routeConversation.current = conversationId;
   const pendingStorage = `aimo-pending-${session?.buyer_id}-${conversationId}`;
   const fail = useCallback(
     (e: unknown) => {
       if (e instanceof ApiError && e.status === 401) setSession(null);
-      else setError((e as Error).message);
+      else setError(toErrorInfo(e));
     },
     [setSession],
   );
@@ -69,13 +97,22 @@ export function useChat(conversationId?: string) {
   useEffect(() => {
     setConversation(null);
     loadedConversation.current = null;
-    setError("");
+    setError(noError);
     setAttachments([]);
-    const saved = sessionStorage.getItem(pendingStorage);
+    const saved =
+      conversationId && sendsInFlight.has(conversationId)
+        ? null
+        : sessionStorage.getItem(pendingStorage);
     try {
       setText(saved ? JSON.parse(saved).text : "");
     } catch {
       setText("");
+    }
+    const failure = takeSendFailure(conversationId);
+    if (failure) {
+      setText(failure.text);
+      setAttachments(failure.attachments);
+      setError(failure.error);
     }
     if (!conversationId) return;
     setLoading(true);
@@ -87,12 +124,24 @@ export function useChat(conversationId?: string) {
       const draft = (event as CustomEvent<{ id: string; text: string }>).detail;
       if (draft.id !== activeConversation.current) return;
       setText(draft.text);
-      setError(
-        "The voice request was interrupted. Retry this request to continue.",
-      );
+      setError({
+        message:
+          "The voice request was interrupted. Retry this request to continue.",
+      });
+    };
+    const recoverSend = () => {
+      const failure = takeSendFailure(routeConversation.current);
+      if (!failure) return;
+      setText(failure.text);
+      setAttachments(failure.attachments);
+      setError(failure.error);
     };
     window.addEventListener("aimo-voice-draft", recoverVoice);
-    return () => window.removeEventListener("aimo-voice-draft", recoverVoice);
+    window.addEventListener(SEND_FAILED_EVENT, recoverSend);
+    return () => {
+      window.removeEventListener("aimo-voice-draft", recoverVoice);
+      window.removeEventListener(SEND_FAILED_EVENT, recoverSend);
+    };
   }, []);
   useEffect(() => {
     if (!conversationId) return;
@@ -139,7 +188,7 @@ export function useChat(conversationId?: string) {
       return;
     sendingRef.current = true;
     setSending(true);
-    setError("");
+    setError(noError);
     const messageText = text.trim();
     const messageAttachments = attachments;
     const savedRetry = conversation?.retry_message;
@@ -151,6 +200,7 @@ export function useChat(conversationId?: string) {
       ? savedRetry?.constraints
       : undefined;
     let id = conversationId;
+    if (id) sendsInFlight.add(id);
     try {
       const signature = await draftSignature(messageText, messageAttachments);
       if (!id) {
@@ -162,6 +212,7 @@ export function useChat(conversationId?: string) {
           session.csrf_token,
         );
         id = created.id;
+        sendsInFlight.add(id);
         activeConversation.current = id;
         setConversation(created);
         createKey.current = crypto.randomUUID();
@@ -226,6 +277,20 @@ export function useChat(conversationId?: string) {
         setAttachments([]);
       }
     } catch (e) {
+      if (
+        id &&
+        id !== conversationId &&
+        !(e instanceof ApiError && e.status === 401)
+      ) {
+        // This hook started the conversation and navigated into it; the chat
+        // page for that conversation now owns the composer.
+        sendFailures.set(id, {
+          text: messageText,
+          attachments: messageAttachments,
+          error: toErrorInfo(e),
+        });
+        window.dispatchEvent(new Event(SEND_FAILED_EVENT));
+      }
       if (activeConversation.current !== id) return;
       fail(e);
       setText(messageText);
@@ -239,6 +304,7 @@ export function useChat(conversationId?: string) {
         }
       }
     } finally {
+      if (id) sendsInFlight.delete(id);
       sendingRef.current = false;
       setSending(false);
     }
@@ -252,17 +318,51 @@ export function useChat(conversationId?: string) {
     if (retryText !== undefined && !conversation?.busy && !sending) {
       setText(retryText);
       setAttachments(JSON.parse(retryAttachments));
-      setError("The response was interrupted. Retry this request to continue.");
+      setError({
+        message:
+          "The response was interrupted. Retry this request to continue.",
+      });
     }
   }, [retryKey, retryText, retryAttachments, conversation?.busy, sending]);
   const busy = Boolean(sending || conversation?.busy);
+  const cancel = useCallback(async () => {
+    const id = activeConversation.current;
+    if (!id || !session || cancellingRef.current) return;
+    if (!sendingRef.current && !conversation?.busy) return;
+    cancellingRef.current = true;
+    try {
+      const result = await cancelConversation(id, session.csrf_token);
+      if (activeConversation.current !== id) return;
+      snapshotVersion.current++;
+      setConversation(result);
+    } catch (e) {
+      if (activeConversation.current === id) fail(e);
+    } finally {
+      cancellingRef.current = false;
+    }
+  }, [session, conversation?.busy, fail]);
+  useEffect(() => {
+    if (!busy || !conversationId) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (event.defaultPrevented) return;
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
+        return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      event.preventDefault();
+      void cancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [busy, conversationId, cancel]);
   return {
     conversation,
     text,
     setText,
     attachments,
     setAttachments,
-    error,
+    error: errorInfo.message,
+    errorDebug: errorInfo.debug,
     loading,
     reconnecting,
     messageViewport,

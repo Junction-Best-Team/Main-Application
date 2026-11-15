@@ -1,8 +1,8 @@
 .home-workspace {
   display: flex;
-  min-height: calc(100dvh - 4rem);
+  min-height: 100dvh;
   flex-direction: column;
-  padding: clamp(7rem, 27vh, 18rem) 2.5rem 1.5rem;
+  padding: clamp(1.25rem, 3dvh, 2.5rem) 2.5rem 1.5rem;
   background: var(--color-surface-pure);
   color: var(--color-primary);
 }
@@ -10,11 +10,11 @@
 .home-content {
   width: 100%;
   max-width: 50rem;
-  margin-inline: auto;
+  margin: auto;
 }
 
 .home-intro {
-  margin-bottom: 2.75rem;
+  margin-bottom: clamp(1.5rem, 4dvh, 2.75rem);
   text-align: center;
 }
 
@@ -64,30 +64,8 @@
   margin-top: 0.75rem;
 }
 
-.home-send {
-  display: inline-flex;
-  width: 2.75rem;
-  height: 2.75rem;
-  align-items: center;
-  justify-content: center;
-}
-
-.home-send {
-  border-radius: 50%;
-  background: var(--color-status-fresh-green);
-  color: var(--color-deep-ocean-navy);
-}
-
-.home-send:hover:not(:disabled) {
-  background: var(--color-tertiary-fixed);
-}
-
-.home-send:disabled {
-  opacity: 0.55;
-}
-
 .home-schedule {
-  margin-top: 2rem;
+  margin-top: clamp(1rem, 3dvh, 2rem);
   padding: 1.25rem 1.5rem 1.5rem;
   border-radius: 0.875rem;
   background: var(--color-workspace-panel);
@@ -137,8 +115,7 @@
 }
 
 .home-demo-note {
-  margin-top: auto;
-  padding-top: 4rem;
+  padding-top: clamp(1rem, 3dvh, 3rem);
   color: var(--color-secondary);
   font-size: 0.75rem;
   line-height: 1.5;

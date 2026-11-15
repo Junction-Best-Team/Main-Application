@@ -1,14 +1,21 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Icon } from "../../../shared/components/DesignPrimitives";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import { DESIGN_PLACEHOLDERS as MOCK } from "../../../shared/lib/designPlaceholders";
 import { useVoiceMode } from "../hooks/useVoiceMode";
 import { AttachmentCards } from "./AttachmentCards";
 import {
-  ACCEPT_FILES,
   attachmentSize,
   readAttachments,
   type ChatAttachment,
 } from "../model/attachments";
+const composerActionClassName =
+  "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary transition-colors hover:enabled:bg-deep-ocean-navy focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container disabled:cursor-not-allowed disabled:opacity-50";
+
 type Props = {
   appearance?: "chat" | "home";
   conversationId?: string;
@@ -33,7 +40,6 @@ export function ChatComposer({
 }: Props) {
   const home = appearance === "home";
   const voice = useVoiceMode();
-  const picker = useRef<HTMLInputElement>(null);
   const readingRef = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
@@ -49,6 +55,20 @@ export function ChatComposer({
   const disabled = Boolean(busy) || voice.active;
   // One action at a time: send while there is a draft or attachment, otherwise voice.
   const hasDraft = Boolean(text.trim()) || attachments.length > 0;
+  function handleComposerKeyDown(
+    event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) {
+    // Enter sends; Shift+Enter keeps a new line. Ignore Enter that confirms IME input.
+    if (
+      event.key !== "Enter" ||
+      event.shiftKey ||
+      event.nativeEvent.isComposing
+    )
+      return;
+    event.preventDefault();
+    if (!hasDraft || disabled || reading) return;
+    event.currentTarget.form?.requestSubmit();
+  }
   async function addFiles(files: File[]) {
     if (disabled || readingRef.current || !files.length) return;
     readingRef.current = true;
@@ -128,6 +148,11 @@ export function ChatComposer({
           {fileError}
         </p>
       )}
+      {busy && !home && (
+        <p className="px-space-sm text-label-sm text-secondary" role="status">
+          Press Escape to cancel
+        </p>
+      )}
       {(dragging || reading) && (
         <p className="px-space-sm text-label-sm text-secondary" role="status">
           {dragging ? "Drop files here" : "Reading files…"}
@@ -150,6 +175,7 @@ export function ChatComposer({
             id="purchase-message"
             value={text}
             onChange={(event) => onTextChange(event.target.value)}
+            onKeyDown={handleComposerKeyDown}
             maxLength={4000}
             placeholder="Tell Aimo what you need…"
             className="focus:outline-none focus-visible:outline-none"
@@ -162,6 +188,7 @@ export function ChatComposer({
             type="text"
             value={text}
             onChange={(event) => onTextChange(event.target.value)}
+            onKeyDown={handleComposerKeyDown}
             maxLength={4000}
             placeholder={MOCK.request.composerPlaceholder}
             disabled={disabled}
@@ -175,65 +202,27 @@ export function ChatComposer({
               : "flex shrink-0 items-center gap-space-xs"
           }
         >
-          {!home && (
-            <div className="flex items-center text-on-surface-variant md:gap-space-xs">
-              <input
-                ref={picker}
-                type="file"
-                multiple
-                accept={ACCEPT_FILES}
-                className="sr-only"
-                tabIndex={-1}
-                aria-label="Choose attachments"
-                disabled={disabled || reading}
-                onChange={(event) => {
-                  void addFiles(Array.from(event.target.files ?? []));
-                  event.target.value = "";
-                }}
-              />
-              <button
-                type="button"
-                aria-label="Attach file"
-                onClick={() => picker.current?.click()}
-                disabled={disabled || reading}
-                className="flex h-11 w-7 items-center justify-center md:w-8"
-              >
-                <Icon
-                  name="attach_file"
-                  className="text-[20px] md:text-[24px]"
-                />
-              </button>
-            </div>
-          )}
           {hasDraft ? (
             <button
               type="submit"
               aria-label={sendLabel}
               title={sendLabel}
               disabled={disabled || reading}
-              className={
-                home
-                  ? "home-send"
-                  : "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary disabled:cursor-not-allowed disabled:opacity-50"
-              }
+              className={composerActionClassName}
             >
-              {home ? (
-                <svg
-                  aria-hidden="true"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.75"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M12 20V4m-7 7 7-7 7 7" />
-                </svg>
-              ) : (
-                <Icon name="arrow_forward" className="text-[22px]" />
-              )}
+              <svg
+                aria-hidden="true"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 20V4m-7 7 7-7 7 7" />
+              </svg>
             </button>
           ) : (
             <button
@@ -242,11 +231,7 @@ export function ChatComposer({
               title="Start voice mode"
               onClick={() => voice.start(conversationId)}
               disabled={disabled || reading}
-              className={
-                home
-                  ? "home-send"
-                  : "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface-pure text-on-surface transition-colors hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container disabled:cursor-not-allowed disabled:opacity-50"
-              }
+              className={composerActionClassName}
             >
               <svg
                 aria-hidden="true"

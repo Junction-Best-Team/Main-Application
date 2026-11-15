@@ -250,8 +250,13 @@ class Progress:
             if self.draft_provider and kind in ("tool_completed", "complete"):
                 try:
                     event = AgentProgress(
-                        self.turn_id, self.sequence, kind, tool, error_code,
-                        self.draft_provider(kind), True,
+                        self.turn_id,
+                        self.sequence,
+                        kind,
+                        tool,
+                        error_code,
+                        self.draft_provider(kind),
+                        True,
                     )
                 except Exception as exc:
                     log_failure("agent.draft.failed", exc)
@@ -315,6 +320,7 @@ def run_turn(
     service,
     *,
     on_progress: Callable[[AgentProgress], None] | None = None,
+    ensure_live: Callable[[], None] | None = None,
     budget_seconds: float = 90,
     constraints: list[dict] | None = None,
     stored_plan: dict | None = None,
@@ -324,12 +330,18 @@ def run_turn(
     Service enforces identity/policy and durable retry semantics. The persisted
     server turn ID generates the same preparation key used by backend recovery.
     Progress is optional metadata; no tool arguments, provider bodies or secrets.
+    ensure_live cooperatively stops further rounds after cancel/reclaim (not mid-tool).
     """
     validate_context(identity, messages)
     if not 0 < budget_seconds <= 120:
         raise ValueError("Agent time budget must be positive and at most 120 seconds")
     cfg = settings()
     progress = Progress(identity["_turn_id"], on_progress)
+
+    def live():
+        if ensure_live:
+            ensure_live()
+
     session = ToolSession(identity, service, constraints=constraints)
     if stored_plan:
         session.restore_plan(stored_plan)  # fails closed; see ToolSession.restore_plan
@@ -394,6 +406,7 @@ def run_turn(
                 return result
             for round_number in range(1, cfg.llm_max_tool_rounds + 1):
                 check_deadline(deadline)
+                live()
                 with log_context(round=round_number, model=cfg.llm_model):
                     reply = provider.complete(history, session.definitions, deadline)
                 history.append(reply.message())
@@ -412,6 +425,7 @@ def run_turn(
                 outputs = []
                 for call in reply.tool_calls:
                     check_deadline(deadline)
+                    live()
                     # Only allowlisted names may appear in product progress metadata.
                     name = call.function.name
                     visible_name = name if name in session.registry else None

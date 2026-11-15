@@ -551,11 +551,13 @@ for (const [width, height] of [
         composerBounds!.x + composerBounds!.width,
       );
     };
-    // Barcode was removed; voice and send take turns in one slot after Attach file.
+    // Voice and send take turns in a single action slot.
     await expect(
       page.getByRole("button", { name: "Scan barcode" }),
     ).toHaveCount(0);
-    await expectBesideComposer("Attach file");
+    await expect(page.getByRole("button", { name: "Attach file" })).toHaveCount(
+      0,
+    );
     const voice = page.getByRole("button", { name: "Start voice mode" });
     const send = page.getByRole("button", { name: "Send Order Request" });
     await expectBesideComposer("Start voice mode");
@@ -775,6 +777,39 @@ test("a lost message response reuses its idempotency key after refresh", async (
   await expect(page.getByText("What delivery date do you need?")).toBeVisible();
   expect(keys).toHaveLength(2);
   expect(keys[1]).toBe(keys[0]);
+});
+
+test("Enter submits the composer when a draft is ready", async ({ page }) => {
+  await mockSession(page);
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: blankConversation }),
+  );
+  let posted = false;
+  await page.route(
+    `**/api/conversations/${conversationId}/messages`,
+    async (route) => {
+      posted = true;
+      await route.fulfill({
+        json: {
+          ...blankConversation,
+          messages: [
+            {
+              id: 1,
+              role: "assistant",
+              text: "Got it — what delivery date?",
+              created_at: timestamp,
+            },
+          ],
+        },
+      });
+    },
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  const composer = page.getByLabel("Continue the conversation");
+  await composer.fill("Carbonara for 200");
+  await composer.press("Enter");
+  await expect(page.getByText("Got it — what delivery date?")).toBeVisible();
+  expect(posted).toBe(true);
 });
 
 test("purchase deep links survive sign-in and confirmation requires an explicit click", async ({
@@ -1282,9 +1317,9 @@ for (const width of [1440, 390]) {
     await expect(
       page.getByRole("heading", { name: "Aimo Kitchen Assistant" }),
     ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Attach file" }),
-    ).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Attach file" })).toHaveCount(
+      0,
+    );
     await expect(
       page.getByRole("button", { name: "Start voice mode" }),
     ).toBeEnabled();
@@ -1694,6 +1729,40 @@ for (const width of [1440, 390, 320]) {
   });
 }
 
+type DroppedFile = { name: string; mimeType: string; buffer: Buffer };
+async function dropFiles(page: Page, files: DroppedFile | DroppedFile[]) {
+  const payload = (Array.isArray(files) ? files : [files]).map((file) => ({
+    name: file.name,
+    mimeType: file.mimeType,
+    base64: file.buffer.toString("base64"),
+  }));
+  await page
+    .getByRole("form", { name: "Chat message" })
+    .evaluate((form, files) => {
+      const data = new DataTransfer();
+      for (const file of files) {
+        data.items.add(
+          new File(
+            [
+              Uint8Array.from(atob(file.base64), (character) =>
+                character.charCodeAt(0),
+              ),
+            ],
+            file.name,
+            { type: file.mimeType },
+          ),
+        );
+      }
+      form.dispatchEvent(
+        new DragEvent("drop", {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer: data,
+        }),
+      );
+    }, payload);
+}
+
 const attachmentPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7VYAAAAASUVORK5CYII=",
   "base64",
@@ -1736,8 +1805,7 @@ for (const width of [1440, 320]) {
       },
     );
     await page.goto(`/conversations/${conversationId}`);
-    const picker = page.getByLabel("Choose attachments");
-    await picker.setInputFiles([
+    await dropFiles(page, [
       { name: "photo.png", mimeType: "image/png", buffer: attachmentPng },
       {
         name: "menu.csv",
@@ -1839,26 +1907,26 @@ test("unsupported, empty, oversized and excessive files are rejected without los
   );
   await page.goto(`/conversations/${conversationId}`);
   await page.getByLabel("Continue the conversation").fill("Soup menu");
-  const picker = page.getByLabel("Choose attachments");
-  await picker.setInputFiles({
+  await dropFiles(page, {
     name: "script.exe",
     mimeType: "application/octet-stream",
     buffer: Buffer.from("abc"),
   });
   await expect(page.getByRole("alert")).toContainText("Use PDF");
-  await picker.setInputFiles({
+  await dropFiles(page, {
     name: "large.txt",
     mimeType: "text/plain",
     buffer: Buffer.alloc(2 * 1024 * 1024 + 1),
   });
   await expect(page.getByRole("alert")).toContainText("at most 2 MB");
-  await picker.setInputFiles({
+  await dropFiles(page, {
     name: "empty.txt",
     mimeType: "text/plain",
     buffer: Buffer.alloc(0),
   });
   await expect(page.getByRole("alert")).toContainText("nonempty");
-  await picker.setInputFiles(
+  await dropFiles(
+    page,
     ["a", "b", "c", "d"].map((name) => ({
       name: `${name}.txt`,
       mimeType: "text/plain",
@@ -1866,7 +1934,8 @@ test("unsupported, empty, oversized and excessive files are rejected without los
     })),
   );
   await expect(page.getByRole("alert")).toContainText("up to 3 files");
-  await picker.setInputFiles(
+  await dropFiles(
+    page,
     ["a", "b", "c"].map((name) => ({
       name: `${name}.txt`,
       mimeType: "text/plain",
@@ -2030,7 +2099,7 @@ for (const width of [1440, 320]) {
       page.getByRole("button", { name: "Start voice mode" }),
     ).toHaveCount(0);
     await input.fill("Milk and eggs for Monday.");
-    await input.press("Enter");
+    await input.press("Shift+Enter");
     await expect(input).toHaveValue("Milk and eggs for Monday.\n");
     await input.fill(requestText);
     await expect(page).toHaveURL(/\/$/);
@@ -2039,11 +2108,72 @@ for (const width of [1440, 320]) {
       new RegExp(`/conversations/${conversationId}$`),
     );
     await expect(page.getByText("What quantities do you need?")).toBeVisible();
+    // The sent request must not linger as a draft in the chat composer.
+    await expect(page.getByLabel("Continue the conversation")).toHaveValue("");
+    await expect(page.getByText("restock.txt", { exact: true })).toHaveCount(0);
     await page.reload();
     await expect(page.getByText("What quantities do you need?")).toBeVisible();
+    await expect(page.getByLabel("Continue the conversation")).toHaveValue("");
     expect(messages).toEqual([requestText]);
   });
 }
+
+test("home hands a failed first message back to the chat composer", async ({
+  page,
+}) => {
+  await mockSession(page);
+  await page.route("**/api/conversations", (route) =>
+    route.fulfill({ json: blankConversation }),
+  );
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: blankConversation }),
+  );
+  await page.route(`**/api/conversations/${conversationId}/messages`, (route) =>
+    route.fulfill({
+      status: 503,
+      json: {
+        error: { code: "UNAVAILABLE", message: "Try again shortly." },
+      },
+    }),
+  );
+  await page.goto("/");
+  await page
+    .getByLabel("Your meal or purchasing request")
+    .fill("Restock milk for Monday");
+  await page.getByRole("button", { name: "Send Order Request" }).click();
+  await expect(page).toHaveURL(new RegExp(`/conversations/${conversationId}$`));
+  await expect(page.getByRole("alert").first()).toContainText(
+    "Try again shortly.",
+  );
+  await expect(page.getByLabel("Continue the conversation")).toHaveValue(
+    "Restock milk for Monday",
+  );
+});
+
+test("home composer sends on Enter and keeps Shift+Enter as a new line", async ({
+  page,
+}) => {
+  await mockSession(page);
+  const posted: string[] = [];
+  await page.route("**/api/conversations", async (route) => {
+    posted.push(route.request().method());
+    await route.fulfill({
+      status: 503,
+      json: { error: { code: "UNAVAILABLE", message: "Try again shortly." } },
+    });
+  });
+  await page.goto("/");
+  const input = page.getByLabel("Your meal or purchasing request");
+  await input.fill("Restock milk");
+  await input.press("Shift+Enter");
+  await input.pressSequentially("for Monday");
+  await expect(input).toHaveValue("Restock milk\nfor Monday");
+  expect(posted).toHaveLength(0);
+  await input.press("Enter");
+  await expect(page.getByRole("alert")).toContainText("Try again shortly.");
+  await expect(input).toHaveValue("Restock milk\nfor Monday");
+  expect(posted).toHaveLength(1);
+});
 
 test("home retains the draft and creation key after a failed start", async ({
   page,

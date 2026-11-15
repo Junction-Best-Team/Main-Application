@@ -207,46 +207,39 @@ test("expired session returns to sign in", async ({ page }) => {
   await expect(page).toHaveURL(/\/login$/);
 });
 
-for (const [name, width] of [
-  ["desktop", 1440],
-  ["small-desktop", 1024],
-  ["tablet", 768],
-  ["mobile", 390],
-  ["small-mobile", 320],
+for (const [name, width, height] of [
+  ["desktop", 1440, 1000],
+  ["small-desktop", 1024, 1000],
+  ["tablet", 768, 1000],
+  ["mobile", 390, 1000],
+  ["small-mobile", 320, 1000],
+  ["short-desktop", 1440, 480],
+  ["short-mobile", 390, 568],
 ] as const) {
   test(`settings layout on ${name}`, async ({ page }, testInfo) => {
     await session(page);
-    await page.setViewportSize({ width, height: 1000 });
+    await page.setViewportSize({ width, height });
     await page.route("**/api/settings/policy", (route) =>
       route.fulfill({ json: settings }),
     );
     await page.goto("/settings");
     await expect(page.getByLabel("Maximum per order")).toBeVisible();
     await expect(page.getByLabel("Extra quantities")).toBeVisible();
-    const trigger = page.getByRole("button", { name: "User menu" });
-    const account = page.getByRole("navigation", { name: "User account" });
     const sidebar = page.getByRole("complementary", { name: "Sidebar" });
-    await expect(
-      sidebar.getByRole("link", { name: "Account Settings" }),
-    ).toHaveCount(0);
-    await expect(sidebar.getByRole("button", { name: "Sign out" })).toHaveCount(
-      0,
-    );
-    await expect(
-      page.getByRole("button", { name: "Switch account" }),
-    ).toHaveCount(0);
+    let navigation = sidebar;
     if (width < 768) {
       await page.getByRole("button", { name: "Open menu" }).click();
-      const drawer = page.getByRole("dialog", { name: "Menu", exact: true });
-      await expect(
-        drawer.getByRole("link", { name: "Account Settings" }),
-      ).toHaveCount(0);
-      await expect(drawer.getByRole("link", { name: "Memory" })).toHaveCount(0);
-      await expect(
-        drawer.getByRole("button", { name: "Sign out" }),
-      ).toHaveCount(0);
-      await page.getByRole("button", { name: "Close menu" }).click();
+      navigation = page.getByRole("dialog", { name: "Menu", exact: true });
+    } else {
+      await expect(page.getByRole("banner")).toHaveCount(0);
     }
+    const trigger = navigation.getByRole("button", { name: "User menu" });
+    const account = navigation.getByRole("navigation", {
+      name: "User account",
+    });
+    await expect(trigger).toHaveText(/Account/);
+    const triggerBox = await trigger.boundingBox();
+    expect(triggerBox!.y).toBeGreaterThan(height - 100);
     await expect(trigger).toHaveAttribute("aria-expanded", "false");
     await trigger.focus();
     await page.keyboard.press("Enter");
@@ -268,12 +261,20 @@ for (const [name, width] of [
     await trigger.click();
     await expect(account).toHaveCount(0);
     await trigger.click();
-    await page.getByLabel("Maximum per order").click();
+    // Moving focus outside the account popup dismisses it.
+    await navigation.getByRole("link", { name: "New request" }).focus();
     await expect(account).toHaveCount(0);
     await trigger.click();
     await settingsLink.click();
     await expect(account).toHaveCount(0);
+    if (width < 768) {
+      await expect(navigation).toHaveCount(0);
+      await page.getByRole("button", { name: "Open menu" }).click();
+    }
     await trigger.click();
+    const popupBox = await account.boundingBox();
+    expect(popupBox!.y).toBeGreaterThanOrEqual(0);
+    expect(popupBox!.y + popupBox!.height).toBeLessThanOrEqual(triggerBox!.y);
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,

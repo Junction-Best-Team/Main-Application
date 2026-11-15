@@ -190,10 +190,12 @@ class ChatMessage(Model):
     proposal_id: str | None = None
     image: RecipeImage | None = None
     attachments: list[AttachmentInfo] = Field(default_factory=list)
-    notice: Literal["provider_unavailable"] | None = Field(
+    notice: Literal["provider_unavailable", "order_confirmed"] | None = Field(
         default=None,
-        description="Set on a plain assistant notice stored when the model provider failed; show it "
-        "as a notice, not as an answer. The unfinished message keeps its retry offer.",
+        description="Set on a plain notice, not an answer. provider_unavailable: stored when the "
+        "model provider failed (the unfinished message keeps its retry offer). order_confirmed "
+        "(role system): one line stored after the customer's confirm placed a demo order, in the "
+        "customer's language, with the delivery date.",
     )
 
 

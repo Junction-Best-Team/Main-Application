@@ -3,7 +3,6 @@ import { useParams } from "react-router-dom";
 import { Icon } from "../../../shared/components/DesignPrimitives";
 import { useDebounced } from "../../../shared/hooks/useDebounced";
 import { DESIGN_PLACEHOLDERS as MOCK } from "../../../shared/lib/designPlaceholders";
-import { useAuth } from "../../auth/useAuth";
 import { useOrders } from "../hooks/useOrders";
 import { usePurchaseDetail } from "../hooks/usePurchaseDetail";
 import { isAccepted } from "../model/acceptedOrders";
@@ -29,7 +28,6 @@ const filterSelectClass =
 
 export function PurchasesPage() {
   const { proposalId } = useParams();
-  const { session } = useAuth();
   const [filters, setFilters] = useState<PastOrderFilters>(
     DEFAULT_PAST_ORDER_FILTERS,
   );
@@ -103,7 +101,7 @@ export function PurchasesPage() {
   if (proposalId && !detail.p)
     return (
       <main className="p-space-lg">
-        <ErrorMessage message={detail.error} />
+        <ErrorMessage message={detail.error} debug={detail.errorDebug} />
         {!detail.error && <p role="status">Loading purchase…</p>}
       </main>
     );
@@ -118,27 +116,18 @@ export function PurchasesPage() {
   const hasFilter = filters.query.trim() !== "" || filters.status !== "all";
   return (
     <main>
-      <section className="border-b border-border-subtle bg-surface-pure px-margin-sm py-space-lg md:px-margin md:py-space-xl">
-        <div className="mx-auto flex max-w-6xl flex-col justify-between gap-space-md md:flex-row md:items-end">
-          <h1 className="m-0 font-headline text-headline-lg-mobile tracking-normal text-primary md:text-headline-lg">
+      <section className="border-b border-border-subtle bg-surface-pure px-margin-sm py-space-lg md:px-margin">
+        <div className="mx-auto flex max-w-6xl flex-col justify-between gap-space-md sm:flex-row sm:items-center">
+          <h1 className="m-0 font-headline text-headline-md tracking-normal text-primary md:text-headline-lg-mobile">
             Past Orders
           </h1>
-          <div className="flex items-center gap-space-sm rounded-lg bg-surface-container-low px-space-md py-space-sm">
-            <Icon name="verified" className="text-wholesale-teal" />
-            <div>
-              <div className="font-label text-label-sm uppercase text-secondary">
-                {m.account.label}
-              </div>
-              <div className="font-label text-label-md text-primary">
-                {session?.buyer_id}
-              </div>
-            </div>
-          </div>
           <button
-            className="self-start text-label-md"
+            type="button"
+            className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-space-sm self-start rounded-md border border-outline-variant bg-surface-pure px-space-md py-3 font-label text-label-md text-primary hover:bg-surface-container-low disabled:cursor-wait disabled:opacity-60"
             onClick={refresh}
             disabled={loading}
           >
+            <Icon name="refresh" className="text-base" />
             Refresh purchases
           </button>
         </div>
