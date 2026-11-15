@@ -7,6 +7,8 @@ set -euo pipefail
 : "${FRONTEND_IMAGE:?Set FRONTEND_IMAGE}"
 components=(worker api frontend)
 images=("$WORKER_IMAGE" "$IMAGE" "$FRONTEND_IMAGE")
+# The worker can finish a six-minute turn plus persistence before stopping.
+rollout_timeouts=(10m 5m 5m)
 previous=()
 changed=()
 for image in "${images[@]}"; do
@@ -50,7 +52,7 @@ rollback() {
     kubectl -n "$NAMESPACE" set image "deployment/aimo-$component" "$component=${previous[$index]}" || true
   done
   for index in "${changed[@]}"; do
-    kubectl -n "$NAMESPACE" rollout status "deployment/aimo-${components[$index]}" --timeout=5m || true
+    kubectl -n "$NAMESPACE" rollout status "deployment/aimo-${components[$index]}" --timeout="${rollout_timeouts[$index]}" || true
   done
   exit 1
 }
@@ -67,8 +69,8 @@ for index in "${!components[@]}"; do
   fi
 done
 # Start the independent Deployments together, after migrations, then wait for all.
-for component in "${components[@]}"; do
-  kubectl -n "$NAMESPACE" rollout status "deployment/aimo-$component" --timeout=5m
+for index in "${!components[@]}"; do
+  kubectl -n "$NAMESPACE" rollout status "deployment/aimo-${components[$index]}" --timeout="${rollout_timeouts[$index]}"
 done
 trap - ERR
 printf 'Deployed frontend, API and worker.\n'

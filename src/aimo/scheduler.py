@@ -1,7 +1,7 @@
 """Scheduled (standing) re-orders, WS-E. Every order placed here is a MOCK order.
 
 The run engine. `run_due_schedules` does one step of one run per call, so a worker iteration stays
-far below its 270 second health limit even when the supplier is slow:
+far below its 450 second health limit even when the supplier is slow:
 
   materialise  create the run of each due date (idempotent: unique authorization + date)
   due          prepare the basket as the buyer's internal agent and compare it with the terms

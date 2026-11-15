@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from aimo import approval_workflow as workflow
 from aimo import attachments, auth, cancellations, order_notice, scheduler
+from aimo.agent_limits import TURN_LEASE_SECONDS
 from aimo.approval_policy import can_approve
 from aimo.chat_activity import record_progress
 from aimo.chat_schemas import AgentTurn
@@ -565,7 +566,7 @@ def claim_turn(cid=None):
         return c.execute(
             """UPDATE conversation_turns SET state='running',attempt=%s,lease_until=%s,
             worker_attempts=worker_attempts+1,progress='[]'::jsonb,draft_cart=NULL WHERE id=%s RETURNING *""",
-            (uuid4(), now() + timedelta(seconds=240), turn["id"]),
+            (uuid4(), now() + timedelta(seconds=TURN_LEASE_SECONDS), turn["id"]),
         ).fetchone()
 
 

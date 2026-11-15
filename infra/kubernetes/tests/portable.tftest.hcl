@@ -16,8 +16,12 @@ variables {
 run "safe_initial_plan" {
   command = plan
   assert {
-    condition     = kubernetes_deployment_v1.apps["worker"].spec[0].template[0].spec[0].termination_grace_period_seconds == 240
-    error_message = "Worker shutdown must leave room for a 180-second chat turn and final persistence."
+    condition = (
+      kubernetes_config_map_v1.runtime.data.LLM_TURN_TIMEOUT_SECONDS == "360" &&
+      kubernetes_config_map_v1.runtime.data.LLM_MAX_TOOL_ROUNDS == "40" &&
+      kubernetes_deployment_v1.apps["worker"].spec[0].template[0].spec[0].termination_grace_period_seconds == 420
+    )
+    error_message = "Worker configuration and shutdown must support a 360-second, 40-round turn and final persistence."
   }
   assert {
     condition     = kubernetes_deployment_v1.apps["api"].spec[0].replicas == "0" && length(kubernetes_job_v1.bootstrap) == 0

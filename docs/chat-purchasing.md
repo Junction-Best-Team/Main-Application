@@ -49,7 +49,7 @@ A completed retry returns the persistent identical receipt without contacting pr
 
 ## Persistence and recovery
 
-Conversation creation and messages require stable buyer-scoped keys; changed payloads conflict. A transactional conversation lock reserves one bounded turn, without holding database connections while the model runs. Completed retries replay messages. Failed attempts expose `retry_message` with the original key; crashed work can resume after the 240-second lease. Attempt fencing prevents an old worker publishing a second assistant reply. Preparation keys derive from the trusted turn ID. A stopped process that already prepared a basket recovers that exact proposal before invoking the model again; changed payloads under the same turn key conflict. All decisions and receipts survive process restarts in PostgreSQL.
+Conversation creation and messages require stable buyer-scoped keys; changed payloads conflict. A transactional conversation lock reserves one bounded turn, without holding database connections while the model runs. Completed retries replay messages. Failed attempts expose `retry_message` with the original key; crashed work can resume after the 420-second lease. Attempt fencing prevents an old worker publishing a second assistant reply. Preparation keys derive from the trusted turn ID. A stopped process that already prepared a basket recovers that exact proposal before invoking the model again; changed payloads under the same turn key conflict. All decisions and receipts survive process restarts in PostgreSQL.
 
 SSE publishes persisted conversation snapshots and two-second heartbeat comments, with a 25-second reconnect interval and per-poll session revocation checks. It does not stream unpersisted model tokens. Polling remains available on the same detail route. `/mcp` and `/api/agent/*` are absent JSON routes, never SPA fallback.
 
@@ -111,7 +111,7 @@ remain discovery summaries. Inspection never proves recipe suitability, selects 
 product, grants purchasing authority or replaces fresh preparation/confirmation checks.
 
 Product searches share the overall 256-call turn budget, configured model-round
-limit (20 by default) and 180-second maximum deadline. There is no separate
+limit (40 by default and at most) and 360-second maximum deadline. There is no separate
 product-search cap. Catalog reads still run at most four at a time; identical
 searches reuse existing results and ordinary repeated-call discipline still applies.
 A terminal completion carrying an error is persisted as an interruption for the existing
@@ -126,7 +126,7 @@ for other items. The assistant explains the specific gaps and avoids repeated
 searches for facts catalog discovery cannot resolve. The underlying saved-recipe
 evidence requirements are unchanged.
 
-The 90-second turn limit is unchanged. Changed plans are reviewed before display even
+Changed plans are reviewed before display even
 without a UI observer. On a later provider failure or timeout, the last approved plan
 is saved as a partial answer and the customer can continue with a new message. Later
 unreviewed/rejected changes are withheld. If no reviewed progress exists, the ordinary

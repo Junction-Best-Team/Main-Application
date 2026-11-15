@@ -148,6 +148,18 @@ esac
                             calls.index("rollout status"))
         self.assertNotIn("rollout undo", calls)
 
+    def test_worker_rollout_waits_for_long_turn_including_rollback(self):
+        for failed in (False, True):
+            with self.subTest(rollback=failed):
+                result, calls = self.run_deploy(fail_rollout=failed)
+                self.assertEqual(result.returncode == 0, not failed, result.stderr)
+                waits = [line for line in calls.splitlines() if "rollout status" in line]
+                for component in ("worker", "api", "frontend"):
+                    component_waits = [line for line in waits if f"aimo-{component} " in line]
+                    self.assertEqual(len(component_waits), 2 if failed else 1)
+                    timeout = "10m" if component == "worker" else "5m"
+                    self.assertTrue(all(f"--timeout={timeout}" in line for line in component_waits))
+
     def test_catalog_sync_cronjob_follows_the_released_worker_digest(self):
         result, calls = self.run_deploy()
         self.assertEqual(result.returncode, 0, result.stderr)
