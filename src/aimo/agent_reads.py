@@ -5,15 +5,12 @@ from contextvars import copy_context
 from copy import deepcopy
 from itertools import islice
 
+from aimo.agent_limits import PARALLEL_READS
 from aimo.agent_provider import check_deadline
 from aimo.agent_stop import call_key
 from aimo.agent_tools import ToolSession
 from aimo.observability import log_context
 
-# No supplier calls, plan revisions, memory writes, images or purchasing operations.
-PARALLEL_READS = frozenset(
-    {"search_products", "get_product", "get_purchase_policy", "search_recipes", "get_recipe"}
-)
 MAX_PARALLEL_READS = 4
 RECIPE_READS = frozenset({"search_recipes", "get_recipe"})
 

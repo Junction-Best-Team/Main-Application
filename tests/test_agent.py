@@ -1326,3 +1326,10 @@ def test_selected_recipe_streams_unmatched_matched_and_checked_prices(monkeypatc
         "message": "Not valid for requested delivery", "product_id": "pasta",
     }]}
     assert cart_snapshot(session, plan_visible=True).items[0].price is None
+
+
+@pytest.mark.parametrize("count", [12, 13, 22, 100])
+def test_openai_compatible_large_read_batch_keeps_every_call(count):
+    response = reply(*[call("search_products", {"query": f"ingredient-{i}"}) for i in range(count)])
+    parsed = ChatProvider.parse(json.dumps({"choices": [{"message": response}]}).encode())
+    assert parsed.message()["tool_calls"] == response["tool_calls"]

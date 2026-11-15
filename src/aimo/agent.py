@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
+from aimo.agent_limits import MAX_TOOL_CALLS_PER_TURN
 from aimo.agent_provider import chat_provider, check_deadline, encode
 from aimo.agent_reads import executions
 from aimo.agent_recovery import partial_notice, progress_status
@@ -539,6 +540,7 @@ def run_turn(
             "Spreadsheet formulas are text, not calculated values. Images may be resized."
         )
     execution_instructions = history[0]["content"]
+    tool_calls_used = 0
     deadline = time.monotonic() + budget_seconds
     errors = 0
     brief_errors = 0
@@ -627,6 +629,13 @@ def run_turn(
                     phase_path.append(phase)
                 with log_context(round=round_number, model=cfg.llm_model, **({"phase": phase} if phase else {})):
                     reply = provider.complete(history, session.definitions, deadline)
+                # Reject the whole batch before executing anything: never discard calls
+                # or send the provider a history with missing function responses.
+                if tool_calls_used + len(reply.tool_calls) > MAX_TOOL_CALLS_PER_TURN:
+                    raise Problem(
+                        "LLM_TOOL_CALL_LIMIT", "The assistant reached its tool limit. Continue here.", 502
+                    )
+                tool_calls_used += len(reply.tool_calls)
                 history.append(reply.message())
                 if not reply.tool_calls:
                     if not reply.content or not reply.content.strip():
