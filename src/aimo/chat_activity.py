@@ -148,7 +148,7 @@ def record_progress(turn, progress):
     """Append only ordered events from a live attempt; stale callbacks cannot publish.
 
     The agent's Progress observer catches storage failures so display metadata cannot
-    change purchasing outcomes. The runner caps turns at 256 calls and 40 rounds,
+    change purchasing outcomes. The runner caps turns at 256 calls and 80 rounds,
     keeping their tool/stage/lifecycle events below the existing storage/API bounds.
     """
     if str(progress.turn_id) != str(turn["id"]):

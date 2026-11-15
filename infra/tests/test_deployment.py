@@ -157,7 +157,7 @@ esac
                 for component in ("worker", "api", "frontend"):
                     component_waits = [line for line in waits if f"aimo-{component} " in line]
                     self.assertEqual(len(component_waits), 2 if failed else 1)
-                    timeout = "10m" if component == "worker" else "5m"
+                    timeout = "15m" if component == "worker" else "5m"
                     self.assertTrue(all(f"--timeout={timeout}" in line for line in component_waits))
 
     def test_catalog_sync_cronjob_follows_the_released_worker_digest(self):
