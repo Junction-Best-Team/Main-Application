@@ -1,4 +1,5 @@
 import type { VoiceSession } from "../api/voiceApi";
+import { playTone } from "./tones";
 
 export type VoiceState = {
   phase: "connecting" | "listening" | "thinking" | "speaking" | "error";
@@ -449,23 +450,9 @@ export class LiveVoice {
     this.tone(start + 0.14, 880, 0.05, 0.3);
   }
 
-  /** One quiet sine blip, synthesized locally; never routed to the level meter. */
+  /** One quiet sine blip; never routed to the level meter. */
   private tone(at: number, frequency: number, peak: number, length: number) {
-    const audio = this.audio!;
-    const tone = audio.createOscillator();
-    const gain = audio.createGain();
-    tone.type = "sine";
-    tone.frequency.value = frequency;
-    gain.gain.setValueAtTime(0, at);
-    gain.gain.linearRampToValueAtTime(peak, at + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, at + length);
-    tone.connect(gain).connect(audio.destination);
-    tone.onended = () => {
-      tone.disconnect();
-      gain.disconnect();
-    };
-    tone.start(at);
-    tone.stop(at + length + 0.02);
+    playTone(this.audio!, at, frequency, peak, length);
   }
 
   private stopThinkingSound() {

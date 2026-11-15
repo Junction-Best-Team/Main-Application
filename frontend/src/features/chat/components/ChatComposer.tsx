@@ -11,6 +11,7 @@ import { useVoiceMode } from "../hooks/useVoiceMode";
 import type { QueuedMessage } from "../hooks/useChat";
 import { AttachmentCards } from "./AttachmentCards";
 import { VoiceOrb } from "./VoiceOrb";
+import { playEndChime } from "../model/tones";
 import {
   attachmentSize,
   readAttachments,
@@ -306,6 +307,8 @@ export function ChatComposer({
               aria-label="End voice"
               title="End voice"
               onClick={() => {
+                // Goodbye chime only when hanging up a live call, not an error.
+                if (voice.active) playEndChime();
                 voice.stop();
                 // The input unlocks on the next render.
                 requestAnimationFrame(focusInput);

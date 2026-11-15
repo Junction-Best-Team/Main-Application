@@ -334,8 +334,13 @@ test("voice saves exact speech through chat, reads the saved reply, and releases
     "true",
   );
   await page.getByRole("button", { name: "Unmute" }).click({ force: true });
+  const tonesBeforeEnd = await voiceCount(page, "voiceTones");
   await page.getByRole("button", { name: "End voice" }).click();
   await expect(voice).toHaveCount(0);
+  // Hanging up plays the falling two-note goodbye chime.
+  await expect
+    .poll(() => voiceCount(page, "voiceTones"))
+    .toBe(tonesBeforeEnd + 2);
   await expectReleased(page);
   await expect.poll(mock.closed).toBe(true);
   expect(mock.sent).toHaveLength(1);
