@@ -216,19 +216,23 @@ def test_every_phase_has_its_guidance_line(identity, phase_name, needle):
     if phase_name == "finish":
         assert "Never say purchased" in text and "Confirm purchase" in text
     if phase_name == "prepare":
-        assert "do not ask" in text.lower() and "tomorrow" in text.lower()
+        assert "three days" in text.lower() and "refining question" in text.lower()
 
 
 def test_the_prompt_no_longer_asks_for_delivery_details_before_preparing():
     text = " ".join(agent.system_prompt().split())
-    assert "Never invent delivery terms yourself" in text  # develop's rule stays
-    assert "ONE plain question" in text and "Every shopping request ends in the same turn" in text
+    assert "Never invent other delivery terms" in text
+    assert "Core purchase facts are the ingredients" in text
+    assert "Ask at most one refining question" in text
+    assert "Every shopping request ends in the same turn" in text
 
 
 def test_with_the_phases_off_the_old_prompt_and_tools_remain(identity, monkeypatch):
     monkeypatch.setattr(settings(), "agent_phases", False)
     text = " ".join(agent.system_prompt().split())
-    assert "ONE plain question" not in text and "Never invent delivery terms yourself" in text
+    assert "Ask at most one refining question" not in text
+    assert "Never invent other delivery terms" in text
+    assert "Core purchase facts are the ingredients" in text
     session = ToolSession(identity, FakeService(identity))
     session.customer_texts = ["carbonara for 20"]
     assert "prepare_order" in {d["function"]["name"] for d in session.definitions}
@@ -615,7 +619,8 @@ def test_with_automatic_cart_preparation_the_server_stages_the_basket_and_the_mo
     session.customer_texts = ["carbonara for 200"]
     text = session.execution_guidance(60)
     assert "Phase: PREPARE" in text and "do not call prepare_order" in text
-    assert "Do not ask for delivery details." in text
+    assert "Helsinki today plus three days" in text
+    assert "refining question about date or destination" in text
     seen = scripted(
         monkeypatch,
         [

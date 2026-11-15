@@ -1,9 +1,10 @@
 # ruff: noqa: F811
 """The server's defaults are known facts for the prepare check (live blocker, round 1).
 
-Phases tell the model to use the defaults (tomorrow and the policy's first destination, shown and
-editable on the card, Q-125 a) when the customer named none. The tool-call check wanted a date and
-destination "the customer stated", so every model prepare_order ended GUARDRAIL_UNCERTAIN. Now:
+Phases tell the model to use the defaults (Helsinki today plus three days and the policy's first
+destination, shown and editable on the card, Q-125 a) when the customer named none. The tool-call
+check wanted a date and destination "the customer stated", so every model prepare_order ended
+GUARDRAIL_UNCERTAIN. Now:
 - both equal to the server defaults and the customer wrote nothing about a date or a place: the question
   is not asked (nothing stated can be contradicted);
 - anything else (a date or destination that differs from the defaults, or a customer who did mention a date
@@ -33,12 +34,12 @@ from test_guardrails import fake_jev, guard, run, tool_messages  # noqa: F401
 from aimo import scheduler
 
 
-def tomorrow():
-    return str(scheduler.helsinki_today() + timedelta(days=1))
+def default_day():
+    return str(scheduler.default_delivery_date())
 
 
 def order(**over):
-    return purchase() | {"delivery_date": tomorrow(), "destination": "hotel-helsinki"} | over
+    return purchase() | {"delivery_date": default_day(), "destination": "hotel-helsinki"} | over
 
 
 def script(order_args):
@@ -74,7 +75,7 @@ def test_the_defaults_pass_when_the_classifier_is_only_unsure_and_the_customer_n
     state = asked(seen)
     assert "destination_and_date" in state["questions"]  # still asked: the classifier keeps the say
     assert state["state"]["server_defaults"] == {
-        "delivery_date": tomorrow(),
+        "delivery_date": default_day(),
         "destination": "hotel-helsinki",
     }
     text = json.dumps(state["questions"]["destination_and_date"]).casefold()

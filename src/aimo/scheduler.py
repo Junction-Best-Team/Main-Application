@@ -28,11 +28,18 @@ from aimo.schemas import CommitRequest, LookupRequest, PrepareRequest
 from aimo.upstream import HELSINKI
 
 ONE_DAY = timedelta(days=1)
+# Default basket delivery when the customer has not named a date (chat + auto-prepare).
+DEFAULT_DELIVERY_LEAD_DAYS = 3
 
 
 def helsinki_today(now=None):
     """The Helsinki calendar date: every schedule date and every run is in this zone."""
     return (now or clock.real_now()).astimezone(HELSINKI).date()
+
+
+def default_delivery_date(now=None):
+    """Helsinki today plus DEFAULT_DELIVERY_LEAD_DAYS: the staged default when no date was named."""
+    return helsinki_today(now) + timedelta(days=DEFAULT_DELIVERY_LEAD_DAYS)
 
 
 # --- Terms fingerprint ---------------------------------------------------------------------
