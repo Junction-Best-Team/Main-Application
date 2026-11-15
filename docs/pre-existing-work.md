@@ -14,7 +14,7 @@ Add any starter code or earlier prototypes separately. Describe which parts exis
 
 | Material | Date | Source or author | Work performed |
 | --- | --- | --- | --- |
-| Valio Aimo implementation plan and diagrams | 2026-11-14 | Team-provided research brief and discussions with AI assistants; Codex checked challenge/API documentation, schema and catalog records, and reviewed [PR #1](https://github.com/Junction-Best-Team/Main-Application/pull/1) at `5a14b3fde3448ec2674d8711bbba676d6c6a1667` | Documentation and read-only catalog analysis only. Covers seeded customer rules, four-outcome policy/workflow modules, read-only policy discovery, shared schemas/evidence, a React/TypeScript/Vite approval inbox served by FastAPI, mission-driven approval without chat, concurrent commit enforcement, normal audit history, ingestion/search, and existing-cluster hosting. Both allergen-group overlaps were checked locally. PR #1 live-API findings are attributed reports, not independently repeated calls in this plan. Outbound notifications, policy editing, hash chaining and direct in-agent approval remain deferred. No application implementation or deployment. See [the plan](brief.md). |
+| Valio Aimo implementation plan and diagrams | 2026-11-14 | Team-provided research brief and discussions with AI assistants; Codex checked challenge/API documentation, schema and catalog records, and reviewed [PR #1](https://github.com/Junction-Best-Team/Main-Application/pull/1) at `5a14b3fde3448ec2674d8711bbba676d6c6a1667` | Documentation and read-only catalog analysis only. Covers seeded customer rules, four-outcome policy/workflow modules, read-only policy discovery, shared schemas/evidence, a React/TypeScript/Vite approval inbox served by FastAPI, mission-driven approval without chat, concurrent commit enforcement, normal audit history, ingestion/search, and existing-cluster hosting. Both allergen-group overlaps were checked locally. PR #1 live-API findings are attributed reports, not independently repeated calls in this plan. Outbound notifications, policy editing, hash chaining and direct in-agent approval remain deferred. No application implementation or deployment. The original plan remains in Git history; [the brief](brief.md) now describes the current product. |
 
 ## Reused code, data, models, and assets
 
@@ -391,3 +391,11 @@ with Claude Code during the event.
 Supplier test fixtures reuse the existing authored `FixtureClient` responses, now in
 `tests/supplier_fixture.py`. They are installed only by pytest and the explicit offline
 API harness, and are excluded from application images. Production pricing has no fixture fallback.
+
+## README product screenshots — 2026-11-15
+
+Captured the existing deployed Aimo home and standing-orders screens at the owner's
+request for the README. The screens show synthetic demo-account data and mock
+ordering; no customer message, supplier lookup or order was submitted during capture.
+The images reuse the application's existing UI and home background, attributed above.
+No new external asset or dependency was introduced.

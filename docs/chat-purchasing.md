@@ -1,6 +1,6 @@
 # Chat purchasing
 
-This product scope supersedes the original external-agent/MCP entry points in `brief.md`. The React app calls authenticated FastAPI; a durable worker runs the internal typed agent/Service against PostgreSQL and supplier connectors. Order placement is a persistent mock, never supplier checkout or stock reservation.
+The [product brief](brief.md) defines the purchasing controls. The React app calls authenticated FastAPI; a durable worker runs the internal typed agent/Service against PostgreSQL and supplier connectors. Order placement is a persistent mock, never supplier checkout or stock reservation.
 
 ## Integrated product
 
@@ -65,7 +65,7 @@ The [deployment runbook](../deploy/README.md) covers routing and SSE checks;
 static rendering and local tests do not establish production routing.
 SSE needs unbuffered proxy responses; the API also sets `X-Accel-Buffering: no`.
 
-## When the model provider fails (owner Q-108)
+## When the model provider fails
 
 A turn that fails because the model provider fails (any `LLM_*` error of the provider layer) stores
 one plain assistant message and keeps the retry offer. The text is fixed and deterministic (no model
@@ -79,7 +79,7 @@ and the real reply replaces it when the retry succeeds, so there is never more t
 Guardrail, policy and programming errors store no notice. The unfinished message still appears as
 `retry_message`; a new message is refused until it is retried (`RETRY_PREVIOUS_MESSAGE`).
 
-## Confirmation line (owner Q-121)
+## Confirmation line
 
 After the customer's confirm route places an order, the chat that holds the basket gets one plain line
 (`role` system, `notice` `order_confirmed`): "Order accepted by the demo order service, delivery 17 Nov. This is
