@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import { Icon } from "../../../shared/components/DesignPrimitives";
 import { DESIGN_PLACEHOLDERS as MOCK } from "../../../shared/lib/designPlaceholders";
 import { useVoiceMode } from "../hooks/useVoiceMode";
@@ -49,6 +55,14 @@ export function ChatComposer({
   const disabled = Boolean(busy) || voice.active;
   // One action at a time: send while there is a draft or attachment, otherwise voice.
   const hasDraft = Boolean(text.trim()) || attachments.length > 0;
+  function handleComposerKeyDown(
+    event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) {
+    if (event.key !== "Enter" || !(event.ctrlKey || event.metaKey)) return;
+    event.preventDefault();
+    if (!hasDraft || disabled || reading) return;
+    event.currentTarget.form?.requestSubmit();
+  }
   async function addFiles(files: File[]) {
     if (disabled || readingRef.current || !files.length) return;
     readingRef.current = true;
@@ -150,6 +164,7 @@ export function ChatComposer({
             id="purchase-message"
             value={text}
             onChange={(event) => onTextChange(event.target.value)}
+            onKeyDown={handleComposerKeyDown}
             maxLength={4000}
             placeholder="Tell Aimo what you need…"
             className="focus:outline-none focus-visible:outline-none"
@@ -162,6 +177,7 @@ export function ChatComposer({
             type="text"
             value={text}
             onChange={(event) => onTextChange(event.target.value)}
+            onKeyDown={handleComposerKeyDown}
             maxLength={4000}
             placeholder={MOCK.request.composerPlaceholder}
             disabled={disabled}
