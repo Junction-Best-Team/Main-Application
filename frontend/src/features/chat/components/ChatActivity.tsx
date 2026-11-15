@@ -112,16 +112,19 @@ export function ChatActivity({
                 />
                 <span>
                   {step.label}
-                  <span className="ml-space-xs text-label-sm text-secondary">
-                    {" · "}
-                    {step.status === "complete"
-                      ? "Done"
-                      : step.status === "failed"
+                  {step.status === "complete" ? (
+                    // The check icon already shows completion; keep the word for screen readers.
+                    <span className="sr-only"> · Done</span>
+                  ) : (
+                    <span className="ml-space-xs text-label-sm text-secondary">
+                      {" · "}
+                      {step.status === "failed"
                         ? "Couldn't finish"
                         : step.status === "interrupted"
                           ? "Interrupted"
                           : "In progress"}
-                  </span>
+                    </span>
+                  )}
                 </span>
               </li>
             ))}
