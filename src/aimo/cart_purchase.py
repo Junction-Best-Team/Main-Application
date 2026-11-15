@@ -17,8 +17,9 @@ from pydantic import ValidationError
 
 from aimo import approval_workflow as workflow
 from aimo import auth, catalog, request_brief, scheduler
+from aimo.agent_stop import cart_label
 from aimo.agent_tools import PrepareOrderInput, ToolSession, is_zero
-from aimo.chat_schemas import CartNotIncluded, MealPlan
+from aimo.chat_schemas import CartNotIncluded, CartPurchaseRequest, MealPlan
 from aimo.config import settings
 from aimo.conversations import RECIPE_LOCKED_REASON, customer_constraints, owned
 from aimo.db import Problem, connection, fingerprint, js, now
@@ -180,6 +181,12 @@ def prepare_basket(
             ).fetchone()
             if busy:
                 raise Problem("CONVERSATION_BUSY", "A response is in progress.", 409, 3)
+        if link.get("require_expired"):
+            # A refresh only replaces an expired basket. Checked here, under the conversation lock,
+            # so of several refreshes at once only the first prepares and the rest are refused.
+            latest = latest_terms(c, cid)
+            if not latest or not workflow.is_expired(c, identity, latest["id"]):
+                raise Problem("BASKET_NOT_EXPIRED", "This basket has not expired.", 409)
         if link.get("basis") is not None and read_basis(c, cid) != link["basis"]:
             raise Problem(
                 "CART_CHANGED", "The cart changed while the basket was prepared. Try again.", 409
@@ -265,7 +272,7 @@ def prepare_basket(
             raise Problem("CART_NOT_VERIFIED", "The cart could not be verified.", 422)
     left_out_box.extend(left_out)
     request = PrepareOrderInput(
-        request_id=("Cart: " + session.plan.title)[:100],
+        request_id=cart_label(session.plan.title),
         destination=destination,
         delivery_date=delivery_date,
         requirements=requirements_from(limits),
@@ -304,11 +311,47 @@ def retrying(attempt, tries=3):
                 raise
 
 
-def prepare_from_cart(identity, cid, body, service):
-    return retrying(lambda: prepare_from_cart_once(identity, cid, body, service))
+def prepare_from_cart(identity, cid, body, service, summary=None, require_expired=False):
+    return retrying(
+        lambda: prepare_from_cart_once(identity, cid, body, service, summary, require_expired)
+    )
 
 
-def prepare_from_cart_once(identity, cid, body, service):
+def refresh_basket(identity, cid, body, service):
+    """Q-134 c: prepare an EXPIRED basket again from the customer's current cart.
+
+    The cart is the stored plan (it holds the customer's own pack counts), so amounts are never
+    changed here; the date and destination are the expired basket's (a date that has since passed
+    falls back to tomorrow, as everywhere). The supplier is asked again for price and stock and every
+    purchasing check runs as usual. Nothing is confirmed or ordered. A retry with the same
+    request_id gets the same basket."""
+    if identity["role"] != "approver":
+        raise Problem("FORBIDDEN", "Only a buyer session can prepare a purchase.", 403)
+    with connection() as c:
+        _, policy, _, _ = context(c, identity)
+        owned(c, identity, cid)
+        retried = c.execute(
+            "SELECT 1 FROM conversation_turns WHERE conversation_id=%s AND key=%s",
+            (cid, body.request_id),
+        ).fetchone()
+        refuse_if_ordered(c, cid)
+        latest = latest_terms(c, cid)
+    if not retried:
+        if not latest:
+            raise Problem(
+                "NO_BASKET_TO_REFRESH", "There is no basket to refresh. Prepare the cart first.", 422
+            )
+        if workflow.get_proposal(identity, latest["id"])["approval_status"] != "expired":
+            raise Problem("BASKET_NOT_EXPIRED", "This basket has not expired.", 409)
+    when, destination = terms_for(latest, policy)
+    prepared = CartPurchaseRequest(
+        delivery_date=when, destination=destination, request_id=body.request_id
+    )
+    summary = f"Refreshed my cart's prices and stock for {when} to {destination}."
+    return prepare_from_cart(identity, cid, prepared, service, summary, require_expired=not retried)
+
+
+def prepare_from_cart_once(identity, cid, body, service, summary=None, require_expired=False):
     if identity["role"] != "approver":
         raise Problem("FORBIDDEN", "Only a buyer session can prepare a purchase.", 403)
     digest = fingerprint(
@@ -349,10 +392,11 @@ def prepare_from_cart_once(identity, cid, body, service):
     stored = cart_plan(messages)
     tid = uuid4()
     key = "cart-" + fingerprint({"conversation": str(cid), "key": body.request_id})
-    summary = "Prepared from my cart for " + f"{body.delivery_date} to {body.destination}."
+    summary = summary or "Prepared from my cart for " + f"{body.delivery_date} to {body.destination}."
     link = {
         "check_busy": True,
         "check_ordered": True,
+        "require_expired": require_expired,
         "basis": basis_of(messages),
         "write": {"key": body.request_id, "digest": digest, "summary": summary, "plan": None},
     }

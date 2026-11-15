@@ -402,6 +402,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/conversations/{conversation_id}/refresh-basket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Conversation Refresh Basket
+         * @description Prepare an expired basket again from the cart: fresh supplier price and stock, the same
+         *     date and destination, the customer's own pack counts. 409 BASKET_NOT_EXPIRED otherwise.
+         *     Nothing is ordered: the customer still confirms the new revision.
+         */
+        post: operations["conversation_refresh_basket_api_conversations__conversation_id__refresh_basket_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/conversations/{conversation_id}/cart": {
         parameters: {
             query?: never;
@@ -812,6 +834,17 @@ export interface components {
             proposal: components["schemas"]["ProposalResponse"];
             /** Not Included */
             not_included: components["schemas"]["CartNotIncluded"][];
+        };
+        /**
+         * CartRefreshRequest
+         * @description Prepare an EXPIRED basket again from the cart, for the same date and destination (a button).
+         */
+        CartRefreshRequest: {
+            /**
+             * Request Id
+             * @description Idempotency key: one per button press, reused when the press is retried.
+             */
+            request_id: string;
         };
         /** ChatActivity */
         ChatActivity: {
@@ -1663,6 +1696,13 @@ export interface components {
             /** Reasons */
             reasons: components["schemas"]["Reason"][];
             /**
+             * Reason Classes
+             * @description One class per reason code present. blocker: data or the request must change (unresolved or denied). exception: the customer's own confirmation can cover it. warning: shown, blocks nothing. expired: the supplier cutoff has passed and the basket is expired, so it can only be prepared again. Derived for display; it never changes whether a basket can be confirmed.
+             */
+            reason_classes?: {
+                [key: string]: "blocker" | "exception" | "warning" | "expired";
+            };
+            /**
              * Expires At
              * Format: date-time
              */
@@ -1914,6 +1954,13 @@ export interface components {
             fulfilment?: components["schemas"]["Fulfilment"] | null;
             /** Reasons */
             reasons: components["schemas"]["Reason"][];
+            /**
+             * Reason Classes
+             * @description One class per reason code present. blocker: data or the request must change (unresolved or denied). exception: the customer's own confirmation can cover it. warning: shown, blocks nothing. expired: the supplier cutoff has passed and the basket is expired, so it can only be prepared again. Derived for display; it never changes whether a basket can be confirmed.
+             */
+            reason_classes?: {
+                [key: string]: "blocker" | "exception" | "warning" | "expired";
+            };
             /**
              * Expires At
              * Format: date-time
@@ -3647,6 +3694,59 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CartPurchaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartPurchaseResponse"];
+                };
+            };
+            /** @description Validation error. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    conversation_refresh_basket_api_conversations__conversation_id__refresh_basket_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CartRefreshRequest"];
             };
         };
         responses: {

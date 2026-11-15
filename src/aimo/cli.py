@@ -50,20 +50,28 @@ def migrate(runtime_role=None, catalog_role=None):
     )
 
 
-def seed():
+def seed(broad_scope=True):
+    """Insert the missing demo settings; never overwrite. Q-134 (a): the demo policy lists every
+    product of the active catalogue (a normal meal basket is in scope) and allows overbuy. With no
+    active catalogue yet the scope stays the old single product. `broad_scope=False` is the narrow
+    policy the test fixtures use."""
     from dotenv import load_dotenv
+
+    from aimo import policy_scope
 
     load_dotenv()
     password = os.getenv("DEMO_BUYER_PASSWORD")
     if not password or len(password) < 12:
         raise ValueError("Set private DEMO_BUYER_PASSWORD (12+) before seed")
+    with connection() as c:
+        catalogue = policy_scope.catalog_product_ids(c) if broad_scope else []
     rules = {
         "currency": "EUR",
         "destinations": ["hotel-helsinki"],
         "substitution": "requires_approval",
-        "overbuy": "requires_approval",
+        "overbuy": "allowed" if broad_scope else "requires_approval",
         "whole_sales_units": True,
-        "approved_product_ids": ["464306"],
+        "approved_product_ids": catalogue or policy_scope.OLD_SCOPE,
     }
     with connection() as c:
         c.execute("INSERT INTO buyers VALUES('demo-hotel','123',1) ON CONFLICT DO NOTHING")

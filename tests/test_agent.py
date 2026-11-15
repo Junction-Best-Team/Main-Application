@@ -636,7 +636,8 @@ def test_provider_failure_after_preparation_keeps_the_verified_result(
     monkeypatch, config, identity, final
 ):
     service = FakeService(identity)
-    scripted(monkeypatch, prepared_script() + [final])
+    # An empty final reply is retried once (stop control), so the same failure is scripted twice.
+    scripted(monkeypatch, prepared_script() + [final, final])
     events = []
     result = agent.run_turn(identity, HISTORY, service, on_progress=events.append)
     assert result.proposal_id == service.saved["proposal_id"]
@@ -646,7 +647,8 @@ def test_provider_failure_after_preparation_keeps_the_verified_result(
 
 
 def test_empty_reply_without_preparation_is_a_failure(monkeypatch, config, identity):
-    scripted(monkeypatch, [reply()])
+    # The model call is retried once (stop control); a second empty reply still fails the turn.
+    scripted(monkeypatch, [reply(), reply()])
     with pytest.raises(Problem) as error:
         agent.run_turn(identity, HISTORY, FakeService(identity))
     assert error.value.code == "LLM_RESPONSE_INVALID"
@@ -1073,9 +1075,13 @@ def test_unexpected_tool_failure_is_safe_and_preserves_saved_basket(
         attempts.append(1)
         raise failure
 
-    service.get_purchase_policy = fail
+    # get_proposal still runs after the basket (the policy lookup is refused there by stop control
+    # unless the customer asks for it), so the failure is a real tool failure after the basket.
+    service.get_proposal = fail
     scripted(
-        monkeypatch, (prepared_script() if prepared else []) + [reply(call("get_purchase_policy"))]
+        monkeypatch,
+        (prepared_script() if prepared else [])
+        + [reply(call("get_proposal", {"proposal_id": service.saved["proposal_id"]}))],
     )
     events = []
     if prepared:
@@ -1203,6 +1209,8 @@ def test_q44_model_sees_the_details_in_the_tool_error(monkeypatch, config, ident
             reply(call("publish_meal_plan", expanded)),
             reply(call("prepare_order", purchase())),
             reply(text="Retrying with pasta 20.5 KG."),
+            # no plan-only mode: the model stopped without a basket, so the server continues once
+            reply(text="I will retry with the corrected amounts."),
         ],
     )
     agent.run_turn(identity, HISTORY, FakeService(identity))

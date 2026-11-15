@@ -18,6 +18,7 @@ from aimo import agent, auth, conversations, guardrails
 from aimo.agent_tools import ToolSession
 from aimo.api import create_app
 from aimo.chat_schemas import AgentTurn, ConversationCreate, MessageRequest
+from aimo.config import settings
 from aimo.db import Problem, connection, js
 from aimo.guardrails import OUTPUT_FALLBACK
 from aimo.schemas import CommitRequest, PrepareRequest
@@ -152,8 +153,8 @@ def test_enforced_guard_turn_still_needs_exact_customer_confirmation(
 
 
 def limits(monkeypatch, messages, active):
-    monkeypatch.setattr(conversations, "MAX_MESSAGES_PER_HOUR", messages)
-    monkeypatch.setattr(conversations, "MAX_ACTIVE_TURNS", active)
+    monkeypatch.setattr(settings(), "chat_messages_per_hour", messages)
+    monkeypatch.setattr(settings(), "chat_active_turns_per_buyer", active)
 
 
 def test_hourly_chat_limit_spans_conversations_but_not_retries(monkeypatch, service, buyer):

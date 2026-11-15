@@ -4,6 +4,8 @@ Cart preparation uses live supplier price and availability. Order acceptance is 
 
 **Routes and code:** `POST /api/conversations/{id}/prepare-from-cart` (`src/aimo/cart_purchase.py`) and `cart_purchase.auto_prepare`, called by `conversations.execute_turn`.
 
+**Refresh of an expired basket (Q-134 c):** `POST /api/conversations/{id}/refresh-basket` with `{request_id}` prepares the stored cart again (fresh price and stock, same date and destination, the customer's own pack counts) and returns the same body as `prepare-from-cart`. Only when the latest basket is `expired` (else `409 BASKET_NOT_EXPIRED`; no basket: `422 NO_BASKET_TO_REFRESH`). It never confirms or orders. The proposal also carries `reason_classes` (code to blocker, exception, warning or expired).
+
 ## What happens
 
 - After a customer chat turn that left a changed cart (the turn's displayed plan), the server prepares the basket from it: the conversation's plan, every matched product read again from the catalog, the ordinary prepare path (fresh supplier price and stock, policy, ceiling, the customer's stated limits). Items without a product or quantity are left out and named in the reply ("Not included: ...").

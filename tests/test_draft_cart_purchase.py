@@ -104,6 +104,10 @@ def chat(monkeypatch, buyer):
     monkeypatch.setattr(internal, "settings", lambda: config)
     # These tests are about the model path; test_cart_auto_prepare.py turns the auto-prepare on.
     monkeypatch.setattr(settings(), "cart_auto_prepare", False)
+    # Every scripted turn here ends at a complete plan on purpose: they test the server's cart (auto-prepare,
+    # the route, the PUT). The agent phases would pre-empt that with the model's own prepare; the phases are
+    # tested in test_agent_phases.py and end to end in test_cart_phases_end_to_end.py.
+    monkeypatch.setattr(settings(), "agent_phases", False)
     script, seen = [], []
 
     def provider(request):

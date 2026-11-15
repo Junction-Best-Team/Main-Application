@@ -12,14 +12,21 @@ import httpx
 
 from aimo.agent_provider import chat_provider, check_deadline, encode
 from aimo.agent_reads import executions
-from aimo.agent_recovery import partial_notice
+from aimo.agent_recovery import partial_notice, progress_status
+from aimo.agent_stop import (
+    CONTINUE_NOTICE,
+    CONTINUE_PHASE_NOTICE,
+    MIN_SECONDS_TO_CONTINUE,
+    asks_for_delivery_details,
+    wants_to_buy,
+)
 from aimo.agent_tools import ToolSession
 from aimo.chat_activity import tool_detail
 from aimo.chat_draft import cart_snapshot
 from aimo.chat_schemas import AgentTurn, DraftCart
 from aimo.config import settings
 from aimo.db import Problem, fingerprint
-from aimo.guardrails import PREPARE_NOTICE, Guardrails
+from aimo.guardrails import PREPARE_NOTICE, Guardrails, Verdict
 from aimo.observability import elapsed, event, failure, log_context, operation
 
 BASE_PROMPT = """You are the customer's internal meal-purchasing assistant.
@@ -95,6 +102,9 @@ The customer can change quantities on the cart card themselves. Their change arr
 customer message ("I changed the cart on the card ...") and as the stored meal plan with the
 new amounts. Keep those amounts; never undo a customer's edit. An ingredient with amount "0"
 was removed by the customer: keep it in the plan at "0" and do not buy it unless they ask.
+
+Reply in the language of the customer's latest message (English, Finnish or Swedish), also
+for questions and short status lines.
 
 Use the supplied conversation and constraints; do not ask again for known facts.
 Ask only for a material recipe fact you cannot derive, such as guest count.
@@ -293,8 +303,33 @@ in the reply; actual pack quantities, totals and readiness belong on the order c
 """
 
 
+# With the server-owned phases (docs/agent-phases.md) delivery details are never asked: they default
+# and the customer edits them on the card, so the paragraph that sent the model to ask is replaced.
+OLD_ASK_PARAGRAPH = """Ask only for a material recipe fact you cannot derive, such as guest count.
+Do not ask for a delivery date, destination, location or address in chat. Delivery
+settings belong in Your order. Use existing delivery terms when available; if they
+are missing and automatic preparation is disabled, keep the plan for the customer
+to prepare through Your order. Never invent delivery terms yourself.
+Do useful recipe planning immediately. Do not turn a meal request into a questionnaire.
+"""
+PHASED_ASK_PARAGRAPH = """Ask at most ONE plain question, and only when a named dish has no recipe you can
+find or the guest count cannot be assumed. Do not ask for a delivery date, destination, location or address in chat.
+Delivery terms default (the last basket's, or tomorrow in Helsinki and the buyer's first approved
+destination) and the customer changes them in Your order. Never invent delivery terms yourself.
+Do useful recipe planning immediately and do not turn a meal request into a questionnaire. Every shopping
+request ends in the same turn with the card holding all ingredients; advice does not.
+"""
+
+
+def phases_on():
+    from aimo.config import settings as application_settings
+
+    config = application_settings()
+    return config.agent_stop_control and config.agent_phases
+
+
 def system_prompt():
-    return "\n\n".join(
+    text = "\n\n".join(
         [
             BASE_PROMPT,
             ORDINARY_PURCHASE_PROMPT,
@@ -305,6 +340,9 @@ def system_prompt():
             *([AUTO_CART_PROMPT] if getattr(settings(), "cart_auto_prepare", False) else []),
         ]
     )
+    if phases_on():
+        text = text.replace(OLD_ASK_PARAGRAPH, PHASED_ASK_PARAGRAPH, 1)
+    return text
 
 
 def memory_message(loaded):
@@ -430,6 +468,13 @@ def validate_context(identity, messages):
         )
 
 
+def stop_control_on():
+    # The application setting itself (agent.settings is the model provider's configuration).
+    from aimo.config import settings as application_settings
+
+    return application_settings().agent_stop_control
+
+
 @operation("agent.turn", context_arg="identity")
 def run_turn(
     identity,
@@ -462,6 +507,8 @@ def run_turn(
             ensure_live()
 
     session = ToolSession(identity, service, constraints=constraints)
+    session.customer_texts = [m["content"] for m in messages if m["role"] == "user"]
+    session.enforce_phases = True  # the phase decides the visible tools (when phases are on)
     if stored_plan:
         if stored_plan.get("recipe_plan_id"):
             session.restore_saved_plan(stored_plan["recipe_plan_id"])
@@ -497,6 +544,21 @@ def run_turn(
     progress.emit("started")
     tool_log = []
     guard = None
+    continued = False
+    retried_empty = False
+    rounds = 0
+    phase_path = []
+
+    def end(reason):
+        # One line per turn: why it ended and how much work it took (no arguments, no content).
+        event(
+            "agent.turn.ended",
+            stop_reason=reason,
+            continued_once=continued,
+            rounds=rounds,
+            **({"phase_path": phase_path} if phase_path else {}),
+            **session.stats,
+        )
 
     reviewed_draft = None
     reviewed_plan = None
@@ -544,6 +606,7 @@ def run_turn(
             early = guard.input_reply()
             if early:
                 result = finish(early)
+                end("blocked")
                 progress.emit(
                     "complete", error_code="GUARDRAIL_" + guard.input_result.verdict.upper()
                 )
@@ -551,20 +614,66 @@ def run_turn(
             for round_number in range(1, cfg.llm_max_tool_rounds + 1):
                 check_deadline(deadline)
                 live()
+                rounds = round_number
                 progress.emit("thinking", round_number=round_number)
                 # Refresh execution guidance without adding a model round or
                 # changing the persisted customer history.
                 history[0]["content"] = execution_instructions + (
                     "\n" + session.execution_guidance(check_deadline(deadline))
                 )
-                with log_context(round=round_number, model=cfg.llm_model):
+                phase = session.phase if phases_on() else None
+                if phase:
+                    phase_path.append(phase)
+                with log_context(round=round_number, model=cfg.llm_model, **({"phase": phase} if phase else {})):
                     reply = provider.complete(history, session.definitions, deadline)
                 history.append(reply.message())
                 if not reply.tool_calls:
                     if not reply.content or not reply.content.strip():
+                        if (
+                            not retried_empty
+                            and stop_control_on()
+                            and deadline - time.monotonic() >= MIN_SECONDS_TO_CONTINUE
+                        ):
+                            retried_empty = True  # a provider hiccup: ask the model once more
+                            history.pop()  # the empty message is not kept
+                            continue
                         raise Problem(
                             "LLM_RESPONSE_INVALID", "The assistant returned no message.", 502
                         )
+                    # Stopped short? The customer asked to buy, the plan is complete, nothing was
+                    # prepared: continue ONCE with a labelled server notice instead of ending.
+                    if (
+                        not continued
+                        and stop_control_on()
+                        and session.prepared_digest is None
+                        and session.plan_complete
+                        and not session.brief_blocks_build
+                        and (
+                            session.phase == "prepare"  # phases: no plan-only mode, defaults exist
+                            and not session.auto_cart
+                            if phases_on()
+                            else wants_to_buy(session.customer_texts)
+                            and not asks_for_delivery_details(reply.content)
+                        )
+                        and round_number < cfg.llm_max_tool_rounds
+                        and deadline - time.monotonic() >= MIN_SECONDS_TO_CONTINUE
+                        and (
+                            guard.mode == "off"
+                            or (
+                                guard.input_result is not None
+                                and guard.input_result.verdict == Verdict.ALLOWED
+                            )
+                        )
+                        and not guard.prepare_refused
+                    ):
+                        continued = True
+                        history.append(
+                            {
+                                "role": "user",
+                                "content": CONTINUE_PHASE_NOTICE if phases_on() else CONTINUE_NOTICE,
+                            }
+                        )
+                        continue
                     # LLM -> user: unsupported narrative is replaced; trusted state is kept.
                     if guard.mode != "off":
                         progress.emit("reviewing")
@@ -572,6 +681,17 @@ def run_turn(
                     if guard.prepare_refused and not session.proposal:
                         narrative += "\n\n" + PREPARE_NOTICE
                     result = finish(narrative)
+                    blocked = session.proposal and session.proposal.get("policy_outcome") in (
+                        "denied",
+                        "needs_resolution",
+                    )
+                    end(
+                        "blocked"
+                        if blocked
+                        else "question"
+                        if reply.content.strip().endswith("?")
+                        else "answered"
+                    )
                     progress.emit("complete")
                     return result
                 outputs = []
@@ -590,6 +710,10 @@ def run_turn(
                         if exc.code == "LLM_TIMEOUT":
                             raise
                         errors += 1
+                        if exc.code != "TOOL_REPEATED" and (
+                            exc.code != "TOOL_NOT_ALLOWED" or getattr(exc, "phase", False)
+                        ):
+                            session.forget(name, call.function.arguments)
                         progress.emit("tool_failed", visible_name, exc.code)
                         tool_log.append(
                             {"tool": visible_name or "unavailable", "outcome": exc.code}
@@ -628,6 +752,7 @@ def run_turn(
                             "The assistant could not resolve the tool errors. "
                             "Clarify the requirements and retry."
                         )
+                        end("error")
                         progress.emit("complete", error_code="TOOL_ERROR_LIMIT")
                         return result
                 # Tool -> LLM: minimised, screened views, batched once per model reply.
@@ -638,12 +763,15 @@ def run_turn(
                         {"role": "tool", "tool_call_id": call_id, "content": encode(content)}
                     )
             result = finish(
-                "The assistant reached its step limit. Clarify missing "
-                "requirements and continue. No purchase was authorized."
+                "The assistant reached its step limit. "
+                + (progress_status(session) + " " if stop_control_on() else "")
+                + "Clarify missing requirements and continue. No purchase was authorized."
             )
+            end("round_limit")
             progress.emit("complete", error_code="TOOL_ROUND_LIMIT")
             return result
     except Problem as exc:
+        end("time_limit" if exc.code == "LLM_TIMEOUT" else "error")
         progress.emit("error", error_code=exc.code)
         if exc.code.startswith("LLM_") and reviewed_plan and not session.proposal and not session.receipt:
             text = partial_notice(reviewed_plan, exc.code)
@@ -659,6 +787,7 @@ def run_turn(
         raise
     except Exception as exc:
         log_failure("agent.turn.unexpected", exc)
+        end("error")
         progress.emit("error", error_code="AGENT_FAILED")
         if session.proposal or session.receipt or session.image:
             result = finish()
