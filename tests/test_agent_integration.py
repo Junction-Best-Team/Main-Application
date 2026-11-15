@@ -122,7 +122,9 @@ def test_carbonara_actual_catalog_policy_customer_confirmation_and_persisted_rec
         assert "delivery date" in first.json()["messages"][-1]["text"]
         assert first.json()["purchases"] == []
         assert first.json()["activity"]["state"] == "complete"
-        assert first.json()["activity"]["events"][1]["label"] == "Checking purchasing rules"
+        assert [e["label"] for e in first.json()["activity"]["events"][:3]] == [
+            "Checking your request", "Thinking", "Checking purchasing rules"
+        ]
         second_body = {"text": f"{delivery}, hotel-helsinki, no dietary restrictions, 1000 EUR. "
                        "Use the traditional carbonara recipe with pasta, eggs, pork, cheese and pepper.",
                        "idempotency_key": str(uuid4())}

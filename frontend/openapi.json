@@ -3124,7 +3124,7 @@
         "properties": {
           "sequence": {
             "type": "integer",
-            "maximum": 600.0,
+            "maximum": 640.0,
             "minimum": 1.0,
             "title": "Sequence"
           },
@@ -3132,9 +3132,11 @@
             "type": "string",
             "enum": [
               "started",
+              "thinking",
               "tool_started",
               "tool_completed",
               "tool_failed",
+              "reviewing",
               "complete",
               "error"
             ],
