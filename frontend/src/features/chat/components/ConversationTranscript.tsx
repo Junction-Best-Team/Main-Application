@@ -1,5 +1,14 @@
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import type { Conversation } from "../../../shared/api/types";
+import type { components } from "../../../shared/api/schema";
 import { Icon } from "../../../shared/components/DesignPrimitives";
+import { copyText } from "../../../shared/lib/copyText";
 import { dateTime } from "../../../shared/lib/format";
 import { ChatActivity } from "./ChatActivity";
 import { MealPlanCard } from "./MealPlanCard";
@@ -7,11 +16,18 @@ import { RecipeIllustration } from "./RecipeIllustration";
 import { MessageMarkdown } from "./MessageMarkdown";
 import { AttachmentCards } from "./AttachmentCards";
 import { SystemMessage } from "./SystemMessage";
+
+type ChatMessage = components["schemas"]["ChatMessage"];
+
+const messageActionClassName =
+  "flex h-8 w-8 items-center justify-center rounded-full text-secondary transition-colors hover:enabled:bg-surface-container-high hover:enabled:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container disabled:cursor-not-allowed disabled:opacity-40";
+
 export function ConversationTranscript({
   conversation,
   busy,
   stopped = false,
   onReviewBasket,
+  onEditMessage,
   onContinue,
 }: {
   conversation: Conversation | null;
@@ -20,8 +36,14 @@ export function ConversationTranscript({
   stopped?: boolean;
   /** Opens the existing Overview / purchase handoff for this proposal. */
   onReviewBasket?: (proposalId: string) => void;
+  /** Replace a user message, truncate later turns, and regenerate. */
+  onEditMessage?: (messageId: number, text: string) => Promise<void> | void;
   onContinue?: () => void;
 }) {
+  const [editingId, setEditingId] = useState<number | null>(null);
+  useEffect(() => {
+    if (busy) setEditingId(null);
+  }, [busy]);
   const plan = conversation?.messages.at(-1)?.meal_plan;
   const unmatched = plan?.ingredients.some(
     (item) =>
@@ -39,23 +61,19 @@ export function ConversationTranscript({
         message.role === "system" ? (
           <SystemMessage key={message.id} message={message} />
         ) : message.role === "user" ? (
-          <article
+          <UserMessage
             key={message.id}
-            className="ml-auto flex max-w-2xl flex-row-reverse items-start gap-space-sm"
-          >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary dark:bg-primary-container shadow-sm">
-              <Icon name="person" className="text-[18px]" />
-            </div>
-            <div className="flex min-w-0 flex-col items-end gap-space-xs">
-              <AttachmentCards files={message.attachments ?? []} />
-              {message.text && (
-                <div className="max-w-full rounded-xl rounded-tr-none bg-primary dark:bg-primary-container px-space-md py-space-sm text-body-md text-on-primary shadow-sm">
-                  <MessageMarkdown text={message.text} />
-                </div>
-              )}
-              <MessageByline who="You" at={message.created_at} />
-            </div>
-          </article>
+            message={message}
+            busy={busy}
+            editing={editingId === message.id}
+            onBeginEdit={() => setEditingId(message.id)}
+            onCancelEdit={() => setEditingId(null)}
+            onUpdate={async (text) => {
+              if (!onEditMessage) return;
+              await onEditMessage(message.id, text);
+              setEditingId(null);
+            }}
+          />
         ) : (
           <article
             key={message.id}
@@ -115,6 +133,199 @@ export function ConversationTranscript({
     </div>
   );
 }
+
+function UserMessage({
+  message,
+  busy,
+  editing,
+  onBeginEdit,
+  onCancelEdit,
+  onUpdate,
+}: {
+  message: ChatMessage;
+  busy: boolean;
+  editing: boolean;
+  onBeginEdit: () => void;
+  onCancelEdit: () => void;
+  onUpdate: (text: string) => Promise<void>;
+}) {
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (copiedTimer.current != null) window.clearTimeout(copiedTimer.current);
+    },
+    [],
+  );
+  return (
+    <article className="group ml-auto flex max-w-2xl flex-row-reverse items-start gap-space-sm">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary dark:bg-primary-container shadow-sm">
+        <Icon name="person" className="text-[18px]" />
+      </div>
+      <div className="flex min-w-0 flex-col items-end gap-space-xs">
+        <AttachmentCards files={message.attachments ?? []} />
+        {editing ? (
+          <UserMessageEditor
+            original={message.text}
+            onCancel={onCancelEdit}
+            onUpdate={onUpdate}
+          />
+        ) : (
+          <>
+            {message.text && (
+              <div className="max-w-full rounded-xl rounded-tr-none bg-primary dark:bg-primary-container px-space-md py-space-sm text-body-md text-on-primary shadow-sm">
+                <MessageMarkdown text={message.text} />
+              </div>
+            )}
+            <div className="flex items-center gap-space-xs opacity-100 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:focus-within:opacity-100 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100">
+              <button
+                type="button"
+                className={messageActionClassName}
+                aria-label={copied ? "Copied" : "Copy message"}
+                title={copied ? "Copied" : "Copy"}
+                onClick={() => {
+                  void copyText(message.text).then((ok) => {
+                    if (!ok) return;
+                    setCopied(true);
+                    if (copiedTimer.current != null)
+                      window.clearTimeout(copiedTimer.current);
+                    copiedTimer.current = window.setTimeout(
+                      () => setCopied(false),
+                      2000,
+                    );
+                  });
+                }}
+              >
+                <Icon
+                  name={copied ? "check" : "content_copy"}
+                  className="text-[18px]"
+                />
+              </button>
+              <button
+                type="button"
+                className={messageActionClassName}
+                aria-label="Edit message"
+                title="Edit"
+                disabled={busy}
+                aria-disabled={busy}
+                onClick={() => {
+                  if (busy) return;
+                  onBeginEdit();
+                }}
+              >
+                <Icon name="edit" className="text-[18px]" />
+              </button>
+            </div>
+          </>
+        )}
+        <MessageByline who="You" at={message.created_at} />
+      </div>
+    </article>
+  );
+}
+
+function UserMessageEditor({
+  original,
+  onCancel,
+  onUpdate,
+}: {
+  original: string;
+  onCancel: () => void;
+  onUpdate: (text: string) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState(original);
+  const [saving, setSaving] = useState(false);
+  const areaRef = useRef<HTMLTextAreaElement | null>(null);
+  const labelId = useId();
+  const unchanged = draft === original;
+  const empty = !draft.trim();
+  const updateDisabled = saving || empty || unchanged;
+
+  function grow(area: HTMLTextAreaElement | null) {
+    if (!area) return;
+    area.style.height = "auto";
+    area.style.height = `${area.scrollHeight}px`;
+  }
+
+  useEffect(() => {
+    const area = areaRef.current;
+    if (!area) return;
+    area.focus();
+    const end = area.value.length;
+    area.setSelectionRange(end, end);
+    grow(area);
+  }, []);
+
+  async function submit() {
+    if (updateDisabled) return;
+    setSaving(true);
+    try {
+      await onUpdate(draft);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      onCancel();
+      return;
+    }
+    if (
+      event.key !== "Enter" ||
+      event.shiftKey ||
+      event.nativeEvent.isComposing
+    )
+      return;
+    event.preventDefault();
+    void submit();
+  }
+
+  return (
+    <div
+      data-message-edit="true"
+      className="flex w-full min-w-[min(100%,20rem)] max-w-full flex-col items-end gap-space-sm"
+    >
+      <label id={labelId} className="sr-only">
+        Edit message
+      </label>
+      <textarea
+        ref={areaRef}
+        aria-labelledby={labelId}
+        value={draft}
+        maxLength={4000}
+        rows={1}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          grow(event.target);
+        }}
+        onKeyDown={onKeyDown}
+        className="w-full resize-none rounded-[24px] bg-primary px-space-md py-space-sm font-body text-body-md text-on-primary shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container dark:bg-primary-container"
+      />
+      <div className="flex items-center gap-space-sm">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-lg px-space-md py-space-sm font-label text-label-md text-secondary transition-colors hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={() => void submit()}
+          disabled={updateDisabled}
+          aria-disabled={updateDisabled}
+          className="rounded-lg bg-primary-container px-space-md py-space-sm font-label text-label-md font-bold text-on-primary transition-colors hover:enabled:bg-deep-ocean-navy focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Update
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function MessageByline({ who, at }: { who: string; at: string }) {
   return (
     <span className="mt-1 font-label text-label-sm text-secondary">

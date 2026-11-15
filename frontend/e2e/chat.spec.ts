@@ -2519,3 +2519,165 @@ test("home retains the draft and creation key after a failed start", async ({
   expect(keys).toHaveLength(2);
   expect(keys[0]).toBe(keys[1]);
 });
+
+const seededUserMessages: Conversation = {
+  ...blankConversation,
+  messages: [
+    {
+      id: 1,
+      role: "user",
+      text: "Plan lunch for forty",
+      created_at: timestamp,
+    },
+    {
+      id: 2,
+      role: "assistant",
+      text: "Here is a lunch plan.",
+      created_at: timestamp,
+    },
+    {
+      id: 3,
+      role: "user",
+      text: "Make it vegetarian",
+      created_at: timestamp,
+    },
+    {
+      id: 4,
+      role: "assistant",
+      text: "Vegetarian lunch is ready.",
+      created_at: timestamp,
+    },
+  ],
+};
+
+async function stubMessageClipboard(page: Page) {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __copied: string[] };
+    w.__copied = [];
+    Object.defineProperty(navigator, "clipboard", {
+      value: {
+        writeText: (text: string) => {
+          w.__copied.push(text);
+          return Promise.resolve();
+        },
+      },
+    });
+  });
+}
+
+test("copy shows brief checkmark feedback for a user message", async ({
+  page,
+}) => {
+  await stubMessageClipboard(page);
+  await mockSession(page);
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: seededUserMessages }),
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  const copy = page.getByRole("button", { name: "Copy message" }).first();
+  // Hover-revealed actions stay in the tree at opacity 0 until hover/focus.
+  await copy.click({ force: true });
+  await expect(page.getByRole("button", { name: "Copied" })).toBeAttached();
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __copied: string[] }).__copied,
+    ),
+  ).toEqual(["Plan lunch for forty"]);
+});
+
+test("edit cancel restores the original user message", async ({ page }) => {
+  await mockSession(page);
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: seededUserMessages }),
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  await page
+    .getByRole("button", { name: "Edit message" })
+    .first()
+    .click({ force: true });
+  const editor = page.getByRole("textbox", { name: "Edit message" });
+  await expect(editor).toHaveValue("Plan lunch for forty");
+  await editor.fill("Changed then cancelled");
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByText("Plan lunch for forty")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Edit message" })).toHaveCount(
+    0,
+  );
+});
+
+test("edit update truncates later messages and starts a new generation", async ({
+  page,
+}) => {
+  await mockSession(page);
+  let saved: Conversation = structuredClone(seededUserMessages);
+  const edits: { text: string; idempotency_key: string }[] = [];
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: saved }),
+  );
+  await page.route(
+    `**/api/conversations/${conversationId}/messages/1/edit`,
+    async (route) => {
+      const body = route.request().postDataJSON();
+      edits.push({
+        text: body.text,
+        idempotency_key: body.idempotency_key,
+      });
+      expect(route.request().headers()["x-csrf-token"]).toBe(
+        session.csrf_token,
+      );
+      saved = {
+        ...saved,
+        busy: true,
+        messages: [
+          {
+            id: 1,
+            role: "user",
+            text: body.text,
+            created_at: timestamp,
+          },
+        ],
+        activity: {
+          turn_id: "11111111-1111-1111-1111-111111111111",
+          state: "queued",
+          events: [],
+        },
+      };
+      await route.fulfill({ json: saved });
+    },
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  await page
+    .getByRole("button", { name: "Edit message" })
+    .first()
+    .click({ force: true });
+  const editor = page.getByRole("textbox", { name: "Edit message" });
+  await editor.fill("Plan lunch for eighty");
+  await page.getByRole("button", { name: "Update" }).click();
+  await expect(page.getByText("Plan lunch for eighty")).toBeVisible();
+  await expect(page.getByText("Make it vegetarian")).toHaveCount(0);
+  await expect(page.getByText("Vegetarian lunch is ready.")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
+  expect(edits).toHaveLength(1);
+  expect(edits[0].text).toBe("Plan lunch for eighty");
+  expect(edits[0].idempotency_key.length).toBeGreaterThanOrEqual(8);
+});
+
+test("edit is disabled while a response is in flight", async ({ page }) => {
+  await mockSession(page);
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({
+      json: {
+        ...seededUserMessages,
+        busy: true,
+        activity: {
+          turn_id: "11111111-1111-1111-1111-111111111111",
+          state: "running",
+          events: [],
+        },
+      },
+    }),
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  const edit = page.getByRole("button", { name: "Edit message" }).first();
+  await expect(edit).toBeDisabled();
+});
