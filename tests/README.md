@@ -51,7 +51,7 @@ Fixture upstream and fixture embeddings only; never the live API. Fixture setup 
 | `test_guardrails.py`, `test_guardrails_integration.py` | Agent guardrails: a fake Decisions provider tests enforcement, shadow and failure behaviour (not Jev accuracy); real Service/PostgreSQL tests cover cross-buyer IDs, confirmation behind an enforced guard and per-buyer chat limits. Live accuracy: `scripts/evaluate_guardrails.py` (opt-in) |
 | `test_agent.py`, `test_agent_integration.py`, `test_conversations.py`, `test_hardening.py`, `test_retries.py` | Teammates' tests (PRs #4 and #15): the internal assistant with a scripted provider, persistent conversations and confirmation, security and performance hardening, supplier retry rules |
 | `test_sweep.py` | No provider invocation or stored messages during the standalone sweep; both live supplier endpoints queried; missing keys, rejected requests and unresolved evidence fail; `--live` without a key exits before server startup |
-| `test_upstream_mode.py` | `UPSTREAM_MODE=auto` uses live with a key and labelled fixtures without; `fixture` ignores a key; `live` without a key fails closed |
+| `test_upstream_mode.py` | Application pricing always selects the live client; `auto` has no fixture fallback; startup rejects fixture mode or missing credentials |
 
 ## API sweep (`tests/sweep/run_sweep.py`)
 
@@ -127,3 +127,7 @@ npm run test --prefix frontend                                            # Play
 ```
 
 The directory is `tests/` (not `Tests/`) on purpose: a second folder differing only in case would collide on macOS and Windows checkouts.
+
+Offline supplier responses live in `tests/supplier_fixture.py`, outside application images.
+Pytest installs this harness; `tests/ci.sh` starts `uvicorn --app-dir tests fixture_app:app`
+for the offline sweep. `aimo serve` and the worker always require the real Valio key.

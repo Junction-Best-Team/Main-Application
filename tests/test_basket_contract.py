@@ -16,6 +16,7 @@ from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
+from supplier_fixture import FixtureClient
 
 from aimo.agent_tools import ToolSession
 from aimo.catalog import quantity
@@ -24,7 +25,6 @@ from aimo.fixtures import fixture_facts
 from aimo.purchases import money
 from aimo.schemas import LineRequest, PrepareRequest, PurchaseRequest
 from aimo.service import Service
-from aimo.upstream import FixtureClient
 
 
 def product(index=0, **changes):

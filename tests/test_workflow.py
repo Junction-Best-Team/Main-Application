@@ -4,13 +4,13 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
+from supplier_fixture import FixtureClient
 
 from aimo import approval_workflow as workflow
 from aimo.cli import seed
 from aimo.db import Problem, connection, js, now
 from aimo.schemas import CommitRequest, DecisionRequest, PrepareRequest
 from aimo.service import Service
-from aimo.upstream import FixtureClient
 
 
 def commit(p, key=None):

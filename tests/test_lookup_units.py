@@ -11,12 +11,13 @@ from datetime import date, timedelta
 
 import httpx
 import pytest
+from supplier_fixture import FixtureClient
 
 from aimo import upstream
 from aimo.config import settings
 from aimo.db import Problem, now
 from aimo.fixtures import fixture_facts
-from aimo.upstream import FixtureClient, ValioClient, validate_lookup
+from aimo.upstream import ValioClient, validate_lookup
 
 DELIVERY = date(2026, 11, 20)
 

@@ -8,11 +8,11 @@ from datetime import date, timedelta
 from uuid import uuid4
 
 import pytest
+from supplier_fixture import FixtureClient
 
 from aimo.db import connection
 from aimo.schemas import CommitRequest, LookupRequest, PrepareRequest
 from aimo.service import Service
-from aimo.upstream import FixtureClient
 
 
 class LiveLabelled(FixtureClient):

@@ -727,6 +727,15 @@ test("request starts a meal conversation and keeps messages through refresh", as
   await expect(
     page.getByRole("list", { name: "Proposed items" }),
   ).toContainText("SKU pasta");
+  const recipe = page.getByRole("region", { name: "Proposed meal plan" });
+  await expect(recipe.getByText("20 KG", { exact: true })).not.toBeVisible();
+  await recipe
+    .getByText("Recipe quantities and assumptions", { exact: true })
+    .click();
+  await expect(recipe.getByText("20 KG", { exact: true })).toBeVisible();
+  await recipe
+    .getByText("Recipe quantities and assumptions", { exact: true })
+    .click();
   await expect(
     page.getByRole("complementary", { name: "Overview" }),
   ).toBeVisible();
@@ -739,6 +748,9 @@ test("request starts a meal conversation and keeps messages through refresh", as
     page.getByRole("heading", { name: "Carbonara", exact: true }),
   ).toBeVisible();
   expect(keys).toHaveLength(1);
+  await page.getByRole("log", { name: "Conversation messages" }).screenshot({
+    path: "test-results/recipe-and-basket-desktop.png",
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(
     await page.evaluate(
@@ -750,6 +762,57 @@ test("request starts a meal conversation and keeps messages through refresh", as
     fullPage: true,
   });
 });
+
+for (const priced of [false, true]) {
+  test(`SKU cards preserve ${priced ? "verified zero prices" : "unknown prices"}`, async ({
+    page,
+  }) => {
+    await mockSession(page);
+    const current = structuredClone(proposal);
+    const value = priced ? "0.00" : null;
+    Object.assign(current.snapshot.lines[0], {
+      net: value,
+      gross: value,
+      tax: value,
+    });
+    Object.assign(current.snapshot, {
+      net_total: value,
+      gross_total: value,
+      tax_total: value,
+    });
+    if (!priced) {
+      current.policy_outcome = "needs_resolution";
+      current.can_decide = false;
+    }
+    await page.route(`**/api/conversations/${conversationId}`, (route) =>
+      route.fulfill({
+        json: {
+          ...blankConversation,
+          messages: [
+            {
+              id: 2,
+              role: "assistant",
+              text: "Review your basket.",
+              created_at: timestamp,
+              proposal_id: proposalId,
+            },
+          ],
+          purchases: [current],
+        },
+      }),
+    );
+    await page.goto(`/conversations/${conversationId}`);
+    const items = page.getByRole("list", { name: "Proposed items" });
+    if (priced) {
+      await expect(items.getByText("€0.00", { exact: true })).toHaveCount(2);
+    } else {
+      await expect(items.getByText("Unresolved", { exact: true })).toHaveCount(
+        2,
+      );
+      await expect(items).not.toContainText("€0.00");
+    }
+  });
+}
 
 test("a lost message response reuses its idempotency key after refresh", async ({
   page,

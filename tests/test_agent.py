@@ -536,9 +536,48 @@ def test_blocked_facts_remain_blocked_in_the_final_response(monkeypatch, config,
     service.saved["policy_outcome"] = outcome
     scripted(monkeypatch, prepared_script() + [reply(text="Review the facts.")])
     result = agent.run_turn(identity, HISTORY, service)
-    assert "basket is blocked" in result.text
-    assert "Outside standing scope" in result.text
+    expected = "blocked by purchasing rules" if outcome == "denied" else "needs checking"
+    assert expected in result.text
+    assert "See purchasing checks in Your order" in result.text
+    assert "Outside standing scope" not in result.text
     assert "Confirm purchase button" not in result.text
+
+
+def test_blocked_reply_keeps_the_basket_without_dumping_per_product_errors(identity):
+    service = FakeService(identity)
+    service.saved["policy_outcome"] = "needs_resolution"
+    reasons = [
+        {
+            "code": "MISSING_PRICE",
+            "message": "A complete, consistent sales-unit price and tax basis is required.",
+            "product_id": pid,
+            "severity": "unresolved",
+        }
+        for pid in NAMES
+    ]
+    service.saved["reasons"] = reasons
+    session = matched_session(identity, service)
+    invoke(session, "prepare_order", purchase())
+    result = session.result("Here is your recipe estimate for 200 portions.")
+    assert result.proposal_id == service.saved["proposal_id"]
+    assert "needs checking before it can be confirmed" in result.text
+    assert "tax basis" not in result.text and "MISSING_PRICE" not in result.text
+    assert service.saved["reasons"] == reasons  # detailed purchasing checks are retained
+    assert len(result.text) < 300
+
+
+@pytest.mark.parametrize("automatic", [False, True])
+def test_provider_knows_whether_delivery_defaults_are_staged_automatically(
+    monkeypatch, config, identity, automatic
+):
+    config.cart_auto_prepare = automatic
+    seen = scripted(monkeypatch, [reply(text="What would you like to cook?")])
+    agent.run_turn(identity, HISTORY, FakeService(identity))
+    instructions = seen[0]["messages"][0]["content"]
+    assert ("Automatic cart preparation is enabled" in instructions) == automatic
+    if automatic:
+        assert "tomorrow in Helsinki" in instructions
+        assert "Do not say you are waiting for delivery details" in instructions
 
 
 @pytest.mark.parametrize(

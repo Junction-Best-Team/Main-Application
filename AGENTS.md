@@ -24,7 +24,7 @@ Four-person Junction hackathon repository. The implemented Valio Aimo MVP is des
 ## Data and secrets
 
 - Challenge datasets live in `data/` (gitignored; the product JSON is about 84 MB). The raw brief, which contains personal details and credentials, lives in `local/` (gitignored). The Valio Aimo API key is in `.env` (`AIMO_API_KEY` in the original checkout, `VALIO_AIMO_API_KEY` for the app). Never print, log or commit these; copy a key between `.env` files without echoing it.
-- **The API key exists and team members have it.** Without it the app falls back to labelled fixture price/stock (`UPSTREAM_MODE=auto`, see README), which must never be presented as live data.
+- **The API key exists and team members have it.** Without it API startup and worker readiness fail. Supplier pricing is live only; authored price/stock responses exist solely in the test harness (see README).
 - The live price and availability APIs are rate limited and the spec says not to poll them for all products. Narrow candidates with the static data first, then query only the shortlist.
 - Everything provided is synthetic. The API has no order endpoint, so orders, policy and approvals are our own mocks and must be labelled as mocks.
 

@@ -1,11 +1,5 @@
 import type { Proposal } from "../../../shared/api/types";
 import { currency } from "../../../shared/lib/format";
-// Net (excl. VAT) is gross minus the line's VAT, computed in cents.
-function netOf(line: Proposal["snapshot"]["lines"][number]) {
-  const cents =
-    Math.round(Number(line.gross) * 100) - Math.round(Number(line.tax) * 100);
-  return (cents / 100).toFixed(2);
-}
 
 export function SkuCards({ proposal }: { proposal?: Proposal }) {
   const lines = proposal?.snapshot.lines;
@@ -42,7 +36,7 @@ export function SkuCards({ proposal }: { proposal?: Proposal }) {
           <div className="mt-space-sm flex items-center justify-between gap-space-xs rounded bg-surface-container-low px-2 py-1">
             <span className="flex items-baseline gap-1">
               <span className="text-[16px] font-bold text-primary">
-                {currency(netOf(line))}
+                {currency(line.net)}
               </span>
               <span className="font-label text-label-sm text-secondary">
                 excl. VAT

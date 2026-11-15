@@ -19,6 +19,7 @@ from uuid import uuid4
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
+from supplier_fixture import FixtureClient
 
 from aimo import approval_workflow as workflow
 from aimo import conversations, fixtures
@@ -34,7 +35,6 @@ from aimo.recipe_schemas import MatchIngredient, PlanReference, ScaleRecipe
 from aimo.recipes import get_plan, match_ingredient, scale_recipe
 from aimo.schemas import CommitRequest, PrepareRequest
 from aimo.service import Service
-from aimo.upstream import FixtureClient
 
 # ---------------------------------------------------------------------------
 # Helpers copied from tests/test_recipes.py (authored recipe, products, evidence)
