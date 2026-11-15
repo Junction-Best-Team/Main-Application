@@ -14,6 +14,7 @@ from test_agent import (  # noqa: F401 -- shared fixtures and authored transcrip
     call,
     meal,
     product,
+    proposal,
     purchase,
     reply,
     scripted,
@@ -159,6 +160,8 @@ def test_parallelism_is_bounded_and_children_do_not_mutate_parent(identity):
 
 def test_plan_and_prepare_are_barriers_between_read_groups(monkeypatch, config, identity):
     service = FakeService(identity)
+    # A blocked basket: the one case where a read (the policy) is still allowed after prepare.
+    service.saved = proposal(identity, outcome="denied")
     seen = scripted(
         monkeypatch,
         [
