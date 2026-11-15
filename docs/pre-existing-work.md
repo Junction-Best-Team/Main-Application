@@ -338,3 +338,7 @@ with Python's standard library and authored fixture/provider/clock regressions. 
 new dependency, external asset, model training or copied implementation was added.
 The reported hosted conversation was inspected read-only; test commerce remains
 authored fixtures and orders remain mocks.
+
+Release CI restoration (2026-11-15): restored the workflow from the team's PR #194
+(`5306e29`) at the owner's request. Reused existing check selection and gate logic;
+no dependency or external material was added.
