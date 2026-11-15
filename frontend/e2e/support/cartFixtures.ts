@@ -74,6 +74,10 @@ export type CartWorld = {
   outcome:
     "ready_to_commit" | "approval_required" | "denied" | "needs_resolution";
   expired: boolean;
+  /** Purchasing checks to carry on the prepared basket (instead of the QUANTITY_UNRESOLVED derived from `unresolved`). */
+  reasons: Proposal["reasons"] | null;
+  /** The proposal-level `reason_classes` (code -> blocker | exception | warning | expired), when the server sends it. */
+  reasonClasses: Record<string, string> | null;
   /** A product whose line cannot be converted into packs: no number, a QUANTITY_UNRESOLVED check, needs_resolution. */
   unresolved: string | null;
   /** The proposal's own totals when they must NOT follow from the lines (the browser must not recompute VAT). */
@@ -109,6 +113,8 @@ export const newCart = (over: Partial<CartWorld> = {}): CartWorld => ({
   view: "prepared",
   outcome: "ready_to_commit",
   expired: false,
+  reasons: null,
+  reasonClasses: null,
   unresolved: null,
   totals: null,
   cutoff: null,
@@ -172,17 +178,20 @@ export function proposalOf(w: CartWorld): Proposal {
     current_revision: w.revision,
     committed_revision: w.orderPlaced ? w.revision : null,
     policy_outcome: w.unresolved ? "needs_resolution" : w.outcome,
-    reasons: w.unresolved
-      ? [
-          {
-            code: "QUANTITY_UNRESOLVED",
-            message:
-              "This product has no pack size in its data; pick a product that does or ask for a number of packs.",
-            product_id: w.unresolved,
-            severity: "unresolved" as const,
-          },
-        ]
-      : [],
+    ...(w.reasonClasses ? { reason_classes: w.reasonClasses } : {}),
+    reasons:
+      w.reasons ??
+      (w.unresolved
+        ? [
+            {
+              code: "QUANTITY_UNRESOLVED",
+              message:
+                "This product has no pack size in its data; pick a product that does or ask for a number of packs.",
+              product_id: w.unresolved,
+              severity: "unresolved" as const,
+            },
+          ]
+        : []),
     expires_at: w.expired ? "2020-01-01T00:00:00Z" : baseProposal.expires_at,
     approval_status: w.orderPlaced
       ? "approved"

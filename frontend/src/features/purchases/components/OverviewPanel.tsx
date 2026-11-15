@@ -254,7 +254,7 @@ export function OverviewPanel({
                 />
               </CardPanel>
               <CardPanel name="checks" active={tabs.tab === "checks"}>
-                <PurchaseChecks p={p} />
+                <PurchaseChecks p={p} onRefresh={flow.load} />
               </CardPanel>
               <CardPanel name="details" active={tabs.tab === "details"}>
                 <DetailsPanel

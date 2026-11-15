@@ -256,12 +256,16 @@ test("catalog recipe shows compact turn and overlay ingredients-then-steps with 
 
   const ingredientBox = await ingredients.boundingBox();
   const stepsBox = await steps.boundingBox();
-  expect(ingredientBox && stepsBox && ingredientBox.y < stepsBox.y).toBeTruthy();
+  expect(
+    ingredientBox && stepsBox && ingredientBox.y < stepsBox.y,
+  ).toBeTruthy();
 
   await expect(
     overlay.getByRole("button", { name: "Download PDF" }),
   ).toBeVisible();
-  await expect(overlay.getByRole("button", { name: "Open basket" })).toBeEnabled();
+  await expect(
+    overlay.getByRole("button", { name: "Open basket" }),
+  ).toBeEnabled();
   await expect(
     page.getByRole("button", { name: "Review basket to confirm" }),
   ).toBeVisible();
@@ -302,14 +306,13 @@ test("free-form meal plan without instructions skips overlay", async ({
   await expect(
     page.getByRole("region", { name: "Proposed meal plan" }),
   ).toContainText("Market stew");
-  await expect(
-    page.getByRole("button", { name: /Open recipe/ }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Open recipe/ })).toHaveCount(
+    0,
+  );
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(
-    page.getByRole("log", { name: "Conversation messages" }).getByText(
-      "Carrots",
-      { exact: true },
-    ),
+    page
+      .getByRole("log", { name: "Conversation messages" })
+      .getByText("Carrots", { exact: true }),
   ).toHaveCount(0);
 });

@@ -726,9 +726,9 @@ test("request starts a meal conversation and keeps messages through refresh", as
   const recipe = page.getByRole("region", { name: "Proposed meal plan" });
   await expect(recipe.getByText("20 KG", { exact: true })).toHaveCount(0);
   await expect(recipe.getByText("Spaghetti", { exact: true })).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: /Open recipe/ }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Open recipe/ })).toHaveCount(
+    0,
+  );
   await expect(
     page.getByRole("button", { name: "Review basket to confirm" }),
   ).toBeVisible();
@@ -1407,9 +1407,9 @@ test(`free-form recipe plan stays compact without chat ingredient dump`, async (
   await expect(plan.getByText("open the basket for ingredients")).toBeVisible();
   await expect(plan.getByText("Salt", { exact: true })).toHaveCount(0);
   await expect(plan.getByText("Buy 7 ST", { exact: false })).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: /Open recipe/ }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Open recipe/ })).toHaveCount(
+    0,
+  );
   await expect(page.getByRole("dialog", { name: "Carbonara" })).toHaveCount(0);
   await expect(
     page.getByRole("link", { name: "Review basket and purchasing checks" }),
