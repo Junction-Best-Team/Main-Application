@@ -1154,6 +1154,88 @@ for (const basis of ["free_form", "saved_recipe"] as const) {
 }
 
 for (const width of [1440, 390]) {
+  test(`expanded requests stay under their parent at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 720 });
+    await mockSession(page);
+    const items = Array.from({ length: 31 }, (_, index) => ({
+      ...blankConversation,
+      id: `fa0d5e73-f5a5-4594-a1c5-${String(index).padStart(12, "0")}`,
+      title: `Catering request ${index + 1}`,
+    }));
+    await page.route("**/api/conversations?*", (route) => {
+      const older = new URL(route.request().url()).searchParams.get("offset");
+      return route.fulfill({
+        json: {
+          items: older === "30" ? items.slice(30) : items.slice(0, 30),
+          next_offset: older === "30" ? null : 30,
+        },
+      });
+    });
+    const last = items[30];
+    await page.route(`**/api/conversations/${last.id}`, (route) =>
+      route.fulfill({ json: last }),
+    );
+    await page.route(`**/api/conversations/${last.id}/events`, (route) =>
+      route.fulfill({
+        contentType: "text/event-stream",
+        body: ": heartbeat\n\n",
+      }),
+    );
+    await page.goto("/");
+    if (width < 768)
+      await page.getByRole("button", { name: "Open menu" }).click();
+    const nav =
+      width < 768
+        ? page.getByRole("dialog", { name: "Menu", exact: true })
+        : page.getByRole("complementary", { name: "Sidebar" });
+    const list = nav.getByRole("list", { name: "Conversations" });
+    await expect(list.getByRole("link")).toHaveCount(30);
+    const requests = nav.getByRole("link", { name: "Requests", exact: true });
+    const schedule = nav.getByRole("link", { name: "Schedule", exact: true });
+    const orders = nav.getByRole("link", { name: "Orders", exact: true });
+    const requestsBox = (await requests.boundingBox())!;
+    const listBox = (await list.boundingBox())!;
+    const scheduleBox = (await schedule.boundingBox())!;
+    expect(listBox.y).toBeGreaterThanOrEqual(
+      requestsBox.y + requestsBox.height,
+    );
+    expect(listBox.x).toBeGreaterThan(requestsBox.x);
+    const group = nav.locator("#nav-conversations");
+    const groupBox = (await group.boundingBox())!;
+    expect(scheduleBox.y).toBeGreaterThanOrEqual(groupBox.y + groupBox.height);
+    await expect(schedule).toBeInViewport();
+    await expect(orders).toBeInViewport();
+    expect(
+      await group.evaluate((el) => el.scrollHeight > el.clientHeight),
+    ).toBe(true);
+    await nav.getByRole("button", { name: "Hide conversations" }).click();
+    await expect(list).toHaveCount(0);
+    await nav.getByRole("button", { name: "Show conversations" }).click();
+    await group.evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await nav.getByRole("button", { name: "Load older conversations" }).click();
+    await expect(list.getByRole("link")).toHaveCount(31);
+    const lastLink = list.getByRole("link", { name: last.title, exact: true });
+    await lastLink.scrollIntoViewIfNeeded();
+    await expect(lastLink).toBeInViewport();
+    await expect(schedule).toBeInViewport();
+    await expect(orders).toBeInViewport();
+    await page.screenshot({
+      path: testInfo.outputPath(`nested-requests-${width}.png`),
+    });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await lastLink.click();
+    await expect(page).toHaveURL(`/conversations/${last.id}`);
+    if (width < 768) await expect(nav).toHaveCount(0);
+  });
+}
+
+for (const width of [1440, 390]) {
   test(`minimal Home and navigation work at ${width}px`, async ({
     page,
   }, testInfo) => {
