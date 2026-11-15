@@ -3147,6 +3147,18 @@
             "maxLength": 80,
             "minLength": 1,
             "title": "Label"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
           }
         },
         "additionalProperties": false,

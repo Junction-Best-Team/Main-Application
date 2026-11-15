@@ -13,7 +13,7 @@ from aimo import agent, conversations
 from aimo.agent import AgentProgress, Progress
 from aimo.agent_tools import ToolSession
 from aimo.api import create_app
-from aimo.chat_activity import TOOL_LABELS, record_progress
+from aimo.chat_activity import TOOL_LABELS, record_progress, tool_detail
 from aimo.chat_schemas import AgentTurn, ConversationCreate, MessageRequest
 from aimo.db import Problem, close_pools, connection, now
 from aimo.worker import run_once
@@ -213,3 +213,73 @@ def test_draft_cart_persists_streams_and_is_fenced_without_purchasing_authority(
     conversations.execute_turn(replacement, service, lambda *args: AgentTurn(text="Continue matching."))
     next_turn = conversations.enqueue(buyer, cid, MessageRequest(text="Can you explain it?", idempotency_key=str(uuid4())))
     assert next_turn["draft_cart"] is not None  # The selected plan survives conversational follow-ups.
+
+
+def test_completed_tools_carry_server_built_details_and_later_rounds_read_results(
+    buyer, service, monkeypatch
+):
+    cid, _ = queue(buyer)
+    recipes = {"recipes": [{"recipe_id": "r1", "version": "1", "title": "Carbonara",
+                            "summary": "", "base_servings": 4}],
+               "rerank_status": "disabled", "note": ""}
+
+    def runner(actor, history, shared, *, on_progress, ensure_live=None):
+        progress = Progress(actor["_turn_id"], on_progress)
+        progress.emit("started")
+        progress.emit("thinking", round_number=1)
+        progress.emit("tool_started", "search_recipes")
+        progress.emit("tool_completed", "search_recipes",
+                      detail=tool_detail("search_recipes", recipes))
+        progress.emit("tool_started", "get_product")
+        # A failure never shows a detail, even if one is supplied.
+        progress.emit("tool_failed", "get_product", "PRIVATE_ERROR", detail="PRIVATE detail")
+        progress.emit("thinking", round_number=2)
+        progress.emit("complete")
+        return AgentTurn(text="Which recipe?")
+
+    monkeypatch.setattr(agent, "run_turn", runner)
+    assert run_once(service)
+    events = conversations.detail(buyer, cid)["activity"]["events"]
+    assert events[3] == {"sequence": 4, "kind": "tool_completed", "label": "Searching recipes",
+                         "detail": "Found 1 recipe: Carbonara"}
+    assert [e["label"] for e in events if e["kind"] == "thinking"] == [
+        "Thinking", "Reading the results"
+    ]
+    assert "PRIVATE" not in json.dumps(events)
+
+
+def test_tool_detail_summarises_only_validated_results():
+    plan = {"meal_plan": {"title": "MODEL AUTHORED TITLE", "portions": 200, "ingredients": [
+        {"name": "MODEL NAME", "unit": "g", "status": "matched"},
+        {"name": "x", "unit": "g", "status": "unresolved"},
+        {"name": "y", "unit": "g"},
+    ]}, "purchase_authorized": False}
+    assert tool_detail("scale_recipe", plan) == (
+        "200 portions · 3 ingredients · 1 matched to products · 1 unresolved"
+    )
+    products = {"products": [{"name": f"Milk {n}"} for n in range(5)]}
+    assert tool_detail("search_products", products) == (
+        "Found 5 products: Milk 0, Milk 1, Milk 2 +2 more"
+    )
+    prices = {"mode": "fixture", "products": {
+        "a": {"gross": "1.20", "available_sales_quantity": "12"},
+        "b": {"gross": None, "available_sales_quantity": "0"},
+    }}
+    # Fixture price and stock must never read as live supplier data.
+    assert tool_detail("check_price_and_availability", prices) == (
+        "2 products · 1 priced · 1 in stock · demo fixture data"
+    )
+    assert tool_detail("check_price_and_availability", prices | {"mode": "live"}).endswith(
+        "live supplier data"
+    )
+    basket = {"policy_outcome": "ready_to_commit",
+              "snapshot": {"lines": [{}, {}], "gross_total": "42.10", "currency": "EUR"}}
+    assert tool_detail("prepare_order", basket) == (
+        "Mock basket · 2 lines · 42.10 EUR · ready for your confirmation"
+    )
+    assert tool_detail("search_memory", {"items": [{"text": "PRIVATE"}]}) == "1 saved preference"
+    assert tool_detail("get_recipe", {"recipe": {}}) is None
+    assert tool_detail("search_recipes", "not a dict") is None
+    assert tool_detail("search_recipes", {"recipes": None}) == "No matching recipes"
+    long = {"products": [{"name": "N" * 300}]}
+    assert len(tool_detail("search_products", long)) == 160

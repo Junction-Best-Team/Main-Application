@@ -14,6 +14,7 @@ from aimo.agent_provider import chat_provider, check_deadline, encode
 from aimo.agent_reads import executions
 from aimo.agent_recovery import partial_notice
 from aimo.agent_tools import ToolSession
+from aimo.chat_activity import tool_detail
 from aimo.chat_draft import cart_snapshot
 from aimo.chat_schemas import AgentTurn, DraftCart
 from aimo.config import settings
@@ -260,6 +261,9 @@ class AgentProgress:
     error_code: str | None = None
     draft: DraftCart | None = None
     draft_updated: bool = False
+    # Server-built display summary of a completed tool (chat_activity.tool_detail).
+    detail: str | None = None
+    round_number: int | None = None
 
 
 class Progress:
@@ -271,9 +275,12 @@ class Progress:
         self.tool_starts = defaultdict(deque)
         self.draft_provider = None
 
-    def emit(self, kind, tool=None, error_code=None):
+    def emit(self, kind, tool=None, error_code=None, *, detail=None, round_number=None):
         self.sequence += 1
-        event = AgentProgress(self.turn_id, self.sequence, kind, tool, error_code)
+        event = AgentProgress(
+            self.turn_id, self.sequence, kind, tool, error_code,
+            detail=detail, round_number=round_number,
+        )
         tool_started = self.started
         if kind == "tool_started":
             tool_started = time.monotonic()
@@ -295,6 +302,8 @@ class Progress:
                         error_code,
                         self.draft_provider(kind),
                         True,
+                        detail,
+                        round_number,
                     )
                 except Exception as exc:
                     log_failure("agent.draft.failed", exc)
@@ -449,7 +458,7 @@ def run_turn(
             for round_number in range(1, cfg.llm_max_tool_rounds + 1):
                 check_deadline(deadline)
                 live()
-                progress.emit("thinking")
+                progress.emit("thinking", round_number=round_number)
                 with log_context(round=round_number, model=cfg.llm_model):
                     reply = provider.complete(history, session.definitions, deadline)
                 history.append(reply.message())
@@ -511,7 +520,10 @@ def run_turn(
                             "get_recipe_plan", "match_ingredient", "match_ingredients",
                         ):
                             draft_snapshot("tool_completed")
-                        progress.emit("tool_completed", visible_name)
+                        progress.emit(
+                            "tool_completed", visible_name,
+                            detail=tool_detail(visible_name, output),
+                        )
                         outputs.append((call.id, name, output))
                     if errors >= 4:
                         result = finish(

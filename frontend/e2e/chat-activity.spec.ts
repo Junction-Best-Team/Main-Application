@@ -12,7 +12,12 @@ const initialEvents: ActivityEvent = [
 ];
 const productEvents: ActivityEvent = [
   ...initialEvents,
-  { sequence: 3, kind: "tool_completed", label: "Searching recipes" },
+  {
+    sequence: 3,
+    kind: "tool_completed",
+    label: "Searching recipes",
+    detail: "Found 2 recipes: Carbonara, Lasagne",
+  },
   { sequence: 4, kind: "tool_started", label: "Searching products" },
   { sequence: 5, kind: "tool_failed", label: "Searching products" },
   { sequence: 6, kind: "tool_started", label: "Checking a product" },
@@ -74,12 +79,12 @@ for (const width of [1440, 390, 320]) {
     await expect(activity.getByRole("status")).toHaveText(
       "Searching recipes · Done",
     );
+    // A running turn shows every step as it happens.
     const toggle = activity.getByRole("button");
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await expect(toggle).toContainText("Show 2 steps");
-    await expect(
-      activity.getByRole("list", { name: "Activity steps" }),
-    ).toHaveCount(0);
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(toggle).toContainText("Hide 2 steps");
+    const steps = activity.getByRole("list", { name: "Activity steps" });
+    await expect(steps.getByRole("listitem")).toHaveCount(2);
     await page.screenshot({
       path: testInfo.outputPath(`latest-step-${width}.png`),
     });
@@ -99,15 +104,16 @@ for (const width of [1440, 390, 320]) {
     await expect(activity.getByRole("status")).toHaveText(
       "Checking a product…",
     );
-    await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    const steps = activity.getByRole("list", { name: "Activity steps" });
     await expect(steps.getByRole("listitem")).toHaveCount(4);
     await expect(steps.getByRole("listitem").nth(0)).toContainText(
       "Checking your request · Done",
     );
     await expect(steps.getByRole("listitem").nth(1)).toContainText(
       "Searching recipes · Done",
+    );
+    await expect(steps.getByRole("listitem").nth(1)).toContainText(
+      "Found 2 recipes: Carbonara, Lasagne",
     );
     await expect(steps.getByRole("listitem").nth(2)).toContainText(
       "Searching products · Couldn't finish",
@@ -128,7 +134,6 @@ for (const width of [1440, 390, 320]) {
     await expect(activity.getByRole("status")).toHaveText(
       "Checking a product…",
     );
-    await toggle.click();
     await expect(steps.getByRole("listitem")).toHaveCount(4);
     if (width === 320) {
       await page.emulateMedia({ reducedMotion: "reduce" });
@@ -170,6 +175,9 @@ for (const width of [1440, 390, 320]) {
       page.getByText("What delivery date?", { exact: true }),
     ).toBeVisible();
     await expect(activity.locator(".activity-dot")).toHaveCount(0);
+    // The finished turn folds back to one line; the steps stay one click away.
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await toggle.click();
     await expect(steps.getByRole("listitem").nth(3)).toContainText(
       "Checking a product · Done",
     );
@@ -241,11 +249,13 @@ test("activity header follows the latest saved step between tool calls", async (
   await expect(activity.getByRole("status")).toHaveText(
     "Checking prices and availability · Done",
   );
-  const toggle = activity.getByRole("button", { name: /Show 15 steps/ });
-  await toggle.click();
   await expect(activity.getByRole("listitem")).toHaveCount(15);
+  // The newest step stays in view as the list grows.
+  await expect(activity.getByRole("listitem").last()).toBeInViewport();
   await activity.getByRole("button", { name: /Hide 15 steps/ }).click();
   await expect(activity.getByRole("list")).not.toBeVisible();
+  await activity.getByRole("button", { name: /Show 15 steps/ }).click();
+  await expect(activity.getByRole("listitem")).toHaveCount(15);
 
   events = [
     ...events,
@@ -423,7 +433,6 @@ test("model stages show as one ticking line that expands to every step", async (
   ];
   await page.reload();
   await expect(activity.getByRole("status")).toHaveText("Reviewing the reply…");
-  await toggle.click();
   const steps = activity.getByRole("list", { name: "Activity steps" });
   await expect(steps.getByRole("listitem")).toHaveText([
     /Checking your request/,

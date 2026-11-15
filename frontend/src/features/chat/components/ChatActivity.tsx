@@ -6,6 +6,8 @@ type Activity = NonNullable<Conversation["activity"]>;
 type Step = {
   sequence: number;
   label: string;
+  /** Server-built summary of a completed tool's result, never model text. */
+  detail?: string | null;
   status: "running" | "complete" | "failed" | "interrupted";
 };
 
@@ -44,9 +46,11 @@ function activitySteps(activity: Activity | undefined, busy: boolean): Step[] {
       const current = tools.find(
         (step) => step.status === "running" && step.label === event.label,
       );
-      if (current)
+      if (current) {
         current.status =
           event.kind === "tool_completed" ? "complete" : "failed";
+        if (event.kind === "tool_completed") current.detail = event.detail;
+      }
     } else if (event.kind === "complete") {
       finishStage("complete");
     } else if (event.kind === "error") {
@@ -112,7 +116,13 @@ export function ChatActivity({
   busy: boolean;
 }) {
   const listId = useId();
-  const [open, setOpen] = useState(false);
+  const listRef = useRef<HTMLOListElement>(null);
+  // Open while the turn runs so every step is visible as it happens; once the reply
+  // arrives it folds back to one line. A customer's own toggle wins for this turn.
+  const [toggled, setToggled] = useState<{
+    turn: string | undefined;
+    open: boolean;
+  } | null>(null);
   // A pending POST can still hold the previous turn's completed snapshot.
   const current =
     busy && (activity?.state === "complete" || activity?.state === "failed")
@@ -120,6 +130,14 @@ export function ChatActivity({
       : (activity ?? undefined);
   const elapsed = useElapsed(current?.turn_id, busy);
   const steps = activitySteps(current, busy);
+  const open =
+    toggled && toggled.turn === current?.turn_id ? toggled.open : busy;
+  const stepCount = steps.length;
+  // Follow the newest step while the turn runs.
+  useEffect(() => {
+    const list = listRef.current;
+    if (busy && open && list) list.scrollTop = list.scrollHeight;
+  }, [busy, open, stepCount]);
   if (!busy && !steps.length) return null;
   const last = current?.events?.at(-1);
   const failed = !busy && current?.state === "failed";
@@ -127,7 +145,7 @@ export function ChatActivity({
     ? current?.state === "queued"
       ? "Waiting to start…"
       : last?.kind === "tool_completed"
-        ? `${last.label} · Done`
+        ? `${last.label} · ${last.detail || "Done"}`
         : last?.kind === "tool_failed"
           ? `${last.label} · Couldn't finish`
           : last
@@ -167,7 +185,7 @@ export function ChatActivity({
           type="button"
           aria-expanded={open}
           aria-controls={listId}
-          onClick={() => setOpen((value) => !value)}
+          onClick={() => setToggled({ turn: current?.turn_id, open: !open })}
           className="group flex max-w-full items-center gap-space-sm rounded-md py-space-xs pr-space-xs text-left text-body-sm text-secondary transition-colors hover:text-on-surface focus-visible:outline-2 focus-visible:outline-wholesale-teal"
         >
           {header}
@@ -187,6 +205,7 @@ export function ChatActivity({
       )}
       {open && steps.length > 0 && (
         <ol
+          ref={listRef}
           id={listId}
           aria-label="Activity steps"
           className="mt-space-xs ml-[5px] flex max-h-56 list-none flex-col gap-space-xs overflow-y-auto border-l border-border-subtle py-space-xs pl-space-md"
@@ -206,7 +225,7 @@ export function ChatActivity({
                 }
                 className={`shrink-0 text-[16px] ${step.status === "running" ? "activity-spin text-wholesale-teal" : ""}`}
               />
-              <span>
+              <span className="min-w-0">
                 {step.label}
                 {step.status === "complete" ? (
                   // The check icon already shows completion; keep the word for screen readers.
@@ -219,6 +238,11 @@ export function ChatActivity({
                       : step.status === "interrupted"
                         ? "Interrupted"
                         : "In progress"}
+                  </span>
+                )}
+                {step.detail && (
+                  <span className="block break-words text-label-sm text-secondary">
+                    {step.detail}
                   </span>
                 )}
               </span>
