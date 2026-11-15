@@ -30,7 +30,12 @@ export function ChatPage() {
     reconnecting,
     messageViewport,
     send,
+    cancel,
     busy,
+    queue,
+    queuePaused,
+    removeQueued,
+    sendQueued,
     reload,
   } = useChat(conversationId);
   return (
@@ -99,7 +104,13 @@ export function ChatPage() {
                 </p>
               </div>
             )}
-            <ConversationTranscript conversation={conversation} busy={busy} />
+            <ConversationTranscript
+              conversation={conversation}
+              busy={busy}
+              onReviewBasket={(proposalId) =>
+                setSelection({ conversationId, proposalId })
+              }
+            />
 
             {Boolean(conversation?.purchases.length) && (
               <section
@@ -168,6 +179,11 @@ export function ChatPage() {
             error={error}
             busy={busy}
             onSubmit={send}
+            queue={queue}
+            queuePaused={queuePaused}
+            onRemoveQueued={removeQueued}
+            onSendQueued={sendQueued}
+            onCancel={() => void cancel()}
           />
         </div>
       </div>

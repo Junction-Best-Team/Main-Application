@@ -136,7 +136,7 @@ spec:
       labels: {app: aimo-worker, app.kubernetes.io/part-of: aimo, app.kubernetes.io/component: worker}
     spec:
       automountServiceAccountToken: false
-      terminationGracePeriodSeconds: 120
+      terminationGracePeriodSeconds: 240
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001

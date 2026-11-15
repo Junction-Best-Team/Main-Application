@@ -42,6 +42,13 @@ function takeSendFailure(id: string | undefined) {
   return failure;
 }
 
+/** A message typed while Aimo is still answering; sent in order once the turn ends. */
+export type QueuedMessage = {
+  id: string;
+  text: string;
+  attachments: ChatAttachment[];
+};
+
 /** How long the update stream may stay down before the reconnect notice shows. */
 const RECONNECT_NOTICE_MS = 5_000;
 export function useChat(conversationId?: string) {
@@ -50,6 +57,9 @@ export function useChat(conversationId?: string) {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  const [queue, setQueue] = useState<QueuedMessage[]>([]);
+  const draft = useRef({ text, attachments });
+  draft.current = { text, attachments };
   const [errorInfo, setError] = useState<ErrorInfo>(noError);
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -86,7 +96,9 @@ export function useChat(conversationId?: string) {
       setConversation(data);
       if (loadedConversation.current !== conversationId) {
         loadedConversation.current = conversationId;
-        if (data.retry_message && !sendingRef.current) {
+        // Text-only running turns also carry retry metadata. Restore it only
+        // after the turn stops, never into the next-message composer.
+        if (data.retry_message && !data.busy && !sendingRef.current) {
           setText(data.retry_message.text);
           setAttachments(data.retry_message.attachments ?? []);
         }
@@ -101,6 +113,7 @@ export function useChat(conversationId?: string) {
     loadedConversation.current = null;
     setError(noError);
     setAttachments([]);
+    setQueue([]);
     const saved =
       conversationId && sendsInFlight.has(conversationId)
         ? null
@@ -196,22 +209,36 @@ export function useChat(conversationId?: string) {
   }, [conversation?.messages.length, conversation?.busy]);
   async function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (
-      (!text.trim() && !attachments.length) ||
-      !session ||
-      sendingRef.current ||
-      conversation?.busy
-    )
+    if ((!text.trim() && !attachments.length) || !session) return;
+    if (sendingRef.current || conversation?.busy) {
+      // Only an existing conversation can hold a queue; a new one is still
+      // being created and its route (and this hook's state) is about to change.
+      if (!conversationId) return;
+      setQueue((current) => [
+        ...current,
+        { id: crypto.randomUUID(), text: text.trim(), attachments },
+      ]);
+      setText("");
+      setAttachments([]);
       return;
-    sendingRef.current = true;
-    setSending(true);
-    setError(noError);
+    }
     const messageText = text.trim();
     const messageAttachments = attachments;
     // Clear the composer as soon as send starts so the draft does not linger
     // while create/send await. Restore the same draft below if send fails.
     setText("");
     setAttachments([]);
+    await submit(messageText, messageAttachments);
+  }
+  async function submit(
+    messageText: string,
+    messageAttachments: ChatAttachment[],
+    queued?: QueuedMessage,
+  ) {
+    if (!session || sendingRef.current) return;
+    sendingRef.current = true;
+    setSending(true);
+    setError(noError);
     const savedRetry = conversation?.retry_message;
     const matchingRetry =
       savedRetry?.text === messageText &&
@@ -312,8 +339,14 @@ export function useChat(conversationId?: string) {
       }
       if (activeConversation.current !== id) return;
       fail(e);
-      setText(messageText);
-      setAttachments(messageAttachments);
+      if (queued) {
+        // Keep the customer's current draft; the failed message waits at the
+        // front of the queue until they send it again or remove it.
+        setQueue((current) => [queued, ...current]);
+      } else {
+        setText(messageText);
+        setAttachments(messageAttachments);
+      }
       if (id) {
         try {
           const result = await getConversation(id);
@@ -335,8 +368,12 @@ export function useChat(conversationId?: string) {
   );
   useEffect(() => {
     if (retryText !== undefined && !conversation?.busy && !sending) {
-      setText(retryText);
-      setAttachments(JSON.parse(retryAttachments));
+      // The composer stays usable while Aimo works; never replace a draft
+      // typed in the meantime with the interrupted request.
+      if (!draft.current.text.trim() && !draft.current.attachments.length) {
+        setText(retryText);
+        setAttachments(JSON.parse(retryAttachments));
+      }
       setError({
         message:
           "The response was interrupted. Retry this request to continue.",
@@ -344,6 +381,27 @@ export function useChat(conversationId?: string) {
     }
   }, [retryKey, retryText, retryAttachments, conversation?.busy, sending]);
   const busy = Boolean(sending || conversation?.busy);
+  // Send the next queued message once the turn ends. An error or interrupted
+  // turn pauses the queue so the customer decides what happens next.
+  const queuePaused = Boolean(errorInfo.message || conversation?.retry_message);
+  useEffect(() => {
+    if (busy || queuePaused || !conversation || !queue.length) return;
+    if (sendingRef.current) return;
+    const [next, ...rest] = queue;
+    setQueue(rest);
+    void submit(next.text, next.attachments, next);
+    // submit is recreated each render; the queue and turn state drive this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy, queuePaused, conversation, queue]);
+  const removeQueued = useCallback((id: string) => {
+    setQueue((current) => current.filter((item) => item.id !== id));
+  }, []);
+  function sendQueued(id: string) {
+    const item = queue.find((entry) => entry.id === id);
+    if (!item || busy || sendingRef.current) return;
+    setQueue((current) => current.filter((entry) => entry.id !== id));
+    void submit(item.text, item.attachments, item);
+  }
   const cancel = useCallback(async () => {
     const id = activeConversation.current;
     if (!id || !session || cancellingRef.current) return;
@@ -386,7 +444,12 @@ export function useChat(conversationId?: string) {
     reconnecting,
     messageViewport,
     send,
+    cancel,
     busy,
+    queue,
+    queuePaused,
+    removeQueued,
+    sendQueued,
     reload: load,
   };
 }

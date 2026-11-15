@@ -348,11 +348,14 @@ test("busy affordance shows while a turn is in flight", async ({ page }) => {
       .getByRole("status")
       .filter({ hasText: "Sending your request" }),
   ).toBeVisible();
-  await expect(page.getByLabel("Continue the conversation")).toBeDisabled();
+  // The composer stays usable (and focused) so the next message can be queued.
+  await expect(page.getByLabel("Continue the conversation")).toBeEnabled();
+  await expect(page.getByLabel("Continue the conversation")).toBeFocused();
   // Voice mode is disabled while a turn runs (send only shows with a draft).
   await expect(
     page.getByRole("button", { name: "Start voice mode" }),
   ).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible();
   await expect(page.getByText("Press Escape to cancel")).toBeVisible();
 });
 
@@ -415,8 +418,82 @@ test("Escape while busy posts cancel and restores retry recovery", async ({
   );
 
   await page.goto(`/conversations/${conversationId}`);
+  await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible();
   await expect(page.getByText("Press Escape to cancel")).toBeVisible();
   await page.keyboard.press("Escape");
+  await expect(page.getByRole("alert")).toHaveText(
+    "The response was interrupted. Retry this request to continue.",
+  );
+  await expect(page.getByLabel("Continue the conversation")).toHaveValue(
+    retry.text,
+  );
+  await expect(
+    page.getByRole("button", { name: "Retry request" }),
+  ).toBeEnabled();
+  await expect(page.getByText("Your draft is ready to send again.")).toBeVisible();
+  expect(cancelHeaders?.["x-csrf-token"]).toBe(session.csrf_token);
+});
+
+test("Cancel button while busy posts the same cancel path as Escape", async ({
+  page,
+}) => {
+  await mockBuyerSession(page);
+  const retry = {
+    text: "Plan carbonara",
+    idempotency_key: "button-cancel-key",
+  };
+  const busyConversation = {
+    ...blankConversation,
+    busy: true,
+    messages: [
+      {
+        id: 1,
+        role: "user",
+        text: retry.text,
+        created_at: timestamp,
+      },
+    ],
+  };
+  const cancelledConversation = {
+    ...blankConversation,
+    busy: false,
+    retry_message: retry,
+    messages: busyConversation.messages,
+    activity: {
+      turn_id: "cancel-button-turn",
+      state: "failed",
+      events: [],
+    },
+  };
+
+  await page.route("**/api/conversations?*", (route) =>
+    route.fulfill({
+      json: {
+        items: [summary(conversationId, busyConversation.title)],
+        next_offset: null,
+      },
+    }),
+  );
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: busyConversation }),
+  );
+  await page.route(`**/api/conversations/${conversationId}/events`, (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: sseConversation(busyConversation),
+    }),
+  );
+  let cancelHeaders: Record<string, string> | undefined;
+  await page.route(
+    `**/api/conversations/${conversationId}/cancel`,
+    async (route) => {
+      cancelHeaders = route.request().headers();
+      await route.fulfill({ json: cancelledConversation });
+    },
+  );
+
+  await page.goto(`/conversations/${conversationId}`);
+  await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByRole("alert")).toHaveText(
     "The response was interrupted. Retry this request to continue.",
   );

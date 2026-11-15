@@ -46,6 +46,14 @@ from aimo.schemas import (
     SearchRequest,
     SearchResponse,
 )
+from aimo.units import catalog_unit
+
+# Recipe discovery must produce a visible quantity plan before catalog exploration.
+# Direct product requests that never enter recipe discovery keep their existing tools.
+CATALOG_TOOLS = frozenset({
+    "search_products", "get_product", "get_purchase_policy",
+    "list_substitution_candidates", "check_price_and_availability", "prepare_order",
+})
 
 
 class EmptyRequest(Model):
@@ -330,6 +338,7 @@ class ToolSession:
         self.products = {}
         self.search_results = {}
         self.recipe_details = {}
+        self.recipe_discovery_started = False
         self.commercial = {}
         self.commercial_dates = {}
         self.memory_changes = []
@@ -522,6 +531,7 @@ class ToolSession:
         return self.save_recipe_result(self.service.scale_recipe(self.identity, request))
 
     def recipe_search(self, request):
+        self.recipe_discovery_started = True
         result = self.checked(RecipeSearchResult, self.service.search_recipes(self.identity, request))
         best = result["recipes"][0] if result["recipes"] else None
         detail = (
@@ -531,6 +541,7 @@ class ToolSession:
         return result | {"best_match": detail}
 
     def recipe_detail(self, request):
+        self.recipe_discovery_started = True
         key = (request.recipe_id, request.version)
         if key in self.recipe_details:
             return self.recipe_details[key]
@@ -643,7 +654,44 @@ class ToolSession:
 
     @property
     def definitions(self):
-        return [tool.schema(name) for name, tool in self.registry.items()]
+        return [
+            tool.schema(name) for name, tool in self.registry.items()
+            if not (self.needs_recipe_plan and name in CATALOG_TOOLS)
+            and not (name == "draft_recipe" and self.draft_basis is not None)
+        ]
+
+    @property
+    def needs_recipe_plan(self):
+        return self.recipe_discovery_started and self.plan is None
+
+    def execution_guidance(self, remaining):
+        """Server-owned workflow state; candidate discovery never selects a product."""
+        clock = f"Turn time remaining: {max(0, int(remaining))} seconds. "
+        if self.needs_recipe_plan:
+            return clock + (
+                "Recipe discovery has run. Publish the quantity plan now using scale_recipe "
+                "for a complete saved recipe or draft_recipe for a labelled estimate. "
+                "Catalog tools become available after the plan is published."
+            )
+        if self.plan and not self.proposal:
+            remaining_items = [
+                i.name for i in self.plan.ingredients if not i.product_id
+                or (self.plan.recipe_plan_id and i.status != "matched")
+            ]
+            return clock + (
+                f"The published plan has {len(remaining_items)} unmatched ingredients. "
+                "Search independent unmatched ingredients together in one tool-call reply; "
+                "the runner executes up to four catalog reads concurrently. The top three "
+                "search candidates already include inspected product details: get_product "
+                "is unnecessary for those IDs. Select suitable products explicitly and save "
+                "those matches before another search round, even while other ingredients "
+                "remain unresolved. Use publish_meal_plan with the exact existing quantities "
+                "for a free-form plan, or match_ingredients for a saved recipe. Do not "
+                "call draft_recipe again to change the recipe basis in this turn. "
+                "Do not research alternatives for an already suitable selection. Once matched, "
+                "finish basket checks or ask only for missing delivery details."
+            )
+        return clock
 
     @staticmethod
     def checked(model, value):
@@ -690,6 +738,13 @@ class ToolSession:
             raise Problem(
                 "INVALID_TOOL_ARGUMENTS",
                 "Remove the NUL (\\u0000) control character from the arguments and call again.",
+                422,
+            )
+        if self.needs_recipe_plan and name in CATALOG_TOOLS:
+            raise Problem(
+                "MEAL_PLAN_REQUIRED",
+                "Publish the recipe quantities with scale_recipe or draft_recipe before "
+                "searching catalog products. No product was selected or purchased.",
                 422,
             )
         result = tool.handler(request)
@@ -895,6 +950,7 @@ class ToolSession:
             amount = item.purchase_amount if self.plan.recipe_plan_id else item.amount
             if is_zero(amount):
                 continue  # removed by the customer on the card: kept in the plan, never bought
+            unit = catalog_unit(unit)  # `l` and `liter` are the catalog's L
             contributions.setdefault(item.product_id, []).append((Decimal(amount), unit))
             rows.append(
                 {"product_id": item.product_id, "amount": amount, "unit": unit, "name": item.name}
