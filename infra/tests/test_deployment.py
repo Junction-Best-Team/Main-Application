@@ -94,7 +94,7 @@ class ClusterAccessTest(unittest.TestCase):
 class AppDeploymentTest(unittest.TestCase):
     def run_deploy(self, replicas="1", fail_rollout=False, image=None, previous_image=None,
                    llm_refreshed=False, migration_status="Complete", cronjob=True,
-                   fail_rollout_component="frontend", fail_update_component=""):
+                   fail_rollout_component="frontend", fail_update_component="", supplier_refreshed=False):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             kubectl = root / "kubectl"
@@ -129,6 +129,7 @@ esac
                      "FAIL_ROLLOUT_COMPONENT": fail_rollout_component,
                      "FAIL_UPDATE_COMPONENT": fail_update_component,
                      "LLM_REFRESHED": "true" if llm_refreshed else "false",
+                     "SUPPLIER_REFRESHED": "true" if supplier_refreshed else "false",
                      "CRONJOB": "1" if cronjob else "0",
                      "PREVIOUS_IMAGE": previous_image or "ghcr.io/team/app@sha256:" + "b" * 64,
                      "CALL_LOG": str(log), "UNDONE": str(root / "undone")},
@@ -246,6 +247,14 @@ esac
         self.assertIn("create -f -", calls)
         self.assertNotIn("rollout restart", calls)
         self.assertNotIn("set image", calls)
+
+    def test_same_image_reloads_live_supplier_settings_in_both_consumers(self):
+        image = "ghcr.io/team/app@sha256:" + "a" * 64
+        result, calls = self.run_deploy(image=image, previous_image=image, supplier_refreshed=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("rollout restart deployment/aimo-worker", calls)
+        self.assertIn("rollout restart deployment/aimo-api", calls)
+        self.assertNotIn("rollout restart deployment/aimo-frontend", calls)
 
 
 if __name__ == "__main__":

@@ -234,11 +234,19 @@ out of the Docker build context.
    gh variable set DEPLOY_ENABLED --body true --repo Junction-Best-Team/Main-Application
    ```
 
-5. Before the first automated migration, provision the dedicated `aimo-migration`
+5. Add the challenge key as the repository secret **VALIO_AIMO_API_KEY**:
+   `gh secret set VALIO_AIMO_API_KEY --repo Junction-Best-Team/Main-Application`.
+   Releases require it, synchronize it into both `aimo-runtime` and
+   `aimo-worker-runtime`, set `aimo-config.UPSTREAM_MODE=live`, and disable the
+   incompatible demo clock. Both consumers restart when supplier settings change,
+   including same-image releases. Local tests can still explicitly use fixtures.
+   Reconcile private Terraform inputs to `upstream_mode="live"` before any later
+   infrastructure apply; Terraform preserves the release-managed supplier key.
+6. Before the first automated migration, provision the dedicated `aimo-migration`
    Secret using `migration_credentials` as described in the
    [operator guide](../docs/release-migrations.md#one-time-credential-provisioning).
    Keep it after removing bootstrap credentials.
-6. Run **Build and deploy** manually on `main` with **deploy** checked for the
+7. Run **Build and deploy** manually on `main` with **deploy** checked for the
    first end-to-end deployment. Subsequent checked releases into `main` build and
    deploy automatically. To pause automatic deployment, set `DEPLOY_ENABLED=false`.
    A manual run with **deploy** checked explicitly requests deployment regardless
