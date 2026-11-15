@@ -1073,9 +1073,12 @@ class ToolSession:
             if self.proposal.get("order_id"):
                 notice = "This purchase has a saved mock receipt. No supplier order was placed."
             elif self.proposal["policy_outcome"] in ("denied", "needs_resolution"):
-                notice = "The basket is blocked: " + "; ".join(
-                    reason["message"] for reason in self.proposal["reasons"]
+                notice = (
+                    "This basket is blocked by purchasing rules."
+                    if self.proposal["policy_outcome"] == "denied"
+                    else "This basket needs checking before it can be confirmed."
                 )
+                notice += " See purchasing checks in Your order for details."
             else:
                 warnings = [
                     reason["message"]

@@ -66,7 +66,14 @@ export function ConversationTranscript({
                     image={message.image}
                   />
                 )}
-                {message.meal_plan && <MealPlanCard plan={message.meal_plan} />}
+                {message.meal_plan && (
+                  <MealPlanCard
+                    plan={message.meal_plan}
+                    compact={conversation.purchases.some(
+                      (p) => p.proposal_id === message.proposal_id,
+                    )}
+                  />
+                )}
                 {message.proposal_id && (
                   <>
                     <SkuCards
