@@ -7,17 +7,20 @@ the lines, fresh supplier price and stock, policy, ceiling, the customer's state
 is the normal proposal. It authorizes nothing: the customer still confirms the exact revision.
 """
 
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from uuid import UUID, uuid4
 
 from pydantic import ValidationError
 
 from aimo import approval_workflow as workflow
-from aimo import auth
+from aimo import auth, scheduler
 from aimo.agent_tools import PrepareOrderInput, ToolSession
 from aimo.chat_schemas import CartNotIncluded, MealPlan
+from aimo.config import settings
 from aimo.conversations import customer_constraints, owned
 from aimo.db import Problem, connection, fingerprint, now
+from aimo.observability import event
 from aimo.purchases import context
 from aimo.schemas import LineRequest, Requirements
 
@@ -75,15 +78,11 @@ def lines_of(items, recipe):
 
 
 def cart_plan(messages):
-    """The conversation's cart plan: the latest stored plan; refused if a basket already exists for it."""
+    """The conversation's cart plan: the latest stored one (a basket for it may already exist: a new
+    press makes a revised basket and the older open one is cancelled)."""
     at = next((i for i in range(len(messages) - 1, -1, -1) if messages[i]["meal_plan"]), None)
     if at is None:
         raise Problem("EMPTY_CART", "There is nothing in the cart to buy yet.", 422)
-    if any(m["proposal_id"] for m in messages[at:]):
-        raise Problem(
-            "BASKET_ALREADY_PREPARED",
-            "A basket was already prepared for this cart. Review it, or change the cart first.",
-        )
     return messages[at]["meal_plan"]
 
 
@@ -100,6 +99,64 @@ def left_out_for_replay(plan_data):
     except ValidationError:
         return []
     return [] if plan.recipe_plan_id else split_plain(plan)[1]
+
+
+def prepare_basket(identity, cid, stored, delivery_date, destination, key, limits, service, tid):
+    """Prepare a basket for one stored plan. In the same transaction that creates it, the
+    conversation's other unconfirmed baskets are cancelled (never one with an order).
+    Returns (proposal_id, not_included, notice)."""
+    actor = auth.internal_agent(identity) | {"_turn_id": str(tid)}
+    session = ToolSession(actor, service, constraints=limits or None)
+    session.preparation_key = key
+    session.supersede = {"conversation_id": str(cid), "by": identity["id"]}
+    recipe = bool(isinstance(stored, dict) and stored.get("recipe_plan_id"))
+    left_out = []
+    if recipe:
+        # The saved plan is reloaded by the server; the message only points at it. A saved recipe
+        # plan must be fully matched to be prepared (the existing rule): nothing is left out here.
+        try:
+            plan_id = UUID(str(stored["recipe_plan_id"]))
+        except ValueError:
+            raise Problem("CART_NOT_VERIFIED", "The cart could not be verified.", 422) from None
+        if not session.restore_saved_plan(plan_id):
+            raise Problem("CART_NOT_VERIFIED", "The cart could not be verified.", 422)
+        open_items = [
+            i.name for i in session.plan.ingredients if i.status != "matched" or not i.product_id
+        ]
+        if open_items:
+            raise Problem(
+                "CART_INCOMPLETE",
+                "Every ingredient of a saved recipe must have a product before it can be bought.",
+                422,
+                details={"unmatched": open_items},
+            )
+        items = session.plan.ingredients
+    else:
+        try:
+            plan = MealPlan.model_validate(stored)
+        except ValidationError:
+            raise Problem("CART_NOT_VERIFIED", "The cart could not be verified.", 422) from None
+        items, left_out = split_plain(plan)
+        if not items:
+            raise Problem(
+                "EMPTY_CART", "No item in the cart has a product and a quantity yet.", 422
+            )
+        if not session.restore_plan(
+            plan.model_copy(update={"ingredients": items}).model_dump(mode="json")
+        ):
+            raise Problem("CART_NOT_VERIFIED", "The cart could not be verified.", 422)
+    request = PrepareOrderInput(
+        request_id=("Cart: " + session.plan.title)[:100],
+        destination=destination,
+        delivery_date=delivery_date,
+        requirements=requirements_from(limits),
+        lines=lines_of(items, recipe),
+    )
+    proposal = session.prepare(request)
+    notice = session.result("", include_plan=False).text
+    if left_out:
+        notice += "\n\nNot included: " + ", ".join(i.name for i in left_out) + "."
+    return proposal["proposal_id"], left_out, notice
 
 
 def prepare_from_cart(identity, cid, body, service):
@@ -153,60 +210,11 @@ def prepare_from_cart(identity, cid, body, service):
         limits = customer_constraints(c, cid)
     stored = cart_plan(messages)
     tid = uuid4()
-    actor = auth.internal_agent(identity) | {"_turn_id": str(tid)}
-    session = ToolSession(actor, service, constraints=limits or None)
-    session.preparation_key = "cart-" + fingerprint(
-        {"conversation": str(cid), "key": body.request_id}
+    key = "cart-" + fingerprint({"conversation": str(cid), "key": body.request_id})
+    pid, left_out, notice = prepare_basket(
+        identity, cid, stored, body.delivery_date, body.destination, key, limits, service, tid
     )
-    recipe = bool(isinstance(stored, dict) and stored.get("recipe_plan_id"))
-    left_out = []
-    if recipe:
-        # The saved plan is reloaded by the server; the message only points at it. A saved recipe
-        # plan must be fully matched to be prepared (the existing rule): nothing is left out here.
-        try:
-            plan_id = UUID(str(stored["recipe_plan_id"]))
-        except ValueError:
-            raise Problem("CART_NOT_VERIFIED", "The cart could not be verified.", 422) from None
-        if not session.restore_saved_plan(plan_id):
-            raise Problem("CART_NOT_VERIFIED", "The cart could not be verified.", 422)
-        open_items = [
-            i.name for i in session.plan.ingredients if i.status != "matched" or not i.product_id
-        ]
-        if open_items:
-            raise Problem(
-                "CART_INCOMPLETE",
-                "Every ingredient of a saved recipe must have a product before it can be bought.",
-                422,
-                details={"unmatched": open_items},
-            )
-        items = session.plan.ingredients
-    else:
-        try:
-            plan = MealPlan.model_validate(stored)
-        except ValidationError:
-            raise Problem("CART_NOT_VERIFIED", "The cart could not be verified.", 422) from None
-        items, left_out = split_plain(plan)
-        if not items:
-            raise Problem(
-                "EMPTY_CART", "No item in the cart has a product and a quantity yet.", 422
-            )
-        if not session.restore_plan(
-            plan.model_copy(update={"ingredients": items}).model_dump(mode="json")
-        ):
-            raise Problem("CART_NOT_VERIFIED", "The cart could not be verified.", 422)
-    request = PrepareOrderInput(
-        request_id=("Cart: " + session.plan.title)[:100],
-        destination=body.destination,
-        delivery_date=body.delivery_date,
-        requirements=requirements_from(limits),
-        lines=lines_of(items, recipe),
-    )
-    proposal = session.prepare(request)
-    pid = proposal["proposal_id"]
-    notice = session.result("", include_plan=False).text
     summary = "Prepared from my cart for " + f"{body.delivery_date} to {body.destination}."
-    if left_out:
-        notice += "\n\nNot included: " + ", ".join(i.name for i in left_out) + "."
     with connection() as c:
         owned(c, identity, cid, lock=True)
         busy = c.execute(
@@ -234,3 +242,91 @@ def prepare_from_cart(identity, cid, body, service):
             )
             c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
     return answer(identity, pid, left_out)
+
+
+# --- the always-finalized cart: prepare after a chat turn that changed the plan -----------------------
+
+
+def latest_terms(c, cid):
+    """The newest basket of the conversation (the model's or the cart's) and its request."""
+    return c.execute(
+        """SELECT p.id, q.request FROM conversation_messages m
+        JOIN proposals p ON p.id=m.proposal_id
+        JOIN proposal_revisions q ON q.proposal_id=p.id AND q.revision=p.current_revision
+        WHERE m.conversation_id=%s ORDER BY m.id DESC LIMIT 1""",
+        (cid,),
+    ).fetchone()
+
+
+def terms_for(latest, policy):
+    """Delivery date and destination of the latest basket, else tomorrow (Helsinki) and the first
+    destination of the buyer's policy. A date that has passed falls back to tomorrow."""
+    tomorrow = scheduler.helsinki_today() + timedelta(days=1)
+    if latest:
+        try:
+            when = date.fromisoformat(latest["request"]["delivery_date"])
+        except (KeyError, ValueError, TypeError):
+            when = tomorrow
+        return max(when, tomorrow), latest["request"]["destination"]
+    return tomorrow, (policy["rules"].get("destinations") or ["hotel-helsinki"])[0]
+
+
+def same_basket(latest, lines, when, destination):
+    """True if the latest basket already holds exactly these lines for these terms."""
+    if not latest:
+        return False
+    request = latest["request"]
+    mine = sorted((line.product_id, Decimal(line.amount), line.unit) for line in lines)
+    theirs = sorted(
+        (line["product_id"], Decimal(line["amount"]), line["unit"]) for line in request["lines"]
+    )
+    return (
+        mine == theirs
+        and request["delivery_date"] == str(when)
+        and request["destination"] == destination
+    )
+
+
+def auto_prepare(identity, cid, tid, result, service):
+    """After a customer's chat turn that left a changed cart, prepare the basket from it.
+
+    Never raises: an empty or incomplete cart is simply not prepared; any failure is logged and the
+    customer keeps the last good basket. Server-originated, so the model-level semantic prepare check
+    does not run; every fixed rule (policy, ceiling, the customer's stated limits, evidence) does.
+    Returns (proposal_id, not_included, notice) or None."""
+    if not settings().cart_auto_prepare or result.proposal_id or not result.meal_plan:
+        return None
+    stored = result.meal_plan.model_dump(mode="json")
+    try:
+        with connection() as c:
+            _, policy, _, _ = context(c, identity)
+            limits = customer_constraints(c, cid, tid)
+            latest = latest_terms(c, cid)
+        when, destination = terms_for(latest, policy)
+        if not stored.get("recipe_plan_id"):
+            plan = MealPlan.model_validate(stored)
+            items, _ = split_plain(plan)
+            if items and same_basket(latest, lines_of(items, False), when, destination):
+                return None  # nothing changed: no new revision
+        key = "auto-" + fingerprint(
+            {
+                "conversation": str(cid),
+                "plan": stored,
+                "terms": [str(when), destination],
+                "limits": limits,
+                "after": str(latest["id"]) if latest else None,
+            }
+        )
+        pid, left_out, notice = prepare_basket(
+            identity, cid, stored, when, destination, key, limits, service, tid
+        )
+    except Problem as exc:
+        if exc.code not in ("EMPTY_CART", "CART_INCOMPLETE"):
+            event("cart.auto_prepare_failed", error_code=exc.code, conversation_id=str(cid))
+        return None
+    except Exception as exc:  # a display convenience: it must never fail the customer's turn
+        event("cart.auto_prepare_failed", error_code=type(exc).__name__, conversation_id=str(cid))
+        return None
+    if latest and str(latest["id"]) == str(pid):
+        return None
+    return pid, left_out, notice

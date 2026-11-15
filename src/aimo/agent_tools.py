@@ -12,6 +12,7 @@ from pydantic import ConfigDict, Field, TypeAdapter, ValidationError, model_vali
 from aimo import memory
 from aimo.basket_errors import mismatch_problem, required_basket
 from aimo.chat_schemas import AgentTurn, MealPlan
+from aimo.config import settings
 from aimo.db import Problem, fingerprint
 from aimo.image_schemas import RecipeImage, RecipeImageRequest
 from aimo.meal_draft import DraftRecipe, draft_plan
@@ -280,6 +281,7 @@ class ToolSession:
         # POL-008: the customer's stated limits, supplied by the server and never by the model.
         # No tool input accepts it; prepare forwards it so policy can stop a loosened request.
         self.constraints = constraints
+        self.supersede = None  # cart baskets only: cancel the conversation's older open baskets
         # Optional semantic review; deterministic checks here and in Service always apply.
         self.guard = guard
         self.preparation_key = "chat-" + fingerprint({"turn": identity["_turn_id"]})
@@ -640,7 +642,9 @@ class ToolSession:
             LookupResponse, self.service.check_price_and_availability(self.identity, request)
         )
         self.commercial.update(result["products"])
-        self.commercial_dates.update({pid: str(request.delivery_date) for pid in result["products"]})
+        self.commercial_dates.update(
+            {pid: str(request.delivery_date) for pid in result["products"]}
+        )
         return result
 
     def restore_plan(self, stored):
@@ -716,7 +720,10 @@ class ToolSession:
                 return Counter((i.name, i.amount, i.unit) for i in p.ingredients)
 
             if (plan.title, plan.portions, plan.base_servings, amounts(plan)) != (
-                basis.title, basis.portions, basis.base_servings, amounts(basis)
+                basis.title,
+                basis.portions,
+                basis.base_servings,
+                amounts(basis),
             ):
                 raise Problem(
                     "DRAFT_QUANTITY_MISMATCH",
@@ -835,12 +842,25 @@ class ToolSession:
             raise Problem("IDEMPOTENCY_CONFLICT", "This turn already prepared different terms.")
         if self.guard is not None and self.prepared_digest != digest:
             self.guard.check_prepare(self, request)
+        if (
+            self.supersede is None
+            and self.identity.get("_conversation_id")
+            and self.identity.get("_requested_by")
+            and settings().cart_auto_prepare
+        ):
+            # The chat's basket is the newest one: older open baskets of this conversation are
+            # cancelled in the same transaction that creates it.
+            self.supersede = {
+                "conversation_id": self.identity["_conversation_id"],
+                "by": self.identity["_requested_by"],
+            }
         result = self.scoped(
             ProposalResponse,
             self.service.prepare_order(
                 self.identity,
                 PrepareRequest(**request.model_dump(), idempotency_key=self.preparation_key),
                 **({"constraints": self.constraints} if self.constraints else {}),
+                **({"supersede": self.supersede} if self.supersede else {}),
             ),
         )
         self.proposal, self.prepared_digest = result, digest
@@ -883,7 +903,8 @@ class ToolSession:
                     if reason.get("severity") == "warning"
                 ]
                 notice = (
-                    " ".join(dict.fromkeys(warnings)) + (" " if warnings else "")
+                    " ".join(dict.fromkeys(warnings))
+                    + (" " if warnings else "")
                     + "Review the verified basket and exact revision, then use the Confirm "
                     "purchase button. No supplier order has been placed."
                 )

@@ -996,7 +996,7 @@ def commit(service, run, auth, sched, now):
             placed = c.execute(
                 "SELECT order_id FROM proposals WHERE id=%s", (run["proposal_id"],)
             ).fetchone()
-            if exc.code == "REQUEST_CANCELLED":
+            if exc.code in ("REQUEST_CANCELLED", "REQUEST_REVISED"):
                 # The customer cancelled this one run's request: skip the run, keep the series.
                 return skip(c, run, "REQUEST_CANCELLED", now)
             if exc.code == "ALREADY_COMMITTED" and placed["order_id"]:

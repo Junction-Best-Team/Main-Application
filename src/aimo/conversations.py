@@ -10,6 +10,7 @@ from aimo import attachments, auth, cancellations, scheduler
 from aimo.approval_policy import can_approve
 from aimo.chat_activity import record_progress
 from aimo.chat_schemas import AgentTurn
+from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, js, now
 from aimo.guardrails import encode, proposal_view
 from aimo.observability import event, operation
@@ -151,7 +152,6 @@ def detail(identity, cid, *, internal=False):
         "activity": {"turn_id": str(turn["id"]), "state": state, "events": turn["progress"]}
         if turn
         else None,
-
         "retry_message": {
             "text": retry["text"],
             "idempotency_key": retry["key"],
@@ -360,20 +360,36 @@ def customer_constraints(c, cid, tid=None):
     return [r for r in merged.values() if r["value"] is not False]
 
 
-def restorable_plan(messages):
+def restorable_plan(messages, live_cart=False):
     """The meal plan the customer last saw and has not yet turned into a basket, else None.
 
     Only the latest assistant answer counts, and only if it carries a plain meal plan (matched or
     partly matched) and no basket was prepared from it or after it. A plan the conversation has moved
     past (a later text answer, a revised ingredient list) is not offered again. The result is
     still re-verified from the catalog by ToolSession.restore_plan.
+
+    With a live cart (the cart is always the exact basket and the assistant may edit it) the latest
+    assistant message that carries a plan is restored even when a basket exists for it, because the
+    next edit starts from that plan; a revised basket then replaces the open one.
     """
     shown = [m for m in messages if not m.get("notice")]
-    last = next((i for i in range(len(shown) - 1, -1, -1) if shown[i]["role"] == "assistant"), None)
+    if live_cart:
+        last = next(
+            (
+                i
+                for i in range(len(shown) - 1, -1, -1)
+                if shown[i]["role"] == "assistant" and shown[i].get("meal_plan")
+            ),
+            None,
+        )
+    else:
+        last = next(
+            (i for i in range(len(shown) - 1, -1, -1) if shown[i]["role"] == "assistant"), None
+        )
     if last is None:
         return None
     plan = shown[last].get("meal_plan")
-    if not plan or any(m.get("proposal_id") for m in shown[last:]):
+    if not plan or (not live_cart and any(m.get("proposal_id") for m in shown[last:])):
         return None
     if not isinstance(plan, dict) or plan.get("recipe_plan_id"):
         return None
@@ -429,7 +445,7 @@ def execute_turn(turn, service, runner=None):
             scheduler.provider_message(m["role"], m["text"]) | {"attachments": m["attachments"]}
             for m in shown
         ]
-        stored = restorable_plan(data["messages"])
+        stored = restorable_plan(data["messages"], settings().cart_auto_prepare)
         # Structured persisted plans and status survive refresh, restarts and a provider context reset.
         for index, msg in enumerate(shown):
             if msg["meal_plan"]:
@@ -474,6 +490,19 @@ def execute_turn(turn, service, runner=None):
                 )
             )
         )
+        auto = None
+        if not prepared and turn.get("submitted_by") == identity["id"]:
+            from aimo import cart_purchase
+
+            # The cart is always the exact basket: a turn that changed it prepares it again.
+            auto = cart_purchase.auto_prepare(identity, cid, tid, result, service)
+            if auto:
+                result = result.model_copy(
+                    update={
+                        "proposal_id": str(auto[0]),
+                        "text": (result.text + "\n\n" + auto[2])[:20000],
+                    }
+                )
         if result.proposal_id:
             service.get_proposal(
                 actor, result.proposal_id
@@ -515,6 +544,8 @@ def execute_turn(turn, service, runner=None):
                 ),
             )
             c.execute("UPDATE conversation_turns SET state='complete' WHERE id=%s", (tid,))
+            if auto:  # the basket replaces the display-only draft of this turn
+                c.execute("UPDATE conversation_turns SET draft_cart=NULL WHERE id=%s", (tid,))
             c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
     except Exception as exc:
         with connection() as c:

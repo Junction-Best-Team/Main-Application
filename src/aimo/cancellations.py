@@ -46,7 +46,17 @@ def is_cancelled(c, proposal_id):
 
 def ensure_not_cancelled(c, proposal_id):
     """A cancelled request never commits or gets confirmed."""
-    if is_cancelled(c, proposal_id):
+    row = c.execute(
+        "SELECT reason FROM order_request_cancellations WHERE proposal_id=%s", (proposal_id,)
+    ).fetchone()
+    if row and row["reason"] == "customer_revised":
+        # The cart changed after this basket was shown: the customer is sent to the newer one.
+        raise Problem(
+            "REQUEST_REVISED",
+            "The basket was revised. Review the new basket and confirm that one.",
+            409,
+        )
+    if row:
         raise Problem("REQUEST_CANCELLED", "This order request was cancelled.", 409)
 
 

@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 from aimo import agent as internal
 from aimo import fixtures
 from aimo.api import create_app
+from aimo.config import settings
 from aimo.db import fingerprint
 from aimo.ingest import publish
 from aimo.service import Service
@@ -101,6 +102,8 @@ def chat(monkeypatch, buyer):
         llm_model="scripted", llm_timeout_seconds=20, llm_max_tool_rounds=20,
     )  # fmt: skip
     monkeypatch.setattr(internal, "settings", lambda: config)
+    # These tests are about the model path; test_cart_auto_prepare.py turns the auto-prepare on.
+    monkeypatch.setattr(settings(), "cart_auto_prepare", False)
     script = []
 
     def provider(request):

@@ -295,10 +295,14 @@ def prior_preparation(c, identity, key, payload_hash):
     return None
 
 
-def prepare_order(identity, request: PrepareRequest, connector, constraints=None):
+def prepare_order(identity, request: PrepareRequest, connector, constraints=None, supersede=None):
     """`constraints` is the server-only POL-008 record (never a model or API field). It is stored
     in the revision's request JSON under `constraints`, so the fingerprint and the retry hash
-    cover it; the key is omitted when there is none, leaving older requests unchanged."""
+    cover it; the key is omitted when there is none, leaving older requests unchanged.
+
+    `supersede` ({"conversation_id", "by"}, server-only) is used by the cart: in the SAME transaction
+    that creates the new basket, every other unconfirmed request of that conversation is cancelled
+    (reason customer_revised), so there is never a moment with two confirmable baskets."""
     payload = request.model_dump(mode="json", exclude={"idempotency_key"})
     if constraints:
         payload["constraints"] = [
@@ -358,7 +362,32 @@ def prepare_order(identity, request: PrepareRequest, connector, constraints=None
                 "UPDATE recipe_plans SET locked=true,proposal_id=%s WHERE id=%s",
                 (pid, request.recipe_plan_id),
             )
+        if supersede:
+            supersede_open_baskets(c, identity["buyer_id"], pid, supersede)
         return render(c, *proposal(c, pid, identity), identity)
+
+
+def supersede_open_baskets(c, buyer_id, keep, supersede):
+    """Cancel the conversation's other unconfirmed requests (never one with an order)."""
+    older = c.execute(
+        """SELECT DISTINCT m.proposal_id FROM conversation_messages m
+        JOIN proposals p ON p.id=m.proposal_id
+        WHERE m.conversation_id=%s AND m.proposal_id<>%s AND p.buyer_id=%s AND p.order_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM order_request_cancellations x WHERE x.proposal_id=p.id)
+        ORDER BY m.proposal_id""",
+        (supersede["conversation_id"], keep, buyer_id),
+    ).fetchall()
+    for row in older:
+        if cancellations.cancel_request(
+            c, row["proposal_id"], buyer_id, "customer_revised", None, supersede["by"]
+        ):
+            audit(
+                c,
+                row["proposal_id"],
+                supersede["by"],
+                "request_cancelled",
+                {"reason": "customer_revised"},
+            )
 
 
 def approval_detail(identity, aid):

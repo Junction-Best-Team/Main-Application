@@ -29,6 +29,7 @@ from test_draft_cart_purchase import (  # noqa: F401  (the harness and its fixtu
 from aimo.db import connection
 
 DAY = str(date.today() + timedelta(days=2))
+DAY_AFTER = str(date.today() + timedelta(days=3))
 
 
 def body(**over):
@@ -181,12 +182,15 @@ def test_a_product_withdrawn_since_the_plan_is_refused_closed(chat, how):
     assert data["purchases"] == [] and shows_draft_panel(data)  # the draft stays
 
 
-def test_a_second_basket_is_not_made_from_the_same_plan(chat):
+def test_a_second_press_makes_a_revised_basket_and_cancels_the_older_open_one(chat):
     chat.turn(*CUSTOMER_PLAN_TURN)
-    assert go(chat).status_code == 200
-    again = go(chat)  # a new key: a new basket from a plan that already has one
-    assert again.status_code == 409 and again.json()["error"]["code"] == "BASKET_ALREADY_PREPARED"
-    assert len(conversation(chat)["purchases"]) == 1
+    first = go(chat).json()["proposal"]["proposal_id"]
+    later = DAY_AFTER  # the date field on the card was changed: the route is called again
+    second = go(chat, delivery_date=later).json()["proposal"]
+    assert second["proposal_id"] != first
+    by_id = {p["proposal_id"]: p for p in conversation(chat)["purchases"]}
+    assert by_id[first]["approval_status"] == "cancelled"
+    assert by_id[second["proposal_id"]]["approval_status"] != "cancelled"
 
 
 def test_a_conversation_with_a_turn_in_progress_is_busy(chat):
