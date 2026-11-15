@@ -1550,6 +1550,11 @@ export interface components {
             /** Reasons */
             reasons: components["schemas"]["Reason"][];
             /**
+             * Approved Exceptions
+             * @description The exceptions the customer approved with this exact revision (for example substitution, overbuy, unverified_stock). Absent on older receipts.
+             */
+            approved_exceptions?: string[];
+            /**
              * Expires At
              * Format: date-time
              */

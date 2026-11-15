@@ -57,3 +57,13 @@ own confirmation are unchanged, and the agent cannot edit the policy (the scope 
 through the settings API). The scope is a list, so it grows stale when the catalogue gains products
 until the script is re-run, and it makes the policy JSON large (about 17,500 ids on the full catalogue).
 
+## Unconfirmed supplier stock (Q-134 b)
+
+`UNVERIFIED_STOCK` (the supplier's line is not `Stock`, or carries a placeholder amount) is an
+approvable exception, not a blocker: the basket is `approval_required` with the exception
+`unverified_stock` listed, and the customer's own exact-revision Confirm is the approval (the agent can
+never approve or commit; a scheduled standing order still refuses it). Any current approver may approve
+it within their amount limit; it needs no entry in the approver's `exceptions`. The order record
+(mock) keeps the reason and `approved_exceptions`. `QUANTITY_UNRESOLVED`, `TOTAL_UNRESOLVED`,
+`CUTOFF_PASSED` and every other supplier check still block.
+

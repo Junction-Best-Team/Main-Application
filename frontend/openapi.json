@@ -5194,6 +5194,14 @@
             "type": "array",
             "title": "Reasons"
           },
+          "approved_exceptions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Approved Exceptions",
+            "description": "The exceptions the customer approved with this exact revision (for example substitution, overbuy, unverified_stock). Absent on older receipts."
+          },
           "expires_at": {
             "type": "string",
             "format": "date-time",

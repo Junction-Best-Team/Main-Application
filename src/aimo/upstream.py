@@ -296,8 +296,8 @@ def validate_lookup(
             "source": {"price": maps[0].get(pid), "availability": maps[1].get(pid)},
         }
 
-        def add(code, msg):
-            reasons.append(dict(code=code, message=msg, product_id=pid, severity="unresolved"))
+        def add(code, msg, severity="unresolved"):
+            reasons.append(dict(code=code, message=msg, product_id=pid, severity=severity))
 
         row = maps[0].get(pid, {})
         try:
@@ -372,9 +372,12 @@ def validate_lookup(
                 if not amount.is_finite() or amount < 0:
                     raise ValueError()
                 if row.get("logisticModel") != "Stock" or amount >= D("999999"):
+                    # Owner decision Q-134 (b), 2026-11-15: the customer may approve a line the
+                    # supplier does not confirm as stocked, so it is an exception, not a blocker.
                     add(
                         "UNVERIFIED_STOCK",
-                        "Supplier or placeholder stock does not confirm fulfillment.",
+                        "Stock not confirmed by the supplier; the customer may approve ordering anyway.",
+                        "exception",
                     )
                 else:
                     factors = products[pid]["units"]
