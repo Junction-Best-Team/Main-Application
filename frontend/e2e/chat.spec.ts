@@ -231,7 +231,7 @@ for (const width of [1440, 320]) {
     await expect(overview).not.toContainText("Nothing staged");
     await expect(
       overview.getByRole("button", { name: "Confirm purchase" }),
-    ).toHaveCount(0);
+    ).toBeDisabled();
     await expect(overview).not.toContainText("Total estimated");
     await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
     await page.screenshot({
@@ -909,7 +909,7 @@ test("legacy approval links keep the original revision and closed states have no
   ).toHaveAttribute("href", `/purchases/${proposalId}`);
   await expect(
     page.getByRole("button", { name: "Confirm purchase" }),
-  ).toHaveCount(0);
+  ).toBeDisabled();
   for (const state of ["rejected", "expired"]) {
     await page.route(`**/api/purchases/${proposalId}`, (route) =>
       route.fulfill({
@@ -928,7 +928,7 @@ test("legacy approval links keep the original revision and closed states have no
     );
     await expect(
       page.getByRole("button", { name: "Confirm purchase" }),
-    ).toHaveCount(0);
+    ).toBeDisabled();
   }
 });
 
@@ -1413,7 +1413,7 @@ for (const width of [1440, 390]) {
     await expect(panel).toContainText("Accepted by demo order service");
     await expect(
       panel.getByRole("button", { name: "Confirm purchase" }),
-    ).toHaveCount(0);
+    ).toBeDisabled();
     expect(revisions).toEqual([1, 2]);
     expect(
       await page.evaluate(
@@ -1503,7 +1503,7 @@ for (const state of ["denied", "expired", "rejected"] as const) {
     ).toHaveCount(0);
     await expect(
       panel.getByRole("button", { name: "Confirm purchase" }),
-    ).toHaveCount(0);
+    ).toBeDisabled();
     if (state === "denied")
       await expect(panel.getByRole("alert")).toContainText(
         "cannot be approved",
@@ -1546,7 +1546,7 @@ test("Overview rejection retains the server decision without placing an order", 
   await expect(panel.getByRole("status")).toContainText("Rejection recorded");
   await expect(
     panel.getByRole("button", { name: "Confirm purchase" }),
-  ).toHaveCount(0);
+  ).toBeDisabled();
   expect(confirmations).toBe(0);
 });
 
@@ -1585,7 +1585,7 @@ for (const width of [1440, 390, 320]) {
     ).toHaveCount(0);
     // The card is always in a chat: empty, with its purchase button greyed out.
     await expect(
-      page.getByRole("complementary", { name: "Draft cart" }),
+      page.getByRole("complementary", { name: "Your order" }),
     ).toContainText("Your cart is empty");
     snapshot = {
       ...snapshot,
@@ -1616,8 +1616,8 @@ for (const width of [1440, 390, 320]) {
       },
     };
     publish();
-    const draft = page.getByRole("complementary", { name: "Draft cart" });
-    await expect(draft.getByRole("status")).toHaveText("0 of 2 items matched");
+    const draft = page.getByRole("complementary", { name: "Your order" });
+    await expect(draft.getByRole("status")).toHaveText("Preparing your order…");
     await expect(
       page.getByRole("complementary", { name: "Overview" }),
     ).toHaveCount(0); // The live cart takes precedence over the saved recipe draft.
@@ -1657,9 +1657,7 @@ for (const width of [1440, 390, 320]) {
         ],
       },
     };
-    await expect(draft.getByRole("status")).toHaveText("1 of 2 items matched", {
-      timeout: 10_000,
-    });
+    await expect(draft.getByRole("status")).toHaveText("Preparing your order…");
     await expect(draft.getByText(/28\.50.*BAG incl. VAT/)).toBeVisible();
     await expect(
       draft.getByText(/Fixture price · invented demo data/),

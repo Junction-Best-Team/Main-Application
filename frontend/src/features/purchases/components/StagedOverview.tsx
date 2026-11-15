@@ -2,6 +2,9 @@ import { useEffect } from "react";
 import type { Proposal } from "../../../shared/api/types";
 import type { Conversation } from "../../../shared/api/types";
 import { usePurchaseDetail } from "../hooks/usePurchaseDetail";
+import { notIncludedItems } from "../model/cart";
+import { useCardLog } from "../model/cardLog";
+import { getPurchaseStatus } from "../model/purchaseStatus";
 import { OverviewPanel } from "./OverviewPanel";
 import { DraftCartPanel } from "./DraftCartPanel";
 // A chat can hold several baskets (a changed cart prepares a new one and cancels the older). The card
@@ -46,11 +49,46 @@ export function StagedOverview({
     void load();
   }, [load, latest?.revision, latest?.order_id, latest?.approval_status]);
   const draft = conversation?.draft_cart;
-  if (
-    draft &&
+  const showsDraft =
+    Boolean(draft) &&
     !selectedId &&
-    !conversation?.purchases.some((p) => p.proposal_id === draft.proposal_id)
-  ) {
+    !conversation?.purchases.some((p) => p.proposal_id === draft?.proposal_id);
+  const chosen = showsDraft
+    ? "draft"
+    : latest
+      ? "prepared"
+      : recipeDraft
+        ? "recipe-draft"
+        : "empty";
+  // Diagnosis (debug mode only): which card was chosen and why. Ids, counts and states, no text.
+  useCardLog({
+    kind: "card",
+    chosen,
+    why: showsDraft
+      ? "a draft cart exists and no purchase belongs to it"
+      : latest
+        ? selectedId
+          ? "a purchase was selected"
+          : "the newest basket that is not cancelled"
+        : recipeDraft
+          ? "an assistant plan without a purchase"
+          : "no cart and no purchase",
+    conversation: conversation?.id ?? null,
+    hasDraftCart: Boolean(draft),
+    purchases: conversation?.purchases.length ?? 0,
+    basket: latest
+      ? {
+          id: latest.proposal_id,
+          status: getPurchaseStatus(latest),
+          revision: latest.revision,
+        }
+      : null,
+    cartEditable: conversation ? Boolean(conversation.cart_editable) : null,
+    cartEditReason: conversation?.cart_edit_reason ?? null,
+    busy: Boolean(conversation?.busy),
+    notIncluded: notIncludedItems(draft ?? null).length,
+  });
+  if (showsDraft && draft) {
     return (
       <DraftCartPanel
         key={conversation?.id}

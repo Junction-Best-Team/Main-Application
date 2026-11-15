@@ -68,6 +68,14 @@ export type CartWorld = {
   orderPlaced: boolean;
   /** An older conversation: no cart_editable / cart_edit_reason fields at all. */
   legacy: boolean;
+  /** What the conversation holds: nothing, a draft cart, a draft with an unmatched item, or a prepared basket. */
+  view: "empty" | "draft" | "unmatched" | "prepared";
+  /** The prepared basket's policy outcome (default ready_to_commit) and whether it has expired. */
+  outcome:
+    "ready_to_commit" | "approval_required" | "denied" | "needs_resolution";
+  expired: boolean;
+  /** Serve the conversation snapshot on the SSE stream too (reconnects every 300 ms) so a state change shows at once. */
+  stream: boolean;
   conversationReads: number;
 };
 export const newCart = (over: Partial<CartWorld> = {}): CartWorld => ({
@@ -82,6 +90,10 @@ export const newCart = (over: Partial<CartWorld> = {}): CartWorld => ({
   busy: false,
   orderPlaced: false,
   legacy: false,
+  view: "prepared",
+  outcome: "ready_to_commit",
+  expired: false,
+  stream: false,
   conversationReads: 0,
   ...over,
 });
@@ -124,7 +136,8 @@ export function proposalOf(w: CartWorld): Proposal {
     revision: w.revision,
     current_revision: w.revision,
     committed_revision: w.orderPlaced ? w.revision : null,
-    policy_outcome: "ready_to_commit",
+    policy_outcome: w.outcome,
+    expires_at: w.expired ? "2020-01-01T00:00:00Z" : baseProposal.expires_at,
     approval_status: w.orderPlaced ? "approved" : "not_required",
     order_status: w.orderPlaced ? "accepted_mock" : "not_placed",
     order_id: w.orderPlaced ? ids.sourceOrder : null,
@@ -153,35 +166,53 @@ export const notIncludedOf = (w: CartWorld): CartNotIncluded[] =>
 
 export function conversationOf(w: CartWorld): Conversation {
   const p = proposalOf(w);
+  const prepared = w.view === "prepared";
+  const items = PRODUCTS.map((x) => ({
+    name: x.name,
+    amount: String(w.qty[x.id] * x.amountPerPack),
+    unit: x.unit,
+    product_id: x.id,
+    product_name: x.name,
+    matched: true,
+  }));
+  if (w.view === "unmatched")
+    items.push({
+      name: "Unobtainium",
+      amount: "3",
+      unit: "kg",
+      product_id: undefined as unknown as string,
+      product_name: undefined as unknown as string,
+      matched: false,
+    });
   return {
     id: ids.conversation,
     title: "Carbonara for 200",
     created_at: timestamp,
     updated_at: timestamp,
     busy: w.busy,
-    purchases: [p],
-    messages: [
-      {
-        id: 1,
-        role: "assistant",
-        text: "Here is your basket.",
-        created_at: timestamp,
-        proposal_id: p.proposal_id,
-      },
-    ],
-    draft_cart: {
-      turn_id: "turn-1",
-      title: "Carbonara for 200",
-      items: PRODUCTS.map((x) => ({
-        name: x.name,
-        amount: String(w.qty[x.id] * x.amountPerPack),
-        unit: x.unit,
-        product_id: x.id,
-        product_name: x.name,
-        matched: true,
-      })),
-      proposal_id: p.proposal_id,
-    },
+    purchases: prepared ? [p] : [],
+    messages:
+      w.view === "empty"
+        ? []
+        : [
+            {
+              id: 1,
+              role: "assistant",
+              text: "Here is your basket.",
+              created_at: timestamp,
+              ...(prepared ? { proposal_id: p.proposal_id } : {}),
+            },
+          ],
+    ...(w.view === "empty"
+      ? {}
+      : {
+          draft_cart: {
+            turn_id: "turn-1",
+            title: "Carbonara for 200",
+            items,
+            proposal_id: prepared ? p.proposal_id : null,
+          },
+        }),
     ...(w.legacy
       ? {}
       : { cart_editable: w.editable, cart_edit_reason: w.reason }),
@@ -211,7 +242,9 @@ export async function openCart(page: Page, w: CartWorld) {
   await page.route(`**/api/conversations/${ids.conversation}/events`, (route) =>
     route.fulfill({
       contentType: "text/event-stream",
-      body: ": heartbeat\n\n",
+      body: w.stream
+        ? `retry: 300\nevent: conversation\ndata: ${JSON.stringify(conversationOf(w))}\n\n`
+        : ": heartbeat\n\n",
     }),
   );
   await page.route(`**/api/purchases/${ids.proposal}`, (route) =>

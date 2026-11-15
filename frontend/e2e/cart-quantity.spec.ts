@@ -562,7 +562,7 @@ test("once the order is placed the card has no number controls, no date or desti
   await expect(overview(page).getByLabel("Delivery date")).toHaveCount(0);
   await expect(
     overview(page).getByRole("button", { name: "Confirm purchase" }),
-  ).toHaveCount(0);
+  ).toBeDisabled();
   await expect(overview(page)).toContainText("4 BAG");
 });
 

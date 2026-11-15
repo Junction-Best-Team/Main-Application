@@ -8,6 +8,9 @@ import { Badge } from "../../../shared/components/Badge";
 import { getPurchaseStatus } from "../model/purchaseStatus";
 import { usePurchaseDetail } from "../hooks/usePurchaseDetail";
 import { useCartOpen } from "../hooks/useCartOpen";
+import { CardLogCopy } from "./CardLogCopy";
+import { DisabledConfirm } from "./DisabledConfirm";
+import { CART_COPY } from "../model/cartCopy";
 import { CartLines } from "./CartLines";
 import { DeliveryDetails } from "./DeliveryDetails";
 import { NotIncluded } from "./NotIncluded";
@@ -141,7 +144,7 @@ export function OverviewPanel({
   onPrepared?: (proposal: Proposal) => void;
 }) {
   const { p, error, errorDebug } = flow;
-  const [storedOpen, toggleOpen] = useCartOpen();
+  const [storedOpen, toggleOpen] = useCartOpen("prepared");
   const open = drawer ? storedOpen : true;
   const closed =
     p &&
@@ -157,9 +160,10 @@ export function OverviewPanel({
     >
       <div className="flex items-center justify-between gap-space-sm border-b border-border-subtle pb-space-sm">
         <h2 className="m-0 font-headline text-headline-sm font-bold text-primary">
-          Overview
+          Your order
         </h2>
         <span className="flex items-center gap-space-sm">
+          <CardLogCopy />
           <span className="font-label text-label-sm text-secondary">
             {p
               ? `${p.snapshot.lines.length} items staged`
@@ -266,6 +270,29 @@ export function OverviewPanel({
               </InertButton>
             </div>
           </>
+        )}
+        {!p && (
+          <DisabledConfirm
+            component="prepared"
+            code={
+              working
+                ? "assistant working"
+                : draft
+                  ? "not prepared"
+                  : error
+                    ? "load failed"
+                    : "loading"
+            }
+            reason={
+              working
+                ? CART_COPY.working
+                : draft
+                  ? CART_COPY.notPrepared
+                  : error
+                    ? CART_COPY.orderUnavailable
+                    : CART_COPY.loadingOrder
+            }
+          />
         )}
       </div>
     </aside>

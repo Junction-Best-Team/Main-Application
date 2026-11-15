@@ -7,6 +7,8 @@ import { useDestinations } from "../hooks/useDestinations";
 import { usePrepareFromCart } from "../hooks/usePrepareFromCart";
 import { ErrorMessage } from "../../../shared/components/ErrorMessage";
 import { NotIncluded } from "./NotIncluded";
+import { CardLogCopy } from "./CardLogCopy";
+import { useCardLog } from "../model/cardLog";
 import {
   cartBlockedReason,
   tomorrowInHelsinki,
@@ -35,9 +37,8 @@ export function DraftCartPanel({
   working?: boolean;
   onPrepared?: (proposal: Proposal) => void;
 }) {
-  const [open, toggleOpen] = useCartOpen();
+  const [open, toggleOpen] = useCartOpen("draft");
   const items = cart?.items ?? [];
-  const matched = items.filter((item) => item.matched).length;
   const destinations = useDestinations();
   const earliest = tomorrowInHelsinki();
   const [pickedDate, setPickedDate] = useState<string | null>(null);
@@ -55,6 +56,24 @@ export function DraftCartPanel({
     onPrepared,
   );
   const reasonId = "cart-confirm-reason";
+  // Diagnosis (debug mode only): what decides the purchase button.
+  useCardLog({
+    kind: "button",
+    component: "draft",
+    enabled: !reason && !busy,
+    reason:
+      !cart || items.length === 0
+        ? "empty cart"
+        : working
+          ? "assistant working"
+          : includedItems(cart).length === 0
+            ? "nothing ready"
+            : !date || date < earliest
+              ? "date too early"
+              : busy
+                ? "preparing"
+                : "none",
+  });
   function press() {
     if (!cart || reason || busy) return;
     void prepare({ date, destination }, [
@@ -64,26 +83,31 @@ export function DraftCartPanel({
   }
   return (
     <aside
-      aria-label="Draft cart"
+      aria-label="Your order"
       className="flex max-h-[45dvh] min-w-0 shrink-0 flex-col overflow-y-auto rounded-xl border border-border-subtle bg-surface-pure p-space-md shadow-sm lg:sticky lg:top-0 lg:max-h-full lg:w-80 xl:w-96"
     >
       <div className="flex items-center justify-between gap-space-sm border-b border-border-subtle pb-space-sm">
         <h2 className="m-0 font-headline text-headline-sm font-bold text-primary">
-          Draft cart
+          Your order
         </h2>
-        <button
-          type="button"
-          aria-label={open ? "Collapse cart" : "Expand cart"}
-          aria-expanded={open}
-          onClick={toggleOpen}
-          className="flex h-9 w-9 items-center justify-center rounded-lg border-0 bg-transparent p-0 text-secondary"
-        >
-          <Icon name={open ? "keyboard_arrow_down" : "keyboard_arrow_up"} />
-        </button>
+        <span className="flex items-center gap-space-sm">
+          <CardLogCopy />
+          <button
+            type="button"
+            aria-label={open ? "Collapse cart" : "Expand cart"}
+            aria-expanded={open}
+            onClick={toggleOpen}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border-0 bg-transparent p-0 text-secondary"
+          >
+            <Icon name={open ? "keyboard_arrow_down" : "keyboard_arrow_up"} />
+          </button>
+        </span>
       </div>
-      <p role="status" className="my-space-sm text-body-sm text-secondary">
-        {cart ? `${matched} of ${items.length} items matched` : CART_COPY.empty}
-      </p>
+      {(!cart || working) && (
+        <p role="status" className="my-space-sm text-body-sm text-secondary">
+          {cart ? CART_COPY.preparingOrder : CART_COPY.empty}
+        </p>
+      )}
       {cart && (
         <div className={`${open ? "flex" : "hidden"} flex-col gap-space-sm`}>
           <h3 className="font-label text-label-md font-bold text-primary">
@@ -169,10 +193,6 @@ export function DraftCartPanel({
               )}
             </div>
           )}
-          <p className="m-0 rounded bg-secondary-container/40 p-2 text-body-sm text-primary">
-            Quantities are for review. Pack sizes, availability and the full
-            total are verified when the basket is prepared.
-          </p>
         </div>
       )}
       <div className="mt-space-sm flex flex-col gap-space-xs">

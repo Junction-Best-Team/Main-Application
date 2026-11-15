@@ -3,11 +3,25 @@
 export const CART_COPY = {
   button: "Confirm purchase",
   preparing: "Preparing…",
+  preparingOrder: "Preparing your order…",
   updateDelivery: "Update delivery details",
   empty:
     "Your cart is empty. Items appear here as the assistant plans your order.",
   noItems: "Add items first",
   working: "The assistant is still working on your request.",
+  notPrepared:
+    "This order is not prepared yet. Ask the assistant to prepare it.",
+  loadingOrder: "Loading your order…",
+  orderUnavailable: "Your order could not be loaded. Refresh the status.",
+  alreadyPlaced: "This order was already placed.",
+  blockedByChecks:
+    "This order cannot be confirmed yet. Resolve the purchasing checks.",
+  expired: "This order expired. Change it to prepare a new one.",
+  rejected: "This order was rejected.",
+  superseded: "A newer version of this order exists.",
+  noAuthority:
+    "Your account does not have authority for this amount or exception.",
+  closed: "This order is closed for decisions.",
   nothingReady: "None of the items has a product and a quantity yet.",
   dateLabel: "Delivery date",
   destinationLabel: "Destination",

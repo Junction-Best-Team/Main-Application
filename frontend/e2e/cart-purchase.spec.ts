@@ -102,7 +102,7 @@ async function open(
   );
 }
 const card = (page: Page) =>
-  page.getByRole("complementary", { name: "Draft cart" });
+  page.getByRole("complementary", { name: "Your order" });
 const confirm = (page: Page) =>
   card(page).getByRole("button", { name: "Confirm purchase" });
 
@@ -616,7 +616,7 @@ test("after an order is placed the card offers no second purchase and no edits",
   } as typeof decidable;
   await openProposal(page, withProposal([pasta], {}, placed), placed);
   await expect(overview(page)).toContainText("Accepted by demo order service");
-  await expect(finalButton(page)).toHaveCount(0);
+  await expect(finalButton(page)).toBeDisabled();
   await expect(overview(page).getByLabel("Delivery date")).toHaveCount(0);
   await expect(
     overview(page).getByRole("button", { name: "Update delivery details" }),
