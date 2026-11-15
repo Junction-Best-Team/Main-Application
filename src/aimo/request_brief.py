@@ -16,6 +16,12 @@ class RequestBrief(Model):
     recipe_reference: str | None = Field(default=None, max_length=2000)
     budget_gross: Amount | None = None
     requirements: Requirements = Field(default_factory=Requirements)
+    product_preferences: list[Literal["lower_carbon", "higher_delivery_reliability"]] = Field(
+        default_factory=list,
+        max_length=2,
+        description="Optional customer-stated comparison preferences, not purchasing requirements "
+        "or authority. Leave empty unless the customer expresses one.",
+    )
     missing_facts: list[str] = Field(default_factory=list, max_length=10)
     assumptions: list[str] = Field(default_factory=list, max_length=10)
 

@@ -357,7 +357,9 @@ class ToolSession:
                 "or preparing a basket. Keep prior facts and all requirements unless the customer "
                 "changed them. Distinguish exploration from building the chosen meal/product list; "
                 "record material missing facts and label estimates as assumptions. This is not "
-                "long-term memory, policy or purchase authorization.",
+                "long-term memory, policy or purchase authorization. Use product_preferences for "
+                "customer-stated lower-carbon or historical-reliability preferences, not "
+                "requirements.unsupported or missing_facts.",
                 self.record_request,
                 RequestBrief,
             ),
@@ -394,13 +396,18 @@ class ToolSession:
                 "Search for candidates. The first three include inspected catalog facts and "
                 "can be selected without another get_product call. Other results are discovery "
                 "summaries only. Neither ranking nor inspection proves recipe suitability. "
+                "Includes active Valio historical delivery reliability and estimated group-average "
+                "carbon footprint; missing values are unknown. Optional sort_by compares only "
+                "the relevant shortlist, retaining mandatory dietary filters. "
                 "Request independent ingredient searches together in the same response.",
                 self.search,
                 InspectedSearchResponse,
             ),
             "get_product": ToolSpec(
                 ReadProduct,
-                "Read product IDs, units and catalog evidence.",
+                "Read product IDs, units, catalog evidence and active Valio supplier_metrics: "
+                "historical delivery reliability and estimated product-group carbon footprint. "
+                "Null means unknown. Neither metric proves stock or purchase eligibility.",
                 self.product,
                 ProductResponse,
             ),
@@ -891,6 +898,11 @@ class ToolSession:
         return result
 
     def search(self, request):
+        if (
+            request.sort_by == "relevance" and self.brief
+            and len(self.brief.product_preferences) == 1
+        ):
+            request = request.model_copy(update={"sort_by": self.brief.product_preferences[0]})
         key = fingerprint(request.model_dump(mode="json"))
         if key in self.search_results:
             return self.search_results[key]

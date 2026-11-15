@@ -106,6 +106,7 @@ ALLOW = {
     "label": 0.97,
     "false_status": 0.03,
     "unsupported_commercial": 0.03,
+    "unsupported_supplier_metrics": 0.03,
     "unsupported_dietary": 0.03,
     "disclosure": 0.01,
     "persistence_intent": 0.97,
@@ -535,6 +536,7 @@ def test_food_topic_does_not_bypass_uncertain_output_checks(
         ("false_status", "Your order is placed with Valio and the stock is reserved."),
         ("unsupported_dietary", "Everything here is completely egg-free and safe for allergies."),
         ("unsupported_commercial", "Total is EUR 12 and all 500 units are in stock."),
+        ("unsupported_supplier_metrics", "Delivery is guaranteed and this product has exactly zero carbon emissions."),
     ],
 )
 def test_unsupported_claims_are_replaced_but_the_proposal_survives(

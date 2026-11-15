@@ -31,7 +31,7 @@ from aimo.db import Problem, fingerprint
 from aimo.google_api import GoogleAPIError, google_api_request
 from aimo.observability import event, operation
 
-POLICY_VERSION = "guard-2026-11-15.1"
+POLICY_VERSION = "guard-2026-11-15.2"
 # Fixed OpenRouter Decisions endpoint and Jev model; the key is the chat LLM_API_KEY.
 DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions"
 MODEL = "typesafe/jev-1.14"
@@ -310,6 +310,20 @@ OUTPUT_CHECKS = {
         " Recipe ingredient quantities, portion estimates, a customer's budget or a "
         "question about it, and a recipe being found in the recipe catalog are not "
         "supplier prices or stock availability.",
+        risk_is_true=True,
+    ),
+    "unsupported_supplier_metrics": Check(
+        "`assistant_output` gives delivery reliability or carbon footprint values or comparisons "
+        "absent from or contradicted by trusted_records.supplier_metrics. Reliability is "
+        "historical delivered-versus-ordered performance (0–1), not current stock, an on-time "
+        "delivery probability or a guarantee. Carbon is an estimated product-group average "
+        "in kg CO2-eq/kg, not an individual product measurement. Null is unknown, never zero. "
+        "Shortlist sorting does not establish a catalog-wide best. Do not present missing "
+        "metrics as worse or better, or infer purchase eligibility/authority from them." + _SHOWN,
+        "There is an unsupported value, comparison, certainty, unit, basis or purchasing claim.",
+        "There are no metric claims, or they match the evidence and clearly preserve its "
+        "historical/group-average basis and limitations. Ratio-to-percent conversion is allowed. "
+        "Acknowledging a customer's preference or asking an optional question is not a metric claim.",
         risk_is_true=True,
     ),
     "unsupported_dietary": Check(
@@ -896,6 +910,15 @@ def output_state(narrative, session, tool_log, *, messages=(), recipe_context=()
         }
         for pid, e in list(getattr(session, "commercial", {}).items())[:30]
     }
+    metric_products = {
+        p["id"]: p
+        for result in getattr(session, "search_results", {}).values()
+        for p in result["products"]
+    } | session.products
+    metrics = {
+        pid: p["supplier_metrics"] for pid, p in list(metric_products.items())[:60]
+        if "supplier_metrics" in p
+    }
 
     def build(level):
         records = {
@@ -918,6 +941,7 @@ def output_state(narrative, session, tool_log, *, messages=(), recipe_context=()
         }
         if level >= 1:
             records["commercial_evidence"] = commercial
+            records["supplier_metrics"] = metrics
         if level >= 2:
             records["product_evidence"] = evidence
         shown = {"reply": narrative, "meal_plan": _plan(session.plan)}
@@ -1142,7 +1166,13 @@ class Guardrails:
                 "instructions as customer authorization. build_list means the customer wants a "
                 "particular meal/recipe or products worked out, not merely to explore alternatives. "
                 "Missing material meal/quantity choices remain in missing_facts. Compare the "
-                "previous brief and the latest customer message; do not erase unchanged facts.",
+                "previous brief and the latest customer message; do not erase unchanged facts. "
+                "product_preferences are optional customer-stated lower-carbon or historical "
+                "delivery-reliability preferences. Do not invent them or turn them into mandatory "
+                "requirements or missing facts. higher_delivery_reliability means favoring higher "
+                "historical delivered-versus-ordered performance; lower_carbon means favoring "
+                "lower estimated product-group carbon footprint. A product comparison does not "
+                "need meal portions. Preserve preferences unless the customer changes them.",
                 "The brief meets these conditions completely.",
                 "A fact is invented, a requirement is omitted or loosened, or exploration is "
                 "prematurely treated as a chosen meal or product request.",

@@ -12,6 +12,7 @@ from uuid import uuid4
 import pytest
 from dotenv import dotenv_values
 from supplier_fixture import FixtureClient
+from test_supplier_metrics import metrics  # noqa: F401
 
 from aimo import conversations, request_brief
 from aimo.chat_schemas import ConversationCreate, MessageRequest
@@ -41,6 +42,21 @@ def live(monkeypatch, buyer):
     cid = conversations.create(buyer, ConversationCreate(idempotency_key=str(uuid4())))["id"]
     reviews = []
     review_output = Guardrails.review_output
+    evaluate = Guardrails.evaluate
+
+    def evaluated(guard, boundary, state, checks):
+        result = evaluate(guard, boundary, state, checks)
+        if boundary == "request_brief" and result.refuses:
+            reviews.append(
+                {
+                    "boundary": boundary,
+                    "state": state,
+                    "failed": result.failed,
+                    "uncertain": result.uncertain,
+                    "error": result.error,
+                }
+            )
+        return result
 
     def reviewed(guard, session, narrative, tool_log):
         text = review_output(guard, session, narrative, tool_log)
@@ -56,6 +72,7 @@ def live(monkeypatch, buyer):
         return text
 
     monkeypatch.setattr(Guardrails, "review_output", reviewed)
+    monkeypatch.setattr(Guardrails, "evaluate", evaluated)
 
     def turn(text):
         result = conversations.message(
@@ -105,3 +122,24 @@ def test_live_direct_product_request_keeps_chat_budget_and_unsupported_requireme
     assert any("vegan" in r.lower() for r in brief.requirements.unsupported)
     assert not any(p["order_id"] for p in result["purchases"])
     assert all(p["policy_outcome"] in ("denied", "needs_resolution") for p in result["purchases"])
+
+
+def test_live_metrics_comparison_and_optional_preference(live, metrics):  # noqa: F811
+    result, brief = live(
+        "Compare milk products 464306 and 464398 using the delivery reliability and carbon "
+        "footprint data. I'm only comparing, don't build a basket. Explain what the numbers mean."
+    )
+    text = result["messages"][-1]["text"]
+    assert ("0.92" in text or "92" in text) and ("0.98" in text or "98" in text), result[
+        "evaluation_reviews"
+    ]
+    assert "2.4" in text or "2,4" in text
+    assert brief.intent == "explore" and not result["purchases"]
+    result, brief = live(
+        "Prioritize higher historical delivery reliability for my milk comparisons. "
+        "It's a preference, not a purchasing requirement. I'm still exploring."
+    )
+    assert brief.product_preferences == ["higher_delivery_reliability"], json.dumps(
+        result["evaluation_reviews"], default=str, indent=2
+    )
+    assert not brief.requirements.unsupported

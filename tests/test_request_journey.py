@@ -107,6 +107,21 @@ def test_exploring_a_different_idea_does_not_replace_an_existing_basket(auto):
     assert baskets(exploring)[0]["approval_status"] != "cancelled"
 
 
+def test_optional_product_preferences_survive_turns_without_becoming_checkout_requirements(auto):
+    preference = ["lower_carbon"]
+    auto.turn(
+        "Prefer lower carbon where you have data. I haven't chosen lunch yet.",
+        tool_reply(call("record_request",brief(intent="explore",product_preferences=preference))),
+        say("Would you prefer pasta or soup?"),
+    )
+    assert remembered(auto).product_preferences == preference
+    chosen = build(auto,product_preferences=preference)
+    assert remembered(auto).product_preferences == preference
+    assert remembered(auto).missing_facts == []
+    assert not remembered(auto).requirements.unsupported
+    assert not baskets(chosen)[0]["request"]["requirements"].get("unsupported")
+
+
 @pytest.mark.parametrize(
     "requirements",
     [

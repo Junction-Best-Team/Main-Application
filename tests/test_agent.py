@@ -86,9 +86,12 @@ def purchase():
 
 
 def product(name):
+    from aimo.schemas import SupplierMetrics
+
     result = deepcopy(fixture_facts()[0])
     result.update(id=name, name=name, sales_unit="KG", base_unit="KG", units={"KG": "1"})
     result["provenance"]["product_id"] = name
+    result["supplier_metrics"] = SupplierMetrics().model_dump(mode="json")
     return result
 
 

@@ -32,6 +32,11 @@ The cart owns SKU, pack and price details. Chat contains the conversation and co
 recipe entry, without a second set of SKU cards. Failed background
 preparation keeps the draft and explains that basket checking could not finish.
 
+Optional [supplier metric preferences](supplier-metrics.md) can guide comparisons:
+historical delivery reliability and estimated product-group carbon footprint. Product
+tools return both metrics; one explicit saved preference applies to later searches.
+These are optional conversation choices, never a mandatory questionnaire or checkout rule.
+
 ## Contracts and authorization
 
 `chat_schemas.py` owns MealPlan, AgentTurn, MessageRequest and conversation responses; `schemas.py` retains purchasing contracts. The backend owns routes and generated OpenAPI. The agent owns direct typed Service tools; the frontend consumes generated types. The agent cannot select an authorization identity, edit policy, approve or commit. Its provider credentials remain server-only. Missing provider configuration fails with an actionable error; there is no pretend response fallback.

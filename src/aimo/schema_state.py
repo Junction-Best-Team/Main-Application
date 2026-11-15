@@ -84,6 +84,17 @@ MANIFEST: dict[str, list[tuple[str, ...]]] = {
     ],
     "024_message_notice.sql": [("column", "conversation_messages", "notice")],
     "026_request_brief.sql": [("column", "conversation_turns", "request_brief")],
+    "027_supplier_metrics.sql": [
+        ("table", "supplier_dataset_imports"),
+        ("table", "supplier_dataset_values"),
+        ("table", "active_supplier_datasets"),
+        ("column", "supplier_dataset_values", "dataset"),
+        ("column", "supplier_dataset_values", "sha256"),
+        ("column", "supplier_dataset_values", "product_id"),
+        ("column", "supplier_dataset_values", "value"),
+        ("column", "active_supplier_datasets", "dataset"),
+        ("column", "active_supplier_datasets", "sha256"),
+    ],
     "025_demo_clock.sql": [
         ("table", "demo_clock"),
         ("table", "demo_clock_events"),
