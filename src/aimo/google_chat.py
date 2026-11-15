@@ -125,6 +125,10 @@ class GoogleChatProvider:
                 max_response_bytes=MAX_RESPONSE_BYTES,
             )
         except GoogleAPIError as exc:
+            if exc.code == "TIMEOUT":
+                raise Problem(
+                    "LLM_TIMEOUT", "The assistant reached its time limit. Retry this message.", 504
+                ) from None
             code = "LLM_CONFIGURATION" if exc.code == "AUTH_REJECTED" else "LLM_UNAVAILABLE"
             raise Problem(
                 code, "Google could not complete the assistant request. Retry later.", 503

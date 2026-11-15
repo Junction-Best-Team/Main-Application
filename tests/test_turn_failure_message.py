@@ -17,7 +17,7 @@ from aimo import conversations
 from aimo.api import create_app
 from aimo.chat_schemas import AgentTurn, ConversationCreate, ConversationResponse, MessageRequest
 from aimo.db import Problem, connection
-from aimo.turn_notice import NOTICE_TEXT, failure_notice, language_of
+from aimo.turn_notice import NOTICE_TEXT, TIMEOUT_TEXT, failure_notice, language_of
 from aimo.worker import run_once
 
 PROVIDER_CODES = [
@@ -112,7 +112,8 @@ def test_a_provider_failure_stores_exactly_one_notice_and_keeps_the_retry(buyer,
         conversations.message(buyer, conv, body, service, failing(code))
     assert raised.value.code == code  # the worker still sees and logs the real error
     (notice,) = notices(conv)
-    assert notice["text"] == EN and notice["notice"] == "provider_unavailable"
+    assert notice["text"] == (TIMEOUT_TEXT["en"] if code == "LLM_TIMEOUT" else EN)
+    assert notice["notice"] == "provider_unavailable"
     assert notice["meal_plan"] is None and notice["proposal_id"] is None and notice["image"] is None
     view = conversations.detail(buyer, conv)
     assert view["retry_message"]["idempotency_key"] == body.idempotency_key

@@ -41,6 +41,7 @@ from aimo.schemas import (
     ProductResponse,
     ProposalResponse,
     PurchaseRequest,
+    SearchCandidate,
     SearchRequest,
     SearchResponse,
 )
@@ -108,11 +109,17 @@ EXAMPLE_PLAN = "6f1c1d2e-5b7a-4c3d-9a1e-0b2c3d4e5f60"
 EXAMPLE_PROPOSAL = "0b1e7c52-3a4d-4f6e-8b9a-1c2d3e4f5a6b"
 EXAMPLE_ORDER = "7d2f9a10-6c3b-4e8f-a1b2-c3d4e5f60718"
 
-SearchProducts = with_examples(
-    SearchRequest,
-    {"query": "whole milk 1 litre", "limit": 5},
-    {"query": "lactose-free yogurt", "requirements": {"lactose_free": True}},
-)
+
+class SearchProducts(
+    with_examples(
+        SearchRequest,
+        {"query": "whole milk 1 litre", "limit": 3},
+        {"query": "lactose-free yogurt", "requirements": {"lactose_free": True}},
+    )
+):
+    limit: int = Field(default=3, ge=1, le=20)
+
+
 ReadProduct = with_examples(ProductRequest, {"product_id": "464306"})
 ReadPolicy = with_examples(EmptyRequest, {})
 GenerateRecipeImage = with_examples(
@@ -198,6 +205,15 @@ class MealPlanResult(Model):
 
     meal_plan: MealPlan
     purchase_authorized: Literal[False]
+
+
+class InspectedCandidate(ProductResponse):
+    score: float
+    match_is_suitability_proof: Literal[False]
+
+
+class InspectedSearchResponse(SearchResponse):
+    products: list[InspectedCandidate | SearchCandidate]
 
 
 class RecipeImageResult(Model):
@@ -301,6 +317,7 @@ class ToolSession:
         self.receipt = None
         self.prepared_digest = None
         self.products = {}
+        self.search_results = {}
         self.commercial = {}
         self.commercial_dates = {}
         self.memory_changes = []
@@ -318,9 +335,12 @@ class ToolSession:
             ),
             "search_products": ToolSpec(
                 SearchProducts,
-                "Find candidates, not suitability guarantees.",
+                "Search for candidates. The first three include inspected catalog facts and "
+                "can be selected without another get_product call. Other results are discovery "
+                "summaries only. Neither ranking nor inspection proves recipe suitability. "
+                "Request independent ingredient searches together in the same response.",
                 self.search,
-                SearchResponse,
+                InspectedSearchResponse,
             ),
             "get_product": ToolSpec(
                 ReadProduct,
@@ -621,9 +641,23 @@ class ToolSession:
         return result
 
     def search(self, request):
-        return self.checked(SearchResponse, self.service.search_products(self.identity, request))
+        key = fingerprint(request.model_dump(mode="json"))
+        if key in self.search_results:
+            return self.search_results[key]
+        result = self.checked(SearchResponse, self.service.search_products(self.identity, request))
+        products = []
+        for index, candidate in enumerate(result["products"]):
+            if index < 3:
+                details = self.product(ProductRequest(product_id=candidate["id"]))
+                candidate = details | {"score": candidate["score"], "match_is_suitability_proof": False}
+            products.append(candidate)
+        result = result | {"products": products}
+        self.search_results[key] = result
+        return result
 
     def product(self, request):
+        if request.product_id in self.products:
+            return self.products[request.product_id]
         result = self.checked(
             ProductResponse, self.service.get_product(self.identity, request.product_id)
         )
