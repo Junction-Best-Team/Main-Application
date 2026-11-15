@@ -87,7 +87,7 @@ Thresholds are on the risk probability: ≤ 0.2 passes, ≥ 0.8 fails, and anyth
 between is uncertain. They are **provisional** and enforced by default: re-select
 them from the labelled live evaluation, and switch to `shadow` if false blocks appear.
 
-Each check logs one line on `aimo.guardrails`: turn ID, boundary, mode, verdict,
+Each check logs a `guardrail.decision` JSON event on `aimo.operations`: turn ID, boundary, mode, verdict,
 policy version, served model, latency, error category, failed/uncertain question
 names and probabilities. Conversation text and keys are never logged.
 

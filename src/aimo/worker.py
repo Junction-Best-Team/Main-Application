@@ -2,17 +2,19 @@
 
 import logging
 import signal
+import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Event, Thread
 
 from aimo import conversations, scheduler
 from aimo.config import settings
-from aimo.db import close_pools, connection
-from aimo.observability import configure_logging, event, failure
+from aimo.db import close_pools, connection, now
+from aimo.observability import configure_logging, event, failure, operation
 from aimo.service import Service
 
 
+@operation("worker.readiness", log_success=False)
 def check_readiness():
     from aimo import upstream
     from aimo.search import dimensions, model_key
@@ -52,6 +54,8 @@ def run_once(service, runner=None):
         conversation_id=str(turn["conversation_id"]),
         attempt_id=str(turn["attempt"]),
         worker_attempts=turn["worker_attempts"],
+        queue_age_ms=round((now() - turn["created_at"]).total_seconds() * 1000),
+        lease_remaining_ms=max(0, round((turn["lease_until"] - now()).total_seconds() * 1000)),
     )
     conversations.execute_turn(turn, service, runner)
     return True
@@ -84,12 +88,16 @@ def work_once(service, runner=None):
 
 
 def main():
-    configure_logging()
+    configure_logging("worker")
     event(
         "worker.started",
         model=settings().llm_model,
         embedding_backend=settings().embedding_backend,
         guardrail_mode=settings().guardrail_mode,
+        provider=settings().llm_provider,
+        turn_timeout_seconds=settings().llm_turn_timeout_seconds,
+        request_timeout_seconds=settings().llm_timeout_seconds,
+        max_tool_rounds=settings().llm_max_tool_rounds,
     )
     stop = Event()
     state = {"ready": False, "progress": time.monotonic()}
@@ -108,7 +116,12 @@ def main():
         def log_message(self, *args):
             pass
 
-    server = ThreadingHTTPServer(("0.0.0.0", 8001), Health)
+    class HealthServer(ThreadingHTTPServer):
+        def handle_error(self, request, client_address):
+            # socketserver's default prints exception text and the client's address.
+            event("worker.health_failed", level=logging.WARNING, **failure(sys.exception()))
+
+    server = HealthServer(("0.0.0.0", 8001), Health)
     Thread(target=server.serve_forever, daemon=True).start()
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stop.set())

@@ -432,6 +432,7 @@ def log_progress(progress, duration_ms):
         level=logging.WARNING if progress.error_code else logging.INFO,
         turn_id=progress.turn_id,
         sequence=progress.sequence,
+        round=progress.round_number,
         tool=progress.tool,
         error_code=progress.error_code,
         duration_ms=duration_ms,
@@ -772,8 +773,11 @@ def run_turn(
             return result
     except Problem as exc:
         end("time_limit" if exc.code == "LLM_TIMEOUT" else "error")
+        log_failure("agent.interrupted", exc)
         progress.emit("error", error_code=exc.code)
         if exc.code.startswith("LLM_") and reviewed_plan and not session.proposal and not session.receipt:
+            event("agent.recovered", level=logging.WARNING, error_code=exc.code,
+                  recovery="reviewed_plan", ingredient_count=len(reviewed_plan.ingredients))
             text = partial_notice(reviewed_plan, exc.code)
             result = session.result(text, include_plan=False).model_copy(
                 update={"meal_plan": reviewed_plan}
@@ -781,6 +785,9 @@ def run_turn(
             progress.emit("complete", error_code=exc.code)
             return result
         if session.proposal or session.receipt or session.image:
+            event("agent.recovered", level=logging.WARNING, error_code=exc.code,
+                  recovery="persisted_result", proposal_present=bool(session.proposal),
+                  receipt_present=bool(session.receipt), image_present=bool(session.image))
             result = finish()
             progress.emit("complete", error_code=exc.code)
             return result

@@ -2,6 +2,13 @@
 
 Maintain this log for the final submission. It records provenance and timing; the official submission platform and challenge rules determine the disclosures required.
 
+## Runtime diagnostics — 2026-11-15
+
+Extended the existing structured logger, service instrumentation and portable Google
+client with runtime correlation and safe failure metadata. Verification reuses authored
+HTTP, worker, supplier and image fixtures; no new external logging service, dependency
+or live provider call was introduced.
+
 ## Prepared before the event
 
 | Material | Date | Source or author | Prepared beforehand | Built during the event |

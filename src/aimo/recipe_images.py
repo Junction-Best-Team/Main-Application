@@ -9,6 +9,7 @@ from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, js, now
 from aimo.image_provider import cloudinary_credentials, generate_image, upload_image
 from aimo.image_schemas import RecipeImage
+from aimo.observability import operation
 
 
 def active_turn(c, identity):
@@ -31,6 +32,7 @@ def active_turn(c, identity):
     return turn_id
 
 
+@operation("image.job", context_arg="identity")
 def generate(identity, request):
     cfg = settings()
     if not cfg.recipe_images_enabled or not cfg.gemini_api_key.strip():
