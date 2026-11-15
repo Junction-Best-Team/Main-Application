@@ -88,6 +88,11 @@ For frontend development, run `npm run dev --prefix frontend` and temporarily se
 
 ## Valio API key and upstream modes
 
+Product tools also expose imported [delivery reliability and carbon footprint](docs/supplier-metrics.md)
+for optional comparisons. Apply migration `027_supplier_metrics.sql` and runtime grants;
+existing hosted imports are preserved. These datasets use database joins, with no new
+embeddings or importer. Missing values remain unknown.
+
 The application uses the real supplier at `https://junction26.valioaimo.fi`:
 `POST /api/price` and `POST /api/availability`, authenticated by the private
 `VALIO_AIMO_API_KEY`. Search the catalog first, then query only shortlisted products.

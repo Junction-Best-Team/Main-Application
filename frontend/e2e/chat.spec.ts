@@ -720,15 +720,24 @@ test("request starts a meal conversation and keeps messages through refresh", as
   await expect(
     page.getByRole("heading", { name: "Carbonara", exact: true }),
   ).toBeVisible();
+  await expect(page.getByRole("list", { name: "Proposed items" })).toHaveCount(
+    0,
+  );
   await expect(
-    page.getByRole("list", { name: "Proposed items" }),
-  ).toContainText("SKU pasta");
+    page
+      .getByRole("complementary", { name: "Overview" })
+      .getByTitle("Spaghetti 5 kg", { exact: true })
+      .filter({ visible: true }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByRole("log", { name: "Conversation messages" }),
+  ).not.toContainText("SKU pasta");
   const recipe = page.getByRole("region", { name: "Proposed meal plan" });
   await expect(recipe.getByText("20 KG", { exact: true })).toHaveCount(0);
   await expect(recipe.getByText("Spaghetti", { exact: true })).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: /Open recipe/ }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Open recipe/ })).toHaveCount(
+    0,
+  );
   await expect(
     page.getByRole("button", { name: "Review basket to confirm" }),
   ).toBeVisible();
@@ -760,7 +769,7 @@ test("request starts a meal conversation and keeps messages through refresh", as
 });
 
 for (const priced of [false, true]) {
-  test(`SKU cards preserve ${priced ? "verified zero prices" : "unknown prices"}`, async ({
+  test(`the cart alone preserves ${priced ? "verified zero prices" : "unknown prices"}`, async ({
     page,
   }) => {
     await mockSession(page);
@@ -780,6 +789,9 @@ for (const priced of [false, true]) {
       current.policy_outcome = "needs_resolution";
       current.can_decide = false;
     }
+    await page.route(`**/api/purchases/${proposalId}`, (route) =>
+      route.fulfill({ json: current }),
+    );
     await page.route(`**/api/conversations/${conversationId}`, (route) =>
       route.fulfill({
         json: {
@@ -798,12 +810,18 @@ for (const priced of [false, true]) {
       }),
     );
     await page.goto(`/conversations/${conversationId}`);
-    const items = page.getByRole("list", { name: "Proposed items" });
+    await expect(
+      page.getByRole("list", { name: "Proposed items" }),
+    ).toHaveCount(0);
+    const items = page
+      .getByRole("complementary", { name: "Overview" })
+      .getByRole("listitem")
+      .filter({ has: page.getByTitle("Spaghetti 5 kg", { exact: true }) });
     if (priced) {
-      await expect(items.getByText("€0.00", { exact: true })).toHaveCount(2);
+      await expect(items.getByText("€0.00", { exact: true })).toHaveCount(1);
     } else {
       await expect(items.getByText("Unresolved", { exact: true })).toHaveCount(
-        2,
+        1,
       );
       await expect(items).not.toContainText("€0.00");
     }
@@ -1407,9 +1425,9 @@ test(`free-form recipe plan stays compact without chat ingredient dump`, async (
   await expect(plan.getByText("open the basket for ingredients")).toBeVisible();
   await expect(plan.getByText("Salt", { exact: true })).toHaveCount(0);
   await expect(plan.getByText("Buy 7 ST", { exact: false })).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: /Open recipe/ }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Open recipe/ })).toHaveCount(
+    0,
+  );
   await expect(page.getByRole("dialog", { name: "Carbonara" })).toHaveCount(0);
   await expect(
     page.getByRole("link", { name: "Review basket and purchasing checks" }),
