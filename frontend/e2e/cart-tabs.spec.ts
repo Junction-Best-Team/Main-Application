@@ -735,13 +735,20 @@ test("on a phone the tabs and the pinned footer fit the open drawer", async ({
   expect(overflow).toBeLessThanOrEqual(0);
 });
 
-test("on a phone the collapsed card still shows the total and the button", async ({
+test("on a phone collapsing puts the whole card behind the corner button, and expanding brings back the total and the button", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 800 });
   await open(page);
   await card(page).getByRole("button", { name: "Collapse cart" }).click();
+  // The page clock is paused in these specs, so the shell's slide animation needs ticks to finish.
+  await page.waitForTimeout(250); // let React mount before ticking the paused clock
+  await page.clock.runFor(1000);
   await expect(card(page).getByRole("tablist")).toBeHidden();
+  await expect(confirmButton(page)).toHaveCount(0); // collapsed, the button is behind the corner button
+  await card(page).getByRole("button", { name: "Expand cart" }).click();
+  await page.waitForTimeout(250); // let React mount before ticking the paused clock
+  await page.clock.runFor(1000);
   await expect(footer(page)).toBeInViewport();
   await expect(footer(page)).toContainText(/136[.,]00/);
   await expect(confirmButton(page)).toBeInViewport();

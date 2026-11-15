@@ -222,6 +222,7 @@ test("the card closes only when the customer closes it, and the choice is rememb
   const world = await open(page, { view: "draft" });
   await toggle(page).click();
   // The page clock is paused in these specs, so the shell's slide animation needs ticks to finish.
+  await page.waitForTimeout(250); // let React mount before ticking the paused clock
   await page.clock.runFor(1000);
   await expect(toggle(page)).toHaveAccessibleName("Expand cart");
   await expect(card(page).getByRole("list")).toHaveCount(0);
@@ -231,13 +232,16 @@ test("the card closes only when the customer closes it, and the choice is rememb
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
   await expect(card(page).getByTestId("card-total-row")).toBeHidden();
   await page.reload();
+  await page.waitForTimeout(250); // let React mount before ticking the paused clock
   await page.clock.runFor(1000);
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
   await toggle(page).click();
   // The page clock is paused in these specs, so the shell's slide animation needs ticks to finish.
+  await page.waitForTimeout(250); // let React mount before ticking the paused clock
   await page.clock.runFor(1000);
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
   await page.reload();
+  await page.waitForTimeout(250); // let React mount before ticking the paused clock
   await page.clock.runFor(1000);
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
   await expect(card(page).getByTestId("card-total-row")).toBeVisible();
@@ -257,10 +261,12 @@ test("a closed card with blocked site storage still opens and works", async ({
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
   await toggle(page).click();
   // The page clock is paused in these specs, so the shell's slide animation needs ticks to finish.
+  await page.waitForTimeout(250); // let React mount before ticking the paused clock
   await page.clock.runFor(1000);
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
   await toggle(page).click();
   // The page clock is paused in these specs, so the shell's slide animation needs ticks to finish.
+  await page.waitForTimeout(250); // let React mount before ticking the paused clock
   await page.clock.runFor(1000);
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
 });
