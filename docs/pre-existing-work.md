@@ -10,7 +10,7 @@ HTTP, worker, supplier and image fixtures; no new external logging service, depe
 or live provider call was introduced.
 
 The product-search cap removal reuses the same bounded executor, stop
-control and activity UI. The longer 360-second/40-round budget reuses turn
+control and activity UI. The longer 600-second/60-round budget reuses turn
 deadlines, worker leases and attempt fencing; worker shutdown and health allowances
 are extended with it. Its 15/22-ingredient, 100-search and longer-turn transcripts
 use authored providers and clocks; verification does not replay customer turns or

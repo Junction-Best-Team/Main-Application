@@ -17,11 +17,12 @@ run "safe_initial_plan" {
   command = plan
   assert {
     condition = (
-      kubernetes_config_map_v1.runtime.data.LLM_TURN_TIMEOUT_SECONDS == "360" &&
-      kubernetes_config_map_v1.runtime.data.LLM_MAX_TOOL_ROUNDS == "40" &&
-      kubernetes_deployment_v1.apps["worker"].spec[0].template[0].spec[0].termination_grace_period_seconds == 420
+      kubernetes_config_map_v1.runtime.data.LLM_TURN_TIMEOUT_SECONDS == "600" &&
+      kubernetes_config_map_v1.runtime.data.LLM_MAX_TOOL_ROUNDS == "60" &&
+      kubernetes_deployment_v1.apps["worker"].spec[0].template[0].spec[0].termination_grace_period_seconds == 660 &&
+      kubernetes_deployment_v1.apps["worker"].spec[0].progress_deadline_seconds == 900
     )
-    error_message = "Worker configuration and shutdown must support a 360-second, 40-round turn and final persistence."
+    error_message = "Worker configuration and shutdown must support a 600-second, 60-round turn and final persistence."
   }
   assert {
     condition     = kubernetes_deployment_v1.apps["api"].spec[0].replicas == "0" && length(kubernetes_job_v1.bootstrap) == 0

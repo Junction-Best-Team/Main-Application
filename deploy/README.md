@@ -26,12 +26,13 @@ The frontend runs as UID 101, API/worker as UID 10001, with non-root restricted
 security contexts and read-only roots. Requests total 650m CPU and 1,248 MiB
 memory for the three apps; limits are starting budgets, not measured capacity.
 Each backend process has its own bounded database pool; budget connections when
-scaling replicas. Worker shutdown allows 420 seconds for its bounded current turn.
+scaling replicas. Worker shutdown allows 660 seconds for its bounded current turn.
 For an existing cluster, update the worker image together with (or before enabling)
-the longer-turn configuration: worker shutdown grace of 420 seconds and `aimo-config` values
-`LLM_TURN_TIMEOUT_SECONDS=360` and `LLM_MAX_TOOL_ROUNDS=40`, as defined in Terraform.
+the longer-turn configuration: worker shutdown grace of 660 seconds, deployment
+progress deadline of 900 seconds, and `aimo-config` values
+`LLM_TURN_TIMEOUT_SECONDS=600` and `LLM_MAX_TOOL_ROUNDS=60`, as defined in Terraform.
 Check for older overrides in worker environment variables/Secrets. Image-only
-releases do not apply these settings; the release waits up to 10 minutes for the
+releases do not apply these settings; the release waits up to 15 minutes for the
 worker rollout and rollback.
 
 Traefik routes API/SSE directly to the API Service. Keep buffering disabled and
