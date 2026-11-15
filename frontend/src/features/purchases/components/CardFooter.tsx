@@ -157,7 +157,7 @@ export function CardFooter({
       {p.order_id && (
         <>
           <p className="m-0 text-body-sm text-secondary">
-            Accepted by demo order service. No real supplier order was placed.
+            Order accepted. No real supplier order was placed.
           </p>
           <p className="order-reference m-0 font-label font-bold text-primary wrap-anywhere">
             Order {p.order_id}

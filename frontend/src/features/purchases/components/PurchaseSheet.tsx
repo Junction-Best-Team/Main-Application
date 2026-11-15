@@ -86,7 +86,7 @@ export function PurchaseSheet({ p }: { p: Proposal }) {
           <span>{currency(p.snapshot.deposits_gross)}</span>
         </div>
         <div>
-          <span>Demo delivery charges</span>
+          <span>Delivery charges</span>
           <span>{currency(p.snapshot.charges_gross)}</span>
         </div>
         <div className="mt-3 border-t border-border-subtle pt-4! font-bold text-primary">

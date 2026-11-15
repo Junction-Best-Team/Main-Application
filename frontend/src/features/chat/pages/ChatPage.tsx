@@ -104,8 +104,8 @@ export function ChatPage() {
             className="relative flex min-h-0 flex-1 flex-col gap-space-lg overflow-y-auto overscroll-contain p-space-md md:p-space-lg"
           >
             <p className="shrink-0 text-label-sm text-secondary">
-              Demo ordering only. No real supplier orders or stock reservations.
-              Signed in as {session?.buyer_id}.
+              No real supplier orders or stock reservations. Signed in as{" "}
+              {session?.buyer_id}.
             </p>
             <ErrorMessage message={error} debug={errorDebug} />
             {loading && <p role="status">Loading your conversation…</p>}

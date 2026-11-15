@@ -129,19 +129,14 @@ export function ScheduleActions({
             </button>
           )}
           {canRunNow && (
-            <span className="inline-flex items-center gap-space-xs">
-              <button
-                type="button"
-                className={demoButton}
-                disabled={disabled}
-                onClick={() => void run("runNow")}
-              >
-                {label("runNow", "Run now (demo)")}
-              </button>
-              <span className="font-mono text-label-sm uppercase text-amber-900 dark:text-amber-200">
-                Demo command
-              </span>
-            </span>
+            <button
+              type="button"
+              className={demoButton}
+              disabled={disabled}
+              onClick={() => void run("runNow")}
+            >
+              {label("runNow", "Run now")}
+            </button>
           )}
           {canEdit && (
             <Link to={`/schedules/${schedule.id}/edit`} className={quiet}>

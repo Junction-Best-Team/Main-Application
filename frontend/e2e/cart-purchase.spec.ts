@@ -612,7 +612,7 @@ test("after an order is placed the card offers no second purchase and no edits",
     order_id: "c1a2b3c4-d5e6-4f70-8a9b-0c1d2e3f4a5b",
   } as typeof decidable;
   await openProposal(page, withProposal([pasta], {}, placed), placed);
-  await expect(overview(page)).toContainText("Accepted by demo order service");
+  await expect(overview(page)).toContainText("Order accepted");
   await expect(finalButton(page)).toBeDisabled();
   await expect(overview(page).getByLabel("Delivery date")).toHaveCount(0);
   await expect(

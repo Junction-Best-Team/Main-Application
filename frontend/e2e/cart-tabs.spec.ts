@@ -380,7 +380,7 @@ test("Details shows the reference, revision, how long the prices hold, the polic
   await expect(sub).toBeDisabled(); // read-only: shows the request, changes nothing
   await expect(sub).toHaveAttribute("aria-checked", "true");
   // The sample notice is here, not on the Checks tab.
-  await expect(details).toContainText("Fixture prices and stock");
+  await expect(details).toContainText("Catalog prices and stock");
 });
 
 test("the Cut-off row appears only when the lines carry a supplier cut-off", async ({

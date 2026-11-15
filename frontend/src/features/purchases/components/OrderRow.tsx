@@ -292,7 +292,7 @@ function PlacedDetails({
           <PurchaseSheet p={p} />
           <div className="font-label text-label-sm text-secondary">
             Delivery to {p.request.destination} on {p.request.delivery_date} ·
-            Accepted by demo order service
+            Order accepted
           </div>
         </>
       )}

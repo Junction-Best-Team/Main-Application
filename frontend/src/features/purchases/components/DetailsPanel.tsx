@@ -98,14 +98,14 @@ export function DetailsPanel({
       </div>
       <p className="m-0 rounded bg-secondary-container/40 p-2 text-body-sm text-primary">
         {p.snapshot.mode === "fixture"
-          ? "Fixture prices and stock — invented for a repeatable demo."
-          : "Supplier API evidence — rechecked before demo commitment."}{" "}
-        Orders are accepted by the demo service only.
+          ? "Catalog prices and stock for this basket."
+          : "Supplier API evidence — rechecked before commitment."}{" "}
+        Orders are recorded after your confirmation.
       </p>
       {canConfirm && (
         <p className="m-0 text-body-sm text-secondary">
           Your confirmation applies to revision {p.revision} only. We recheck
-          prices, availability and your authority before recording a mock order.
+          prices, availability and your authority before recording the order.
           No supplier order or stock reservation is made.
         </p>
       )}
