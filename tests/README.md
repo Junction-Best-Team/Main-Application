@@ -1,6 +1,6 @@
 # Tests and CI procedure
 
-One command runs the checks locally. GitHub Actions (`.github/workflows/ci.yml`) selects backend lint/pytest/strict API sweep and frontend builds by changed paths on PRs into `develop` or `main`; frontend-only and documentation-only changes skip unrelated jobs, while manual runs check everything, including the full pytest suite. PRs run the small, explicit core-flow selection in `tests/pr-tests.sh` with fail-fast; exhaustive edge-case tests remain in the repository. Release PRs from this repository’s protected `develop` to `main` reuse the contribution checks without repeating the application or infrastructure suites; source-branch validation and the CI gate remain. Merged pushes do not repeat these checks; the `CI gate` job waits for every applicable check. For a plain-language explanation of each test, see [TEST-GUIDE.md](TEST-GUIDE.md).
+One command runs the checks locally. GitHub Actions (`.github/workflows/ci.yml`) selects backend lint/pytest/strict API sweep and frontend builds by changed paths on PRs into `develop` or `main`; frontend-only and documentation-only changes skip unrelated jobs, while manual runs check everything, including the full pytest suite. PRs run the small, explicit core-flow selection in `tests/pr-tests.sh` with fail-fast; exhaustive edge-case tests remain in the repository. Release PRs from this repository’s protected `develop` to `main` reuse the contribution checks without repeating the application or infrastructure suites; source-branch validation and the CI gate remain. Merged pushes do not repeat these checks; the `CI gate` job waits for every applicable check.
 
 ```sh
 tests/pr-tests.sh                   # quick PR regressions (existing test DB + .venv required)
@@ -39,7 +39,7 @@ Fixture upstream and fixture embeddings only; never the live API. Fixture setup 
 | File | Covers |
 | --- | --- |
 | `test_evidence.py` | Supplier-response validation, unit conversion only through known factors, packaging levels and name conflicts, missing claims are unknown (not "no"), the gross spend boundary, missing currency, malformed upstream, unchanged embeddings reused and a failed import keeping the old index, dietary filters on both search paths |
-| `test_workflow.py` | Autonomous purchase and idempotency after a restart, independent inbox approval and agent resume, reduced agent authority creating a new revision, the four outcomes and hard requirements, denied before unknown, changed price and stock invalidating approval, rejection, expiry and revocation, policy version changes, approver amount and exception scope, concurrent same-key and different-key commits, competing decisions, deposit totals and overbuy, invalid policy never defaulting to permission |
+| `test_workflow.py` | Purchase policy and idempotency after a restart, approval and commit revalidation, changed human authority creating a new revision, the four outcomes and hard requirements, denied before unknown, changed price and stock invalidating approval, rejection, expiry and revocation, policy version changes, approver amount and exception scope, concurrent same-key and different-key commits, competing decisions, deposit totals and overbuy, invalid policy never defaulting to permission |
 | `test_http.py` | Login, inbox, CSRF and logout, removed agent/MCP routes return JSON 404, cross-account isolation, input validation and error shape, login rate limit and wrong origin, `/docs` nonce and scoped CSP, the shared purchasing operations and both commit outcomes, historical approval linking to current terms |
 | `test_upstream_client.py` | The live Valio client over a mock transport (headers and body, retries on 429/5xx/transport errors, retries exhausted, no key leak, redirects not followed, malformed JSON, missing credentials) and 25 supplier-reply defects through `validate_lookup`; price validity caps proposal expiry |
 | `test_ingest.py` | Catalog import from a synthetic snapshot (deleted products skipped, embeddings reused, refused snapshots leave the active catalog unchanged) and the catalog download (key required, HTTPS redirect without the key, HTTP errors leave no file) |
@@ -52,6 +52,22 @@ Fixture upstream and fixture embeddings only; never the live API. Fixture setup 
 | `test_agent.py`, `test_agent_integration.py`, `test_conversations.py`, `test_hardening.py`, `test_retries.py` | Teammates' tests (PRs #4 and #15): the internal assistant with a scripted provider, persistent conversations and confirmation, security and performance hardening, supplier retry rules |
 | `test_sweep.py` | No provider invocation or stored messages during the standalone sweep; both live supplier endpoints queried; missing keys, rejected requests and unresolved evidence fail; `--live` without a key exits before server startup |
 | `test_upstream_mode.py` | Application pricing always selects the live client; `auto` has no fixture fallback; startup rejects fixture mode or missing credentials |
+
+## Conversational requests and supplier metrics
+
+`test_request_brief.py` covers readiness, source-preserving scaling and request
+limits; `test_request_journey.py` runs idea → chosen meal → resized product list
+through the worker, including requirements, history and failure recovery.
+`test_supplier_metrics.py` checks active dataset/hash joins, unknown and recorded-zero
+values, shortlist sorting with dietary filters, runtime read-only grants and adoption
+of pre-existing imports.
+
+`test_request_live.py` evaluates actual Google replies with isolated fixture prices.
+It is opt-in only: set `AIMO_LIVE_JOURNEYS=1`, `AIMO_EVAL_ENV_FILE` to a private `.env`
+containing `GEMINI_API_KEY`, and a dedicated `TEST_DATABASE_URL` ending in `_test`.
+These evaluations make paid model calls, never live supplier calls or supplier orders.
+The metrics comparison case uses authored metric fixtures to compare products and
+retain an optional preference; it does not verify hosted imports or their row counts.
 
 ## API sweep (`tests/sweep/run_sweep.py`)
 
@@ -78,9 +94,11 @@ CI type-checks and builds the production React app (job "Frontend types and buil
 
 ## Feature coverage
 
-Mapped by test name; a feature with only a local check is not protected by CI.
+The table maps available automated coverage. PR CI runs the core selection in
+`tests/pr-tests.sh`; manual CI and local full runs include the remaining pytest
+cases. Browser, live-provider and full-catalog checks stay local.
 
-| Feature (from `docs/brief.md`) | Automated in CI | Local only |
+| Feature | Automated coverage | Local only |
 | --- | --- | --- |
 | Structured search with dietary filters | pytest filters on both paths; `test_agent*.py` | `evaluate_search.py` quality |
 | Product detail, unit and quantity normalisation | `test_evidence.py`; `test_http.py` | `verify_catalog.py` golden cases |
@@ -93,11 +111,11 @@ Mapped by test name; a feature with only a local check is not protected by CI.
 | Buyer sessions, CSRF, isolation, rate limit | `test_http.py`; sweep sign-in, login and CSRF checks | |
 | Chat and purchase HTTP endpoints, typed responses | `test_http.py`, `test_conversations.py`; sweep conversation checks | |
 | Chat UI | frontend type check and build only | `npm run test --prefix frontend` (Playwright, by hand) |
-| Key-or-fixture fallback | `test_upstream_mode.py`; the sweep prints the mode | |
+| Live-only application pricing; fixture harness isolation | `test_upstream_mode.py`; the sweep prints the mode | |
 | Catalog ingestion, embeddings reuse | `test_evidence.py` | full 17,546-product import |
 | Docker image, Kubernetes | | `restart_smoke.py` only |
 
-Known gaps: nothing exercises the purchasing tools over HTTP end to end (they sit behind a paid LLM), the approval flow is not exercised against live stock, the UI (an old mockup) has no automated test in CI, only a type check and build.
+Known gaps: nothing exercises the purchasing tools over HTTP end to end (they sit behind a paid LLM), the approval flow is not exercised against live stock, the production UI has no browser test in CI, only lint, a type check and build.
 
 ## Modes, and what a pass means
 

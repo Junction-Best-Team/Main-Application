@@ -1,8 +1,8 @@
 # Aimo frontend
 
 The production customer app: React 19, TypeScript, React Router, Vite 7 and
-Tailwind CSS v4. FastAPI serves the built assets; Vite proxies `/api` during
-local development. This package stays in the application repository so the
+Tailwind CSS v4. The frontend image serves built assets through Nginx; Vite proxies
+`/api` during local development. This package stays in the application repository so the
 frontend, generated API contract, CI and production image evolve together.
 
 ## Start developing
@@ -30,7 +30,7 @@ src/
   features/
     auth/                        Session provider, login, route guard
     chat/                        Conversations, messages, meal plans, SSE
-    home/pages/                  Chat entry with a labelled demo schedule strip
+    home/pages/                  Chat entry
     preferences/                 Memory (saved preferences) at /settings/preferences
     purchases/                   History, exact-revision review and decisions
       api/                       Typed endpoint calls
@@ -95,9 +95,8 @@ Home, sidebar/mobile navigation, Request with SKU cards and Overview, expandable
 Past Orders and login. `src/styles/theme.css` includes preflight and design tokens;
 legacy CSS is removed. Actual data and decisions retain generated API contracts,
 cookie/CSRF authentication, SSE/retry recovery and exact-revision confirmation.
-Disabled design controls and schedule examples are labelled placeholders.
+Standing orders use the schedule feature and generated API contract.
 
 `prototypes/chat-ui/` is a standalone fake-data reference, excluded from this
 package's lint, TypeScript and formatting checks. It is not the production
-entry point. Coordinate designer-track integration against issue #59 and
-PR #102; reuse suitable presentational work without importing the fake store.
+entry point. Do not import its fake store or fixtures into production.

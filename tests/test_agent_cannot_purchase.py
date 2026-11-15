@@ -25,6 +25,10 @@ READ_AND_PREPARE = {
 SERVICE_CHECKS = {"ensure_saved_plan_resolved"}
 # Recipe discovery and deterministic scaling (PR #38, always registered since PR #103): no purchasing.
 RECIPE_TOOLS = {
+    "record_request",
+    "update_product_preferences",
+    "resize_plan",
+    "revise_recipe",
     "draft_recipe",
     "search_recipes",
     "get_recipe",
