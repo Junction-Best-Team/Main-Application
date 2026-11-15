@@ -26,6 +26,7 @@ const blank: Conversation = {
   updated_at: timestamp,
   messages: [],
   purchases: [],
+  cart_editable: false,
   busy: false,
 };
 

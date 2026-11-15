@@ -86,6 +86,8 @@ class Settings(BaseSettings):
     # Semantic guardrails (Gemini Decision 1 with GEMINI_API_KEY): enforce, shadow
     # (record only) or off. Deterministic purchasing controls always apply. See docs/guardrails.md.
     guardrail_mode: Literal["off", "shadow", "enforce"] = "enforce"
+    # After a chat turn that changed the cart, prepare the basket from it (see docs/cart-purchase.md).
+    cart_auto_prepare: bool = True
 
 
 @lru_cache
