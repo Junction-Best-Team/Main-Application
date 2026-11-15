@@ -2107,11 +2107,47 @@ for (const width of [1440, 320]) {
       new RegExp(`/conversations/${conversationId}$`),
     );
     await expect(page.getByText("What quantities do you need?")).toBeVisible();
+    // The sent request must not linger as a draft in the chat composer.
+    await expect(page.getByLabel("Continue the conversation")).toHaveValue("");
+    await expect(page.getByText("restock.txt", { exact: true })).toHaveCount(0);
     await page.reload();
     await expect(page.getByText("What quantities do you need?")).toBeVisible();
+    await expect(page.getByLabel("Continue the conversation")).toHaveValue("");
     expect(messages).toEqual([requestText]);
   });
 }
+
+test("home hands a failed first message back to the chat composer", async ({
+  page,
+}) => {
+  await mockSession(page);
+  await page.route("**/api/conversations", (route) =>
+    route.fulfill({ json: blankConversation }),
+  );
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: blankConversation }),
+  );
+  await page.route(`**/api/conversations/${conversationId}/messages`, (route) =>
+    route.fulfill({
+      status: 503,
+      json: {
+        error: { code: "UNAVAILABLE", message: "Try again shortly." },
+      },
+    }),
+  );
+  await page.goto("/");
+  await page
+    .getByLabel("Your meal or purchasing request")
+    .fill("Restock milk for Monday");
+  await page.getByRole("button", { name: "Send Order Request" }).click();
+  await expect(page).toHaveURL(new RegExp(`/conversations/${conversationId}$`));
+  await expect(page.getByRole("alert").first()).toContainText(
+    "Try again shortly.",
+  );
+  await expect(page.getByLabel("Continue the conversation")).toHaveValue(
+    "Restock milk for Monday",
+  );
+});
 
 test("home composer sends on Enter and keeps Shift+Enter as a new line", async ({
   page,
