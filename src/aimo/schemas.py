@@ -80,6 +80,10 @@ class SearchRequest(Model):
     query: str = Field(min_length=1, max_length=250)
     requirements: Requirements = Field(default_factory=Requirements)
     limit: int = Field(default=5, ge=1, le=20)
+    sort_by: Literal["relevance", "lower_carbon", "higher_delivery_reliability"] = Field(
+        default="relevance",
+        description="Optional preference within the relevant candidate shortlist, not a catalog-wide optimum. Unknown values sort last; dietary filters still apply.",
+    )
 
 
 class LookupRequest(Model):
@@ -399,6 +403,31 @@ class Provenance(Model):
     product_id: str
 
 
+class DeliveryReliability(Model):
+    value: Annotated[Decimal, Field(ge=0, le=1, allow_inf_nan=False)] | None = None
+    dataset_sha256: str | None = None
+    unit: Literal["ratio"] = "ratio"
+    basis: Literal["historical_delivered_vs_ordered"] = "historical_delivered_vs_ordered"
+
+
+class CarbonFootprint(Model):
+    value: Annotated[Decimal, Field(ge=0, allow_inf_nan=False)] | None = None
+    dataset_sha256: str | None = None
+    unit: Literal["kg CO2-eq/kg"] = "kg CO2-eq/kg"
+    basis: Literal["estimated_product_group_average"] = "estimated_product_group_average"
+
+
+class SupplierMetrics(Model):
+    delivery_reliability: DeliveryReliability = Field(
+        default_factory=DeliveryReliability,
+        description="Valio historical delivered-versus-ordered performance, 0–1. Not current availability, an on-time delivery probability or a guarantee. Null means unknown.",
+    )
+    carbon_footprint: CarbonFootprint = Field(
+        default_factory=CarbonFootprint,
+        description="Valio estimated product-group average in kg CO2-eq/kg, not an individual product measurement. Null means unknown, never zero.",
+    )
+
+
 class ProductSummary(Model):
     id: str
     name: str
@@ -412,6 +441,7 @@ class ProductSummary(Model):
     allergens: dict[str, Literal["CONTAINS", "MAY_CONTAIN"]]
     free_from: list[str]
     provenance: Provenance
+    supplier_metrics: SupplierMetrics = Field(default_factory=SupplierMetrics)
 
 
 class SearchCandidate(ProductSummary):
@@ -425,6 +455,7 @@ class SearchResponse(Model):
     model: str
     strategy: Literal["keyword", "semantic", "hybrid"]
     rerank_status: Literal["disabled", "applied", "unavailable"] = "disabled"
+    sort_by: Literal["relevance", "lower_carbon", "higher_delivery_reliability"] = "relevance"
     note: str
 
 

@@ -37,6 +37,17 @@ def configure_runtime_role(conn, role_name):
         sql.SQL("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {}").format(role)
     )
     conn.execute(sql.SQL("REVOKE ALL ON TABLE schema_migrations FROM {}").format(role))
+    # Imported supplier datasets are operator-owned. Serving and agent code only read them.
+    for table in (
+        "supplier_dataset_imports", "supplier_dataset_values", "active_supplier_datasets"
+    ):
+        row = conn.execute("SELECT to_regclass(%s) IS NOT NULL AS ok", (table,)).fetchone()
+        if row["ok"] if isinstance(row, dict) else row[0]:
+            conn.execute(
+                sql.SQL("REVOKE INSERT, UPDATE, DELETE ON {} FROM {}").format(
+                    sql.Identifier(table), role
+                )
+            )
     # Defence in depth (PER-002): the runtime role never needs TRUNCATE, REFERENCES or TRIGGER, and
     # a later grant must not survive the release Job re-applying these grants.
     conn.execute(

@@ -3,6 +3,7 @@ import math
 import re
 from functools import lru_cache
 
+from aimo import supplier_metrics
 from aimo.catalog import requirement_reasons, rich_search_text, search_text
 from aimo.config import settings
 from aimo.db import Problem, connection
@@ -100,6 +101,8 @@ def get_product(identity, product_id):
     with connection() as c:
         context(c, identity)
         p = load_products(c, [product_id]).get(product_id)
+        if p:
+            p = p | {"supplier_metrics": supplier_metrics.load(c, [product_id])[product_id]}
     if not p:
         raise Problem("NOT_FOUND", "Product not found in the active catalog.", 404)
     return p
@@ -143,6 +146,7 @@ def search_products(identity, request: SearchRequest, strategy="hybrid"):
                 "generation": str(active["id"]),
                 "model": active["model_key"],
                 "strategy": strategy,
+                "sort_by": request.sort_by,
                 "note": "Exact identifier absent or excluded by mandatory requirements.",
             }
         keyword, semantic = [], []
@@ -167,6 +171,7 @@ def search_products(identity, request: SearchRequest, strategy="hybrid"):
                 JOIN products p ON p.generation=%s AND p.id=r.id ORDER BY r.distance,r.id""",
                 (active["id"], v, *params, active["id"]),
             ).fetchall()
+        metric_values = supplier_metrics.load(c, [row["id"] for row in exact + keyword + semantic])
     scores, facts = {}, {}
     for ranking in (keyword, semantic):
         for rank, row in enumerate(ranking, 1):
@@ -201,6 +206,7 @@ def search_products(identity, request: SearchRequest, strategy="hybrid"):
         except Problem:
             # Retrieval remains usable on a reranker outage; report the degradation.
             rerank_status = "unavailable"
+    ordered = supplier_metrics.prefer(ordered, metric_values, request.sort_by)
     results = []
     for pid in ordered:
         p = facts[pid]
@@ -224,7 +230,11 @@ def search_products(identity, request: SearchRequest, strategy="hybrid"):
                     "provenance",
                 )
             }
-            | {"score": scores[pid], "match_is_suitability_proof": False}
+            | {
+                "score": scores[pid],
+                "match_is_suitability_proof": False,
+                "supplier_metrics": metric_values[pid],
+            }
         )
         if len(results) == request.limit:
             break
@@ -234,5 +244,6 @@ def search_products(identity, request: SearchRequest, strategy="hybrid"):
         "model": active["model_key"],
         "strategy": strategy,
         "rerank_status": rerank_status,
-        "note": "Discovery candidates only. Inspect requirements and current price/availability before purchase.",
+        "sort_by": request.sort_by,
+        "note": "Discovery candidates only. Metric sorting compares this relevant shortlist, not the whole catalog; unknown values sort last. Historical reliability is not current stock or a guarantee; carbon is an estimated product-group average. Inspect requirements and current price/availability before purchase.",
     }

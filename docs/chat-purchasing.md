@@ -4,9 +4,38 @@ The [product brief](brief.md) defines the purchasing controls. The React app cal
 
 ## Integrated product
 
-The root opens chat after sign-in. Conversations have stable URLs and persisted user/assistant messages, proposed recipes and actual proposal links. The customer names the meal and guest count; the agent chooses a suitable saved recipe and server-scales it, searches catalog products, loads their evidence, and prepares the full matched basket through the existing Service. If no suitable saved recipe is available, a labelled assistant-authored recipe estimate is server-scaled instead. The agent chooses ordinary serving sizes and does not ask the customer to calculate ingredient weights. It asks only for material missing facts, including delivery details before preparation, and retains stated dietary needs and hard budgets. Recipe drafts appear in Overview before a proposal exists. Recipe quantities are estimates for customer review. Every ingredient must have an actual product; the prepared request must exactly match the published plan. Unsupported dietary requirements require manual resolution. See [recipe planning](recipes.md) for the separate saved-recipe and draft guarantees.
+The root opens chat after sign-in. Conversations have stable URLs and persisted user/assistant messages, proposed recipes and actual proposal links. The customer names the meal and guest count; the agent chooses a suitable saved recipe and server-scales it, searches catalog products, loads their evidence, and prepares the full matched basket through the existing Service. If no suitable saved recipe is available, a labelled assistant-authored recipe estimate is server-scaled instead. The agent chooses ordinary serving sizes and does not ask the customer to calculate ingredient weights. It asks only for material missing recipe facts and retains stated dietary needs and hard budgets. Delivery settings are reviewed in Your order, without asking for dates or locations in chat. Replies focus on the current request, normally in one or two sentences; they do not append a recipe/delivery/checkout checklist. Background preparation updates the order card silently on success, with a brief chat notice for blocked baskets or omitted ingredients. Detailed purchasing reasons stay in Your order. Recipe drafts appear in Overview before a proposal exists. Recipe quantities are estimates for customer review. Every ingredient must have an actual product; the prepared request must exactly match the published plan. Unsupported dietary requirements require manual resolution. See [recipe planning](recipes.md) for the separate saved-recipe and draft guarantees.
 
 Purchase history includes existing proposals and accepted mock purchases. The exact old approval URL still loads its stored revision, preserving superseded/rejected/expired/accepted states and an explicit link to current terms. It never silently substitutes new terms.
+
+## Conversational request understanding
+
+The customer may start with an undecided idea, a named dish, their own recipe or a
+product list. `record_request` retains the goal, starting point, portions, recipe
+reference, budget, requirements, material missing facts and labelled assumptions.
+It is conversation-scoped working state, separate from long-term memory and
+purchase authority. Migration `026_request_brief.sql` adds the per-turn snapshot.
+Writes are fenced to the running attempt and authenticated message author; semantic
+review must preserve earlier facts and requirements unless the customer changed them.
+Under enforcement, a fresh reviewed understanding is required for preparation.
+
+Exploration can use discovery tools without selecting a meal or changing the cart.
+Once the meal/products and required quantities are clear, the assistant builds the
+list, retaining all requirements in both tool-driven and background preparation.
+Customer recipes use their supplied base quantities and server scaling, with added
+estimates identified separately. `resize_plan` recalculates portions, including a new
+saved plan for a locked recipe basket; `revise_recipe` supports explicit ingredient
+changes as a reviewed estimate and keeps unchanged product matches. Old proposals
+and receipts remain historical. Equivalent SKU changes still require product evidence.
+
+The cart owns SKU, pack and price details. Chat contains the conversation and compact
+recipe entry, without a second set of SKU cards. Failed background
+preparation keeps the draft and explains that basket checking could not finish.
+
+Optional [supplier metric preferences](supplier-metrics.md) can guide comparisons:
+historical delivery reliability and estimated product-group carbon footprint. Product
+tools return both metrics; one explicit saved preference applies to later searches.
+These are optional conversation choices, never a mandatory questionnaire or checkout rule.
 
 ## Contracts and authorization
 

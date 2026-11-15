@@ -291,6 +291,28 @@ def request_for(plan):
     )
 
 
+def test_prepared_saved_recipe_can_resize_in_a_new_turn_preserving_the_old_basket(
+    tmp_path, actor, service, meal_products
+):
+    from aimo.agent_tools import ResizePlan
+
+    *_, versions = import_fixture(tmp_path)
+    original = match_all(actor, scale_recipe(actor, ref(versions)))
+    basket = service.prepare_order(actor, request_for(original))
+    later = actor | {"_turn_id": str(uuid4())}
+    session = ToolSession(later, service)
+    assert session.restore_saved_plan(original["recipe_plan_id"])
+    result = session.resize_plan(ResizePlan(portions=150))["meal_plan"]
+    assert result["recipe_plan_id"] != original["recipe_plan_id"]
+    assert result["portions"] == 150
+    assert all(i["status"] == "matched" for i in result["ingredients"])
+    assert {i["product_id"] for i in result["ingredients"]} == {
+        i["product_id"] for i in original["ingredients"]
+    }
+    assert get_plan(actor, PlanReference(plan_id=original["recipe_plan_id"])) == original
+    assert service.get_proposal(actor, basket["proposal_id"])["fingerprint"] == basket["fingerprint"]
+
+
 def test_recipe_to_matched_products_to_backend_basket(tmp_path, actor, service, meal_products):
     *_, versions = import_fixture(tmp_path)
     plan = match_all(actor, scale_recipe(actor, ref(versions)))

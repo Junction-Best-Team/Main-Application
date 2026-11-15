@@ -53,6 +53,22 @@ Fixture upstream and fixture embeddings only; never the live API. Fixture setup 
 | `test_sweep.py` | No provider invocation or stored messages during the standalone sweep; both live supplier endpoints queried; missing keys, rejected requests and unresolved evidence fail; `--live` without a key exits before server startup |
 | `test_upstream_mode.py` | Application pricing always selects the live client; `auto` has no fixture fallback; startup rejects fixture mode or missing credentials |
 
+## Conversational requests and supplier metrics
+
+`test_request_brief.py` covers readiness, source-preserving scaling and request
+limits; `test_request_journey.py` runs idea → chosen meal → resized product list
+through the worker, including requirements, history and failure recovery.
+`test_supplier_metrics.py` checks active dataset/hash joins, unknown and recorded-zero
+values, shortlist sorting with dietary filters, runtime read-only grants and adoption
+of pre-existing imports.
+
+`test_request_live.py` evaluates actual Google replies with isolated fixture prices.
+It is opt-in only: set `AIMO_LIVE_JOURNEYS=1`, `AIMO_EVAL_ENV_FILE` to a private `.env`
+containing `GEMINI_API_KEY`, and a dedicated `TEST_DATABASE_URL` ending in `_test`.
+These evaluations make paid model calls, never live supplier calls or supplier orders.
+The metrics comparison case uses authored metric fixtures to compare products and
+retain an optional preference; it does not verify hosted imports or their row counts.
+
 ## API sweep (`tests/sweep/run_sweep.py`)
 
 Uses only the public HTTP surface, like the browser. It needs no LLM provider and no Valio key (the server runs with `LLM_API_KEY` empty). The purchasing tools run only inside an LLM-driven chat turn, so they are covered by the scripted-provider pytest suites, not by the sweep. The configured upstream mode is read from the server and printed; it is not proof of supplier connectivity. The sweep never sends an authenticated chat message, including against a server with an LLM configured.

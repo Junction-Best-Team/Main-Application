@@ -12,9 +12,9 @@ An AI purchasing assistant for professional kitchens, built for the **Valio Aimo
 
 > “Help me plan carbonara for 200 portions, within €1,000.”
 
-1. **Plan together.** Aimo asks about delivery, dietary needs and missing details. Use text, voice, or attach a recipe, spreadsheet or image.
+1. **Plan together.** Aimo helps you choose a meal and asks about material missing details, keeping dietary needs and budgets in mind. Use text, voice, or attach a recipe, spreadsheet or image.
 2. **Find what fits.** Recipe quantities are scaled on the server, then matched to catalog products and wholesale packs. Prices and stock are checked for the shortlist.
-3. **Review before confirming.** See the proposed quantities, costs and any blockers. A purchase requires your on-screen confirmation of the exact basket revision.
+3. **Review before confirming.** Review delivery details, proposed quantities, costs and any blockers. A purchase requires your on-screen confirmation of the exact basket revision.
 
 Saved recipes retain their source; assistant-created recipes are labelled estimates. Uncertain ingredients or commercial evidence can block a basket. Chat text alone never confirms a purchase.
 
@@ -79,6 +79,7 @@ Start a task branch from the latest `origin/develop`; preserve teammates' change
 
 - [Product behavior and purchasing controls](docs/brief.md)
 - [Architecture and agent harness](docs/architecture.md) · [Guardrails](docs/guardrails.md)
+- [Supplier reliability and carbon comparisons](docs/supplier-metrics.md)
 - [Recipes](docs/recipes.md) · [Attachments](docs/attachments.md) · [Voice](docs/voice.md) · [Memory](docs/memory.md)
 - [Frontend development](frontend/README.md) · [Deployment and operations](infra/README.md)
 - [Preparation, reused work and third-party attribution](docs/pre-existing-work.md)

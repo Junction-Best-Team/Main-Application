@@ -9,7 +9,7 @@ from uuid import UUID
 
 from pydantic import ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 
-from aimo import memory
+from aimo import memory, request_brief
 from aimo.basket_errors import mismatch_problem, required_basket
 from aimo.chat_schemas import AgentTurn, MealPlan
 from aimo.config import settings
@@ -30,6 +30,7 @@ from aimo.recipe_schemas import (
     ScaleRecipe,
 )
 from aimo.recipes import combine_by_product, scaled_plan
+from aimo.request_brief import RequestBrief
 from aimo.schemas import (
     Amount,
     Contribution,
@@ -58,6 +59,17 @@ CATALOG_TOOLS = frozenset({
 
 class EmptyRequest(Model):
     pass
+
+
+class ResizePlan(Model):
+    portions: int = Field(ge=1, le=10000)
+
+
+class ProductPreferences(Model):
+    product_preferences: list[Literal["lower_carbon", "higher_delivery_reliability"]] = Field(
+        max_length=2,
+        description="Replace only the customer's optional comparison preferences. Empty clears them; all other saved request facts stay unchanged.",
+    )
 
 
 class ProductRequest(Model):
@@ -324,6 +336,8 @@ class ToolSession:
         # POL-008: the customer's stated limits, supplied by the server and never by the model.
         # No tool input accepts it; prepare forwards it so policy can stop a loosened request.
         self.constraints = constraints
+        self.brief = RequestBrief.model_validate(identity["_request_brief"]) if identity.get("_request_brief") else None
+        self.brief_recorded = False
         self.supersede = None  # cart baskets only: cancel the conversation's older open baskets
         # Optional semantic review; deterministic checks here and in Service always apply.
         self.guard = guard
@@ -344,6 +358,46 @@ class ToolSession:
         self.memory_changes = []
         self.image = None
         self.registry = {
+            "record_request": ToolSpec(
+                RequestBrief,
+                "Save the current understanding of the customer's request before changing a plan "
+                "or preparing a basket. Keep prior facts and all requirements unless the customer "
+                "changed them. Distinguish exploration from building the chosen meal/product list; "
+                "record material missing facts and label estimates as assumptions. This is not "
+                "long-term memory, policy or purchase authorization. Use product_preferences for "
+                "customer-stated lower-carbon or historical-reliability preferences, not "
+                "requirements.unsupported or missing_facts.",
+                self.record_request,
+                RequestBrief,
+            ),
+            "update_product_preferences": ToolSpec(
+                ProductPreferences,
+                "Update only explicit customer-stated comparison preferences on an existing "
+                "request. Preserve its goal, product scope, quantities, budget and requirements "
+                "on the server. Use this for a preference-only follow-up; use record_request "
+                "when the customer changes the meal/products or other request facts. Optional "
+                "preferences never block purchase readiness or authorize a purchase.",
+                self.update_product_preferences,
+                RequestBrief,
+            ),
+            "resize_plan": ToolSpec(
+                ResizePlan,
+                "Recalculate the existing plan for a customer-requested portion change in a new "
+                "turn. Keep existing product selections where evidence still supports them. "
+                "Saved recipes get a new plan; previous baskets/history remain unchanged.",
+                self.resize_plan,
+                MealPlanResult,
+            ),
+            "revise_recipe": ToolSpec(
+                DraftRecipe,
+                "Revise an existing recipe in a new customer turn after an explicit ingredient "
+                "change (for example make it vegetarian or use pantry ingredients). Preserve "
+                "unaffected facts. The result is a labelled estimate with a title reflecting the "
+                "changed dish, not a claim that the saved source recipe was edited. Use "
+                "resize_plan for portion changes alone and matching tools for equivalent SKU swaps.",
+                self.revise_recipe,
+                MealPlanResult,
+            ),
             "generate_recipe_image": ToolSpec(
                 GenerateRecipeImage,
                 "Generate and host one AI recipe illustration for this customer message. "
@@ -359,13 +413,18 @@ class ToolSession:
                 "Search for candidates. The first three include inspected catalog facts and "
                 "can be selected without another get_product call. Other results are discovery "
                 "summaries only. Neither ranking nor inspection proves recipe suitability. "
+                "Includes active Valio historical delivery reliability and estimated group-average "
+                "carbon footprint; missing values are unknown. Optional sort_by compares only "
+                "the relevant shortlist, retaining mandatory dietary filters. "
                 "Request independent ingredient searches together in the same response.",
                 self.search,
                 InspectedSearchResponse,
             ),
             "get_product": ToolSpec(
                 ReadProduct,
-                "Read product IDs, units and catalog evidence.",
+                "Read product IDs, units, catalog evidence and active Valio supplier_metrics: "
+                "historical delivery reliability and estimated product-group carbon footprint. "
+                "Null means unknown. Neither metric proves stock or purchase eligibility.",
                 self.product,
                 ProductResponse,
             ),
@@ -507,6 +566,96 @@ class ToolSession:
             self.plan = MealPlan.model_validate(checked)
         return {"meal_plan": checked, "purchase_authorized": False}
 
+    def record_request(self, brief):
+        if self.prepared_digest is not None:
+            raise Problem("MEAL_PLAN_LOCKED", "Change the request in a new customer message.", 422)
+        if self.guard:
+            self.guard.check_request_brief(
+                self.brief, brief, self.identity.get("_current_constraints", [])
+            )
+        request_brief.save(self.identity, brief)
+        self.brief, self.brief_recorded = brief.model_copy(deep=True), True
+        return self.brief.model_dump(mode="json")
+
+    def update_product_preferences(self, request):
+        if self.brief is None:
+            raise Problem("REQUEST_BRIEF_REQUIRED", "Record the current request first.", 422)
+        return self.record_request(self.brief.model_copy(
+            deep=True, update={"product_preferences": request.product_preferences}
+        ))
+
+    def resize_plan(self, request):
+        if not self.plan or self.prepared_digest is not None or self.draft_basis is not None:
+            raise Problem("MEAL_PLAN_LOCKED", "Resize an existing plan in a new customer turn.", 422)
+        old = self.plan.model_copy(deep=True)
+        if old.recipe_plan_id:
+            self.scale_recipe(
+                ScaleRecipe(
+                    recipe_id=old.recipe_id,
+                    version=old.recipe_version,
+                    portions=request.portions,
+                )
+            )
+            for item in old.ingredients:
+                if item.product_id and item.status == "matched" and item.product_id in self.products:
+                    self.match_ingredient(
+                        MatchIngredient(
+                            plan_id=self.plan.recipe_plan_id,
+                            revision=self.plan.recipe_plan_revision,
+                            ingredient_id=item.ingredient_id,
+                            product_id=item.product_id,
+                        )
+                    )
+            return {"meal_plan": self.plan.model_dump(mode="json"), "purchase_authorized": False}
+        ratio = Decimal(request.portions) / old.portions
+        revised = old.model_copy(deep=True, update={"portions": request.portions})
+        for item in revised.ingredients:
+            if item.amount is not None:
+                item.amount = format(
+                    (Decimal(item.amount) * ratio).quantize(Decimal("0.0001")).normalize(), "f"
+                )
+        revised.notes = [
+            *old.notes,
+            f"Server-rescaled from {old.portions} to {request.portions} portions.",
+        ][-20:]
+        return self.publish(revised)
+
+    def revise_recipe(self, request):
+        if self.brief and not self.brief.can_build:
+            raise Problem("REQUEST_NOT_READY", "Clarify the requested recipe change first.", 422)
+        if not self.plan or self.prepared_digest is not None or not self.brief_recorded:
+            raise Problem(
+                "RECIPE_REVISION_REQUIRED",
+                "Record the customer's changed recipe request in a new turn first.",
+                422,
+            )
+        if self.guard:
+            self.guard.check_recipe_revision(self.plan, request)
+        old_plan, old_basis, old_totals = self.plan, self.draft_basis, self.draft_totals
+        self.plan, self.draft_basis, self.draft_totals = None, None, None
+        try:
+            result = self.draft_recipe(request)
+        except Exception:
+            self.plan, self.draft_basis, self.draft_totals = old_plan, old_basis, old_totals
+            raise
+        # Keep inspected selections for unchanged ingredients; replacements need new matches.
+        previous = {i.name.casefold(): i for i in old_plan.ingredients}
+        ratio = Decimal(self.plan.portions) / old_plan.portions
+        for item in self.plan.ingredients:
+            old = previous.get(item.name.casefold())
+            if (
+                old
+                and old.amount is not None
+                and old.unit == item.unit
+                and Decimal(old.amount) * ratio == Decimal(item.amount)
+                and old.product_id in self.products
+            ):
+                item.product_id = old.product_id
+        self.plan.notes.append(f"Revised from: {old_plan.title}; previous baskets remain in history.")
+        self.plan.notes = self.plan.notes[-20:]
+        self.draft_totals = self.plan.model_copy(deep=True)
+        return {**result, "meal_plan": self.plan.model_dump(mode="json")}
+
     def generate_recipe_image(self, request):
         if self.image is None:
             self.image = RecipeImage.model_validate(
@@ -515,6 +664,8 @@ class ToolSession:
         return {"image": self.image.model_dump(), "illustration_only": True}
 
     def scale_recipe(self, request):
+        if self.brief and not self.brief.can_build:
+            raise Problem("REQUEST_NOT_READY", "Discuss the meal choice or missing quantities first.", 422)
         if self.prepared_digest is not None:
             raise Problem("MEAL_PLAN_LOCKED", "Request recipe changes in a new customer message.")
         detail = self.recipe_detail(request)
@@ -562,6 +713,9 @@ class ToolSession:
         return result
 
     def draft_recipe(self, request):
+        if (request.source == "customer_recipe"
+                and (not self.brief or self.brief.starting_point != "customer_recipe")):
+            raise Problem("CUSTOMER_RECIPE_REQUIRED", "Record the customer's supplied recipe before using this source label.", 422)
         if self.draft_basis is not None:
             if request != self.draft_basis:
                 raise Problem("MEAL_PLAN_LOCKED", "Change the recipe in a new customer message.")
@@ -662,14 +816,19 @@ class ToolSession:
 
     @property
     def needs_recipe_plan(self):
-        return self.recipe_discovery_started and self.plan is None
+        return (self.recipe_discovery_started and self.plan is None
+                and not (self.brief and (not self.brief.can_build)))
 
     def execution_guidance(self, remaining):
         """Server-owned workflow state; candidate discovery never selects a product."""
         clock = f"Turn time remaining: {max(0, int(remaining))} seconds. "
+        if self.identity.get("_conversation_id") and not self.brief_recorded:
+            clock += "Use record_request to carry forward and update the customer's known facts before changing their plan. "
+        if self.brief and not self.brief.can_build:
+            return clock + "Help the customer explore or resolve the next material missing fact. Reads are available; do not publish a cart or prepare a basket yet."
         if self.needs_recipe_plan:
             return clock + (
-                "Recipe discovery has run. Publish the quantity plan now using scale_recipe "
+                "If the customer has chosen the meal and portions, publish its quantity plan using scale_recipe "
                 "for a complete saved recipe or draft_recipe for a labelled estimate. "
                 "Catalog tools become available after the plan is published."
             )
@@ -689,7 +848,8 @@ class ToolSession:
                 "for a free-form plan, or match_ingredients for a saved recipe. Do not "
                 "call draft_recipe again to change the recipe basis in this turn. "
                 "Do not research alternatives for an already suitable selection. Once matched, "
-                "finish basket checks or ask only for missing delivery details."
+                "finish basket checks using existing delivery terms, or leave preparation "
+                "to the automatic cart workflow or Your order. Do not ask for delivery details."
             )
         return clock
 
@@ -762,6 +922,11 @@ class ToolSession:
         return result
 
     def search(self, request):
+        if (
+            request.sort_by == "relevance" and self.brief
+            and len(self.brief.product_preferences) == 1
+        ):
+            request = request.model_copy(update={"sort_by": self.brief.product_preferences[0]})
         key = fingerprint(request.model_dump(mode="json"))
         if key in self.search_results:
             return self.search_results[key]
@@ -867,6 +1032,8 @@ class ToolSession:
         return True
 
     def publish(self, plan):
+        if self.brief and not self.brief.can_build:
+            raise Problem("REQUEST_NOT_READY", "Explore the options or clarify the missing fact before creating the product list.", 422)
         # The tool input is a subclass that only adds examples; compare and store the plain model.
         plan = MealPlan.model_validate(plan.model_dump())
         if plan.recipe_plan_id or (self.plan and self.plan.recipe_plan_id):
@@ -934,6 +1101,11 @@ class ToolSession:
         return {"meal_plan": self.plan.model_dump(mode="json"), "purchase_authorized": False}
 
     def prepare(self, request):
+        if self.brief:
+            request = request_brief.apply(self.brief, request, self.plan)
+        if (self.guard and self.guard.enforcing and self.identity.get("_conversation_id")
+                and not self.brief_recorded):
+            raise Problem("REQUEST_BRIEF_REQUIRED", "Call record_request to retain the current customer requirements before preparing.", 422)
         if not self.plan or any(not item.product_id for item in self.plan.ingredients):
             raise Problem(
                 "INCOMPLETE_MEAL_PLAN",
@@ -1063,45 +1235,37 @@ class ToolSession:
         self.receipt = result
         return result
 
-    def result(self, narrative="", include_plan=True):
+    def purchase_notice(self, include_ready=True):
+        """Brief trusted status; detailed reasons stay on the persisted basket."""
+        if self.proposal:
+            if self.proposal.get("order_id"):
+                return "This purchase has a saved mock receipt. No supplier order was placed."
+            if self.proposal["policy_outcome"] in ("denied", "needs_resolution"):
+                return (
+                    "This basket cannot be confirmed yet; see purchasing checks in Your order."
+                    if self.proposal["policy_outcome"] == "denied"
+                    else "This basket needs checking before confirmation; see Your order."
+                )
+            if include_ready:
+                return (
+                    "Your basket is ready to review in Your order. "
+                    "No supplier order has been placed."
+                )
+        elif self.receipt:
+            return "Accepted by demo order service. No supplier order or inventory reservation."
+        return ""
+
+    def result(self, narrative="", include_plan=True, *, include_ready=False):
         """Trusted status notices; ``include_plan=False`` withholds the model-authored plan."""
         plan = self.plan if include_plan else None
         if plan is not None and plan == self.restored and not self.proposal:
             plan = None  # a restored plan nobody used this turn must not carry on as a fresh answer
-        notice = ""
-        if self.proposal:
-            if self.proposal.get("order_id"):
-                notice = "This purchase has a saved mock receipt. No supplier order was placed."
-            elif self.proposal["policy_outcome"] in ("denied", "needs_resolution"):
-                notice = (
-                    "This basket is blocked by purchasing rules."
-                    if self.proposal["policy_outcome"] == "denied"
-                    else "This basket needs checking before it can be confirmed."
-                )
-                notice += " See purchasing checks in Your order for details."
-            else:
-                warnings = [
-                    reason["message"]
-                    for reason in self.proposal["reasons"]
-                    if reason.get("severity") == "warning"
-                ]
-                notice = (
-                    " ".join(dict.fromkeys(warnings))
-                    + (" " if warnings else "")
-                    + "Review the verified basket and exact revision, then use the Confirm "
-                    "purchase button. No supplier order has been placed."
-                )
-        elif self.receipt:
-            notice = "Accepted by demo order service. No supplier order or inventory reservation."
+        notice = self.purchase_notice(include_ready=include_ready or not narrative.strip())
         if plan:
-            recipe_notice = "Recipe quantities are estimates for customer review."
             unresolved = [item.name for item in plan.ingredients if not item.product_id]
             if unresolved:
-                if self.draft_basis is not None:
-                    recipe_notice += f" {len(unresolved)} ingredients still need catalog matches."
-                else:
-                    recipe_notice += " Unresolved ingredients: " + ", ".join(unresolved) + "."
-            notice = "\n\n".join(part for part in (recipe_notice, notice) if part)
+                unmatched_notice = f"{len(unresolved)} ingredients still need product matches."
+                notice = "\n\n".join(part for part in (unmatched_notice, notice) if part)
         if self.memory_changes:
             notice = "\n\n".join(p for p in (memory_notice(self.memory_changes), notice) if p)
         if notice:
