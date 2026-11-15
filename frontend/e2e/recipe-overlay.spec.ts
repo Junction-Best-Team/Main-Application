@@ -270,7 +270,7 @@ test("catalog recipe opens near-fullscreen overlay with ingredients then steps",
 
   await expect(
     overlay.getByRole("button", { name: "Download PDF" }),
-  ).toHaveCount(0);
+  ).toBeVisible();
   await expect(
     overlay.getByRole("button", { name: "Open basket" }),
   ).toHaveCount(0);

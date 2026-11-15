@@ -2,11 +2,12 @@ import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import type { MealPlan } from "../../../shared/api/types";
 import { Icon } from "../../../shared/components/DesignPrimitives";
+import { downloadRecipePdf } from "../model/recipePdf";
 
 const FOCUSABLE =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-/** Whole-viewport recipe overlay: near-fullscreen panel on scrim; ingredients + steps only. */
+/** Whole-viewport recipe overlay: near-fullscreen panel on scrim; sticky PDF download. */
 export function RecipeOverlay({
   plan,
   onClose,
@@ -146,6 +147,16 @@ export function RecipeOverlay({
               </ol>
             )}
           </section>
+        </div>
+        <div className="flex shrink-0 justify-end border-t border-border-subtle bg-surface-pure px-space-md py-space-sm">
+          <button
+            type="button"
+            onClick={() => downloadRecipePdf(plan)}
+            className="inline-flex cursor-pointer items-center gap-1 rounded-lg border-0 bg-primary-container px-space-md py-space-sm font-label text-label-md font-bold text-on-primary transition-colors hover:bg-deep-ocean-navy"
+          >
+            <Icon name="file_download" className="text-[18px]" />
+            Download PDF
+          </button>
         </div>
       </div>
     </div>,
