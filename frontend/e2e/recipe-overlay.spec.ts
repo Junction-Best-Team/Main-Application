@@ -150,7 +150,7 @@ const catalogPlan = {
   notes: ["Recipe quantities are estimates."],
 };
 
-test("catalog recipe shows compact turn and overlay ingredients-then-steps with PDF", async ({
+test("catalog recipe opens near-fullscreen overlay with ingredients then steps", async ({
   page,
 }) => {
   await mockSession(page);
@@ -235,15 +235,25 @@ test("catalog recipe shows compact turn and overlay ingredients-then-steps with 
     page.getByRole("button", { name: "Open recipe Carbonara" }),
   ).toBeVisible();
   await expect(log.getByText("Dry spaghetti", { exact: true })).toHaveCount(0);
-  await expect(log.getByText("20 KG", { exact: true })).toHaveCount(0);
   await expect(log.getByText("Boil the pasta.", { exact: true })).toHaveCount(
     0,
   );
-  await expect(log.getByText("Buy 7 ST", { exact: false })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Open recipe Carbonara" }).click();
   const overlay = page.getByRole("dialog", { name: "Carbonara" });
   await expect(overlay).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.body.style.overflow))
+    .toBe("hidden");
+
+  const box = await overlay.boundingBox();
+  const viewport = page.viewportSize();
+  expect(box && viewport).toBeTruthy();
+  if (box && viewport) {
+    expect(box.width / viewport.width).toBeGreaterThan(0.6);
+    expect(box.height / viewport.height).toBeGreaterThan(0.7);
+  }
+
   const ingredients = overlay.getByRole("region", { name: "Ingredients" });
   const steps = overlay.getByRole("region", { name: "Cooking steps" });
   await expect(ingredients.getByText("Dry spaghetti")).toBeVisible();
@@ -256,22 +266,26 @@ test("catalog recipe shows compact turn and overlay ingredients-then-steps with 
 
   const ingredientBox = await ingredients.boundingBox();
   const stepsBox = await steps.boundingBox();
-  expect(
-    ingredientBox && stepsBox && ingredientBox.y < stepsBox.y,
-  ).toBeTruthy();
+  expect(ingredientBox && stepsBox && ingredientBox.y < stepsBox.y).toBeTruthy();
 
   await expect(
     overlay.getByRole("button", { name: "Download PDF" }),
   ).toBeVisible();
   await expect(
     overlay.getByRole("button", { name: "Open basket" }),
-  ).toBeEnabled();
+  ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Review basket to confirm" }),
   ).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(overlay).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Open recipe Carbonara" }),
+  ).toBeVisible();
 });
 
-test("free-form meal plan without instructions skips overlay", async ({
+test("free-form meal plan still opens overlay with empty steps", async ({
   page,
 }) => {
   await mockSession(page);
@@ -303,16 +317,11 @@ test("free-form meal plan without instructions skips overlay", async ({
     }),
   );
   await page.goto(`/conversations/${conversationId}`);
-  await expect(
-    page.getByRole("region", { name: "Proposed meal plan" }),
-  ).toContainText("Market stew");
-  await expect(page.getByRole("button", { name: /Open recipe/ })).toHaveCount(
-    0,
-  );
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(
-    page
-      .getByRole("log", { name: "Conversation messages" })
-      .getByText("Carrots", { exact: true }),
-  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Open recipe Market stew" }).click();
+  const overlay = page.getByRole("dialog", { name: "Market stew" });
+  await expect(overlay).toBeVisible();
+  await expect(overlay.getByText("Carrots")).toBeVisible();
+  await expect(overlay.getByText("No cooking steps in this plan.")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(overlay).toHaveCount(0);
 });
