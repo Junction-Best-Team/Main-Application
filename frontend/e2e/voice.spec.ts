@@ -51,8 +51,15 @@ async function fixture(
       voiceEvents?: EventTarget[];
       voiceTracks?: MediaStreamTrack[];
       voicePlaybacks?: number;
+      voiceTones?: number;
     };
     browser.voiceEvents = [];
+    browser.voiceTones = 0;
+    const createTone = AudioContext.prototype.createOscillator;
+    AudioContext.prototype.createOscillator = function () {
+      browser.voiceTones!++;
+      return createTone.call(this);
+    };
     browser.voiceTracks = [];
     browser.voicePlaybacks = 0;
     class Events extends EventTarget {
@@ -130,6 +137,14 @@ async function fixture(
         conversation = {
           ...conversation,
           busy: Boolean(options.delayed),
+          // Like the API: an unfinished text turn already carries its retry copy.
+          retry_message: options.delayed
+            ? {
+                text: body.text,
+                idempotency_key: body.idempotency_key,
+                attachments: [],
+              }
+            : null,
           messages: [
             { id: 1, role: "user", text: body.text, created_at: timestamp },
             ...(options.delayed
@@ -160,6 +175,7 @@ async function fixture(
           conversation = {
             ...conversation,
             busy: false,
+            retry_message: null,
             messages: [
               ...conversation.messages,
               {
@@ -223,6 +239,13 @@ async function fixture(
     disconnect: () =>
       peer!.close({ code: 1011, reason: "private provider details" }),
   };
+}
+
+function voiceCount(page: Page, name: "voicePlaybacks" | "voiceTones") {
+  return page.evaluate(
+    (key) => (window as unknown as Record<string, number>)[key],
+    name,
+  );
 }
 
 async function expectReleased(page: Page) {
@@ -302,14 +325,22 @@ test("voice saves exact speech through chat, reads the saved reply, and releases
   mock.send({
     toolCall: { functionCalls: [{ id: "call-1", name: "ask_aimo" }] },
   });
-  await page.getByRole("button", { name: "Mute", exact: true }).click();
+  // The orb swells with the fake microphone's beep, so it never holds still.
+  await page
+    .getByRole("button", { name: "Mute", exact: true })
+    .click({ force: true });
   await expect(page.getByRole("button", { name: "Unmute" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
-  await page.getByRole("button", { name: "Unmute" }).click();
+  await page.getByRole("button", { name: "Unmute" }).click({ force: true });
+  const tonesBeforeEnd = await voiceCount(page, "voiceTones");
   await page.getByRole("button", { name: "End voice" }).click();
   await expect(voice).toHaveCount(0);
+  // Hanging up plays the falling two-note goodbye chime.
+  await expect
+    .poll(() => voiceCount(page, "voiceTones"))
+    .toBe(tonesBeforeEnd + 2);
   await expectReleased(page);
   await expect.poll(mock.closed).toBe(true);
   expect(mock.sent).toHaveLength(1);
@@ -348,7 +379,7 @@ test("provider unavailability releases the microphone and preserves typing", asy
   await page.getByRole("button", { name: "Start voice mode" }).click();
   await expect(page.getByRole("alert")).toContainText("Voice is unavailable");
   await expectReleased(page);
-  await page.getByRole("button", { name: "Back to chat" }).click();
+  await page.getByRole("button", { name: "End voice" }).click();
   await expect(
     page.getByRole("textbox", { name: "Continue the conversation" }),
   ).toBeEnabled();
@@ -380,6 +411,8 @@ test("navigation ends voice and accepted work continues in saved chat", async ({
   await expect(
     page.getByRole("region", { name: "Voice mode" }).getByRole("status"),
   ).toHaveText("Listening");
+  // A soft two-note chime says voice is ready.
+  await expect.poll(() => voiceCount(page, "voiceTones")).toBe(2);
   mock.send({
     serverContent: {
       inputTranscription: { text: "Yes, confirm that basket." },
@@ -392,6 +425,8 @@ test("navigation ends voice and accepted work continues in saved chat", async ({
   await expect(
     page.getByRole("region", { name: "Voice mode" }).getByRole("status"),
   ).toHaveText("Aimo is working…");
+  // A soft "• • •" pulse plays while Aimo works.
+  await expect.poll(() => voiceCount(page, "voiceTones")).toBeGreaterThan(2);
   await page.screenshot({ path: "test-results/voice-desktop.png" });
   await page.getByRole("link", { name: "Orders", exact: true }).first().click();
   await expect(page.getByRole("region", { name: "Voice mode" })).toHaveCount(0);
@@ -418,10 +453,10 @@ test("a failed voice submission restores text and keeps its retry key", async ({
     toolCall: { functionCalls: [{ id: "call-1", name: "ask_aimo" }] },
   });
   await expect(
-    page.getByRole("button", { name: "Back to chat" }),
-  ).toBeVisible();
+    page.getByRole("region", { name: "Voice mode" }).getByRole("status"),
+  ).toHaveText("Voice stopped");
   await expectReleased(page);
-  await page.getByRole("button", { name: "Back to chat" }).click();
+  await page.getByRole("button", { name: "End voice" }).click();
   await expect(
     page.getByRole("textbox", { name: "Continue the conversation" }),
   ).toHaveValue("Carbonara for 200 people.");
@@ -484,4 +519,125 @@ test("backgrounding the chat releases the microphone", async ({ page }) => {
   });
   await expect(page.getByRole("region", { name: "Voice mode" })).toHaveCount(0);
   await expectReleased(page);
+});
+
+test("a short holding line may play after speech, before Aimo's reply", async ({
+  page,
+}) => {
+  const mock = await fixture(page, { delayed: true });
+  await page.goto(`/conversations/${id}`);
+  await page.getByRole("button", { name: "Start voice mode" }).click();
+  await expect(
+    page.getByRole("region", { name: "Voice mode" }).getByRole("status"),
+  ).toHaveText("Listening");
+  mock.send({
+    serverContent: { inputTranscription: { text: "Carbonara for 200." } },
+  });
+  mock.send({
+    serverContent: {
+      outputTranscription: { text: "Let me check that." },
+      modelTurn: {
+        parts: [
+          {
+            inlineData: {
+              data: "AAAA".repeat(240),
+              mimeType: "audio/pcm;rate=24000",
+            },
+          },
+        ],
+      },
+    },
+  });
+  await expect.poll(() => voiceCount(page, "voicePlaybacks")).toBe(1);
+  mock.send({
+    toolCall: { functionCalls: [{ id: "call-1", name: "ask_aimo" }] },
+  });
+  await expect.poll(() => mock.sent.length).toBe(1);
+  // The window closes once the request is sent: no more model audio until the reply.
+  mock.send({
+    serverContent: {
+      modelTurn: {
+        parts: [
+          {
+            inlineData: {
+              data: "AAAA".repeat(240),
+              mimeType: "audio/pcm;rate=24000",
+            },
+          },
+        ],
+      },
+    },
+  });
+  await page.waitForTimeout(300);
+  expect(await voiceCount(page, "voicePlaybacks")).toBe(1);
+});
+
+test("the holding line is cut when the model says too much", async ({
+  page,
+}) => {
+  const mock = await fixture(page, { delayed: true });
+  await page.goto(`/conversations/${id}`);
+  await page.getByRole("button", { name: "Start voice mode" }).click();
+  await expect(
+    page.getByRole("region", { name: "Voice mode" }).getByRole("status"),
+  ).toHaveText("Listening");
+  mock.send({
+    serverContent: { inputTranscription: { text: "Carbonara for 200." } },
+  });
+  // Too long to be a holding line (over 2.5 seconds of audio).
+  mock.send({
+    serverContent: {
+      modelTurn: {
+        parts: [
+          {
+            inlineData: {
+              data: "AAAA".repeat(50_000),
+              mimeType: "audio/pcm;rate=24000",
+            },
+          },
+        ],
+      },
+    },
+  });
+  // Too many words, even in a short chunk.
+  mock.send({
+    serverContent: {
+      outputTranscription: {
+        text: "Sure, I have already ordered all of that for you.",
+      },
+      modelTurn: {
+        parts: [
+          {
+            inlineData: {
+              data: "AAAA".repeat(240),
+              mimeType: "audio/pcm;rate=24000",
+            },
+          },
+        ],
+      },
+    },
+  });
+  await page.waitForTimeout(300);
+  expect(await voiceCount(page, "voicePlaybacks")).toBe(0);
+});
+
+test("home shows no orb over the hero, only an inline voice error", async ({
+  page,
+}) => {
+  await fixture(page);
+  await page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = async () => {
+      throw new DOMException("Denied", "NotAllowedError");
+    };
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Start voice mode" }).click();
+  const form = page.getByRole("form", { name: "Chat message" });
+  await expect(form.getByRole("alert")).toContainText(
+    "Microphone access was denied",
+  );
+  await expect(page).toHaveURL("/");
+  await expect(page.locator(".voice-orb")).toHaveCount(0);
+  await page.getByRole("button", { name: "End voice" }).click();
+  await expect(page.getByRole("region", { name: "Voice mode" })).toHaveCount(0);
 });
