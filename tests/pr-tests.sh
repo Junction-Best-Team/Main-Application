@@ -12,6 +12,10 @@ exec .venv/bin/pytest -q -x --durations=5 \
   tests/test_conversations.py \
   tests/test_worker.py \
   tests/test_agent_integration.py \
+  tests/test_request_brief.py \
+  tests/test_agent.py::test_request_brief_gets_one_correction_before_asking_customer \
+  tests/test_request_journey.py::test_repeated_summary_refusal_finishes_with_clarification_and_preserves_history \
+  tests/test_guardrails_integration.py::test_enforced_guard_turn_still_needs_exact_customer_confirmation \
   tests/test_agent_parallel.py \
   tests/test_agent_recipe_planning.py \
   tests/test_agent_recovery_integration.py \

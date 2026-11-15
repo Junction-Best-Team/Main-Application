@@ -494,6 +494,7 @@ def run_turn(
     execution_instructions = history[0]["content"]
     deadline = time.monotonic() + budget_seconds
     errors = 0
+    brief_errors = 0
     progress.emit("started")
     tool_log = []
     guard = None
@@ -594,6 +595,18 @@ def run_turn(
                         tool_log.append(
                             {"tool": visible_name or "unavailable", "outcome": exc.code}
                         )
+                        if exc.code == "REQUEST_BRIEF_UNVERIFIED":
+                            brief_errors += 1
+                            if brief_errors >= 2:
+                                # Allow one correction, then stop before another slow model
+                                # round or any remaining tools in this batch. Never bypass
+                                # a rejected request summary to produce a basket.
+                                result = finish(
+                                    "Please put the dish or products, quantities and any dietary "
+                                    "requirements in one message so I can build the ingredient list."
+                                )
+                                progress.emit("complete", error_code=exc.code)
+                                return result
                         error = {
                             "error": exc.body(),
                             "purchase_authorized": False,

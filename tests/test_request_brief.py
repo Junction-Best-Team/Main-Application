@@ -96,6 +96,40 @@ def test_unverified_request_changes_cannot_overwrite_the_saved_understanding(ide
     assert session.brief.budget_gross == 100
 
 
+def test_request_review_includes_questions_for_short_answers_without_losing_customer_limits():
+    messages = [
+        {"role": "user", "content": "Help me plan a restaurant day. Budget 500 euros."},
+        {"role": "assistant", "content": "Would you like soup or baked lasagna?"},
+        {"role": "user", "content": "baked lasagna please"},
+        {"role": "assistant", "content": "How many portions?"},
+        {"role": "user", "content": "50"},
+        {"role": "assistant", "content": "Beef or vegetarian?"},
+        {"role": "user", "content": "beef"},
+        {"role": "assistant", "content": "Standard dairy or lactose-free?"},
+        {"role": "user", "content": "standard"},
+    ]
+    guard = object.__new__(Guardrails)
+    guard.messages = messages
+    seen = []
+
+    def evaluate(boundary, state, checks):
+        seen.append((boundary, state, checks["faithful_request"].instructions))
+        return GuardResult(boundary, "enforce", Verdict.ALLOWED)
+
+    guard.evaluate = evaluate
+    guard.check_request_brief(None, RequestBrief(**brief(portions=50, budget_gross="500")))
+    boundary, state, instructions = seen[0]
+    assert boundary == "request_brief"
+    assert state["customer_messages"] == [m for m in messages if m["role"] == "user"]
+    assert state["conversation_context"] == [
+        {"from": "customer" if m["role"] == "user" else "assistant (model-authored)",
+         "text": m["content"]}
+        for m in messages
+    ]
+    assert "interpret short customer replies" in instructions
+    assert "do not authorize" in instructions
+
+
 def test_enforcement_requires_current_understanding_before_preparation(identity):
     session = matched_session(identity | {"_conversation_id": "test"}, FakeService(identity))
     session.guard = SimpleNamespace(enforcing=True)

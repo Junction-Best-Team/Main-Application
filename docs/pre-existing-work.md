@@ -399,3 +399,10 @@ request for the README. The screens show synthetic demo-account data and mock
 ordering; no customer message, supplier lookup or order was submitted during capture.
 The images reuse the application's existing UI and home background, attributed above.
 No new external asset or dependency was introduced.
+
+## Request-summary clarification context — 2026-11-15
+
+Reused the existing labelled conversation projection, semantic request review and
+typed agent loop. Added assistant-question context and bounded refusal recovery.
+Regression dialogues and provider replies are authored fixtures. Classifier checks
+use synthetic dialogues only; no supplier requests or orders are involved.
