@@ -3,25 +3,61 @@ import type { Proposal } from "../../../shared/api/types";
 import { Badge } from "../../../shared/components/Badge";
 import { InertButton } from "../../../shared/components/DesignPrimitives";
 import { currency } from "../../../shared/lib/format";
+import { CART_COPY } from "../model/cartCopy";
+import { DisabledConfirm } from "./DisabledConfirm";
+import { useCardLog } from "../model/cardLog";
 import { getPurchaseStatus } from "../model/purchaseStatus";
 type Props = {
   p: Proposal;
   busy: boolean;
+  /** Greys the confirm button without changing its label (the assistant is working on the cart). */
+  disabled?: boolean;
   message: string;
   canConfirm: boolean;
   confirm: () => Promise<void>;
   reject: () => Promise<void>;
   load: () => Promise<void>;
 };
+/** Why a purchase that cannot be confirmed says so: short code for the debug log, sentence for the customer. */
+function closedReason(p: Proposal): { code: string; text: string } {
+  const status = getPurchaseStatus(p);
+  if (p.order_id)
+    return { code: "order placed", text: CART_COPY.alreadyPlaced };
+  if (["denied", "needs_resolution"].includes(p.policy_outcome))
+    return { code: "checks blocked", text: CART_COPY.blockedByChecks };
+  if (status === "expired") return { code: "expired", text: CART_COPY.expired };
+  if (status === "rejected")
+    return { code: "rejected", text: CART_COPY.rejected };
+  if (status === "superseded")
+    return { code: "superseded", text: CART_COPY.superseded };
+  if (status === "pending")
+    return { code: "not authorised", text: CART_COPY.noAuthority };
+  return { code: "closed", text: CART_COPY.closed };
+}
+
 export function PurchaseDecisionPanel({
   p,
   busy,
+  disabled = false,
   message,
   canConfirm,
   confirm,
   reject,
   load,
 }: Props) {
+  const closed = closedReason(p);
+  useCardLog({
+    kind: "button",
+    component: "prepared",
+    enabled: canConfirm && !busy && !disabled,
+    reason: canConfirm
+      ? disabled
+        ? "assistant working"
+        : busy
+          ? "verifying"
+          : "none"
+      : closed.code,
+  });
   return (
     <section className="decision-panel [&_h3]:font-label [&_h3]:text-label-md [&_h3]:text-secondary">
       <h3>Purchasing checks</h3>
@@ -63,11 +99,20 @@ export function PurchaseDecisionPanel({
           </p>
           <button
             className="primary full mt-3 block w-full rounded border border-status-fresh-green bg-status-fresh-green px-4 py-3 font-label text-label-lg font-bold text-deep-ocean-navy hover:enabled:bg-tertiary-fixed"
-            disabled={busy}
+            disabled={busy || disabled}
+            aria-describedby={disabled ? "confirm-reason" : undefined}
             onClick={confirm}
           >
-            {busy ? "Verifying purchase…" : "Approve & Push to Dispatch"}
+            {busy ? "Verifying purchase…" : CART_COPY.button}
           </button>
+          {disabled && (
+            <p
+              id="confirm-reason"
+              className="m-0 mt-1 text-label-sm text-on-surface-variant"
+            >
+              {CART_COPY.working}
+            </p>
+          )}
           <InertButton
             label="Save as Draft"
             className="mt-2 w-full rounded-lg bg-surface-container px-space-sm py-2.5 font-label text-label-sm font-bold"
@@ -86,6 +131,11 @@ export function PurchaseDecisionPanel({
         </>
       ) : (
         <div className="status-note border-t border-border-subtle pt-4 [&_p]:mt-4 [&_p]:text-body-sm">
+          <DisabledConfirm
+            component="prepared"
+            code={closed.code}
+            reason={closed.text}
+          />
           <Badge value={getPurchaseStatus(p)} />
           {getPurchaseStatus(p) === "superseded" && (
             <p>

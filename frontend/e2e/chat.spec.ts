@@ -24,9 +24,9 @@ const blankConversation: Conversation = {
   title: "Carbonara for 200",
   created_at: timestamp,
   updated_at: timestamp,
+  cart_editable: false,
   messages: [],
   purchases: [],
-  cart_editable: false,
   busy: false,
 };
 const proposal: Proposal = {
@@ -122,6 +122,19 @@ async function mockSession(page: Page, signedIn = true) {
     route.fulfill({
       status: authenticated ? 200 : 401,
       json: authenticated ? currentSession : { error: { message: "Sign in" } },
+    }),
+  );
+  // The cart card reads the buyer's destinations; an unmocked request would fall through to a dead proxy.
+  await page.route("**/api/settings/policy", (route) =>
+    route.fulfill({
+      json: {
+        buyer_id: "demo-hotel",
+        policy_version: 1,
+        rules: { currency: "EUR", destinations: ["hotel-helsinki"] },
+        can_edit: true,
+        approval_authority: { can_approve: true },
+        history: [],
+      },
     }),
   );
   await page.route("**/api/login", async (route) => {
@@ -224,16 +237,14 @@ for (const width of [1440, 320]) {
     );
     await page.goto(`/conversations/${conversationId}`);
     const overview = page.getByRole("complementary", { name: "Overview" });
-    if (width < 1024)
-      await overview.getByRole("button", { name: "Expand overview" }).click();
     await expect(overview).toContainText("3 draft ingredients");
     await expect(overview).toContainText("500 portions");
     await expect(overview).toContainText("50 KG");
     await expect(overview).toContainText("125 L");
     await expect(overview).not.toContainText("Nothing staged");
     await expect(
-      overview.getByRole("button", { name: "Approve & Push to Dispatch" }),
-    ).toHaveCount(0);
+      overview.getByRole("button", { name: "Confirm purchase" }),
+    ).toBeDisabled();
     await expect(overview).not.toContainText("Total estimated");
     await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
     await page.screenshot({
@@ -241,18 +252,14 @@ for (const width of [1440, 320]) {
       fullPage: true,
     });
     await page.reload();
-    if (width < 1024)
-      await overview.getByRole("button", { name: "Expand overview" }).click();
     await expect(overview).toContainText("3 draft ingredients");
     // A real proposal takes over; only then are price and confirmation controls displayed.
     prepared = true;
     await page.reload();
-    if (width < 1024)
-      await overview.getByRole("button", { name: "Expand overview" }).click();
     await expect(overview).toContainText("1 items staged");
     await expect(overview).toContainText("Total estimated");
     await expect(
-      overview.getByRole("button", { name: "Approve & Push to Dispatch" }),
+      overview.getByRole("button", { name: "Confirm purchase" }),
     ).toBeVisible();
     await expect(overview).not.toContainText("3 draft ingredients");
   });
@@ -841,12 +848,10 @@ test("purchase deep links survive sign-in and confirmation requires an explicit 
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/purchases/${proposalId}$`));
   await expect(
-    page.getByRole("button", { name: "Approve & Push to Dispatch" }),
+    page.getByRole("button", { name: "Confirm purchase" }),
   ).toBeVisible();
   expect(confirmations).toEqual([]);
-  await page
-    .getByRole("button", { name: "Approve & Push to Dispatch" })
-    .click();
+  await page.getByRole("button", { name: "Confirm purchase" }).click();
   await expect(page.locator(".order-reference")).toContainText("order-123");
   expect(confirmations).toEqual([
     {
@@ -858,7 +863,7 @@ test("purchase deep links survive sign-in and confirmation requires an explicit 
     },
   ]);
   await expect(
-    page.getByRole("button", { name: "Approve & Push to Dispatch" }),
+    page.getByRole("button", { name: "Confirm purchase" }),
   ).toHaveCount(0);
 });
 
@@ -877,17 +882,13 @@ test("changed terms require a second explicit confirmation of the new revision",
     await route.fulfill({ json: { ...current, status: "revised" } });
   });
   await page.goto(`/purchases/${proposalId}`);
-  await page
-    .getByRole("button", { name: "Approve & Push to Dispatch" })
-    .click();
+  await page.getByRole("button", { name: "Confirm purchase" }).click();
   await expect(page.getByRole("status")).toContainText("Terms changed");
   await expect(
     page.locator(".purchase-sheet").getByText("Revision 2 / v1"),
   ).toBeVisible();
   expect(revisions).toEqual([1]);
-  await page
-    .getByRole("button", { name: "Approve & Push to Dispatch" })
-    .click();
+  await page.getByRole("button", { name: "Confirm purchase" }).click();
   expect(revisions).toEqual([1, 2]);
 });
 
@@ -918,8 +919,8 @@ test("legacy approval links keep the original revision and closed states have no
     page.getByRole("link", { name: "View current revision 2" }),
   ).toHaveAttribute("href", `/purchases/${proposalId}`);
   await expect(
-    page.getByRole("button", { name: "Approve & Push to Dispatch" }),
-  ).toHaveCount(0);
+    page.getByRole("button", { name: "Confirm purchase" }),
+  ).toBeDisabled();
   for (const state of ["rejected", "expired"]) {
     await page.route(`**/api/purchases/${proposalId}`, (route) =>
       route.fulfill({
@@ -937,8 +938,8 @@ test("legacy approval links keep the original revision and closed states have no
       state === "expired" ? "Expired" : "Rejected",
     );
     await expect(
-      page.getByRole("button", { name: "Approve & Push to Dispatch" }),
-    ).toHaveCount(0);
+      page.getByRole("button", { name: "Confirm purchase" }),
+    ).toBeDisabled();
   }
 });
 
@@ -1182,7 +1183,7 @@ for (const basis of ["free_form", "saved_recipe"] as const) {
       ),
     ).toHaveCount(1);
     await expect(
-      page.getByRole("button", { name: "Approve & Push to Dispatch" }),
+      page.getByRole("button", { name: "Confirm purchase" }),
     ).toBeVisible();
   });
 }
@@ -1399,12 +1400,10 @@ for (const width of [1440, 390]) {
     await expect(
       page.getByRole("list", { name: "Proposed items" }),
     ).toContainText("4 BAG");
-    if (width < 768) {
-      await expect(
-        panel.getByRole("button", { name: "Approve & Push to Dispatch" }),
-      ).not.toBeVisible();
-      await panel.getByRole("button", { name: "Expand overview" }).click();
-    }
+    // The card is open by default now, so the confirm button is visible at every width.
+    await expect(
+      panel.getByRole("button", { name: "Confirm purchase" }),
+    ).toBeVisible();
     await expect(
       panel.getByRole("button", { name: "Save as Draft" }),
     ).toBeDisabled();
@@ -1415,21 +1414,17 @@ for (const width of [1440, 390]) {
       panel.getByRole("switch", { name: "Substitutions allowed" }),
     ).toBeDisabled();
     expect(revisions).toEqual([]);
-    await panel
-      .getByRole("button", { name: "Approve & Push to Dispatch" })
-      .click();
+    await panel.getByRole("button", { name: "Confirm purchase" }).click();
     await expect(panel.getByRole("status")).toContainText("Terms changed");
     expect(revisions).toEqual([1]);
-    await panel
-      .getByRole("button", { name: "Approve & Push to Dispatch" })
-      .click();
+    await panel.getByRole("button", { name: "Confirm purchase" }).click();
     await expect(panel.locator(".order-reference")).toContainText(
       "overview-order",
     );
     await expect(panel).toContainText("Accepted by demo order service");
     await expect(
-      panel.getByRole("button", { name: "Approve & Push to Dispatch" }),
-    ).toHaveCount(0);
+      panel.getByRole("button", { name: "Confirm purchase" }),
+    ).toBeDisabled();
     expect(revisions).toEqual([1, 2]);
     expect(
       await page.evaluate(
@@ -1481,7 +1476,7 @@ test("Past Orders pages the order list, expands placed rows and resolves an olde
   await expect(row.getByText("Ordered items", { exact: true })).toBeVisible();
   await expect(row.locator(".purchase-sheet")).toContainText("Spaghetti 5 kg");
   await expect(
-    page.getByRole("button", { name: "Approve & Push to Dispatch" }),
+    page.getByRole("button", { name: "Confirm purchase" }),
   ).toHaveCount(0);
   await page.goto(`/purchases/${proposalId}`);
   await expect(
@@ -1518,8 +1513,8 @@ for (const state of ["denied", "expired", "rejected"] as const) {
       panel.getByText("Mikael Virtanen", { exact: true }),
     ).toHaveCount(0);
     await expect(
-      panel.getByRole("button", { name: "Approve & Push to Dispatch" }),
-    ).toHaveCount(0);
+      panel.getByRole("button", { name: "Confirm purchase" }),
+    ).toBeDisabled();
     if (state === "denied")
       await expect(panel.getByRole("alert")).toContainText(
         "cannot be approved",
@@ -1561,8 +1556,8 @@ test("Overview rejection retains the server decision without placing an order", 
   await panel.getByRole("button", { name: "Reject", exact: true }).click();
   await expect(panel.getByRole("status")).toContainText("Rejection recorded");
   await expect(
-    panel.getByRole("button", { name: "Approve & Push to Dispatch" }),
-  ).toHaveCount(0);
+    panel.getByRole("button", { name: "Confirm purchase" }),
+  ).toBeDisabled();
   expect(confirmations).toBe(0);
 });
 
@@ -1599,9 +1594,10 @@ for (const width of [1440, 390, 320]) {
     await expect(
       page.getByRole("complementary", { name: "Overview" }),
     ).toHaveCount(0);
+    // The card is always in a chat: empty, with its purchase button greyed out.
     await expect(
-      page.getByRole("complementary", { name: "Draft cart" }),
-    ).toHaveCount(0);
+      page.getByRole("complementary", { name: "Your order" }),
+    ).toContainText("Your cart is empty");
     snapshot = {
       ...snapshot,
       messages: [
@@ -1631,24 +1627,21 @@ for (const width of [1440, 390, 320]) {
       },
     };
     publish();
-    const draft = page.getByRole("complementary", { name: "Draft cart" });
-    await expect(draft.getByRole("status")).toHaveText("0 of 2 items matched");
+    const draft = page.getByRole("complementary", { name: "Your order" });
+    await expect(draft.getByRole("status")).toHaveText("Preparing your order…");
     await expect(
       page.getByRole("complementary", { name: "Overview" }),
     ).toHaveCount(0); // The live cart takes precedence over the saved recipe draft.
-    if (width < 1024)
-      await draft.getByRole("button", { name: "Expand draft cart" }).click();
     await expect(
       draft.getByText("Product to match", { exact: true }),
     ).toHaveCount(2);
     await expect(
       draft.getByText("Price not checked", { exact: true }),
     ).toHaveCount(2);
+    // Nothing has a product yet, so the card's purchase button is greyed out.
     await expect(
-      draft.getByRole("button", {
-        name: /Confirm purchase|Approve & Push to Dispatch/,
-      }),
-    ).toHaveCount(0);
+      draft.getByRole("button", { name: "Confirm purchase" }),
+    ).toBeDisabled();
     snapshot = {
       ...snapshot,
       draft_cart: {
@@ -1675,9 +1668,7 @@ for (const width of [1440, 390, 320]) {
         ],
       },
     };
-    await expect(draft.getByRole("status")).toHaveText("1 of 2 items matched", {
-      timeout: 10_000,
-    });
+    await expect(draft.getByRole("status")).toHaveText("Preparing your order…");
     await expect(draft.getByText(/28\.50.*BAG incl. VAT/)).toBeVisible();
     await expect(
       draft.getByText(/Fixture price · invented demo data/),
@@ -1697,8 +1688,6 @@ for (const width of [1440, 390, 320]) {
       path: testInfo.outputPath(`draft-cart-${width}.png`),
     });
     await page.reload();
-    if (width < 1024)
-      await draft.getByRole("button", { name: "Expand draft cart" }).click();
     await expect(draft.getByText(/28\.50.*BAG incl. VAT/)).toBeVisible();
     snapshot = {
       ...snapshot,
@@ -1720,10 +1709,8 @@ for (const width of [1440, 390, 320]) {
     const overview = page.getByRole("complementary", { name: "Overview" });
     await expect(overview).toBeVisible({ timeout: 10_000 });
     await expect(draft).toHaveCount(0);
-    if (width < 1024)
-      await overview.getByRole("button", { name: "Expand overview" }).click();
     await expect(
-      overview.getByRole("button", { name: "Approve & Push to Dispatch" }),
+      overview.getByRole("button", { name: "Confirm purchase" }),
     ).toBeEnabled();
     await expect(overview.getByText("Total estimated")).toBeVisible();
   });
@@ -2128,13 +2115,20 @@ test("home hands a failed first message back to the chat composer", async ({
   await page.route(`**/api/conversations/${conversationId}`, (route) =>
     route.fulfill({ json: blankConversation }),
   );
-  await page.route(`**/api/conversations/${conversationId}/messages`, (route) =>
-    route.fulfill({
-      status: 503,
-      json: {
-        error: { code: "UNAVAILABLE", message: "Try again shortly." },
-      },
-    }),
+  // A real network takes a moment to fail. The chat page's mount effect runs twice in development
+  // (StrictMode) and the second run clears the error, so an instant failure that lands before the
+  // chat page has mounted would be lost; this keeps the test about the hand-over, not about that race.
+  await page.route(
+    `**/api/conversations/${conversationId}/messages`,
+    async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await route.fulfill({
+        status: 503,
+        json: {
+          error: { code: "UNAVAILABLE", message: "Try again shortly." },
+        },
+      });
+    },
   );
   await page.goto("/");
   await page

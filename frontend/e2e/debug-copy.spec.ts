@@ -290,9 +290,7 @@ test("debug mode covers a failed Overview confirm", async ({ page }) => {
   );
   await page.goto(`/conversations/${conversationId}`);
   const panel = page.getByRole("complementary", { name: "Overview" });
-  await panel
-    .getByRole("button", { name: "Approve & Push to Dispatch" })
-    .click();
+  await panel.getByRole("button", { name: "Confirm purchase" }).click();
   await expect(panel.getByRole("alert")).toContainText(
     "This purchase is closed.",
   );

@@ -24,9 +24,9 @@ const blank: Conversation = {
   title: "Voice conversation",
   created_at: timestamp,
   updated_at: timestamp,
+  cart_editable: false,
   messages: [],
   purchases: [],
-  cart_editable: false,
   busy: false,
 };
 

@@ -181,7 +181,7 @@ test("Overview stages the basket for confirm without a purchase deep link", asyn
   await expect(panel).toContainText("Spaghetti 5 kg");
   await expect(panel).toContainText("Within standing buyer authority.");
   await expect(
-    panel.getByRole("button", { name: "Approve & Push to Dispatch" }),
+    panel.getByRole("button", { name: "Confirm purchase" }),
   ).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`/conversations/${conversationId}$`));
 });
@@ -230,7 +230,7 @@ test("typing approval language in chat never calls confirm", async ({
   await page.goto(`/conversations/${conversationId}`);
   await expect(
     page.getByRole("complementary", { name: "Overview" }).getByRole("button", {
-      name: "Approve & Push to Dispatch",
+      name: "Confirm purchase",
     }),
   ).toBeVisible();
   await page
@@ -265,13 +265,9 @@ test("repeated Overview confirm reuses the same idempotency key", async ({
   });
   await page.goto(`/conversations/${conversationId}`);
   const panel = page.getByRole("complementary", { name: "Overview" });
-  await panel
-    .getByRole("button", { name: "Approve & Push to Dispatch" })
-    .click();
+  await panel.getByRole("button", { name: "Confirm purchase" }).click();
   await expect(panel.getByRole("status")).toContainText("Confirmation saved");
-  await panel
-    .getByRole("button", { name: "Approve & Push to Dispatch" })
-    .click();
+  await panel.getByRole("button", { name: "Confirm purchase" }).click();
   await expect(panel.getByRole("status")).toContainText("Confirmation saved");
   expect(bodies).toHaveLength(2);
   expect(bodies[1].idempotency_key).toBe(bodies[0].idempotency_key);
@@ -302,9 +298,7 @@ test("closed Overview confirm shows a plain error", async ({ page }) => {
   });
   await page.goto(`/conversations/${conversationId}`);
   const panel = page.getByRole("complementary", { name: "Overview" });
-  await panel
-    .getByRole("button", { name: "Approve & Push to Dispatch" })
-    .click();
+  await panel.getByRole("button", { name: "Confirm purchase" }).click();
   await expect(page.getByRole("alert")).toContainText(
     "This purchase is finalized, expired or under an older policy.",
   );

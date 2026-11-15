@@ -1,5 +1,5 @@
-import { useState } from "react";
 import type { MealPlan, Proposal } from "../../../shared/api/types";
+import type { DraftCart } from "../model/cart";
 import { currency } from "../../../shared/lib/format";
 import { Icon, InertButton } from "../../../shared/components/DesignPrimitives";
 import { DESIGN_PLACEHOLDERS as MOCK } from "../../../shared/lib/designPlaceholders";
@@ -7,6 +7,18 @@ import { ErrorMessage } from "../../../shared/components/ErrorMessage";
 import { Badge } from "../../../shared/components/Badge";
 import { getPurchaseStatus } from "../model/purchaseStatus";
 import { usePurchaseDetail } from "../hooks/usePurchaseDetail";
+import { useCartEdit } from "../hooks/useCartEdit";
+import { useCartOpen } from "../hooks/useCartOpen";
+import { CardLogCopy } from "./CardLogCopy";
+import {
+  CartNotIncludedList,
+  type CartNotIncludedItem,
+} from "./CartNotIncluded";
+import { DisabledConfirm } from "./DisabledConfirm";
+import { CART_COPY } from "../model/cartCopy";
+import { CartLines } from "./CartLines";
+import { DeliveryDetails } from "./DeliveryDetails";
+import { NotIncluded } from "./NotIncluded";
 import { PurchaseDecisionPanel } from "./PurchaseDecisionPanel";
 import { PurchaseSheet } from "./PurchaseSheet";
 
@@ -117,14 +129,40 @@ export function OverviewPanel({
   drawer = true,
   showEvidence = true,
   draft,
+  conversationId,
+  cart = null,
+  working = false,
+  cartEdit,
+  notIncluded,
+  onPrepared,
 }: {
   flow: ReturnType<typeof usePurchaseDetail>;
   drawer?: boolean;
   showEvidence?: boolean;
   draft?: MealPlan;
+  /** In a chat: the conversation whose cart this purchase was prepared from (delivery details can change). */
+  conversationId?: string;
+  cart?: DraftCart | null;
+  /** The assistant is working on this conversation: the card is dimmed and cannot be confirmed. */
+  working?: boolean;
+  /** From the conversation (`cart_editable`, `cart_edit_reason`): whether pack counts can be edited and why not. */
+  cartEdit?: { editable: boolean; reason: string | null };
+  /** `cart_not_included` of the conversation: what the basket leaves out; undefined from an older server. */
+  notIncluded?: CartNotIncludedItem[];
+  onPrepared?: (proposal: Proposal) => void;
 }) {
-  const { p, error, errorDebug } = flow;
-  const [open, setOpen] = useState(false);
+  const { error, errorDebug } = flow;
+  // The pack-count edits live here, not in the lines, because an edit makes the server prepare a new
+  // proposal: the lines, the ghosts and the typed numbers must outlive the change of proposal.
+  const edit = useCartEdit({
+    conversationId,
+    proposal: flow.p,
+    onUpdated: onPrepared,
+  });
+  const p = edit.shown;
+  const updating = !flow.p && Boolean(p); // the new proposal is loading; the answer is shown meanwhile
+  const [storedOpen, toggleOpen] = useCartOpen("prepared");
+  const open = drawer ? storedOpen : true;
   const closed =
     p &&
     ["expired", "rejected", "superseded", "policy_changed"].includes(
@@ -134,13 +172,15 @@ export function OverviewPanel({
     <aside
       id="overview"
       aria-label="Overview"
-      className={`${drawer ? "fixed inset-x-3 bottom-4 z-30 max-h-[70dvh] lg:sticky lg:inset-x-auto lg:bottom-auto lg:top-0 lg:z-auto lg:max-h-full lg:w-80 lg:shrink-0 xl:w-96" : "w-full"} flex min-w-0 flex-col overflow-y-auto rounded-xl border border-border-subtle bg-surface-pure p-space-md shadow-level-3 lg:shadow-sm`}
+      aria-busy={working || undefined}
+      className={`${drawer ? "fixed inset-x-3 bottom-4 z-30 max-h-[70dvh] lg:sticky lg:inset-x-auto lg:bottom-auto lg:top-0 lg:z-auto lg:max-h-full lg:w-80 lg:shrink-0 xl:w-96" : "w-full"} flex min-w-0 flex-col overflow-y-auto rounded-xl border border-border-subtle bg-surface-pure p-space-md shadow-level-3 lg:shadow-sm ${working ? "opacity-70" : ""}`}
     >
       <div className="flex items-center justify-between gap-space-sm border-b border-border-subtle pb-space-sm">
         <h2 className="m-0 font-headline text-headline-sm font-bold text-primary">
-          Overview
+          Your order
         </h2>
         <span className="flex items-center gap-space-sm">
+          <CardLogCopy />
           <span className="font-label text-label-sm text-secondary">
             {p
               ? `${p.snapshot.lines.length} items staged`
@@ -153,10 +193,10 @@ export function OverviewPanel({
           {drawer && (
             <button
               type="button"
-              aria-label={open ? "Collapse overview" : "Expand overview"}
+              aria-label={open ? "Collapse cart" : "Expand cart"}
               aria-expanded={open}
-              onClick={() => setOpen(!open)}
-              className="flex h-9 w-9 items-center justify-center rounded-lg border-0 bg-transparent p-0 text-secondary lg:hidden"
+              onClick={toggleOpen}
+              className="flex h-9 w-9 items-center justify-center rounded-lg border-0 bg-transparent p-0 text-secondary"
             >
               <Icon name={open ? "keyboard_arrow_down" : "keyboard_arrow_up"} />
             </button>
@@ -166,14 +206,14 @@ export function OverviewPanel({
       <ErrorMessage message={error} debug={errorDebug} />
       <div className="flex flex-col gap-space-sm pt-space-sm">
         {!p && draft ? (
-          <div className={drawer && !open ? "hidden lg:block" : ""}>
+          <div className={drawer && !open ? "hidden" : ""}>
             <DraftItems plan={draft} />
           </div>
         ) : !p ? (
           !error && (
             <p
               role="status"
-              className={`m-0 text-body-sm text-on-surface-variant ${drawer && !open ? "hidden lg:block" : ""}`}
+              className={`m-0 text-body-sm text-on-surface-variant ${drawer && !open ? "hidden" : ""}`}
             >
               Loading the proposed basket…
             </p>
@@ -181,20 +221,33 @@ export function OverviewPanel({
         ) : (
           <>
             <div
-              className={`${drawer && !open ? "hidden lg:flex" : "flex"} flex-col gap-space-sm ${closed ? "opacity-60" : ""}`}
+              className={`${drawer && !open ? "hidden" : "flex"} flex-col gap-space-sm ${closed ? "opacity-60" : ""}`}
             >
               <Badge value={getPurchaseStatus(p)} />
               <span className="font-label text-label-sm text-secondary">
                 Revision {p.revision} / v{p.policy_version}
               </span>
-              <Items p={p} />
+              {conversationId &&
+              (flow.canConfirm || updating) &&
+              cartEdit &&
+              (cartEdit.editable || cartEdit.reason) ? (
+                <CartLines
+                  p={p}
+                  edit={edit}
+                  editable={cartEdit.editable}
+                  reason={cartEdit.reason}
+                  working={working}
+                />
+              ) : (
+                <Items p={p} />
+              )}
               {!p.order_id && <Substitutions p={p} />}
             </div>
             <div className={closed ? "opacity-60" : ""}>
               <Total p={p} />
             </div>
             <div
-              className={`${drawer && !open ? "hidden lg:flex" : "flex"} flex-col gap-space-sm`}
+              className={`${drawer && !open ? "hidden" : "flex"} flex-col gap-space-sm`}
             >
               <p className="m-0 rounded bg-secondary-container/40 p-2 text-body-sm text-primary">
                 {p.snapshot.mode === "fixture"
@@ -208,7 +261,39 @@ export function OverviewPanel({
                   <PurchaseSheet p={p} />
                 </details>
               )}
-              <PurchaseDecisionPanel {...flow} p={p} />
+              {conversationId && flow.canConfirm && (
+                <>
+                  <DeliveryDetails
+                    key={`${p.proposal_id}-${p.revision}-${p.request.delivery_date}-${p.request.destination}`}
+                    p={p}
+                    conversationId={conversationId}
+                    cart={cart}
+                    working={working}
+                    onPrepared={onPrepared}
+                  />
+                  {notIncluded !== undefined ? (
+                    <CartNotIncludedList
+                      items={notIncluded}
+                      hideNames={edit.rows
+                        .filter((row) => row.kind === "ghost")
+                        .map((row) => row.removed.name)}
+                    />
+                  ) : (
+                    cart?.proposal_id === p.proposal_id && (
+                      <NotIncluded cart={cart} />
+                    )
+                  )}
+                </>
+              )}
+              {updating ? (
+                <DisabledConfirm
+                  component="prepared"
+                  code="updating"
+                  reason={CART_COPY.updatingOrder}
+                />
+              ) : (
+                <PurchaseDecisionPanel {...flow} disabled={working} p={p} />
+              )}
               <InertButton
                 label="Export Manifest"
                 className="flex w-full items-center justify-center gap-1 rounded-lg bg-surface-container px-space-sm py-2.5 font-label text-label-sm font-bold text-deep-ocean-navy"
@@ -218,6 +303,29 @@ export function OverviewPanel({
               </InertButton>
             </div>
           </>
+        )}
+        {!p && (
+          <DisabledConfirm
+            component="prepared"
+            code={
+              working
+                ? "assistant working"
+                : draft
+                  ? "not prepared"
+                  : error
+                    ? "load failed"
+                    : "loading"
+            }
+            reason={
+              working
+                ? CART_COPY.working
+                : draft
+                  ? CART_COPY.notPrepared
+                  : error
+                    ? CART_COPY.orderUnavailable
+                    : CART_COPY.loadingOrder
+            }
+          />
         )}
       </div>
     </aside>

@@ -504,7 +504,7 @@ test("an unplaced deep link opens the review instead of the list", async ({
   await page.goto(`/purchases/${ids.proposal}`);
   await expect(page.getByText("hasn't been placed yet")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Approve & Push to Dispatch" }),
+    page.getByRole("button", { name: "Confirm purchase" }),
   ).toBeVisible();
 });
 
