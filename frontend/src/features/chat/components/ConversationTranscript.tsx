@@ -4,7 +4,6 @@ import { dateTime } from "../../../shared/lib/format";
 import { ChatActivity } from "./ChatActivity";
 import { MealPlanCard } from "./MealPlanCard";
 import { RecipeIllustration } from "./RecipeIllustration";
-import { SkuCards } from "./SkuCards";
 import { MessageMarkdown } from "./MessageMarkdown";
 import { AttachmentCards } from "./AttachmentCards";
 import { SystemMessage } from "./SystemMessage";
@@ -87,11 +86,6 @@ export function ConversationTranscript({
                 )}
                 {message.proposal_id && (
                   <>
-                    <SkuCards
-                      proposal={conversation.purchases.find(
-                        (p) => p.proposal_id === message.proposal_id,
-                      )}
-                    />
                     {onReviewBasket &&
                       conversation.purchases.some(
                         (p) =>

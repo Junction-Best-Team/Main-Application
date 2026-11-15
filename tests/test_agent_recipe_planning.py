@@ -240,7 +240,7 @@ def test_mixed_recipe_and_catalog_calls_cannot_search_before_draft(
     assert outputs[-1]["error"]["code"] == "MEAL_PLAN_REQUIRED"
     assert sorted(c[2] for c in service.calls) == ["eggs", "pasta"]
     assert result.meal_plan.portions == 200 and result.proposal_id is None
-    assert "Publish the quantity plan now" in seen[1]["messages"][0]["content"]
+    assert "If the customer has chosen the meal and portions" in seen[1]["messages"][0]["content"]
     assert "7 unmatched ingredients" in seen[2]["messages"][0]["content"]
     assert "search_products" not in {d["function"]["name"] for d in seen[1]["tools"]}
     assert "search_products" in {d["function"]["name"] for d in seen[2]["tools"]}

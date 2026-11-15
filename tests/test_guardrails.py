@@ -28,6 +28,7 @@ from test_agent import (
 )
 
 from aimo import agent, guardrails
+from aimo.chat_schemas import MealPlan
 from aimo.db import Problem
 from aimo.guardrails import (
     INPUT_BLOCKED_REPLY,
@@ -105,6 +106,7 @@ ALLOW = {
     "label": 0.97,
     "false_status": 0.03,
     "unsupported_commercial": 0.03,
+    "unsupported_supplier_metrics": 0.03,
     "unsupported_dietary": 0.03,
     "disclosure": 0.01,
     "persistence_intent": 0.97,
@@ -537,6 +539,7 @@ def test_food_topic_does_not_bypass_uncertain_output_checks(
         ("false_status", "Your order is placed with Valio and the stock is reserved."),
         ("unsupported_dietary", "Everything here is completely egg-free and safe for allergies."),
         ("unsupported_commercial", "Total is EUR 12 and all 500 units are in stock."),
+        ("unsupported_supplier_metrics", "Delivery is guaranteed and this product has exactly zero carbon emissions."),
     ],
 )
 def test_unsupported_claims_are_replaced_but_the_proposal_survives(
@@ -579,7 +582,26 @@ def test_output_review_failure_keeps_the_trusted_link(monkeypatch, config, guard
     scripted(monkeypatch, prepared_script() + [reply(text="Ready.")])
     result = run(identity, service)
     assert result.proposal_id == service.saved["proposal_id"]
-    assert result.text.startswith(OUTPUT_FALLBACK) and "Confirm purchase button" in result.text
+    assert result.text.startswith(OUTPUT_FALLBACK) and "Your basket is ready to review" in result.text
+
+
+def test_rejected_final_prose_keeps_an_identical_previously_reviewed_plan(
+    monkeypatch, config, guard, identity
+):
+    fake_jev(monkeypatch, false_status=lambda state: (
+        0.98 if "paid" in state["assistant_output"]["reply"].lower() else 0.02
+    ))
+    service = FakeService(identity)
+    scripted(monkeypatch, [
+        reply(*[call("get_product", {"product_id": n}) for n in NAMES]),
+        reply(call("publish_meal_plan", meal())),
+        reply(text="Paid and ordered."),
+    ])
+    result = run(identity, service)
+    assert result.text == "Your ingredient plan is saved."
+    assert result.meal_plan == MealPlan(**meal())
+    assert result.proposal_id is None
+    assert not any(c[0] == "prepare" for c in service.calls)
 
 
 def test_fake_approval_without_records_and_oversized_reply(monkeypatch, config, guard, identity):
@@ -598,7 +620,8 @@ def test_fake_approval_without_records_and_oversized_reply(monkeypatch, config, 
         monkeypatch, [reply(call("publish_meal_plan", plan)), reply(text="x" * 20_000)]
     )
     result = run(identity, FakeService(identity))
-    assert result.text == OUTPUT_FALLBACK and result.meal_plan is None
+    assert result.text == "Your ingredient plan is saved."
+    assert result.meal_plan == MealPlan(**plan)
     # The plan alone is reviewed for recoverable progress. Oversized final prose is
     # refused locally, without a second classifier request.
     assert [s["boundary"] for s in seen].count("assistant_output") == 1

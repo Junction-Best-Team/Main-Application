@@ -502,7 +502,7 @@ def restorable_plan(messages, live_cart=False):
     plan = shown[last].get("meal_plan")
     if not plan or (not live_cart and any(m.get("proposal_id") for m in shown[last:])):
         return None
-    if not isinstance(plan, dict) or plan.get("recipe_plan_id"):
+    if not isinstance(plan, dict) or (plan.get("recipe_plan_id") and not live_cart):
         return None
     items = plan.get("ingredients")
     # Stored JSON is data from an earlier turn: anything but a list of ingredient objects is not offered.
@@ -550,6 +550,7 @@ def execute_turn(turn, service, runner=None):
         # wrote this message, fenced to this claimed attempt (memory.chat_actor). A retry by
         # a colleague runs without memory: their identity must not own the author's request.
         actor = auth.internal_agent(identity) | {"_turn_id": str(tid), "_attempt": str(attempt)}
+        actor["_current_constraints"] = current["constraints"] or []
         if turn.get("submitted_by") == identity["id"]:
             actor |= {
                 "_requested_by": identity["id"],
@@ -560,6 +561,11 @@ def execute_turn(turn, service, runner=None):
         data = detail(identity, cid, internal=True)
         with connection() as c:
             limits = customer_constraints(c, cid, tid)
+            from aimo import request_brief
+
+            brief = request_brief.load(c, cid, tid)
+        if brief:
+            actor["_request_brief"] = brief.model_dump(mode="json")
         # A stored failure notice is for the customer, not the model: it is left out of the history.
         shown = [m for m in data["messages"] if not m["notice"]]
         history = [
@@ -576,7 +582,10 @@ def execute_turn(turn, service, runner=None):
                     "\nAn AI-generated recipe illustration was attached to this reply."
                 )
         if data["purchases"]:
-            history.append(
+            # Keep the latest customer request last. Gemini rejects generation with
+            # function tools when server context leaves a model turn at the end.
+            history.insert(
+                len(history) - 1,
                 {
                     "role": "assistant",
                     # Minimal fields, and no catalog names: this context bypasses the turn's
@@ -620,8 +629,8 @@ def execute_turn(turn, service, runner=None):
             if auto:
                 result = result.model_copy(
                     update={
-                        "proposal_id": str(auto[0]),
-                        "text": (result.text + "\n\n" + auto[2])[:20000],
+                        "proposal_id": str(auto[0]) if auto[0] else result.proposal_id,
+                        "text": "\n\n".join(part for part in (result.text, auto[2]) if part)[:20000],
                     }
                 )
         if result.proposal_id:
@@ -676,7 +685,7 @@ def execute_turn(turn, service, runner=None):
                 ),
             )
             c.execute("UPDATE conversation_turns SET state='complete' WHERE id=%s", (tid,))
-            if auto:  # the basket replaces the display-only draft of this turn
+            if auto and auto[0]:  # only an actual basket replaces the display-only draft
                 c.execute("UPDATE conversation_turns SET draft_cart=NULL WHERE id=%s", (tid,))
             c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
     except Exception as exc:

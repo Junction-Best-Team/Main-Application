@@ -20,11 +20,22 @@ from test_draft_cart_purchase import (  # noqa: F401
 
 from aimo.config import settings
 
+BRIEF = {
+    "intent": "build_list",
+    "goal": "carbonara for 200",
+    "starting_point": "dish",
+    "portions": 200,
+    "missing_facts": [],
+}
+
 
 def shopping(auto, monkeypatch, *replies):
     monkeypatch.setattr(settings(), "agent_phases", True)
     return auto.turn(
         "ingredients for 200 portions of carbonara",
+        tool_reply(
+            call("record_request", BRIEF)
+        ),  # develop's request brief comes first in a conversation
         *MATCH,
         tool_reply(call("publish_meal_plan", plan())),
         *replies,
@@ -32,6 +43,8 @@ def shopping(auto, monkeypatch, *replies):
 
 
 def test_a_model_that_stops_at_the_plan_is_continued_and_prepares(auto, monkeypatch):
+    # The model-prepares flow: automatic cart preparation is off (with it on the server stages the basket).
+    monkeypatch.setattr(settings(), "cart_auto_prepare", False)
     d = shopping(
         auto,
         monkeypatch,
@@ -43,7 +56,8 @@ def test_a_model_that_stops_at_the_plan_is_continued_and_prepares(auto, monkeypa
     assert d["messages"][-1]["text"].startswith("The basket is prepared")
 
 
-def test_a_model_that_still_does_not_prepare_gets_the_basket_from_the_server(auto, monkeypatch):
-    d = shopping(auto, monkeypatch, say("Here is the plan."), say("Still the plan."))
+def test_with_automatic_preparation_the_server_stages_the_basket_after_the_reply(auto, monkeypatch):
+    # No model nudge here: the phase says the server prepares; the cart backstop makes the basket.
+    d = shopping(auto, monkeypatch, say("Here is the plan."))
     assert len(baskets(d)) == 1 and state(baskets(d)[0]) != "cancelled"  # auto-prepare backstop
     assert not shows_draft_panel(d)

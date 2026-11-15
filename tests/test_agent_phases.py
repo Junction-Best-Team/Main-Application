@@ -39,6 +39,9 @@ from aimo.db import Problem
 def phases_on(monkeypatch):
     monkeypatch.setattr(settings(), "agent_stop_control", True)
     monkeypatch.setattr(settings(), "agent_phases", True)
+    # The model-prepares flow (these tests) is the one with automatic cart preparation off; with it on the
+    # server stages the basket after the reply (see the auto-cart tests at the end).
+    monkeypatch.setattr(settings(), "cart_auto_prepare", False)
 
 
 def user(*texts):
@@ -218,14 +221,14 @@ def test_every_phase_has_its_guidance_line(identity, phase_name, needle):
 
 def test_the_prompt_no_longer_asks_for_delivery_details_before_preparing():
     text = " ".join(agent.system_prompt().split())
-    assert "delivery date/destination before preparing an order" not in text
-    assert "never asked" in text and "edits them on the card" in text
+    assert "Never invent delivery terms yourself" in text  # develop's rule stays
+    assert "ONE plain question" in text and "Every shopping request ends in the same turn" in text
 
 
 def test_with_the_phases_off_the_old_prompt_and_tools_remain(identity, monkeypatch):
     monkeypatch.setattr(settings(), "agent_phases", False)
     text = " ".join(agent.system_prompt().split())
-    assert "delivery date/destination before preparing an order" in text
+    assert "ONE plain question" not in text and "Never invent delivery terms yourself" in text
     session = ToolSession(identity, FakeService(identity))
     session.customer_texts = ["carbonara for 20"]
     assert "prepare_order" in {d["function"]["name"] for d in session.definitions}
@@ -367,7 +370,7 @@ def test_finish_puts_every_ingredient_on_the_card_and_never_claims_a_purchase(
     )
     result = run(identity, service, user("please order it"), stored_plan=plan)
     assert len(result.meal_plan.ingredients) == 5  # matched, and the removed one flagged with its 0
-    assert "No supplier order" in result.text
+    assert result.proposal_id  # the trusted notice wording is develop's (purchase_notice)
     for word in ("purchased", "bought", "order placed", "ordered"):
         assert word not in result.text.lower()
 
@@ -442,7 +445,11 @@ def test_a_call_refused_by_a_phase_is_not_a_repeat_after_the_restrictions_widen(
     identity, config, monkeypatch
 ):
     service = FakeService(identity)
-    service.search_recipes = lambda *_: {"recipes": [], "rerank_status": "disabled", "note": "None."}
+    service.search_recipes = lambda *_: {
+        "recipes": [],
+        "rerank_status": "disabled",
+        "note": "None.",
+    }
     first, second = {"query": "carbonara"}, {"query": "lasagne"}
     seen = scripted(
         monkeypatch,
@@ -496,3 +503,133 @@ def test_with_the_phases_off_the_match_line_is_unchanged(identity, monkeypatch):
     monkeypatch.setattr(settings(), "agent_phases", False)
     text = open_match_session(identity).execution_guidance(60)
     assert "pack_size_units" not in text and "stock_verified" not in text
+
+
+# --- the request brief is the intent classifier when it exists (merge with develop's conversational chat) ----
+
+
+def brief(intent="build_list", missing=(), **over):
+    return {
+        "intent": intent,
+        "goal": "carbonara for 200",
+        "starting_point": "dish",
+        "portions": 200,
+        "missing_facts": list(missing),
+    } | over
+
+
+def briefed(identity, request_brief=None, recorded=False):
+    who = identity | {"_conversation_id": "c-1"}
+    session = matched_session(who, FakeService(who))  # a complete plan, published in this turn
+    if (
+        request_brief is not None
+    ):  # the brief arrives after the plan: develop's gate refuses publishing
+        session.brief = RequestBriefForTest(request_brief)
+    session.brief_recorded = recorded
+    return session
+
+
+def test_a_brief_that_is_not_ready_means_no_prepare_whatever_the_plan_and_the_words(identity):
+    session = briefed(identity, brief(missing=["delivery day"]))
+    assert phase(session, "please order it") == "understand"
+    text = session.execution_guidance(60)
+    assert "do not publish a cart or prepare a basket yet" in text
+    assert "prepare_order now" not in text and "Phase: PREPARE" not in text
+    assert session.brief_blocks_build
+
+
+def test_the_explore_intent_is_advice_even_with_buy_words(identity):
+    session = briefed(identity, brief(intent="explore"))
+    assert phase(session, "please order it") == "advice"
+    session.enforce_phases = True
+    assert "prepare_order" not in {d["function"]["name"] for d in session.definitions}
+
+
+def test_a_ready_build_list_brief_goes_through_the_phases(identity):
+    session = briefed(identity, brief())
+    assert not session.brief_blocks_build
+    assert phase(session, "carbonara for 200") == "prepare"
+    assert "Phase: PREPARE" in session.execution_guidance(60)
+    # the keyword advice signal is only a fallback: with a ready brief a question-shaped message is not advice
+    assert phase(session, "How should I store salmon?") == "prepare"
+
+
+def test_a_missing_brief_in_a_conversation_waits_for_record_request(identity):
+    session = briefed(identity, None, recorded=False)
+    assert phase(session, "carbonara for 200") == "understand" and session.brief_blocks_build
+    session.brief, session.brief_recorded = RequestBriefForTest(brief()), True
+    assert phase(session, "carbonara for 200") == "prepare"
+
+
+def RequestBriefForTest(data):
+    from aimo.request_brief import RequestBrief
+
+    return RequestBrief.model_validate(data)
+
+
+def test_no_continuation_while_the_brief_is_not_ready_and_one_when_it_is(
+    identity, config, monkeypatch
+):
+    who = identity | {"_conversation_id": "c-1", "_request_brief": brief(missing=["delivery day"])}
+    service = FakeService(who)
+    plan_turn = [
+        reply(
+            *[
+                call("get_product", {"product_id": n})
+                for n in ("pasta", "eggs", "pork", "cheese", "pepper")
+            ]
+        ),
+        reply(call("publish_meal_plan", meal())),
+        reply(text="Here is the plan."),
+    ]
+    seen = scripted(monkeypatch, plan_turn)
+    run(who, service, user("carbonara for 200"))
+    # develop's gate refuses publish_meal_plan while the brief is not ready; the turn ends with no nudge
+    assert not any("Server notice" in str(s["messages"][-1]) for s in seen)
+    ready = identity | {"_conversation_id": "c-1", "_request_brief": brief()}
+    service = FakeService(ready)
+    seen = scripted(
+        monkeypatch,
+        plan_turn[:2]
+        + [
+            reply(text="Here is the plan."),
+            reply(call("prepare_order", purchase())),
+            reply(text="Prepared; press Confirm purchase."),
+        ],
+    )
+    result = run(ready, service, user("carbonara for 200"))
+    assert result.proposal_id and any("Server notice" in str(s["messages"][-1]) for s in seen)
+
+
+def test_with_the_phases_off_a_blocked_brief_still_gates_the_guidance(identity, monkeypatch):
+    monkeypatch.setattr(settings(), "agent_phases", False)
+    session = briefed(identity, brief(missing=["delivery day"]))
+    assert "do not publish a cart or prepare a basket yet" in session.execution_guidance(60)
+
+
+def test_with_automatic_cart_preparation_the_server_stages_the_basket_and_the_model_does_not(
+    identity, config, monkeypatch
+):
+    monkeypatch.setattr(settings(), "cart_auto_prepare", True)
+    session = matched_session(identity, FakeService(identity))
+    session.customer_texts = ["carbonara for 200"]
+    text = session.execution_guidance(60)
+    assert "Phase: PREPARE" in text and "do not call prepare_order" in text
+    assert "Do not ask for delivery details." in text
+    seen = scripted(
+        monkeypatch,
+        [
+            reply(
+                *[
+                    call("get_product", {"product_id": n})
+                    for n in ("pasta", "eggs", "pork", "cheese", "pepper")
+                ]
+            ),
+            reply(call("publish_meal_plan", meal())),
+            reply(text="Here is the plan for 200 portions."),
+        ],
+    )
+    result = run(identity, FakeService(identity), user("ingredients for 200 portions of carbonara"))
+    assert (
+        result.proposal_id is None and len(seen) == 3
+    )  # no continuation: the server's cart backstop acts

@@ -9,8 +9,7 @@ explains extension patterns; `docs/testing.md` describes checks and fixtures.
 - `frontend/` is the production Vite/React package built by Docker and root CI.
   Keep this task's implementation here. `prototypes/chat-ui/` is an isolated
   historical mock app; do not import its store, fixtures or components into
-  production. Prototype/design track integration still needs coordination per
-  repository issue #59; this guide does not change teammates' branch ownership.
+  production. Coordinate changes to shared UI and contracts with teammates.
 - `src/main.tsx` mounts React and loads styles. `src/app/` composes providers,
   routes and the application shell. Keep feature behavior out of both.
 - A feature owns its `pages/`, `components/`, `hooks/`, `api/` and, where needed,
