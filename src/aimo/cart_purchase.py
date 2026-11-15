@@ -109,14 +109,100 @@ def left_out_for_replay(plan_data):
     return [] if plan.recipe_plan_id else split_plain(plan)[1]
 
 
-def prepare_basket(identity, cid, stored, delivery_date, destination, key, limits, service, tid):
-    """Prepare a basket for one stored plan. In the same transaction that creates it, the
-    conversation's other unconfirmed baskets are cancelled (never one with an order).
-    Returns (proposal_id, not_included, notice)."""
+def not_included_text(left_out):
+    """The trusted note about items left out of the basket."""
+    names = [i.name for i in left_out]
+    return ("\n\nNot included: " + ", ".join(names) + ".") if names else ""
+
+
+def read_basis(c, cid):
+    """What a caller built its basket on: the newest stored plan and the newest basket link."""
+    row = c.execute(
+        """SELECT max(id) FILTER (WHERE meal_plan IS NOT NULL) AS plan_at,
+        max(id) FILTER (WHERE proposal_id IS NOT NULL) AS basket_at
+        FROM conversation_messages WHERE conversation_id=%s""",
+        (cid,),
+    ).fetchone()
+    return row["plan_at"], row["basket_at"]
+
+
+def basis_of(messages):
+    plan_at = max((m["id"] for m in messages if m["meal_plan"]), default=None)
+    basket_at = max((m["id"] for m in messages if m["proposal_id"]), default=None)
+    return plan_at, basket_at
+
+
+def prepare_basket(
+    identity, cid, stored, delivery_date, destination, key, limits, service, tid, link
+):
+    """Prepare a basket for one stored plan. The supplier lookups happen first, without a lock; then,
+    in ONE transaction under the buyer lock, the basket is created, the conversation's other
+    unconfirmed baskets are cancelled (never one with an order) and (when `link` has `write`) the
+    customer line and the assistant line that carries the basket are stored. Inside that transaction
+    the conversation is locked and these are checked again: no turn in progress (`check_busy`), the
+    plan the caller read is still the latest (`basis`: else CART_CHANGED) and the cart was not ordered
+    meanwhile (`check_ordered`). Returns (proposal_id, not_included, notice)."""
     actor = auth.internal_agent(identity) | {"_turn_id": str(tid)}
     session = ToolSession(actor, service, constraints=limits or None)
     session.preparation_key = key
-    session.supersede = {"conversation_id": str(cid), "by": identity["id"]}
+    left_out_box = []
+
+    def before(c):
+        owned(c, identity, cid, lock=True)
+        if link.get("check_busy"):
+            busy = c.execute(
+                "SELECT 1 FROM conversation_turns WHERE conversation_id=%s AND state!='complete'",
+                (cid,),
+            ).fetchone()
+            if busy:
+                raise Problem("CONVERSATION_BUSY", "A response is in progress.", 409, 3)
+        if link.get("basis") is not None and read_basis(c, cid) != link["basis"]:
+            raise Problem(
+                "CART_CHANGED", "The cart changed while the basket was prepared. Try again.", 409
+            )
+        if link.get("check_ordered"):
+            refuse_if_ordered(c, cid)
+
+    def after(c, pid, rendered):
+        write = link.get("write")
+        if not write:
+            return
+        session.proposal = rendered
+        text = session.result("", include_plan=False).text + not_included_text(left_out_box)
+        made = c.execute(
+            """INSERT INTO conversation_turns(id,conversation_id,key,payload_hash,state,lease_until,
+            attempt,requested_by,worker_attempts,submitted_by)
+            VALUES(%s,%s,%s,%s,'complete',%s,%s,%s,0,%s) ON CONFLICT(conversation_id,key) DO NOTHING
+            RETURNING id""",
+            (
+                tid,
+                cid,
+                write["key"],
+                write["digest"],
+                now(),
+                uuid4(),
+                identity["id"],
+                identity["id"],
+            ),
+        ).fetchone()
+        if made:
+            c.execute(
+                "INSERT INTO conversation_messages(conversation_id,turn_id,role,text) VALUES(%s,%s,'user',%s)",
+                (cid, tid, write["summary"]),
+            )
+            c.execute(
+                """INSERT INTO conversation_messages(conversation_id,turn_id,role,text,meal_plan,proposal_id)
+                VALUES(%s,%s,'assistant',%s,%s,%s)""",
+                (cid, tid, text, js(write.get("plan")) if write.get("plan") else None, pid),
+            )
+            c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
+
+    session.supersede = {
+        "conversation_id": str(cid),
+        "by": identity["id"],
+        "before": before,
+        "after": after,
+    }
     recipe = bool(isinstance(stored, dict) and stored.get("recipe_plan_id"))
     left_out = []
     if recipe:
@@ -153,6 +239,7 @@ def prepare_basket(identity, cid, stored, delivery_date, destination, key, limit
             plan.model_copy(update={"ingredients": items}).model_dump(mode="json")
         ):
             raise Problem("CART_NOT_VERIFIED", "The cart could not be verified.", 422)
+    left_out_box.extend(left_out)
     request = PrepareOrderInput(
         request_id=("Cart: " + session.plan.title)[:100],
         destination=destination,
@@ -161,9 +248,7 @@ def prepare_basket(identity, cid, stored, delivery_date, destination, key, limit
         lines=lines_of(items, recipe),
     )
     proposal = session.prepare(request)
-    notice = session.result("", include_plan=False).text
-    if left_out:
-        notice += "\n\nNot included: " + ", ".join(i.name for i in left_out) + "."
+    notice = session.result("", include_plan=False).text + not_included_text(left_out)
     return proposal["proposal_id"], left_out, notice
 
 
@@ -183,37 +268,21 @@ def replay_of(identity, old, messages, digest):
     )
 
 
-def write_pair(identity, cid, tid, key, digest, summary, notice, pid, plan_data=None):
-    """A completed turn of one customer line and one assistant line that carries the basket."""
-    with connection() as c:
-        owned(c, identity, cid, lock=True)
-        busy = c.execute(
-            "SELECT 1 FROM conversation_turns WHERE conversation_id=%s AND state!='complete'",
-            (cid,),
-        ).fetchone()
-        if busy:
-            raise Problem("CONVERSATION_BUSY", "A response is in progress.", 409, 3)
-        made = c.execute(
-            """INSERT INTO conversation_turns(id,conversation_id,key,payload_hash,state,lease_until,
-            attempt,requested_by,worker_attempts,submitted_by)
-            VALUES(%s,%s,%s,%s,'complete',%s,%s,%s,0,%s) ON CONFLICT(conversation_id,key) DO NOTHING
-            RETURNING id""",
-            (tid, cid, key, digest, now(), uuid4(), identity["id"], identity["id"]),
-        ).fetchone()
-        if made:  # a concurrent identical request already wrote the pair; the proposal is the same
-            c.execute(
-                "INSERT INTO conversation_messages(conversation_id,turn_id,role,text) VALUES(%s,%s,'user',%s)",
-                (cid, tid, summary),
-            )
-            c.execute(
-                """INSERT INTO conversation_messages(conversation_id,turn_id,role,text,meal_plan,proposal_id)
-                VALUES(%s,%s,'assistant',%s,%s,%s)""",
-                (cid, tid, notice, js(plan_data) if plan_data else None, pid),
-            )
-            c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
+def retrying(attempt, tries=3):
+    """Run an operation again from a fresh read when the cart changed under it (CART_CHANGED)."""
+    for n in range(tries):
+        try:
+            return attempt()
+        except Problem as exc:
+            if exc.code != "CART_CHANGED" or n == tries - 1:
+                raise
 
 
 def prepare_from_cart(identity, cid, body, service):
+    return retrying(lambda: prepare_from_cart_once(identity, cid, body, service))
+
+
+def prepare_from_cart_once(identity, cid, body, service):
     if identity["role"] != "approver":
         raise Problem("FORBIDDEN", "Only a buyer session can prepare a purchase.", 403)
     digest = fingerprint(
@@ -254,11 +323,16 @@ def prepare_from_cart(identity, cid, body, service):
     stored = cart_plan(messages)
     tid = uuid4()
     key = "cart-" + fingerprint({"conversation": str(cid), "key": body.request_id})
-    pid, left_out, notice = prepare_basket(
-        identity, cid, stored, body.delivery_date, body.destination, key, limits, service, tid
-    )
     summary = "Prepared from my cart for " + f"{body.delivery_date} to {body.destination}."
-    write_pair(identity, cid, tid, body.request_id, digest, summary, notice, pid)
+    link = {
+        "check_busy": True,
+        "check_ordered": True,
+        "basis": basis_of(messages),
+        "write": {"key": body.request_id, "digest": digest, "summary": summary, "plan": None},
+    }
+    pid, left_out, _ = prepare_basket(
+        identity, cid, stored, body.delivery_date, body.destination, key, limits, service, tid, link
+    )
     return answer(identity, pid, left_out)
 
 
@@ -388,8 +462,9 @@ def auto_prepare(identity, cid, tid, result, service):
                 "after": str(latest["id"]) if latest else None,
             }
         )
+        link = {"check_busy": False, "check_ordered": not ordered, "basis": None, "write": None}
         pid, left_out, notice = prepare_basket(
-            identity, cid, stored, when, destination, key, limits, service, tid
+            identity, cid, stored, when, destination, key, limits, service, tid, link
         )
     except Problem as exc:
         if exc.code not in ("EMPTY_CART", "CART_INCOMPLETE"):
@@ -432,6 +507,10 @@ def amount_for_packs(product, unit, packs):
 
 
 def edit_cart(identity, cid, body, service):
+    return retrying(lambda: edit_cart_once(identity, cid, body, service))
+
+
+def edit_cart_once(identity, cid, body, service):
     if identity["role"] != "approver":
         raise Problem("FORBIDDEN", "Only a buyer session can edit the cart.", 403)
     digest = fingerprint({"edit": sorted((x.product_id, x.sales_quantity) for x in body.lines)})
@@ -504,9 +583,14 @@ def edit_cart(identity, cid, body, service):
     if edited == stored and latest:
         return answer(identity, latest["id"], split_plain(plan)[1])  # nothing changed: no revision
     when, destination = terms_for(latest, policy)
-    pid, left_out, notice = prepare_basket(
-        identity, cid, edited, when, destination, key, limits, service, tid
-    )
     summary = "I changed the cart on the card: " + ", ".join(told) + "."
-    write_pair(identity, cid, tid, body.request_id, digest, summary, notice, pid, edited)
+    link = {
+        "check_busy": True,
+        "check_ordered": True,
+        "basis": basis_of(messages),
+        "write": {"key": body.request_id, "digest": digest, "summary": summary, "plan": edited},
+    }
+    pid, left_out, _ = prepare_basket(
+        identity, cid, edited, when, destination, key, limits, service, tid, link
+    )
     return answer(identity, pid, left_out)

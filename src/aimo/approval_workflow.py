@@ -363,8 +363,15 @@ def prepare_order(identity, request: PrepareRequest, connector, constraints=None
                 (pid, request.recipe_plan_id),
             )
         if supersede:
+            # One serialization point (the buyer lock held here): re-check what the caller read,
+            # cancel the older open baskets and link the new one, all in this transaction.
+            if supersede.get("before"):
+                supersede["before"](c)
             supersede_open_baskets(c, identity["buyer_id"], pid, supersede)
-        return render(c, *proposal(c, pid, identity), identity)
+        rendered = render(c, *proposal(c, pid, identity), identity)
+        if supersede and supersede.get("after"):
+            supersede["after"](c, pid, rendered)
+        return rendered
 
 
 def supersede_open_baskets(c, buyer_id, keep, supersede):

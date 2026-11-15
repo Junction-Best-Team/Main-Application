@@ -230,7 +230,6 @@ def test_a_confirm_racing_the_revision_gives_one_order_at_most(auto):
     threads = [threading.Thread(target=confirm), threading.Thread(target=revise)]
     [t.start() for t in threads]
     [t.join() for t in threads]
-    assert results["revise"].status_code == 200, results["revise"].text
     with connection() as c:
         orders = c.execute("SELECT count(*) AS n FROM orders").fetchone()["n"]
         open_baskets = c.execute(
@@ -238,9 +237,13 @@ def test_a_confirm_racing_the_revision_gives_one_order_at_most(auto):
             (SELECT 1 FROM order_request_cancellations x WHERE x.proposal_id=p.id)"""
         ).fetchone()["n"]
     assert orders <= 1
-    if results["confirm"].status_code == 200:  # the order won: the older basket stays as it is
-        assert orders == 1 and open_baskets == 1  # only the new basket is still open
-    else:  # the revision won: "revised", nothing ordered
+    if results["confirm"].status_code == 200:
+        # The order won: the revision is refused (a second basket next to an order is never made).
+        assert orders == 1 and open_baskets == 0
+        assert results["revise"].status_code == 409
+        assert results["revise"].json()["error"]["code"] == "BASKET_ALREADY_ORDERED"
+    else:  # the revision won: "revised", nothing ordered, exactly one open basket
+        assert results["revise"].status_code == 200, results["revise"].text
         assert results["confirm"].json()["error"]["code"] == "REQUEST_REVISED" and orders == 0
         assert open_baskets == 1
 

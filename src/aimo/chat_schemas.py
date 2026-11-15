@@ -150,6 +150,7 @@ class CartNotIncluded(Model):
 class CartLineEdit(Model):
     product_id: str = Field(min_length=1, max_length=40)
     sales_quantity: int = Field(
+        strict=True,
         ge=0,
         le=100000,
         description="Whole sales units (packs) of this product in the basket. 0 leaves the line out "
