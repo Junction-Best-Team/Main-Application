@@ -36,10 +36,10 @@ reset_buyers = fixtures.reset_buyers
 
 
 @pytest.mark.parametrize("configured,override,remaining,completed", [
-    (360, None, 30, True), (300, None, 30, True),
-    (360, 200, 30, False), (360, None, 180, False),
+    (600, None, 30, True), (500, None, 30, True),
+    (600, 380, 30, False), (600, None, 240, False),
 ])
-def test_turn_budget_supports_work_after_three_minutes_and_preserves_expiry(
+def test_turn_budget_supports_work_after_six_minutes_and_preserves_expiry(
     monkeypatch, config, identity, configured, override, remaining, completed
 ):
     from aimo import agent_provider
@@ -50,7 +50,7 @@ def test_turn_budget_supports_work_after_three_minutes_and_preserves_expiry(
     monkeypatch.setattr(agent, "time", clock)
     monkeypatch.setattr(agent_provider, "time", clock)
     responses = iter([
-        (185, reply(call("publish_meal_plan", meal(False)))),
+        (365, reply(call("publish_meal_plan", meal(False)))),
         (remaining, reply(text="The draft is ready for matching.")),
     ])
     deadlines = []
@@ -70,14 +70,14 @@ def test_turn_budget_supports_work_after_three_minutes_and_preserves_expiry(
     assert ("time limit" not in result.text) is completed
 
 
-@pytest.mark.parametrize("seconds", [0, -1, 361, float("nan")])
+@pytest.mark.parametrize("seconds", [0, -1, 601, float("nan")])
 def test_turn_budget_cannot_outlive_lease_headroom(config, identity, seconds):
-    with pytest.raises(ValueError, match="at most 360"):
+    with pytest.raises(ValueError, match="at most 600"):
         agent.run_turn(identity, HISTORY, FakeService(identity), budget_seconds=seconds)
 
 
-@pytest.mark.parametrize("reads,limited", [(39, False), (40, True)])
-def test_default_round_budget_finishes_after_twenty_rounds_and_still_stops(
+@pytest.mark.parametrize("reads,limited", [(79, False), (80, True)])
+def test_default_round_budget_finishes_after_forty_rounds_and_still_stops(
     monkeypatch, config, identity, reads, limited
 ):
     config.llm_max_tool_rounds = Settings(_env_file=None).llm_max_tool_rounds
@@ -87,7 +87,7 @@ def test_default_round_budget_finishes_after_twenty_rounds_and_still_stops(
     ])
     events = []
     result = agent.run_turn(identity, HISTORY, FakeService(identity), on_progress=events.append)
-    assert len(seen) == 40
+    assert len(seen) == 80
     assert ("step limit" in result.text) is limited
     assert events[-1].error_code == ("TOOL_ROUND_LIMIT" if limited else None)
 

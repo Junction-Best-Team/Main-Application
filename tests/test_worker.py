@@ -55,11 +55,11 @@ def test_long_turn_keeps_its_lease_until_persistence_headroom_expires(buyer, ser
     started = now()
     monkeypatch.setattr(conversations, "now", lambda: started)
     old = conversations.claim_turn()
-    assert old["lease_until"] == started + timedelta(seconds=420)
-    for elapsed in (241, 361, 419):
+    assert old["lease_until"] == started + timedelta(seconds=660)
+    for elapsed in (421, 601, 659):
         monkeypatch.setattr(conversations, "now", lambda: started + timedelta(seconds=elapsed))
         assert conversations.claim_turn() is None
-    monkeypatch.setattr(conversations, "now", lambda: started + timedelta(seconds=421))
+    monkeypatch.setattr(conversations, "now", lambda: started + timedelta(seconds=661))
     new = conversations.claim_turn()
     assert new["attempt"] != old["attempt"]
     with pytest.raises(Problem) as error:
