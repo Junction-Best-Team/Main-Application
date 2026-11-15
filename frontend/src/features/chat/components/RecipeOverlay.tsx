@@ -45,7 +45,8 @@ export function RecipeOverlay({
       ?.focus();
     return () => {
       window.removeEventListener("keydown", onKey);
-      if (previous instanceof HTMLElement) previous.focus({ preventScroll: true });
+      if (previous instanceof HTMLElement)
+        previous.focus({ preventScroll: true });
     };
   }, [onClose]);
 

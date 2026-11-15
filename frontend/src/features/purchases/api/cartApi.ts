@@ -35,3 +35,22 @@ export const editCart = (
     headers: { "X-CSRF-Token": csrfToken },
     body: JSON.stringify(body),
   });
+
+// POST /api/conversations/{id}/refresh-basket {request_id}: prepares an EXPIRED basket again from the stored
+// cart (fresh supplier price and stock, same date, destination and pack counts). Never confirms or orders.
+// PROPOSED CONTRACT (p3/checkout-server 622c720, not on develop yet): typed by hand until it is generated.
+// 409 BASKET_NOT_EXPIRED when the latest basket is still valid, 422 NO_BASKET_TO_REFRESH without a basket.
+export type CartRefreshBody = { request_id: string };
+export const refreshBasket = (
+  csrfToken: string,
+  conversationId: string,
+  body: CartRefreshBody,
+) =>
+  api<PrepareFromCartResult>(
+    `/api/conversations/${conversationId}/refresh-basket`,
+    {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrfToken },
+      body: JSON.stringify(body),
+    },
+  );

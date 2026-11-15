@@ -36,7 +36,10 @@ export function MealPlanCard({
               {plan.portions} portions · Tap for ingredients and steps
             </span>
           </span>
-          <Icon name="chevron_right" className="mt-1 text-[20px] text-secondary" />
+          <Icon
+            name="chevron_right"
+            className="mt-1 text-[20px] text-secondary"
+          />
         </button>
       ) : (
         <section

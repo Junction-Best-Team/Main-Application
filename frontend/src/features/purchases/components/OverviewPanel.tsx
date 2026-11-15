@@ -10,6 +10,7 @@ import { useCardTab } from "../hooks/useCardTab";
 import { useCartEdit } from "../hooks/useCartEdit";
 import { useCartOpen } from "../hooks/useCartOpen";
 import { usePrepareFromCart } from "../hooks/usePrepareFromCart";
+import { useRefreshBasket } from "../hooks/useRefreshBasket";
 import { EDIT_COPY } from "../model/cartEdit";
 import { CardFooter } from "./CardFooter";
 import { CartShell } from "./CartShell";
@@ -120,6 +121,7 @@ export function OverviewPanel({
     onUpdated: onPrepared,
   });
   const prep = usePrepareFromCart(conversationId, onPrepared);
+  const refreshBasket = useRefreshBasket(conversationId, onPrepared, flow.load);
   const [focusDate, setFocusDate] = useState(0);
   const p = edit.shown;
   const updating = !flow.p && Boolean(p); // the new proposal is loading; the answer is shown meanwhile
@@ -254,7 +256,12 @@ export function OverviewPanel({
                 />
               </CardPanel>
               <CardPanel name="checks" active={tabs.tab === "checks"}>
-                <PurchaseChecks p={p} />
+                <PurchaseChecks
+                  p={p}
+                  onRefresh={refreshBasket.refresh}
+                  refreshing={refreshBasket.busy}
+                  refreshError={refreshBasket.error}
+                />
               </CardPanel>
               <CardPanel name="details" active={tabs.tab === "details"}>
                 <DetailsPanel

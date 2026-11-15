@@ -1779,9 +1779,9 @@ for (const state of ["denied", "expired", "rejected"] as const) {
     ).toBeDisabled();
     if (state === "denied") {
       await panel.getByRole("tab", { name: "Checks" }).click();
-      await expect(panel.getByRole("alert")).toContainText(
-        "cannot be approved",
-      );
+      await expect(
+        panel.getByRole("group", { name: "Cannot order yet" }),
+      ).toBeVisible();
     } else
       await expect(panel.getByTestId("card-status-chip")).toContainText(
         state === "expired" ? "Expired" : "Rejected",
