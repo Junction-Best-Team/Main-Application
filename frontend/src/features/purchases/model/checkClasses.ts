@@ -37,7 +37,8 @@ const CLASSES: CheckClass[] = [
 
 /** Short human text per code (minimal on purpose); unknown codes show the server's own message. */
 const SHORT: Record<string, string> = {
-  UNVERIFIED_STOCK: "Stock not confirmed by the supplier. Approve to order anyway.",
+  UNVERIFIED_STOCK:
+    "Stock not confirmed by the supplier. Approve to order anyway.",
   QUANTITY_UNRESOLVED: "No pack size",
   TOTAL_UNRESOLVED: "Total unknown",
   CUTOFF_PASSED: "Order cutoff passed",
