@@ -4,6 +4,7 @@ from copy import deepcopy
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 from test_agent import call, reply
 
 from aimo import agent, conversations
@@ -12,7 +13,8 @@ from aimo.chat_schemas import ConversationCreate, MessageRequest
 from aimo.db import Problem, connection
 
 
-def test_timeout_saves_partial_plan_and_next_turn_can_continue(monkeypatch, buyer, service):
+@pytest.mark.parametrize("code,count", [("LLM_TIMEOUT", 2), ("LLM_RESPONSE_INVALID", 22)])
+def test_timeout_saves_partial_plan_and_next_turn_can_continue(monkeypatch, buyer, service, code, count):
     config = SimpleNamespace(llm_max_tool_rounds=12, llm_model="scripted")
     monkeypatch.setattr(agent, "settings", lambda: config)
     basis = {
@@ -24,10 +26,14 @@ def test_timeout_saves_partial_plan_and_next_turn_can_continue(monkeypatch, buye
             {"name": "Tomato sauce", "amount": "600", "unit": "ml"},
         ],
     }
+    basis["ingredients"] += [
+        {"name": f"Authored ingredient {i}", "amount": "100", "unit": "g"}
+        for i in range(count - 2)
+    ]
     script = iter(
         [
             reply(call("draft_recipe", basis)),
-            Problem("LLM_TIMEOUT", "synthetic timeout", 504),
+            Problem(code, "synthetic provider interruption", 504),
             reply(text="The saved estimate still needs product matches."),
         ]
     )
@@ -49,15 +55,17 @@ def test_timeout_saves_partial_plan_and_next_turn_can_continue(monkeypatch, buye
     )
     assert result["retry_message"] is None and not result["busy"]
     saved = result["messages"][-1]
-    assert saved["notice"] is None and "time limit" in saved["text"]
-    assert [i["amount"] for i in saved["meal_plan"]["ingredients"]] == ["20", "30"]
+    assert saved["notice"] is None and "progress is saved" in saved["text"]
+    assert [i["amount"] for i in saved["meal_plan"]["ingredients"][:2]] == ["20", "30"]
+    assert len(saved["meal_plan"]["ingredients"]) == count
     assert saved["proposal_id"] is None
     with connection() as c:
         assert c.execute("SELECT state FROM conversation_turns").fetchone()["state"] == "complete"
         assert c.execute("SELECT count(*) AS n FROM orders").fetchone()["n"] == 0
-    conversations.message(
+    continued = conversations.message(
         buyer, cid, MessageRequest(text="Continue", idempotency_key=str(uuid4())), service
     )
+    assert [m["meal_plan"] for m in continued["messages"] if m["meal_plan"]] == [saved["meal_plan"]]
     assert "Stored meal plan:" in seen[-1][-2]["content"]
     assert "Authored tomato pasta estimate" in seen[-1][-2]["content"]
 

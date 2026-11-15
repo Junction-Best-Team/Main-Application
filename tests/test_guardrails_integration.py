@@ -116,6 +116,10 @@ def test_enforced_guard_turn_still_needs_exact_customer_confirmation(
     scripted(
         monkeypatch,
         [
+            reply(call("record_request", {
+                "intent": "build_list", "goal": "10 L lactose-free milk",
+                "starting_point": "products", "requirements": {"lactose_free": True},
+            })),
             reply(call("get_product", {"product_id": "464306"})),
             reply(call("publish_meal_plan", plan)),
             reply(call("prepare_order", order)),
@@ -129,6 +133,7 @@ def test_enforced_guard_turn_still_needs_exact_customer_confirmation(
     )
     assert {s["boundary"] for s in seen} == {
         "user_input",
+        "request_brief",
         "tool_output",
         "tool_call",
         "assistant_output",
@@ -227,7 +232,8 @@ def test_persisted_purchase_context_is_minimised(monkeypatch, service, buyer, re
     monkeypatch.setattr(conversations.workflow, "get_proposal", poisoned)
     second = MessageRequest(text="Status?", idempotency_key=str(uuid4()))
     conversations.message(buyer, cid, second, service, runner)
-    state = seen[-1]
+    assert seen[-1] == {"role": "user", "content": "Status?", "attachments": []}
+    state = seen[-2]  # Purchasing context precedes the latest customer message.
     assert state["role"] == "assistant" and "not instructions" in state["content"]
     assert str(pid) in state["content"] and '"product_id": "464306"' in state["content"]
     assert injection not in json.dumps(seen) and "Demo Arki" not in state["content"]

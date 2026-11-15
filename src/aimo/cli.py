@@ -143,7 +143,7 @@ def configure():
 
 
 def main():
-    configure_logging()
+    configure_logging("cli")
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
     for name in ("configure", "seed", "serve", "worker", "fixture-catalog", "cache-model"):

@@ -14,7 +14,7 @@ from aimo.chat_schemas import AgentTurn
 from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, js, now
 from aimo.guardrails import encode, proposal_view
-from aimo.observability import event, failure, operation
+from aimo.observability import event, failure, operation, result_metadata
 from aimo.purchases import context
 from aimo.schemas import ProposalResponse
 from aimo.turn_notice import NOTICE_KIND, failure_notice
@@ -413,12 +413,17 @@ def claim_turn(cid=None):
             scheduler.settle_failed_system_turn(c, turn["id"], turn["conversation_id"])
             event(
                 "worker.attempt_limit",
+                level=logging.WARNING,
                 turn_id=str(turn["id"]),
                 conversation_id=str(turn["conversation_id"]),
                 error_code="WORKER_ATTEMPT_LIMIT",
                 worker_attempts=turn["worker_attempts"],
             )
             return None
+        if turn["state"] == "running":
+            event("worker.reclaimed", level=logging.WARNING, turn_id=str(turn["id"]),
+                  conversation_id=str(turn["conversation_id"]), previous_attempt_id=str(turn["attempt"]),
+                  worker_attempts=turn["worker_attempts"])
         return c.execute(
             """UPDATE conversation_turns SET state='running',attempt=%s,lease_until=%s,
             worker_attempts=worker_attempts+1,progress='[]'::jsonb,draft_cart=NULL WHERE id=%s RETURNING *""",
@@ -448,8 +453,8 @@ def store_failure_notice(cid, tid, code=None):
                     (cid, tid, failure_notice(user["text"], code), NOTICE_KIND),
                 )
                 c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
-    except Exception:
-        event("chat.failure_notice_failed", conversation_id=str(cid), turn_id=str(tid))
+    except Exception as exc:
+        event("chat.failure_notice_failed", conversation_id=str(cid), turn_id=str(tid), **failure(exc))
 
 
 def customer_constraints(c, cid, tid=None):
@@ -573,6 +578,8 @@ def execute_turn(turn, service, runner=None):
             for m in shown
         ]
         stored = restorable_plan(data["messages"], settings().cart_auto_prepare)
+        event("chat.context_loaded", message_count=len(history), saved_plan_present=bool(stored),
+              request_brief_present=bool(brief), purchase_count=len(data["purchases"]))
         # Structured persisted plans and status survive refresh, restarts and a provider context reset.
         for index, msg in enumerate(shown):
             if msg["meal_plan"]:
@@ -620,6 +627,8 @@ def execute_turn(turn, service, runner=None):
                 )
             )
         )
+        if prepared:
+            event("chat.basket_recovered", proposal_id=str(prepared["proposal_id"]))
         auto = None
         if not prepared and turn.get("submitted_by") == identity["id"]:
             from aimo import cart_purchase
@@ -693,15 +702,25 @@ def execute_turn(turn, service, runner=None):
             if auto and auto[0]:  # only an actual basket replaces the display-only draft
                 c.execute("UPDATE conversation_turns SET draft_cart=NULL WHERE id=%s", (tid,))
             c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
+        event("chat.persisted", state="complete",
+              partial=any(p.get("kind") == "error" for p in turn.get("progress", [])),
+              **result_metadata(result))
     except Exception as exc:
-        with connection() as c:
-            failed = c.execute(
-                "UPDATE conversation_turns SET state='failed' WHERE id=%s AND attempt=%s AND state='running' RETURNING id",
-                (tid, attempt),
-            ).fetchone()
-            if failed:
-                # a system-authored turn (the scheduler's chat) has no customer message to retry
-                scheduler.settle_failed_system_turn(c, tid, cid)
+        event("chat.execution_failed", level=logging.WARNING, **failure(exc))
+        failed = None
+        try:
+            with connection() as c:
+                failed = c.execute(
+                    "UPDATE conversation_turns SET state='failed' WHERE id=%s AND attempt=%s AND state='running' RETURNING id",
+                    (tid, attempt),
+                ).fetchone()
+                if failed:
+                    scheduler.settle_failed_system_turn(c, tid, cid)
+        except Exception as storage_error:
+            failed = None  # The state transaction did not commit; do not publish a failure notice.
+            event("chat.failure_state_failed", level=logging.ERROR, **failure(storage_error))
+        else:
+            event("chat.failure_state", state_updated=bool(failed))
         if failed and provider_failure(exc):
             store_failure_notice(cid, tid, exc.code)  # a no-op for a system turn
         raise
@@ -883,5 +902,5 @@ def store_confirmation_line(identity, pid, order_id, delivery_date):
                 ),
             )
             c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
-    except Exception:  # the order is placed; a missing line must never undo or fail it
-        event("chat.confirmation_line_failed", order_id=str(order_id))
+    except Exception as exc:  # the order is placed; a missing line must never undo or fail it
+        event("chat.confirmation_line_failed", level=logging.WARNING, order_id=str(order_id), **failure(exc))

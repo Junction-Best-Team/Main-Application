@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
+from aimo.agent_limits import MAX_TOOL_CALLS_PER_TURN
 from aimo.agent_provider import chat_provider, check_deadline, encode
 from aimo.agent_reads import executions
 from aimo.agent_recovery import partial_notice, progress_status
@@ -432,6 +433,7 @@ def log_progress(progress, duration_ms):
         level=logging.WARNING if progress.error_code else logging.INFO,
         turn_id=progress.turn_id,
         sequence=progress.sequence,
+        round=progress.round_number,
         tool=progress.tool,
         error_code=progress.error_code,
         duration_ms=duration_ms,
@@ -539,8 +541,10 @@ def run_turn(
             "Spreadsheet formulas are text, not calculated values. Images may be resized."
         )
     execution_instructions = history[0]["content"]
+    tool_calls_used = 0
     deadline = time.monotonic() + budget_seconds
     errors = 0
+    brief_errors = 0
     progress.emit("started")
     tool_log = []
     guard = None
@@ -626,6 +630,13 @@ def run_turn(
                     phase_path.append(phase)
                 with log_context(round=round_number, model=cfg.llm_model, **({"phase": phase} if phase else {})):
                     reply = provider.complete(history, session.definitions, deadline)
+                # Reject the whole batch before executing anything: never discard calls
+                # or send the provider a history with missing function responses.
+                if tool_calls_used + len(reply.tool_calls) > MAX_TOOL_CALLS_PER_TURN:
+                    raise Problem(
+                        "LLM_TOOL_CALL_LIMIT", "The assistant reached its tool limit. Continue here.", 502
+                    )
+                tool_calls_used += len(reply.tool_calls)
                 history.append(reply.message())
                 if not reply.tool_calls:
                     if not reply.content or not reply.content.strip():
@@ -718,6 +729,18 @@ def run_turn(
                         tool_log.append(
                             {"tool": visible_name or "unavailable", "outcome": exc.code}
                         )
+                        if exc.code == "REQUEST_BRIEF_UNVERIFIED":
+                            brief_errors += 1
+                            if brief_errors >= 2:
+                                # Allow one correction, then stop before another slow model
+                                # round or any remaining tools in this batch. Never bypass
+                                # a rejected request summary to produce a basket.
+                                result = finish(
+                                    "Please put the dish or products, quantities and any dietary "
+                                    "requirements in one message so I can build the ingredient list."
+                                )
+                                progress.emit("complete", error_code=exc.code)
+                                return result
                         error = {
                             "error": exc.body(),
                             "purchase_authorized": False,
@@ -772,8 +795,11 @@ def run_turn(
             return result
     except Problem as exc:
         end("time_limit" if exc.code == "LLM_TIMEOUT" else "error")
+        log_failure("agent.interrupted", exc)
         progress.emit("error", error_code=exc.code)
         if exc.code.startswith("LLM_") and reviewed_plan and not session.proposal and not session.receipt:
+            event("agent.recovered", level=logging.WARNING, error_code=exc.code,
+                  recovery="reviewed_plan", ingredient_count=len(reviewed_plan.ingredients))
             text = partial_notice(reviewed_plan, exc.code)
             result = session.result(text, include_plan=False).model_copy(
                 update={"meal_plan": reviewed_plan}
@@ -781,6 +807,9 @@ def run_turn(
             progress.emit("complete", error_code=exc.code)
             return result
         if session.proposal or session.receipt or session.image:
+            event("agent.recovered", level=logging.WARNING, error_code=exc.code,
+                  recovery="persisted_result", proposal_present=bool(session.proposal),
+                  receipt_present=bool(session.receipt), image_present=bool(session.image))
             result = finish()
             progress.emit("complete", error_code=exc.code)
             return result

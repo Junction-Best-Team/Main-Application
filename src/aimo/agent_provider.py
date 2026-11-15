@@ -9,7 +9,9 @@ from urllib.parse import urlsplit
 
 import httpx
 from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic_core import PydanticCustomError
 
+from aimo.agent_limits import MAX_OTHER_CALLS_PER_REPLY, MAX_TOOL_CALLS_PER_REPLY, PARALLEL_READS
 from aimo.db import Problem
 from aimo.observability import elapsed, event, failure, operation
 
@@ -31,17 +33,19 @@ class ToolCall(BaseModel):
 class AssistantReply(BaseModel):
     role: Literal["assistant"] = "assistant"
     content: str | None = Field(default=None, max_length=20_000)
-    tool_calls: list[ToolCall] = Field(default_factory=list, max_length=12)
+    tool_calls: list[ToolCall] = Field(default_factory=list, max_length=MAX_TOOL_CALLS_PER_REPLY)
     # Opaque provider reasoning/signatures must survive the next tool round unchanged.
     # Never persisted to conversation history, rendered to customers or logged.
     reasoning_details: list[dict] | None = Field(default=None, repr=False)
     google_parts: list[dict] | None = Field(default=None, repr=False)
 
     @model_validator(mode="after")
-    def unique_call_ids(self):
+    def validate_calls(self):
         ids = [call.id for call in self.tool_calls]
         if len(ids) != len(set(ids)):
-            raise ValueError("Duplicate tool call IDs")
+            raise PydanticCustomError("duplicate_call_ids", "Duplicate tool call IDs")
+        if sum(c.function.name not in PARALLEL_READS for c in self.tool_calls) > MAX_OTHER_CALLS_PER_REPLY:
+            raise PydanticCustomError("other_call_limit", "Too many non-read calls")
         return self
 
     def message(self):
@@ -57,6 +61,17 @@ class AssistantReply(BaseModel):
 
 def encode(value):
     return json.dumps(value, ensure_ascii=False, default=str, allow_nan=False)
+
+
+def response_rejected(exc, category):
+    """Log fixed categories only: validation inputs/messages may contain secrets."""
+    if isinstance(exc, ValidationError):
+        kinds = {e["type"] for e in exc.errors(include_input=False, include_context=False)}
+        category = next(
+            (k for k in ("duplicate_call_ids", "other_call_limit", "too_long") if k in kinds),
+            "schema",
+        )
+    event("llm.response_rejected", level=logging.WARNING, validation_category=category)
 
 
 def check_deadline(deadline):
@@ -202,6 +217,8 @@ class ChatProvider:
                     choice = choices[0] if isinstance(choices, list) and choices else {}
                     choice = choice if isinstance(choice, dict) else {}
                     finish_reason = choice.get("finish_reason")
+                    message = choice.get("message")
+                    calls = message.get("tool_calls") if isinstance(message, dict) else None
                     event(
                         "llm.result",
                         model=self.config.llm_model,
@@ -209,6 +226,7 @@ class ChatProvider:
                         if finish_reason
                         in ("stop", "length", "tool_calls", "content_filter", "error", None)
                         else "other",
+                        tool_call_count=len(calls) if isinstance(calls, list) else None,
                         duration_ms=elapsed(started),
                         usage={
                             k: usage[k]
@@ -216,6 +234,11 @@ class ChatProvider:
                             if type(usage.get(k)) is int
                         },
                     )
+                    reply_data = choice.get("message")
+                    reply_calls = reply_data.get("tool_calls") if isinstance(reply_data, dict) else None
+                    event("llm.response_shape", response_bytes=len(body),
+                          candidate_count=len(choices) if isinstance(choices, list) else 0,
+                          tool_call_count=len(reply_calls) if isinstance(reply_calls, list) else None)
                     return self.parse(body)
             except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError) as exc:
                 event(
@@ -240,12 +263,15 @@ class ChatProvider:
 
     @staticmethod
     def parse(body):
+        category = "shape"
         try:
             choice = json.loads(body)["choices"][0]
             if choice.get("finish_reason") in ("length", "content_filter"):
+                category = "incomplete"
                 raise ValueError("Incomplete provider response")
             return AssistantReply.model_validate(choice["message"])
-        except (ValueError, KeyError, IndexError, TypeError, AttributeError, ValidationError):
+        except (ValueError, KeyError, IndexError, TypeError, AttributeError, ValidationError) as exc:
+            response_rejected(exc, category)
             raise Problem(
                 "LLM_RESPONSE_INVALID",
                 "The provider returned an invalid or incomplete response. Retry this message.",

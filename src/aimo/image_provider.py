@@ -11,8 +11,10 @@ from urllib.parse import unquote, urlsplit
 import httpx
 
 from aimo.db import Problem
-from aimo.google_api import GoogleAPIError, google_api_request
+from aimo.google_api import GoogleAPIError
+from aimo.google_provider import google_api_request
 from aimo.image_schemas import RecipeImage
+from aimo.observability import event, failure, operation
 
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
@@ -36,6 +38,7 @@ def cloudinary_credentials(value):
     return cloud, key, secret
 
 
+@operation("image.generate")
 def generate_image(cfg, request, client):
     # Send only the visual brief, never the conversation, buyer or purchasing data.
     prompt = (
@@ -88,13 +91,14 @@ def generate_image(cfg, request, client):
                 )
                 if magic and 0 < len(data) <= MAX_IMAGE_BYTES:
                     return data, mime
-    except (KeyError, ValueError, TypeError, AttributeError, binascii.Error):
-        pass
+    except (KeyError, ValueError, TypeError, AttributeError, binascii.Error) as exc:
+        event("image.response_invalid", **failure(exc))
     raise Problem(
         "IMAGE_NOT_RETURNED", "No usable illustration was returned. Continue with recipe text.", 502
     )
 
 
+@operation("image.upload")
 def upload_image(cfg, data, mime, public_id, client):
     cloud, key, secret = cloudinary_credentials(cfg.cloudinary_url)
     if not re.fullmatch(r"aimo/recipe-illustrations/[a-f0-9]{32}", public_id):
@@ -111,6 +115,7 @@ def upload_image(cfg, data, mime, public_id, client):
             timeout=15,
             follow_redirects=False,
         ) as response:
+            event("image.upload_response", status=response.status_code)
             if not response.is_success:
                 raise ValueError()
             body = bytearray()

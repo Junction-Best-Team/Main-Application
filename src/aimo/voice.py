@@ -9,7 +9,9 @@ from pydantic import Field
 from aimo import auth, conversations
 from aimo.config import settings
 from aimo.db import Problem, connection, now
-from aimo.google_api import GoogleAPIError, google_api_request
+from aimo.google_api import GoogleAPIError
+from aimo.google_provider import google_api_request
+from aimo.observability import operation
 from aimo.schemas import Model
 
 LIVE_SOCKET_URL = (
@@ -48,6 +50,7 @@ class VoiceSession(Model):
     setup: dict[str, Any]
 
 
+@operation("voice.session")
 def create_session(identity, conversation_id):
     # Check ownership and current buyer context before any provider work/paid token.
     conversation = conversations.detail(identity, conversation_id)

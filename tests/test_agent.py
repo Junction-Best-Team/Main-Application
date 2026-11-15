@@ -668,6 +668,42 @@ def test_error_limit_stops_inside_a_batch_before_later_tool_calls(monkeypatch, c
     assert all(e.tool is None for e in events)
 
 
+@pytest.mark.parametrize("rejections", [1, 2])
+def test_request_brief_gets_one_correction_before_asking_customer(
+    monkeypatch, config, identity, rejections
+):
+    attempts = []
+
+    def check(self, previous, proposed, structured_changes=()):
+        attempts.append(proposed)
+        if len(attempts) <= rejections:
+            raise Problem("REQUEST_BRIEF_UNVERIFIED", "Clarify the request.", 422)
+
+    monkeypatch.setattr(Guardrails, "check_request_brief", check)
+    brief = {"intent": "build_list", "goal": "Lasagna", "starting_point": "dish", "portions": 50}
+    seen = scripted(monkeypatch, [
+        reply(call("record_request", brief)),
+        reply(call("record_request", brief), call("get_product", {"product_id": "milk"})),
+        reply(text="Let's work out the ingredients."),
+    ])
+    service = FakeService(identity)
+    events = []
+    result = agent.run_turn(identity, HISTORY, service, on_progress=events.append)
+    assert len(attempts) == 2
+    assert result.proposal_id is None and result.meal_plan is None
+    assert events[-1].kind == "complete"
+    if rejections == 2:
+        assert len(seen) == 2  # No third provider call that can hang or time out.
+        assert service.calls == []  # Stop the batch before subsequent tools.
+        assert "one message" in result.text
+        assert events[-1].error_code == "REQUEST_BRIEF_UNVERIFIED"
+    else:
+        assert len(seen) == 3
+        assert [c[0] for c in service.calls] == ["product"]
+        assert result.text == "Let's work out the ingredients."
+        assert events[-1].error_code is None
+
+
 def test_progress_shows_thinking_each_round_and_reviewing_only_when_guarded(
     monkeypatch, config, identity
 ):
@@ -1290,3 +1326,10 @@ def test_selected_recipe_streams_unmatched_matched_and_checked_prices(monkeypatc
         "message": "Not valid for requested delivery", "product_id": "pasta",
     }]}
     assert cart_snapshot(session, plan_visible=True).items[0].price is None
+
+
+@pytest.mark.parametrize("count", [12, 13, 22, 100])
+def test_openai_compatible_large_read_batch_keeps_every_call(count):
+    response = reply(*[call("search_products", {"query": f"ingredient-{i}"}) for i in range(count)])
+    parsed = ChatProvider.parse(json.dumps({"choices": [{"message": response}]}).encode())
+    assert parsed.message()["tool_calls"] == response["tool_calls"]

@@ -75,3 +75,49 @@ def test_crash_retries_bounded_and_customer_can_retry(buyer, service):
     conversations.enqueue(buyer, cid, body)
     assert run_once(service, lambda *args: AgentTurn(text="Recovered"))
     assert len(conversations.detail(buyer, cid)["messages"]) == 2
+
+
+
+def test_execution_and_failure_state_errors_are_both_logged_without_masking_original(
+    buyer, service, monkeypatch, caplog
+):
+    import json
+    from contextlib import contextmanager
+
+    cid, _ = queued(buyer)
+    turn = conversations.claim_turn()
+    original = RuntimeError("private-runner-error")
+
+    @contextmanager
+    def broken_storage():
+        raise RuntimeError("private-database-url")
+        yield
+
+    def runner(*args, **kwargs):
+        monkeypatch.setattr(conversations, "connection", broken_storage)
+        raise original
+
+    with caplog.at_level("INFO", logger="aimo.operations"), pytest.raises(RuntimeError) as caught:
+        conversations.execute_turn(turn, service, runner)
+    assert caught.value is original
+    rows = [json.loads(r.message) for r in caplog.records if r.name == "aimo.operations"]
+    failed = [r for r in rows if r["event"] in {"chat.execution_failed", "chat.failure_state_failed"}]
+    assert len(failed) == 2
+    assert all(r["turn_id"] == str(turn["id"]) and r["conversation_id"] == cid for r in failed)
+    assert "private-" not in json.dumps(rows)
+
+
+def test_worker_persistence_logs_final_state_with_claim_correlation(buyer, service, caplog):
+    import json
+
+    cid, _ = queued(buyer)
+    with caplog.at_level("INFO", logger="aimo.operations"):
+        assert run_once(service, lambda *args: AgentTurn(text="private-answer"))
+    rows = [json.loads(r.message) for r in caplog.records if r.name == "aimo.operations"]
+    claimed = next(r for r in rows if r["event"] == "worker.claimed")
+    saved = next(r for r in rows if r["event"] == "chat.persisted")
+    assert claimed["conversation_id"] == saved["conversation_id"] == cid
+    assert claimed["attempt_id"] == saved["attempt_id"]
+    assert claimed["queue_age_ms"] >= 0 and claimed["lease_remaining_ms"] > 0
+    assert saved["state"] == "complete" and not saved["partial"]
+    assert "private-answer" not in json.dumps(rows)

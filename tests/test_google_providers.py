@@ -322,3 +322,51 @@ def test_google_timeout_keeps_timeout_code_without_exposing_provider_detail(cfg,
         )
     assert error.value.code == "LLM_TIMEOUT" and error.value.status == 504
     assert "Google" not in error.value.message
+
+
+@pytest.mark.parametrize("count", [12, 13, 22, 100])
+def test_large_native_read_batch_preserves_every_call_and_response(count):
+    parts = [
+        {"functionCall": {"id": f"call-{i}", "name": "search_products", "args": {"query": f"ingredient-{i}"}}}
+        for i in range(count)
+    ]
+    parts[0]["thoughtSignature"] = "opaque-signature"
+    reply = GoogleChatProvider.parse(response(parts))
+    assert len(reply.tool_calls) == count
+    messages = [reply.message()] + [
+        {"role": "tool", "tool_call_id": call.id, "content": '{"items": []}'}
+        for call in reply.tool_calls
+    ]
+    _, contents = GoogleChatProvider.contents(messages)
+    assert contents[0]["parts"] == parts
+    assert [p["functionResponse"]["id"] for p in contents[1]["parts"]] == [f"call-{i}" for i in range(count)]
+
+
+@pytest.mark.parametrize("name,count,category", [
+    ("search_products", 101, "too_long"),
+    ("prepare_order", 13, "other_call_limit"),
+    ("unknown_tool", 13, "other_call_limit"),
+])
+def test_excessive_batches_are_rejected_without_logging_payload(name, count, category, caplog):
+    body = response([
+        {"functionCall": {"id": f"call-{i}", "name": name, "args": {"private": "secret-value"}}}
+        for i in range(count)
+    ])
+    with caplog.at_level("INFO", logger="aimo.operations"), pytest.raises(Problem):
+        GoogleChatProvider.parse(body)
+    event = json.loads(caplog.records[-1].message)
+    assert event["validation_category"] == category
+    assert "secret-value" not in caplog.text and name not in caplog.text
+
+
+@pytest.mark.parametrize("finish,expected", [("MAX_TOKENS", "MAX_TOKENS"), ("private-finish", "other")])
+def test_google_failure_diagnostics_include_only_safe_metadata(cfg, caplog, finish, expected):
+    body = response([{"text": "private-response"}, {"functionCall": {"name": "secret-tool", "args": {"secret": "secret-arg"}}}], finish)
+    with httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(200, json=body))) as client:
+        with caplog.at_level("INFO", logger="aimo.operations"), pytest.raises(Problem):
+            GoogleChatProvider(cfg, client).complete([], [], time.monotonic() + 10)
+    events = [json.loads(r.message) for r in caplog.records if r.name == "aimo.operations"]
+    result = next(e for e in events if e["event"] == "llm.result")
+    assert result["finish_reason"] == expected and result["tool_call_count"] == 1
+    assert next(e for e in events if e["event"] == "llm.response_rejected")["validation_category"] == "incomplete"
+    assert all(value not in caplog.text for value in ("private-response", "secret-tool", "secret-arg", "private-finish", cfg.gemini_api_key))

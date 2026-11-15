@@ -23,6 +23,7 @@ import {
   openConversationEvents,
 } from "../api/chatApi";
 import { draftSignature, type ChatAttachment } from "../model/attachments";
+import { isPartialActivity } from "../model/activity";
 
 // A send started on Home keeps running after Home navigates into the chat page,
 // which has its own useChat. The chat page must not restore that in-flight
@@ -415,7 +416,11 @@ export function useChat(
   const busy = Boolean(sending || conversation?.busy);
   // Send the next queued message once the turn ends. An error or interrupted
   // turn pauses the queue so the customer decides what happens next.
-  const queuePaused = Boolean(errorInfo.message || conversation?.retry_message);
+  const queuePaused = Boolean(
+    errorInfo.message ||
+    conversation?.retry_message ||
+    isPartialActivity(conversation?.activity),
+  );
   useEffect(() => {
     if (busy || queuePaused || !conversation || !queue.length) return;
     if (sendingRef.current) return;

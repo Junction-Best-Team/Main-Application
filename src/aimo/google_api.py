@@ -9,7 +9,7 @@ import math
 import os
 import re
 from contextlib import ExitStack
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 import httpx
 
@@ -37,6 +37,7 @@ def google_api_request(
     client: httpx.Client | None = None,
     timeout: float = 30,
     max_response_bytes: int = 32 * 1024 * 1024,
+    observer: Callable[[str, dict], None] | None = None,
 ) -> dict[str, Any]:
     """Call Google's API for generation, embeddings, decisions, discovery, or Live tokens.
 
@@ -50,7 +51,15 @@ def google_api_request(
     disabled even for supplied clients, so credentials stay on Google's host.
     There are no automatic retries: a timed-out generation may already be billed.
     Timeout is an HTTPX per-operation timeout, not an overall application deadline.
+    An optional observer receives only transport metadata, never content or headers.
     """
+    def observe(stage, **fields):
+        if observer:
+            try:
+                observer(stage, fields)
+            except Exception:
+                pass  # Observability cannot repeat paid requests or change their result.
+
     if operation not in (
         "generate_content", "embed_content", "decide", "list_models", "create_live_token"
     ):
@@ -90,6 +99,8 @@ def google_api_request(
         method = "POST"
         content = json.dumps(body, allow_nan=False).encode("utf-8")
 
+    observe("request", request_bytes=len(content) if content else 0,
+            timeout_seconds=timeout, max_response_bytes=max_response_bytes)
     with ExitStack() as stack:
         active_client = client if client is not None else stack.enter_context(httpx.Client())
         try:
@@ -102,6 +113,7 @@ def google_api_request(
                 timeout=timeout,
                 follow_redirects=False,
             ) as response:
+                observe("response", status=response.status_code)
                 if not response.is_success:
                     code = (
                         "AUTH_REJECTED"
@@ -114,12 +126,20 @@ def google_api_request(
                 data = bytearray()
                 for chunk in response.iter_bytes():
                     if len(data) + len(chunk) > max_response_bytes:
+                        observe("body_limit", response_bytes=len(data), incoming_bytes=len(chunk))
                         raise GoogleAPIError("RESPONSE_TOO_LARGE")
                     data.extend(chunk)
-        except httpx.TimeoutException:
+        except httpx.TimeoutException as exc:
+            phase = next((name for kind, name in (
+                (httpx.ConnectTimeout, "connect"), (httpx.ReadTimeout, "read"),
+                (httpx.WriteTimeout, "write"), (httpx.PoolTimeout, "pool"),
+            ) if isinstance(exc, kind)), "unknown")
+            observe("transport_failed", transport_type="timeout", timeout_phase=phase)
             raise GoogleAPIError("TIMEOUT") from None
         except httpx.HTTPError:
+            observe("transport_failed", transport_type="http")
             raise GoogleAPIError("TRANSPORT_ERROR") from None
+    observe("body", response_bytes=len(data))
     try:
         result = json.loads(data)
     except (ValueError, UnicodeDecodeError):
