@@ -79,8 +79,13 @@ for (const width of [1440, 390, 320]) {
     await expect(activity.getByRole("status")).toHaveText(
       "Searching recipes · Done",
     );
-    // A running turn shows every step as it happens.
+    // A running turn stays one live status line until the customer opens it.
     const toggle = activity.getByRole("button");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(
+      activity.getByRole("list", { name: "Activity steps" }),
+    ).toHaveCount(0);
+    await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
     await expect(toggle).toContainText("Hide 2 steps");
     const steps = activity.getByRole("list", { name: "Activity steps" });
@@ -135,6 +140,8 @@ for (const width of [1440, 390, 320]) {
     await expect(activity.getByRole("status")).toHaveText(
       "Checking a product…",
     );
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await toggle.click();
     await expect(steps.getByRole("listitem")).toHaveCount(4);
     if (width === 320) {
       await page.emulateMedia({ reducedMotion: "reduce" });
@@ -176,9 +183,8 @@ for (const width of [1440, 390, 320]) {
       page.getByText("What delivery date?", { exact: true }),
     ).toBeVisible();
     await expect(activity.locator(".activity-dot")).toHaveCount(0);
-    // The finished turn folds back to one line; the steps stay one click away.
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await toggle.click();
+    // The customer's own toggle stays for the rest of this turn.
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
     await expect(steps.getByRole("listitem").nth(3)).toContainText(
       "Checking a product · Done",
     );
@@ -250,6 +256,7 @@ test("activity header follows the latest saved step between tool calls", async (
   await expect(activity.getByRole("status")).toHaveText(
     "Checking prices and availability · Done",
   );
+  await activity.getByRole("button", { name: /Show 15 steps/ }).click();
   await expect(activity.getByRole("listitem")).toHaveCount(15);
   // The newest step stays in view as the list grows.
   await expect(activity.getByRole("listitem").last()).toBeInViewport();
@@ -432,6 +439,7 @@ test("model stages show as one ticking line that expands to every step", async (
   ];
   await page.reload();
   await expect(activity.getByRole("status")).toHaveText("Reviewing the reply…");
+  await toggle.click();
   const steps = activity.getByRole("list", { name: "Activity steps" });
   await expect(steps.getByRole("listitem")).toHaveText([
     /Checking your request/,
