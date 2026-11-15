@@ -325,12 +325,15 @@ test("voice saves exact speech through chat, reads the saved reply, and releases
   mock.send({
     toolCall: { functionCalls: [{ id: "call-1", name: "ask_aimo" }] },
   });
-  await page.getByRole("button", { name: "Mute", exact: true }).click();
+  // The orb swells with the fake microphone's beep, so it never holds still.
+  await page
+    .getByRole("button", { name: "Mute", exact: true })
+    .click({ force: true });
   await expect(page.getByRole("button", { name: "Unmute" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
-  await page.getByRole("button", { name: "Unmute" }).click();
+  await page.getByRole("button", { name: "Unmute" }).click({ force: true });
   await page.getByRole("button", { name: "End voice" }).click();
   await expect(voice).toHaveCount(0);
   await expectReleased(page);
@@ -403,6 +406,8 @@ test("navigation ends voice and accepted work continues in saved chat", async ({
   await expect(
     page.getByRole("region", { name: "Voice mode" }).getByRole("status"),
   ).toHaveText("Listening");
+  // A soft two-note chime says voice is ready.
+  await expect.poll(() => voiceCount(page, "voiceTones")).toBe(2);
   mock.send({
     serverContent: {
       inputTranscription: { text: "Yes, confirm that basket." },
@@ -416,7 +421,7 @@ test("navigation ends voice and accepted work continues in saved chat", async ({
     page.getByRole("region", { name: "Voice mode" }).getByRole("status"),
   ).toHaveText("Aimo is working…");
   // A soft "• • •" pulse plays while Aimo works.
-  await expect.poll(() => voiceCount(page, "voiceTones")).toBeGreaterThan(0);
+  await expect.poll(() => voiceCount(page, "voiceTones")).toBeGreaterThan(2);
   await page.screenshot({ path: "test-results/voice-desktop.png" });
   await page.getByRole("link", { name: "Orders", exact: true }).first().click();
   await expect(page.getByRole("region", { name: "Voice mode" })).toHaveCount(0);

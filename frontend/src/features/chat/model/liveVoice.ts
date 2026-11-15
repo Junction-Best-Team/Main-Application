@@ -225,6 +225,7 @@ export class LiveVoice {
     if (message.setupComplete) {
       this.ready = true;
       this.update({ phase: "listening" });
+      this.readyChime();
     }
     const content = message.serverContent;
     if (content?.interrupted) {
@@ -432,26 +433,39 @@ export class LiveVoice {
       // Wait for the holding line to finish before the dots start.
       if (this.speakers.size || audio.currentTime < this.nextAudioTime) return;
       const start = audio.currentTime + 0.05;
-      for (let i = 0; i < 3; i++) {
-        const at = start + i * 0.22;
-        const tone = audio.createOscillator();
-        const gain = audio.createGain();
-        tone.type = "sine";
-        tone.frequency.value = 660 + i * 110;
-        gain.gain.setValueAtTime(0, at);
-        gain.gain.linearRampToValueAtTime(0.035, at + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.16);
-        tone.connect(gain).connect(audio.destination);
-        tone.onended = () => {
-          tone.disconnect();
-          gain.disconnect();
-        };
-        tone.start(at);
-        tone.stop(at + 0.18);
-      }
+      for (let i = 0; i < 3; i++)
+        this.tone(start + i * 0.22, 660 + i * 110, 0.035, 0.16);
     };
     pulse();
     this.thinkingLoop = setInterval(pulse, 1800);
+  }
+
+  /** Soft rising two-note chime: voice is connected and listening. */
+  private readyChime() {
+    const audio = this.audio;
+    if (!audio || audio.state !== "running") return;
+    const start = audio.currentTime + 0.03;
+    this.tone(start, 587, 0.05, 0.22);
+    this.tone(start + 0.14, 880, 0.05, 0.3);
+  }
+
+  /** One quiet sine blip, synthesized locally; never routed to the level meter. */
+  private tone(at: number, frequency: number, peak: number, length: number) {
+    const audio = this.audio!;
+    const tone = audio.createOscillator();
+    const gain = audio.createGain();
+    tone.type = "sine";
+    tone.frequency.value = frequency;
+    gain.gain.setValueAtTime(0, at);
+    gain.gain.linearRampToValueAtTime(peak, at + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + length);
+    tone.connect(gain).connect(audio.destination);
+    tone.onended = () => {
+      tone.disconnect();
+      gain.disconnect();
+    };
+    tone.start(at);
+    tone.stop(at + length + 0.02);
   }
 
   private stopThinkingSound() {

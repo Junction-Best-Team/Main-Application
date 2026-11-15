@@ -60,27 +60,36 @@ export function VoiceOrb({ orb: showOrb = true }: { orb?: boolean }) {
       : phaseLabel[state.phase];
   return (
     <section aria-label="Voice mode" className="voice-orb-dock">
-      <button
-        ref={orb}
-        type="button"
-        className="voice-orb"
-        data-phase={state.phase}
-        data-muted={state.muted || undefined}
-        aria-label={state.muted ? "Unmute" : "Mute"}
-        aria-pressed={state.muted}
-        title={
-          active
-            ? `${state.muted ? "Unmute" : "Mute"}. ${disclosure}`
-            : disclosure
-        }
-        disabled={!active}
-        onClick={() => voice.setMuted(!state.muted)}
-      >
-        <span aria-hidden="true" className="voice-orb-layer voice-orb-base" />
-        <span aria-hidden="true" className="voice-orb-layer voice-orb-cloud" />
-        <span aria-hidden="true" className="voice-orb-layer voice-orb-mist" />
-        <span aria-hidden="true" className="voice-orb-layer voice-orb-glint" />
-      </button>
+      <div className="voice-orb-wrap" data-phase={state.phase}>
+        <span aria-hidden="true" className="voice-orb-ring" />
+        <button
+          ref={orb}
+          type="button"
+          className="voice-orb"
+          data-phase={state.phase}
+          data-muted={state.muted || undefined}
+          aria-label={state.muted ? "Unmute" : "Mute"}
+          aria-pressed={state.muted}
+          title={
+            active
+              ? `${state.muted ? "Unmute" : "Mute"}. ${disclosure}`
+              : disclosure
+          }
+          disabled={!active}
+          onClick={() => voice.setMuted(!state.muted)}
+        >
+          <span aria-hidden="true" className="voice-orb-layer voice-orb-base" />
+          <span
+            aria-hidden="true"
+            className="voice-orb-layer voice-orb-cloud"
+          />
+          <span aria-hidden="true" className="voice-orb-layer voice-orb-mist" />
+          <span
+            aria-hidden="true"
+            className="voice-orb-layer voice-orb-glint"
+          />
+        </button>
+      </div>
       {/* Just the nebula on screen; the phase stays readable to screen readers. */}
       <p role="status" className="sr-only">
         {label}
