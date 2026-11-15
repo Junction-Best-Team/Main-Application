@@ -2,10 +2,11 @@
 
 from collections import Counter
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Callable, Literal
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from pydantic import ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 
@@ -331,6 +332,7 @@ class ToolSession:
         self.called_before = set()
         self.called_now = set()
         self.stats = {"tool_calls": 0, "repeated_calls": 0, "calls_after_prepare": 0}
+        self.policy_destinations = None  # read lazily by default_terms
         self.phase_refusals = 0  # after two refusals the phase restrictions widen for the turn
         self.enforce_phases = False  # the turn runner switches it on; direct callers and read-only
         # child sessions of parallel reads are not restricted (the parent decided before dispatch)
@@ -712,6 +714,20 @@ class ToolSession:
         }
         keep = {"get_proposal", "get_order"} | named | ({"get_purchase_policy"} if blocked else set())
         return frozenset(set(self.registry) - keep)
+
+    def default_terms(self):
+        """The product's own defaults for a basket: tomorrow (Helsinki) and the first destination of the
+        buyer's policy; None when the policy cannot be read. Used by the prepare check, never to buy."""
+        try:
+            if self.policy_destinations is None:
+                rules = self.checked(PolicyResponse, self.service.get_purchase_policy(self.identity))
+                self.policy_destinations = rules["rules"].get("destinations") or []
+            if not self.policy_destinations:
+                return None
+            tomorrow = datetime.now(ZoneInfo("Europe/Helsinki")).date() + timedelta(days=1)
+            return {"delivery_date": tomorrow.isoformat(), "destination": self.policy_destinations[0]}
+        except Exception:
+            return None
 
     def phase_refusal(self, name):
         """None, or the Problem that refuses a tool hidden in this phase (it names the way forward)."""

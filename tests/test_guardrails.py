@@ -308,6 +308,9 @@ def test_hidden_request_changes_block_preparation(monkeypatch, config, guard, id
     seen = fake_jev(monkeypatch, **{check: 0.03})
     service = FakeService(identity)
     script = prepared_script()
+    # A date that is not the server's default (tomorrow), whatever day the suite runs: the default date
+    # and destination are known facts and skip the destination_and_date question (test_guard_defaults.py).
+    script[-1] = reply(call("prepare_order", purchase() | {"delivery_date": "2031-01-02"}))
     llm = scripted(monkeypatch, script + [script[-1], reply(text="Prepared.")])
     result = run(identity, service)
     assert not any(c[0] == "prepare" for c in service.calls)

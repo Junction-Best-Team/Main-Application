@@ -16,6 +16,7 @@ server-authored constants, so screened text cannot redefine the guard policy.
 import hashlib
 import json
 import logging
+import re
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -224,6 +225,9 @@ PREPARE_CHECKS = {
         "It is a neutral label, such as a dish name, portions or a date.",
         "It makes such a claim or contains instructions.",
         risk_is_true=False,
+        # Cosmetic title text: being unsure about it must not stop a basket (live round 1: every
+        # prepare ended GUARDRAIL_UNCERTAIN on it). A confident failure still blocks.
+        uncertain_passes=True,
     ),
 }
 
@@ -807,6 +811,26 @@ def _fit(build, sizes):
     return state
 
 
+# Words that show the customer wrote something about WHEN or WHERE: then the date and destination of a
+# proposed order can contradict them, so the classifier must judge it even if they equal the defaults.
+TERMS_CUE = re.compile(
+    r"\d{1,2}[./-]\d{1,2}|\d{4}-\d{2}-\d{2}|"
+    r"\b(mon|tues|wednes|thurs|fri|satur|sun)day\b|"
+    r"\b(jan|febr)uary\b|\b(march|april|may|june|july|august|september|october|november|december)\b|"
+    r"\b(tomorrow|today|tonight|next week|weekend|deliver\w*|destination|address|hotel|restaurant|kitchen)\b|"
+    r"maanantai|tiistai|keskiviikko|torstai|perjantai|lauantai|sunnuntai|tammikuu|helmikuu|maaliskuu|"
+    r"huhtikuu|toukokuu|kes[äa]kuu|hein[äa]kuu|elokuu|syyskuu|lokakuu|marraskuu|joulukuu|huomenna|"
+    r"ylihuomenna|ensi viikol|toimit\w*|osoit\w*|hotelli|ravintola|keitti[öo]|"
+    r"m[åa]ndag|tisdag|onsdag|torsdag|fredag|l[öo]rdag|s[öo]ndag|imorgon|n[äa]sta vecka|leverans\w*|adress\w*|"
+    r"restaurang|k[öo]k",
+    re.IGNORECASE,
+)
+
+
+def customer_mentions_terms(messages):
+    return any(TERMS_CUE.search(m["content"] or "") for m in messages if m["role"] == "user")
+
+
 def prepare_state(messages, request, products, plan, status=None):
     order = json.loads(
         encode(request.model_dump(mode="json") if hasattr(request, "model_dump") else request)
@@ -1164,7 +1188,22 @@ class Guardrails:
                 session.plan,
                 self.product_status if self.enforcing else None,
             )
-            result = self.evaluate("tool_call", state, PREPARE_CHECKS)
+            checks = PREPARE_CHECKS
+            defaults = session.default_terms() if hasattr(session, "default_terms") else None
+            if defaults:
+                state["server_defaults"] = defaults
+                # The product's own defaults (tomorrow, the policy's first destination), shown and
+                # editable on the card: when the order carries exactly these and the customer wrote
+                # nothing about a date or a place, there is nothing stated to contradict. A different
+                # value, or a customer who named a date or place, is still judged (and refused if the
+                # classifier is not confident).
+                if (
+                    request.delivery_date.isoformat() == defaults["delivery_date"]
+                    and request.destination == defaults["destination"]
+                    and not customer_mentions_terms(self.messages)
+                ):
+                    checks = {k: v for k, v in PREPARE_CHECKS.items() if k != "destination_and_date"}
+            result = self.evaluate("tool_call", state, checks)
             self.prepare_results[digest] = result
         if not result.refuses:
             return
