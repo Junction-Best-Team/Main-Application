@@ -158,10 +158,6 @@ def test_parallelism_is_bounded_and_children_do_not_mutate_parent(identity):
 
 
 def test_plan_and_prepare_are_barriers_between_read_groups(monkeypatch, config, identity):
-    from aimo.config import settings
-
-    # About group ordering; with stop control the policy read after prepare would be refused.
-    monkeypatch.setattr(settings(), "agent_stop_control", False)
     service = FakeService(identity)
     seen = scripted(
         monkeypatch,
@@ -173,14 +169,16 @@ def test_plan_and_prepare_are_barriers_between_read_groups(monkeypatch, config, 
                 ],
                 call("publish_meal_plan", meal()),
                 call("prepare_order", purchase()),
-                call("get_purchase_policy"),
+                # A read after the basket that stop control allows (the policy lookup is now refused
+                # there unless the customer asked for it): it must still run after prepare.
+                call("get_product", {"product_id": "milk"}),
             ),
             reply(text="Review the basket."),
         ],
     )
     result = agent.run_turn(identity, HISTORY, service)
     assert result.proposal_id == service.saved["proposal_id"]
-    assert [c[0] for c in service.calls][-2:] == ["prepare", "policy"]
+    assert [c[0] for c in service.calls][-2:] == ["prepare", "product"]
     assert len([m for m in seen[-1]["messages"] if m["role"] == "tool"]) == 8
 
 

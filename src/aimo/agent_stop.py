@@ -9,10 +9,42 @@ import hashlib
 import json
 import re
 
-BUY_INTENT = re.compile(
-    r"\b(confirm|buy|order|check ?out|checkout|purchase|place (my|the|an?|this|that)\b|"
-    r"vahvista|osta|tilaa|tilaus|"
-    r"bekräfta|köp|beställ|lägg (min|en|beställning))",
+# A real request to buy: imperative or "I want / please / let's / go ahead" forms, en/fi/sv. Words like
+# "order" or "buy" alone are NOT enough (advice, questions and past orders contain them).
+POSITIVE = re.compile(
+    r"(\bi (really )?(want|would like|wish|need)( you)? to (confirm|buy|order|purchase|check ?out|place)\b"
+    r"|\bi'?d like to (confirm|buy|order|purchase|check ?out|place)\b"
+    r"|\bplease,? (confirm|order|buy|place|check ?out|purchase|prepare)\b"
+    r"|\blet'?s (order|buy|confirm|check ?out|place|purchase)\b"
+    r"|\bgo ahead\b"
+    r"|\b(confirm|place|order|buy|purchase|prepare)\b (my|the|this|that|it|them|these|those|now|all)\b"
+    r"|^\W*(confirm|place|order|buy|purchase|check ?out|checkout)\b"
+    r"|\bcheck ?out\b"
+    r"|\byes,? (order|buy|confirm|place)\b"
+    r"|\bhaluan (vahvistaa|tilata|ostaa)\b|\bvahvista (tilaus|tilaukseni|se)\b|\btee tilaus\b"
+    r"|\btilaa (se|ne|nämä|tämä)\b|\bosta (tämä|nämä|se|ne)\b|^\W*(tilaa|osta)\b"
+    r"|\bjag vill (bekräfta|beställa|köpa)\b|\bbekräfta (min )?beställning|\blägg (min )?beställning"
+    r"|\bbeställ (det|dem|detta)\b|\bköp (detta|det)\b|^\W*(beställ|köp)\b)",
+    re.IGNORECASE,
+)
+# "Can you (please) order it?" is a request even though it is shaped like a question.
+POLITE_REQUEST = re.compile(
+    r"\b(can|could|would|will) you (please )?(order|buy|place|confirm|prepare|check ?out)\b|"
+    r"\b(voitko|kan du|kunde du) (tilata|ostaa|vahvistaa|beställa|köpa|bekräfta)\b",
+    re.IGNORECASE,
+)
+QUESTION_FORM = re.compile(
+    r"^\W*(what|how|which|when|where|why|who|whom|is|are|was|were|can|could|would|should|do|does|did|"
+    r"will|tell me|remind me|explain|show me|list|recommend|"
+    r"mikä|mitä|miten|kuinka|milloin|missä|mihin|voinko|voiko|pitäisikö|kerro|muistuta|näytä|"
+    r"vad|hur|vilken|vilket|när|var|kan|kan jag|borde|berätta|visa)\b",
+    re.IGNORECASE,
+)
+# Past orders and orders discussed, not placed.
+PAST_ORDERS = re.compile(
+    r"\bordered\b|\b(last|previous|past|recent) orders?\b|\border history\b|"
+    r"tilasin|viime\w* tilau\w*|edellis\w* tilau\w*|beställde|förra beställning\w*|"
+    r"viimeisimmä\w* tilau\w*",
     re.IGNORECASE,
 )
 # A direct product request: a need verb and a quantity ("I need 10 kg butter", "tarvitsen 20 kg perunaa").
@@ -27,7 +59,10 @@ AUTHORITY_ATTACK = re.compile(
     re.IGNORECASE,
 )
 NOT_BUYING = re.compile(
-    r"\bin order to\b|\bnot (ready )?to (buy|order)\b|\bdon'?t (buy|order)\b", re.I
+    r"\bin order to\b|\bnot (ready )?to (buy|order)\b|\bdon'?t (buy|order)\b|"
+    r"\bdo(n'?t| not) (want|wish|need) to (order|buy)\b|\bjust tell me\b|\bnot yet\b|\bno need to\b|"
+    r"ei vielä|inte än|bara berätta|kerro vain|vill inte beställa|ei tarvitse tilata",
+    re.IGNORECASE,
 )
 # Positive cues only: the customer says they want advice, not a purchase.
 ADVICE_ONLY = re.compile(
@@ -69,7 +104,9 @@ REPEATABLE = frozenset(
     }
 )
 DETAILS_QUESTION = re.compile(
-    r"date|deliver|destination|address|päivä|toimitus|osoite|leverans|datum|adress", re.I
+    r"\b(when|where|day|date|deliver|destination|address|send|ship|arriv|toimit|päiv|milloin|mihin|"
+    r"osoit|mille|dag|datum|leverans|leverera|levereras|vart|adress)\w*|\bvar\b",
+    re.IGNORECASE,
 )
 
 
@@ -88,19 +125,23 @@ def advice_only(customer_texts):
 
 
 def wants_to_buy(customer_texts):
+    """A real request to buy or order. When unsure: no (an unneeded nudge talks over the customer)."""
     text = intent_text(customer_texts)
-    if (
-        not text
-        or AUTHORITY_ATTACK.search(text)
-        or NOT_BUYING.search(text)
-        or advice_only(customer_texts)
-    ):
+    if not text or AUTHORITY_ATTACK.search(text) or NOT_BUYING.search(text):
         return False
-    return bool(BUY_INTENT.search(text) or NEED_WITH_QUANTITY.search(text))
+    if advice_only(customer_texts) or PAST_ORDERS.search(text):
+        return False
+    if POLITE_REQUEST.search(text):
+        return True
+    if QUESTION_FORM.search(text) or text.strip().endswith("?"):
+        return False
+    return bool(POSITIVE.search(text) or NEED_WITH_QUANTITY.search(text))
 
 
 def asks_for_delivery_details(reply_text):
-    return "?" in (reply_text or "") and bool(DETAILS_QUESTION.search(reply_text or ""))
+    """Any mention of when, where or the delivery in the reply: no "?" needed. An unnecessary skip costs
+    the customer one more message; a wrong nudge talks over a real question."""
+    return bool(DETAILS_QUESTION.search(reply_text or ""))
 
 
 def call_key(name, arguments):

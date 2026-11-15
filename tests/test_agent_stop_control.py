@@ -527,3 +527,112 @@ def test_the_round_limit_after_the_basket_points_to_confirm_purchase(identity, c
     result = run(identity, FakeService(identity), user("order it"))
     assert result.proposal_id and "step limit" in result.text
     assert "The basket is prepared" in result.text and "Confirm purchase" in result.text
+
+
+# --- review fixes (junction-8c): date/destination questions, advice wording, the deadline ---------------
+
+DETAIL_QUESTIONS = [
+    "Which delivery date do you want?",
+    "By when do you need it?",
+    "When would you like it?",
+    "When should it arrive?",
+    "Where should I send it?",
+    "Which address?",
+    "Mihin osoitteeseen?",
+    "Mille päivälle haluat toimituksen?",
+    "Milloin tarvitset sen?",
+    "Vilken dag vill du ha den?",
+    "Vart ska den levereras?",
+    "Tell me the delivery date.",
+    "What day works for you",
+    "Need a date and a destination - what are they?",
+    "Mikä on toimituspäivä",
+    "Vilken adress ska jag använda",
+]
+
+
+@pytest.mark.parametrize("question", DETAIL_QUESTIONS)
+def test_a_delivery_date_or_destination_question_is_never_continued(
+    identity, config, monkeypatch, question
+):
+    seen = scripted(monkeypatch, [reply(text=question), reply(text="Which date?")])
+    run(identity, FakeService(identity), user("order it"), stored_plan=meal())
+    assert len(seen) == 1, question
+
+
+ADVICE = [
+    "What should I buy for 50 portions of carbonara?",
+    "How do I confirm an order?",
+    "What is the order deadline?",
+    "Remind me what I ordered last time",
+    "Tell me about my last order",
+    "I don't want to order yet, just tell me prices",
+    "Is it cheaper to buy in bulk?",
+    "What would it cost to order 20 kg of butter?",
+    "Can you recommend what to purchase for a wedding?",
+    "Do I need to confirm the order by Friday?",
+    "Miten tilaan?",
+    "Mikä on tilausten määräaika?",
+    "Kerro viimeisimmästä tilauksestani",
+    "Hur beställer jag?",
+    "Vad kostar det att beställa 20 kg smör?",
+    "Visa mig min förra beställning",
+]
+
+
+@pytest.mark.parametrize("text", ADVICE)
+def test_advice_about_ordering_is_not_pushed_to_checkout(identity, config, monkeypatch, text):
+    assert not wants_to_buy([text]), text
+    seen = scripted(
+        monkeypatch,
+        [
+            reply(text="Here is some advice."),
+            reply(call("prepare_order", purchase())),
+            reply(text="x"),
+        ],
+    )
+    result = run(identity, FakeService(identity), user(text), stored_plan=meal())
+    assert result.proposal_id is None and len(seen) == 1, text
+    session = ToolSession(identity, FakeService(identity))
+    assert "call prepare_order now" not in guidance(session, [text])
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Can you please order it?",
+        "could you place the order",
+        "Let's order",
+        "Yes, please prepare the order.",
+        "go ahead and buy these",
+        "Tilaa ne",
+        "Beställ det",
+        "I'd like to place my order now",
+    ],
+)
+def test_a_real_request_to_buy_still_counts(text):
+    assert wants_to_buy([text]), text
+
+
+def test_a_deadline_that_runs_out_at_the_continuation_check_keeps_the_reply(
+    identity, config, monkeypatch
+):
+    """Remaining time is read without raising: the turn is 10 s short of its limit when the model
+    answers, so there is no continuation and the produced reply is delivered (not LLM_TIMEOUT)."""
+    from aimo.agent_provider import AssistantReply, ChatProvider
+
+    clock = {"offset": 0.0}
+    real_monotonic = agent.time.monotonic
+    monkeypatch.setattr(agent.time, "monotonic", lambda: real_monotonic() + clock["offset"])
+
+    def slow(self, history, tools, deadline):
+        clock["offset"] += 25  # the call ran past a 20 s budget: the deadline has expired
+        return AssistantReply.model_validate(
+            {"role": "assistant", "content": "Shall I prepare it?"}
+        )
+
+    monkeypatch.setattr(ChatProvider, "complete", slow)
+    result = run(
+        identity, FakeService(identity), user("order it"), stored_plan=meal(), budget_seconds=20
+    )
+    assert "Shall I prepare it?" in result.text

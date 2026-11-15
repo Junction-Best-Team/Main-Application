@@ -526,7 +526,7 @@ def run_turn(
                         and wants_to_buy(session.customer_texts)
                         and not asks_for_delivery_details(reply.content)
                         and round_number < cfg.llm_max_tool_rounds
-                        and check_deadline(deadline) >= MIN_SECONDS_TO_CONTINUE
+                        and deadline - time.monotonic() >= MIN_SECONDS_TO_CONTINUE
                         and (
                             guard.mode == "off"
                             or (
