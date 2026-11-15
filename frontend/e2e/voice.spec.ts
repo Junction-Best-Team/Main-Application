@@ -130,6 +130,14 @@ async function fixture(
         conversation = {
           ...conversation,
           busy: Boolean(options.delayed),
+          // Like the API: an unfinished text turn already carries its retry copy.
+          retry_message: options.delayed
+            ? {
+                text: body.text,
+                idempotency_key: body.idempotency_key,
+                attachments: [],
+              }
+            : null,
           messages: [
             { id: 1, role: "user", text: body.text, created_at: timestamp },
             ...(options.delayed
@@ -160,6 +168,7 @@ async function fixture(
           conversation = {
             ...conversation,
             busy: false,
+            retry_message: null,
             messages: [
               ...conversation.messages,
               {

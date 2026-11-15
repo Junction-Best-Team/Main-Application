@@ -125,7 +125,9 @@ export function VoiceModeProvider({ children }: { children: ReactNode }) {
             (message) => message.role === "assistant" && message.id > user.id,
           );
           if (reply) return reply.text;
-          if (conversation.retry_message || !conversation.busy)
+          // An unfinished turn already carries its retry copy; only a turn that
+          // stopped without a reply (no longer busy) has failed.
+          if (!conversation.busy)
             throw new Error(
               "The response was interrupted. Retry your saved request in chat.",
             );
