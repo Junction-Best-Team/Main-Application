@@ -25,6 +25,16 @@ RECIPE_LOCKED_REASON = (
 )
 
 
+CONFIRM_POINTER = "Confirm purchase"
+OPEN_POINTER = (
+    "Review the exact basket in Your order; nothing is ordered until you press Confirm purchase."
+)
+BLOCKED_POINTER = (
+    "The basket needs attention first; resolve the reasons shown in Your order, then Confirm "
+    "purchase becomes available."
+)
+
+
 def cart_edit_state(messages, ordered=frozenset()):
     """(editable, reason) for the number controls on the card, from the latest stored plan.
     `ordered`: ids of baskets that have an order; the cart is closed when its latest basket is one."""
@@ -348,8 +358,6 @@ def enqueue(identity, cid, body):
 
 
 # Per-buyer chat bounds across conversations; accepted retries are never counted again.
-MAX_ACTIVE_TURNS = 3
-MAX_MESSAGES_PER_HOUR = 60
 
 
 def limit_turns(c, identity, new):
@@ -362,14 +370,14 @@ def limit_turns(c, identity, new):
         WHERE c.buyer_id=%s""",
         (now(), now() - timedelta(hours=1), identity["buyer_id"]),
     ).fetchone()
-    if counts["active"] >= MAX_ACTIVE_TURNS:
+    if counts["active"] >= settings().chat_active_turns_per_buyer:
         raise Problem(
             "CHAT_BUSY",
             "Other responses are still in progress for this account. Wait for one to finish.",
             429,
             5,
         )
-    if new and counts["recent"] >= MAX_MESSAGES_PER_HOUR:
+    if new and counts["recent"] >= settings().chat_messages_per_hour:
         raise Problem(
             "CHAT_RATE_LIMIT",
             "This account reached its hourly message limit. Try again later.",
@@ -626,9 +634,25 @@ def execute_turn(turn, service, runner=None):
                     }
                 )
         if result.proposal_id:
-            service.get_proposal(
+            view = service.get_proposal(
                 actor, result.proposal_id
             )  # Never link another buyer/agent's proposal.
+            if (
+                not auto  # a basket staged by the server keeps develop's focused reply and its own notice
+                and CONFIRM_POINTER not in result.text
+                and "Your order" not in result.text
+                and not view.get("order_id")
+            ):
+                # One fixed sentence whenever a basket exists after the turn (also a blocked one, or one
+                # the server made after the model's reply): where it is and what presses the order.
+                blocked = view.get("policy_outcome") in ("denied", "needs_resolution")
+                result = result.model_copy(
+                    update={
+                        "text": (
+                            result.text + "\n\n" + (BLOCKED_POINTER if blocked else OPEN_POINTER)
+                        )[:20000]
+                    }
+                )
         if result.image is None:
             # Preserve an uploaded image after interruption, including basket recovery.
             with connection() as c:

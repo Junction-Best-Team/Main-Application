@@ -267,11 +267,15 @@ def test_scaled_plan_callers_keep_saved_recipe_and_labelled_draft_paths_separate
             if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "scaled_plan":
                 calls.append((path.name, ast.unparse(node)))
     assert sorted(calls) == [
+        # A read-only preview at the recipe's own base servings: ToolSession.recipe_detail collects
+        # `planning_issues` from it and throws the plan away. It writes nothing (scaled_plan is
+        # pure) and never creates or locks a saved plan, so it keeps the two paths separate.
+        ("agent_tools.py", "scaled_plan(recipe, recipe.base_servings)"),
         ("meal_draft.py", "scaled_plan(recipe, request.portions)"),
         (
             "recipes.py",
             "scaled_plan(Recipe.model_validate(detail['recipe']), request.portions)",
-        )
+        ),
     ]
     source = (SRC / "recipes.py").read_text()
     # `detail` is get_recipe(): the immutable recipe_versions row, never a recipe_plans row.

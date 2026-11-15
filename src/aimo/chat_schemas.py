@@ -142,6 +142,16 @@ class CartPurchaseRequest(Model):
     )
 
 
+class CartRefreshRequest(Model):
+    """Prepare an EXPIRED basket again from the cart, for the same date and destination (a button)."""
+
+    request_id: str = Field(
+        min_length=8,
+        max_length=120,
+        description="Idempotency key: one per button press, reused when the press is retried.",
+    )
+
+
 class CartNotIncluded(Model):
     name: str
     amount: str | None

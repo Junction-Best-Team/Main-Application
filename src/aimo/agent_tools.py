@@ -2,15 +2,17 @@
 
 from collections import Counter
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Callable, Literal
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from pydantic import ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 
-from aimo import memory, request_brief
+from aimo import agent_stop, memory, request_brief
 from aimo.basket_errors import mismatch_problem, required_basket
+from aimo.catalog import per_sales_for
 from aimo.chat_schemas import AgentTurn, MealPlan
 from aimo.config import settings
 from aimo.db import Problem, fingerprint
@@ -231,6 +233,15 @@ class MealPlanResult(Model):
 class InspectedCandidate(ProductResponse):
     score: float
     match_is_suitability_proof: Literal[False]
+    pack_size_units: list[Literal["L", "KG"]] = Field(
+        default_factory=list,
+        description="Which of L and KG this product's data converts to packs. Empty: ask for the "
+        "number of packs (the sales unit) or prefer another product.",
+    )
+    in_scope: bool | None = Field(
+        default=None,
+        description="Inside the buyer's approved product scope (None: no scope configured).",
+    )
 
 
 class InspectedSearchResponse(SearchResponse):
@@ -327,6 +338,38 @@ def is_zero(amount):
         return False
 
 
+# Exact conversions to the canonical units the baskets use. A value that would need more than the 4
+# decimals a plan can hold, or an unknown unit, is left as the model wrote it (never rounded).
+UNIT_FACTORS = {
+    "ml": ("L", Decimal("0.001")),
+    "cl": ("L", Decimal("0.01")),
+    "dl": ("L", Decimal("0.1")),
+    "l": ("L", Decimal(1)),
+    "g": ("KG", Decimal("0.001")),
+    "mg": ("KG", Decimal("0.000001")),
+    "kg": ("KG", Decimal(1)),
+}
+
+
+def normalise_units(plan):
+    """A free-form plan in canonical units: 750 ml becomes 0.75 L, 20000 g becomes 20 KG (live round 1:
+    SB-28 failed MEAL_BASKET_MISMATCH because the plan said ml and dl while the basket said L)."""
+    items = []
+    for item in plan.ingredients:
+        target = UNIT_FACTORS.get(item.unit.strip().casefold())
+        if target and item.amount is not None and item.unit != target[0]:
+            try:
+                value = Decimal(item.amount) * target[1]
+                TypeAdapter(Amount).validate_python(value)
+                item = item.model_copy(update={"amount": format(value.normalize(), "f"), "unit": target[0]})
+            except (InvalidOperation, ValidationError):
+                pass
+        elif target and item.unit != target[0]:
+            item = item.model_copy(update={"unit": target[0]})
+        items.append(item)
+    return plan.model_copy(update={"ingredients": items})
+
+
 class ToolSession:
     """Fresh per turn; persistent preparation deduplication belongs to Service."""
 
@@ -339,6 +382,17 @@ class ToolSession:
         self.brief = RequestBrief.model_validate(identity["_request_brief"]) if identity.get("_request_brief") else None
         self.brief_recorded = False
         self.supersede = None  # cart baskets only: cancel the conversation's older open baskets
+        # Stop control (agent_stop.py): the customer's messages of this conversation, the calls
+        # already made (as hashes) and the counters the end-of-turn event reports.
+        self.customer_texts = []
+        self.called_before = set()
+        self.called_now = set()
+        self.stats = {"tool_calls": 0, "repeated_calls": 0, "calls_after_prepare": 0}
+        self.policy_destinations = None  # read lazily by default_terms
+        self.searches = 0  # product searches this turn (capped by the stop control)
+        self.phase_refusals = 0  # after two refusals the phase restrictions widen for the turn
+        self.enforce_phases = False  # the turn runner switches it on; direct callers and read-only
+        # child sessions of parallel reads are not restricted (the parent decided before dispatch)
         # Optional semantic review; deterministic checks here and in Service always apply.
         self.guard = guard
         self.preparation_key = "chat-" + fingerprint({"turn": identity["_turn_id"]})
@@ -812,12 +866,274 @@ class ToolSession:
             tool.schema(name) for name, tool in self.registry.items()
             if not (self.needs_recipe_plan and name in CATALOG_TOOLS)
             and not (name == "draft_recipe" and self.draft_basis is not None)
+            and name not in self.hidden_tools()
         ]
+
+    @property
+    def phases_on(self):
+        config = settings()
+        return config.agent_stop_control and config.agent_phases
+
+    @property
+    def auto_cart(self):
+        """The server stages the basket after the reply (cart_auto_prepare): the model does not prepare."""
+        return bool(settings().cart_auto_prepare)
+
+    @property
+    def brief_blocks_build(self):
+        """The request brief (request_brief.py) says not to build yet: it is missing in a conversation,
+        or it is "explore" / has a missing fact. Then there is no cart, no prepare and no continuation."""
+        if self.brief is not None:
+            return not self.brief.can_build
+        return bool(self.identity.get("_conversation_id")) and not self.brief_recorded
+
+    @property
+    def phase(self):
+        """understand, recipe, match, prepare, finish, advice or open: DERIVED from what the session
+        holds every round (never stored). Advice wins when unsure; an unchanged plan from an earlier
+        turn with no request is "open" (nothing hidden)."""
+        texts = self.customer_texts
+        if self.prepared_digest is not None and self.proposal:
+            return "finish"
+        if self.brief is not None:
+            # The brief is the intent classifier; the keyword signals below are only the fallback.
+            if self.brief.intent == "explore":
+                return "advice"
+            if not self.brief.can_build:
+                return "understand"
+        elif self.brief_blocks_build:
+            return "understand"  # in a conversation, record_request comes first
+        elif agent_stop.advice_only(texts) or agent_stop.is_advice_question(texts):
+            return "advice"
+        if not self.plan:
+            return "recipe" if self.recipe_discovery_started else "understand"
+        if not self.plan_complete:
+            return "match"
+        changed = self.restored is None or self.plan != self.restored
+        if changed or agent_stop.wants_to_buy(texts) or agent_stop.is_card_edit(texts):
+            return "prepare"
+        return "open"
+
+    def hidden_tools(self):
+        """The tools the model does not see this round (none when phases are off or widened)."""
+        if not self.enforce_phases or not self.phases_on or self.phase_refusals >= 2:
+            return frozenset()
+        phase = self.phase
+        if phase != "finish":
+            return agent_stop.PHASE_HIDDEN.get(phase, frozenset())
+        blocked = self.proposal and self.proposal.get("policy_outcome") in (
+            "denied",
+            "needs_resolution",
+        )
+        named = {
+            name
+            for name, pattern in agent_stop.OPTIONAL_AFTER_PREPARE.items()
+            if self.customer_texts and pattern.search(self.customer_texts[-1])
+        }
+        keep = {"get_proposal", "get_order"} | named | ({"get_purchase_policy"} if blocked else set())
+        return frozenset(set(self.registry) - keep)
+
+    def default_terms(self):
+        """The product's own defaults for a basket: tomorrow (Helsinki) and the first destination of the
+        buyer's policy; None when the policy cannot be read. Used by the prepare check, never to buy."""
+        try:
+            if self.policy_destinations is None:
+                rules = self.checked(PolicyResponse, self.service.get_purchase_policy(self.identity))
+                self.policy_destinations = rules["rules"].get("destinations") or []
+            if not self.policy_destinations:
+                return None
+            tomorrow = datetime.now(ZoneInfo("Europe/Helsinki")).date() + timedelta(days=1)
+            return {"delivery_date": tomorrow.isoformat(), "destination": self.policy_destinations[0]}
+        except Exception:
+            return None
+
+    def phase_refusal(self, name):
+        """None, or the Problem that refuses a tool hidden in this phase (it names the way forward)."""
+        if name not in self.hidden_tools():
+            return None
+        self.phase_refusals += 1
+        phase = self.phase
+        available = sorted(set(self.registry) - set(self.hidden_tools()))
+        refusal = Problem(
+            "TOOL_NOT_ALLOWED",
+            f"This step is {phase.upper()}: {name} is not available now. Available tools: "
+            f"{', '.join(available) or 'none; reply to the customer'}. No purchase was made.",
+            422,
+        )
+        refusal.phase = True  # the call never ran: it may be tried again once the phase allows it
+        return refusal
 
     @property
     def needs_recipe_plan(self):
         return (self.recipe_discovery_started and self.plan is None
                 and not (self.brief and (not self.brief.can_build)))
+
+    @property
+    def plan_complete(self):
+        """Every item of the plan is matched (a customer-removed item needs no product)."""
+        if not self.plan or not self.plan.ingredients:
+            return False
+        for item in self.plan.ingredients:
+            if is_zero(item.amount) or item.status == "removed":
+                continue
+            if not item.product_id or (self.plan.recipe_plan_id and item.status != "matched"):
+                return False
+        return True
+
+    def stop_guidance(self):
+        """The state the turn is in once work is done or asked for (AGENT_STOP_CONTROL)."""
+        if self.prepared_digest is not None and self.proposal:
+            if self.proposal.get("policy_outcome") in ("denied", "needs_resolution"):
+                return (
+                    "The basket is prepared but blocked. Explain the blocker briefly and the next "
+                    "step; get_purchase_policy is allowed for that. Do not call other tools unless "
+                    "the customer asked for something else."
+                )
+            return (
+                "The basket is prepared. Do not call more tools unless the customer asked for "
+                "something else; reply briefly with the basket status and point to the Confirm "
+                "purchase button."
+            )
+        if agent_stop.advice_only(self.customer_texts):
+            return (
+                "The customer asked for advice only: answer directly; do not prepare a basket "
+                "or check out."
+            )
+        if self.plan_complete and not self.brief_blocks_build and agent_stop.wants_to_buy(self.customer_texts):
+            return (
+                "The customer asked to buy and the plan is complete: call prepare_order now with "
+                "the existing plan, or ask for the one missing fact (delivery date or destination)."
+            )
+        return ""
+
+    def begin_reply(self):
+        """A new model reply: calls of earlier replies can no longer be repeated."""
+        self.called_before |= self.called_now
+        self.called_now = set()
+
+    def forget(self, name, arguments):
+        """A call that failed did nothing: the same call may be tried again."""
+        key = agent_stop.call_key(name, arguments)
+        self.called_before.discard(key)
+        self.called_now.discard(key)
+
+    def discipline(self, name, arguments, parallel=False):
+        """None, or the Problem that refuses this call (never executed). Counts every call."""
+        if name not in self.registry or not settings().agent_stop_control:
+            return None
+        self.stats["tool_calls"] += 1
+        if name == "search_products":
+            self.searches += 1
+            if self.searches > agent_stop.MAX_PRODUCT_SEARCHES:
+                return Problem(
+                    "SEARCH_LIMIT",
+                    f"You already searched products {agent_stop.MAX_PRODUCT_SEARCHES} times in this "
+                    "turn. Stop searching: save the selections you have with publish_meal_plan (or "
+                    "match_ingredients), leave the rest unmatched with their reason, and prepare "
+                    "the basket.",
+                    422,
+                )
+        key = agent_stop.call_key(name, arguments)
+        repeated = key in self.called_before or key in self.called_now
+        if repeated:
+            self.stats["repeated_calls"] += 1
+        if self.prepared_digest is not None:
+            self.stats["calls_after_prepare"] += 1
+            pattern = agent_stop.OPTIONAL_AFTER_PREPARE.get(name)
+            asked = pattern and self.customer_texts and pattern.search(self.customer_texts[-1])
+            blocked = self.proposal and self.proposal.get("policy_outcome") in (
+                "denied",
+                "needs_resolution",
+            )
+            if pattern and not asked and not (name == "get_purchase_policy" and blocked):
+                self.called_now.add(key)  # a refused call still counts as tried
+                return Problem(
+                    "TOOL_NOT_ALLOWED",
+                    f"The basket is already prepared in this turn. Do not call {name} unless the "
+                    "customer asks for it; reply briefly with the basket status and point to "
+                    "Confirm purchase.",
+                    422,
+                )
+        # Reads run in child sessions that are not restricted themselves: the parent decides here. Every
+        # other call is checked in invoke, after its arguments were validated.
+        phase_problem = self.phase_refusal(name) if parallel and self.enforce_phases else None
+        if phase_problem is not None:
+            self.called_now.discard(key)  # refused, never ran: not a "tried" call
+            return phase_problem
+        if key in self.called_before and name not in agent_stop.REPEATABLE:
+            return Problem(
+                "TOOL_REPEATED",
+                f"You already called {name} with the same arguments in this turn; use the "
+                "earlier result.",
+                422,
+            )
+        self.called_now.add(key)
+        return None
+
+    def phase_guidance(self):
+        """One line per phase, owned by the server (docs/agent-phases.md)."""
+        phase = self.phase
+        head = f"Phase: {phase.upper()}. "
+        if phase == "understand":
+            return head + (
+                "Classify the message: advice (answer directly, no basket), a shopping request (find "
+                "the recipe or the products now), a card edit or a status question. "
+                + agent_stop.PHASE_ONE_QUESTION
+            )
+        if phase == "recipe":
+            return head + (
+                "If the customer has chosen the meal and portions, publish its quantity plan using "
+                "scale_recipe for a complete saved recipe or draft_recipe for a labelled estimate. "
+                "Catalog tools become available after the plan is published."
+            )
+        if phase == "match":
+            left = [
+                i.name
+                for i in self.plan.ingredients
+                if not i.product_id or (self.plan.recipe_plan_id and i.status != "matched")
+            ]
+            return head + (
+                f"The published plan has {len(left)} unmatched ingredients. Search them together in one tool-call reply "
+                "(the top three candidates already include inspected product details), then save the "
+                "matches in ONE call: publish_meal_plan with the exact existing quantities for a "
+                "free-form plan, match_ingredients for a saved recipe. Do not research alternatives "
+                "for a suitable selection. Prefer candidates that can be bought: in_scope true (not "
+                "false), a non-empty pack_size_units (an empty one cannot be converted to packs: ask "
+                "for a number of packs or prefer another product), and stock_verified true. Check the "
+                "shortlist with ONE check_price_and_availability call for all its products, not one "
+                "call per product. When every ingredient is matched, the basket comes next."
+            )
+        if phase == "prepare" and self.auto_cart:
+            return head + (
+                "The plan is complete. The server stages the basket right after your reply, with the "
+                "last basket's delivery terms or tomorrow and the buyer's first approved destination "
+                "(editable in Your order): do not call prepare_order. Do not ask for delivery details. "
+                "Reply in 2 to 4 sentences about the plan; the card shows the basket. Never say "
+                "purchased or ordered."
+            )
+        if phase == "prepare":
+            return head + (
+                "The plan is complete. Call prepare_order now with the existing plan, in this turn. "
+                "The delivery date and destination are never asked: use tomorrow's date and the first "
+                "destination of the policy (get_purchase_policy) unless the customer named others; the "
+                "customer edits them on the card. Do not ask for them and do not stop at the plan."
+            )
+        if phase == "finish":
+            if self.proposal and self.proposal.get("policy_outcome") in ("denied", "needs_resolution"):
+                return head + (
+                    "The basket is prepared but blocked. Explain the blocker in 2 to 4 sentences and the "
+                    "next step; get_purchase_policy is allowed for that. Never say purchased."
+                )
+            return head + (
+                "Reply in 2 to 4 sentences: what was prepared, what is not included, and the next step: "
+                "review the exact basket and press Confirm purchase. Never say purchased or ordered; "
+                "do not call more tools."
+            )
+        if phase == "advice":
+            return head + (
+                "The customer asked for advice only: answer directly; do not prepare a basket or check out."
+            )
+        return head + "Answer the customer; call a tool only if it is needed."
 
     def execution_guidance(self, remaining):
         """Server-owned workflow state; candidate discovery never selects a product."""
@@ -825,7 +1141,15 @@ class ToolSession:
         if self.identity.get("_conversation_id") and not self.brief_recorded:
             clock += "Use record_request to carry forward and update the customer's known facts before changing their plan. "
         if self.brief and not self.brief.can_build:
+            # The request brief is the intent classifier when it exists: explore or a missing fact means
+            # no cart, no prepare and no "prepare now" push, whatever the phases or keywords would say.
             return clock + "Help the customer explore or resolve the next material missing fact. Reads are available; do not publish a cart or prepare a basket yet."
+        if self.phases_on:
+            return clock + self.phase_guidance()
+        if settings().agent_stop_control and not self.needs_recipe_plan:
+            stop = self.stop_guidance()
+            if stop:
+                return clock + stop
         if self.needs_recipe_plan:
             return clock + (
                 "If the customer has chosen the meal and portions, publish its quantity plan using scale_recipe "
@@ -900,6 +1224,8 @@ class ToolSession:
                 "Remove the NUL (\\u0000) control character from the arguments and call again.",
                 422,
             )
+        if self.enforce_phases and (refusal := self.phase_refusal(name)) is not None:
+            raise refusal  # after the arguments checked out: invalid arguments are still reported first
         if self.needs_recipe_plan and name in CATALOG_TOOLS:
             raise Problem(
                 "MEAL_PLAN_REQUIRED",
@@ -935,11 +1261,33 @@ class ToolSession:
         for index, candidate in enumerate(result["products"]):
             if index < 3:
                 details = self.product(ProductRequest(product_id=candidate["id"]))
-                candidate = details | {"score": candidate["score"], "match_is_suitability_proof": False}
+                candidate = details | {
+                    "score": candidate["score"],
+                    "match_is_suitability_proof": False,
+                    "pack_size_units": self.pack_size_units(details),
+                    "in_scope": self.in_scope(details["id"]),
+                }
             products.append(candidate)
         result = result | {"products": products}
         self.search_results[key] = result
         return result
+
+    @staticmethod
+    def pack_size_units(details):
+        """Which of L and KG convert to packs from this product's own data (no guessing)."""
+        if details.get("conflicts") or not (details.get("units") or {}).get(details["sales_unit"]):
+            return []
+        return [
+            unit
+            for unit in ("L", "KG")
+            if per_sales_for(details, unit)[0] and not per_sales_for(details, unit)[2]
+        ]
+
+    def in_scope(self, product_id):
+        if "scope" not in self.__dict__:
+            rules = self.policy(None)["rules"]
+            self.scope = rules.get("approved_product_ids")
+        return None if self.scope is None else product_id in self.scope
 
     def product(self, request):
         if request.product_id in self.products:
@@ -1056,11 +1404,17 @@ class ToolSession:
                 basis.base_servings,
                 amounts(basis),
             ):
+                expected = [
+                    {"name": i.name, "amount": i.amount, "unit": i.unit} for i in basis.ingredients
+                ]
                 raise Problem(
                     "DRAFT_QUANTITY_MISMATCH",
                     "Keep the server-scaled draft quantities, units and portions; only match "
-                    "products. Change the recipe in a new customer message.",
+                    "products. Keep exactly: "
+                    + "; ".join(f"{e['name']} {e['amount']} {e['unit']}" for e in expected)
+                    + f" for {basis.portions} portions. Change the recipe in a new customer message.",
                     422,
+                    details={"expected": expected, "portions": basis.portions},
                 )
             # Matching cannot remove the server's provenance and estimate labels.
             plan.notes = list(dict.fromkeys([*basis.notes, *plan.notes]))[:20]
@@ -1097,6 +1451,8 @@ class ToolSession:
                     "Read every selected product with get_product first.",
                     422,
                 )
+        if self.draft_totals is None:
+            plan = normalise_units(plan)  # a server-scaled draft keeps the server's own units
         self.plan = plan.model_copy(deep=True)
         return {"meal_plan": self.plan.model_dump(mode="json"), "purchase_authorized": False}
 

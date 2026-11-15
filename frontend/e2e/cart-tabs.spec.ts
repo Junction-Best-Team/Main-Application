@@ -297,7 +297,7 @@ test("a product without a pack size: the footer says which one and why, the Chec
   // The full sentence and its code are under Checks.
   await tab(page, "Checks").click();
   await expect(panel(page, "checks")).toContainText(
-    "This product has no pack size in its data",
+    "Diced bacon: No pack size",
   );
   await expect(panel(page, "checks")).toContainText("QUANTITY_UNRESOLVED");
 });

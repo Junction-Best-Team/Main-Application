@@ -363,7 +363,9 @@ def validate_lookup(
                 if cutoff <= current:
                     add(
                         "CUTOFF_PASSED",
-                        "Supplier order cutoff has passed; approval cannot repair it.",
+                        f"Supplier order cutoff for delivery on {delivery.isoformat()} passed at "
+                        f"{cutoff.astimezone(HELSINKI).strftime('%Y-%m-%d %H:%M')} Helsinki time; "
+                        "approval cannot repair it. Choose a later delivery date.",
                     )
                 out["expires_at"] = min(cutoff, timestamp(out["expires_at"])).isoformat()
                 amount = D(line["availableAmount"])
@@ -394,4 +396,8 @@ def validate_lookup(
         except (KeyError, TypeError, ValueError, InvalidOperation, OverflowError):
             add("DELIVERY_UNRESOLVED", "Delivery schedule, units or cutoff is incomplete.")
         result[pid] = out
+    for out in result.values():
+        out["stock_verified"] = out["available_sales_quantity"] is not None and not any(
+            r["severity"] in ("unresolved", "denied") for r in out["reasons"]
+        )
     return result

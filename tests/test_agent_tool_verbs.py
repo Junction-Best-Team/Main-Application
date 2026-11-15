@@ -197,9 +197,12 @@ def test_only_registered_handlers_reach_the_service():
     # Since PR #103 the recipe tools are always registered: no method reaches the Service
     # without being a registered handler.
     # restore_plan is called by run_turn with a server-validated stored plan, never by the model;
-    # it only calls get_product, which is in ALLOWED_SERVICE.
+    # it only calls get_product, which is in ALLOWED_SERVICE. default_terms is called by the prepare
+    # guard (never by the model) and only reads the policy for the first destination.
     unregistered = (
-        set(users) - {"__init__", "memory_context", "restore_plan", "restore_saved_plan"} - handlers
+        set(users)
+        - {"__init__", "memory_context", "restore_plan", "restore_saved_plan", "default_terms"}
+        - handlers
     )
     assert unregistered == set(), unregistered
     assert set().union(*users.values()) <= ALLOWED_SERVICE

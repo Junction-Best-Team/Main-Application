@@ -310,6 +310,9 @@ def test_hidden_request_changes_block_preparation(monkeypatch, config, guard, id
     seen = fake_jev(monkeypatch, **{check: 0.03})
     service = FakeService(identity)
     script = prepared_script()
+    # A date that is not the server's default (tomorrow), whatever day the suite runs: the default date
+    # and destination are known facts and skip the destination_and_date question (test_guard_defaults.py).
+    script[-1] = reply(call("prepare_order", purchase() | {"delivery_date": "2031-01-02"}))
     llm = scripted(monkeypatch, script + [script[-1], reply(text="Prepared.")])
     result = run(identity, service)
     assert not any(c[0] == "prepare" for c in service.calls)
@@ -556,7 +559,14 @@ def test_tool_error_described_as_success_is_not_shown(monkeypatch, config, guard
     service = FakeService(identity)
     service.prepare_order = lambda *a: (_ for _ in ()).throw(Problem("SUPPLIER_DOWN", "down", 503))
     script = prepared_script()
-    scripted(monkeypatch, script + [reply(text="Your basket was prepared successfully.")])
+    scripted(
+        monkeypatch,
+        script
+        + [
+            reply(text="Your basket was prepared successfully."),
+            reply(text="Your basket was prepared successfully."),  # after the server's continuation
+        ],
+    )
     result = run(identity, service)
     assert result.text == OUTPUT_FALLBACK and result.meal_plan is None
     records = [s["state"] for s in seen if s["boundary"] == "assistant_output"][-1]
@@ -810,6 +820,7 @@ def test_all_meal_ingredients_still_required(monkeypatch, config, guard, identit
             reply(call("publish_meal_plan", meal())),
             reply(call("prepare_order", request)),
             reply(text="Done."),
+            reply(text="Done."),  # the server's one continuation: no plan-only mode
         ],
     )
     run(identity, service)
@@ -1260,6 +1271,7 @@ def test_streamed_draft_waits_for_review_before_showing_free_form_plan(monkeypat
         reply(*[call("get_product", {"product_id": n}) for n in NAMES]),
         reply(call("publish_meal_plan", meal())),
         reply(text="The draft is ready; which delivery date should I use?"),
+        reply(text="The draft is ready."),  # the server continues once (no plan-only mode, no date asked)
     ])
     events = []
 
@@ -1273,7 +1285,7 @@ def test_streamed_draft_waits_for_review_before_showing_free_form_plan(monkeypat
     assert published.draft and len(published.draft.items) == 5
     assert all(e.draft is None for e in events if e.tool == "get_product")
     assert result.proposal_id is None
-    assert len([s for s in seen if s["boundary"] == "assistant_output"]) == 2  # Draft, then final prose.
+    assert len([s for s in seen if s["boundary"] == "assistant_output"]) == 2  # Draft, then final prose (the continued reply is not reviewed).
 
 
 def test_timeout_recovers_last_reviewed_plan_and_never_later_rejected_text(

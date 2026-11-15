@@ -31,6 +31,7 @@ from aimo.chat_schemas import (
     CartEditRequest,
     CartPurchaseRequest,
     CartPurchaseResponse,
+    CartRefreshRequest,
     ConversationCreate,
     ConversationList,
     ConversationResponse,
@@ -447,6 +448,24 @@ def create_app(service=None):
             identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
         )
         return cart_purchase.prepare_from_cart(identity, conversation_id, body, service)
+
+    @app.post(
+        "/api/conversations/{conversation_id}/refresh-basket",
+        response_model=CartPurchaseResponse,
+    )
+    def conversation_refresh_basket(
+        conversation_id: UUID,
+        body: CartRefreshRequest,
+        request: Request,
+        identity=Depends(buyer),
+    ):
+        """Prepare an expired basket again from the cart: fresh supplier price and stock, the same
+        date and destination, the customer's own pack counts. 409 BASKET_NOT_EXPIRED otherwise.
+        Nothing is ordered: the customer still confirms the new revision."""
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+        return cart_purchase.refresh_basket(identity, conversation_id, body, service)
 
     @app.put("/api/conversations/{conversation_id}/cart", response_model=CartPurchaseResponse)
     def conversation_edit_cart(

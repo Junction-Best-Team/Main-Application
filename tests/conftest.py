@@ -73,7 +73,7 @@ def reset_buyers(monkeypatch, fixture_password_hasher):
         c.execute("TRUNCATE buyers,login_attempts,purged_proposals RESTART IDENTITY CASCADE")
     with monkeypatch.context() as patch:
         patch.setattr("aimo.cli.hasher", fixture_password_hasher)
-        seed()
+        seed(broad_scope=False)  # the narrow fixture policy; Q-134's default is tested on its own
 
 
 @pytest.fixture
