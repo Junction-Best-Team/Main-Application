@@ -33,12 +33,15 @@ from aimo import agent
 from aimo.agent_stop import advice_only, intent_text, wants_to_buy
 from aimo.agent_tools import ToolSession
 from aimo.config import settings
+from aimo.db import Problem
 
 
 @pytest.fixture(autouse=True)
 def stop_control_on(monkeypatch):
     monkeypatch.setattr(settings(), "agent_stop_control", True)
-    monkeypatch.setattr(settings(), "agent_phases", False)  # phases layer on top (test_agent_phases.py)
+    monkeypatch.setattr(
+        settings(), "agent_phases", False
+    )  # phases layer on top (test_agent_phases.py)
 
 
 def guidance(session, texts):
@@ -637,3 +640,37 @@ def test_a_deadline_that_runs_out_at_the_continuation_check_keeps_the_reply(
         identity, FakeService(identity), user("order it"), stored_plan=meal(), budget_seconds=20
     )
     assert "Shall I prepare it?" in result.text
+
+
+# --- fix queue: retry an empty model reply once (live SB-23: LLM_RESPONSE_INVALID after 8 s) -----------
+
+
+def test_an_empty_model_reply_is_retried_once_within_the_deadline(identity, config, monkeypatch):
+    seen = scripted(monkeypatch, [reply(text=""), reply(text="Pasta keeps about a week.")])
+    result = run(identity, FakeService(identity), user("how long does dry pasta keep"))
+    assert result.text == "Pasta keeps about a week." and len(seen) == 2
+    assert all(
+        m.get("content") for m in seen[1]["messages"] if m["role"] == "assistant"
+    )  # no empty turn kept
+
+
+def test_two_empty_model_replies_still_fail_and_never_loop(identity, config, monkeypatch):
+    seen = scripted(monkeypatch, [reply(text=""), reply(text=""), reply(text="never reached")])
+    with pytest.raises(Problem) as error:
+        run(identity, FakeService(identity), user("how long does dry pasta keep"))
+    assert error.value.code == "LLM_RESPONSE_INVALID" and len(seen) == 2
+
+
+def test_no_retry_with_the_switch_off_or_without_time(identity, config, monkeypatch):
+    monkeypatch.setattr(settings(), "agent_stop_control", False)
+    seen = scripted(monkeypatch, [reply(text=""), reply(text="late")])
+    with pytest.raises(Problem):
+        run(identity, FakeService(identity), user("hello"))
+    assert len(seen) == 1
+    monkeypatch.setattr(settings(), "agent_stop_control", True)
+    seen = scripted(monkeypatch, [reply(text=""), reply(text="late")])
+    with pytest.raises(Problem):
+        run(
+            identity, FakeService(identity), user("hello"), budget_seconds=10
+        )  # under the 15 s guard
+    assert len(seen) == 1

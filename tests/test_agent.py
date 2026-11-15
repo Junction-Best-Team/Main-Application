@@ -593,7 +593,8 @@ def test_provider_failure_after_preparation_keeps_the_verified_result(
     monkeypatch, config, identity, final
 ):
     service = FakeService(identity)
-    scripted(monkeypatch, prepared_script() + [final])
+    # An empty final reply is retried once (stop control), so the same failure is scripted twice.
+    scripted(monkeypatch, prepared_script() + [final, final])
     events = []
     result = agent.run_turn(identity, HISTORY, service, on_progress=events.append)
     assert result.proposal_id == service.saved["proposal_id"]
@@ -603,7 +604,8 @@ def test_provider_failure_after_preparation_keeps_the_verified_result(
 
 
 def test_empty_reply_without_preparation_is_a_failure(monkeypatch, config, identity):
-    scripted(monkeypatch, [reply()])
+    # The model call is retried once (stop control); a second empty reply still fails the turn.
+    scripted(monkeypatch, [reply(), reply()])
     with pytest.raises(Problem) as error:
         agent.run_turn(identity, HISTORY, FakeService(identity))
     assert error.value.code == "LLM_RESPONSE_INVALID"

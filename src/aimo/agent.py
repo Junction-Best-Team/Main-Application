@@ -473,6 +473,7 @@ def run_turn(
     tool_log = []
     guard = None
     continued = False
+    retried_empty = False
     rounds = 0
     phase_path = []
 
@@ -544,6 +545,14 @@ def run_turn(
                 history.append(reply.message())
                 if not reply.tool_calls:
                     if not reply.content or not reply.content.strip():
+                        if (
+                            not retried_empty
+                            and stop_control_on()
+                            and deadline - time.monotonic() >= MIN_SECONDS_TO_CONTINUE
+                        ):
+                            retried_empty = True  # a provider hiccup: ask the model once more
+                            history.pop()  # the empty message is not kept
+                            continue
                         raise Problem(
                             "LLM_RESPONSE_INVALID", "The assistant returned no message.", 502
                         )
