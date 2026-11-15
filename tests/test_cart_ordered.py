@@ -76,7 +76,7 @@ def test_the_automatic_prepare_does_nothing_for_the_plan_that_was_ordered(auto):
 
 def test_a_new_plan_after_an_order_starts_a_new_cart_as_before(auto):
     first, _ = order(auto)
-    d = edited_turn(auto, more(EDIT), "now a bit more pepper, as a new order")
+    d = edited_turn(auto, more(EDIT), "now a bit more pepper")
     open_now = [b for b in baskets(d) if state(b) != "cancelled" and not b["order_id"]]
     assert len(open_now) == 1 and open_now[0]["proposal_id"] != first["proposal_id"]
     assert [b for b in baskets(d) if b["proposal_id"] == first["proposal_id"]][0]["order_id"]
