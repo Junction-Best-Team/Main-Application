@@ -108,7 +108,7 @@ names and probabilities. Conversation text and keys are never logged.
   synthetic sample, not a guarantee.
 
 Not covered: jailbreak-proof detection; semantic screening of imported recipe text from the recipe tools (results are wrapped as data, and the displayed meal-plan fields are reviewed at output, but summaries, instructions and notes are not screened before the model reads them); recipe arithmetic and deterministic
-per-portion bounds (see `internal-agent.md`); trusted constraint provenance
+per-portion bounds (see [recipe planning](recipes.md)); trusted constraint provenance
 (budgets and diets are inferred from customer text, so the earliest constraints
 can fall outside a long prepare-check window); and non-English/Finnish coverage
 beyond the sample.

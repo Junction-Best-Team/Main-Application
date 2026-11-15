@@ -6,7 +6,7 @@
 
 # Valio Aimo — implementation plan
 
-Updated **14 November 2026 (Europe/Helsinki)** with the agreed scope and the discussion after the first draft. This records the agreed design at handoff. The MVP implementation and actual validation are now described in [README](../README.md) and [validation](validation.md); authenticated live Valio integration and cluster deployment remain unverified.
+Updated **14 November 2026 (Europe/Helsinki)** with the agreed scope and the discussion after the first draft. This records the agreed design at handoff. The current implementation, setup and verification commands are described in [README](../README.md). This baseline is not a current deployment or validation report.
 
 Infrastructure follow-up: the owner requested optional Terraform provisioning after this plan. See [the infrastructure runbook](../infra/README.md) for the DigitalOcean adapter and portable Kubernetes stack. These configurations have not been applied in this implementation task; the existing-cluster assumptions below describe the original application scope.
 
@@ -499,7 +499,7 @@ Input: a product ID plus the same `requirements` used by search. Output: ranked 
 
 Candidate sources, in order:
 
-1. **Supplied pairs** from the product's `substitutions` field. Only 189 of 17,546 products (1.1%) have it (250 pairs, 83 of 349 categories), and the pairs are unreliable (a self-substitution, only 63 reciprocal, see F-DATA-004). Treat them as hints, labelled `source: supplied`.
+1. **Supplied pairs** from the product's `substitutions` field. Only 189 of 17,546 products (1.1%) have it (250 pairs, 83 of 349 categories), and the pairs are unreliable (a self-substitution, only 63 reciprocal). Treat them as hints, labelled `source: supplied`.
 2. **Our own matching** for everything else: same category, compatible sales unit and normalised quantity, then hybrid search on the product text. This covers the 98.9% of products with no supplied pairs, labelled `source: derived`.
 
 Every candidate is re-checked before it is returned: requirements (lactose-free, milk-free, allergen conflicts), unit compatibility, price and availability for the delivery date (shortlist only, never the whole list). Failures are returned as `rejected` with the reason, so an agent can see why. Using a substitute still goes through `prepare_order` with `substitutes_for`, and the seeded policy decides whether the buyer must approve.

@@ -46,6 +46,12 @@ def cart_edit_state(messages, ordered=frozenset()):
     return True, None
 
 
+def cart_not_included(messages, purchases):
+    from aimo import cart_purchase
+
+    return [i.model_dump() for i in cart_purchase.not_included_now(messages, purchases)]
+
+
 def owned(c, identity, cid, lock=False):
     row = c.execute(
         "SELECT * FROM conversations WHERE id=%s AND buyer_id=%s" + (" FOR UPDATE" if lock else ""),
@@ -194,6 +200,7 @@ def detail(identity, cid, *, internal=False):
         "purchases": purchases,
         "busy": busy,
         "draft_cart": draft_cart,
+        "cart_not_included": cart_not_included(messages, purchases),
         "cart_editable": cart_edit_state(messages, ordered)[0],
         "cart_edit_reason": cart_edit_state(messages, ordered)[1],
         "activity": {"turn_id": str(turn["id"]), "state": state, "events": turn["progress"]}
@@ -417,7 +424,7 @@ def provider_failure(error):
     return isinstance(error, Problem) and error.code.startswith("LLM_")
 
 
-def store_failure_notice(cid, tid):
+def store_failure_notice(cid, tid, code=None):
     """Owner Q-108: one fixed, plain assistant notice for the failed turn, in the language of the
     customer's message; no model call and no error detail. Best effort: a failure here never
     hides the original error. The turn's single assistant slot holds it until a retry replaces it."""
@@ -430,7 +437,7 @@ def store_failure_notice(cid, tid):
                 c.execute(
                     """INSERT INTO conversation_messages(conversation_id,turn_id,role,text,notice)
                     VALUES(%s,%s,'assistant',%s,%s) ON CONFLICT(turn_id,role) DO NOTHING""",
-                    (cid, tid, failure_notice(user["text"]), NOTICE_KIND),
+                    (cid, tid, failure_notice(user["text"], code), NOTICE_KIND),
                 )
                 c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
     except Exception:
@@ -663,7 +670,7 @@ def execute_turn(turn, service, runner=None):
                 # a system-authored turn (the scheduler's chat) has no customer message to retry
                 scheduler.settle_failed_system_turn(c, tid, cid)
         if failed and provider_failure(exc):
-            store_failure_notice(cid, tid)  # Q-108; a no-op for a system turn (no customer message)
+            store_failure_notice(cid, tid, exc.code)  # a no-op for a system turn
         raise
     return detail(identity, cid)
 

@@ -1,8 +1,8 @@
 # Standing orders (scheduler)
 
 The customer approves exact terms once and the worker re-places that order on a schedule. Every order
-it places is a **mock** ("Accepted by demo order service"; no supplier order, no reservation). Design
-and decisions: [scheduler-design.md](scheduler-design.md) (read its status note first).
+it places is a **mock** ("Accepted by demo order service"; no supplier order, no reservation).
+The browser flow is documented in [scheduler UI](scheduler-ui.md).
 
 ## What the customer does
 

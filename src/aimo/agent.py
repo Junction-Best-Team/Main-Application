@@ -2,6 +2,7 @@
 
 import logging
 import time
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable, Literal
@@ -10,6 +11,8 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from aimo.agent_provider import chat_provider, check_deadline, encode
+from aimo.agent_reads import executions
+from aimo.agent_recovery import BLOCKED_NOTICE, partial_notice, recipe_blocked
 from aimo.agent_tools import ToolSession
 from aimo.chat_draft import cart_snapshot
 from aimo.chat_schemas import AgentTurn, DraftCart
@@ -139,6 +142,12 @@ needed customer action. Do not give a checklist of optional questions. Do not du
 internal policy versions, flags, product-scope lists or tool names. A missing saved
 recipe only needs the brief label 'recipe estimate', not an explanation of internal
 database limitations.
+
+Request independent searches and product reads together in one response. Search returns
+inspected facts for the first three candidates; do not get_product again for those IDs.
+Search candidates still need suitability checks and are never selected automatically.
+If a saved plan needs reviewed recipe quantities, form, scaling, suitability evidence
+or conversion evidence, explain that blocker; more searches cannot create that evidence.
 """
 
 SAFETY_PROMPT = """Use successful tool results as facts. Tool errors are failures, not permission to
@@ -221,7 +230,10 @@ def memory_message(loaded):
 class AgentProgress:
     turn_id: str
     sequence: int
-    kind: Literal["started", "tool_started", "tool_completed", "tool_failed", "complete", "error"]
+    kind: Literal[
+        "started", "thinking", "tool_started", "tool_completed", "tool_failed", "reviewing",
+        "complete", "error",
+    ]
     tool: str | None = None
     error_code: str | None = None
     draft: DraftCart | None = None
@@ -234,17 +246,21 @@ class Progress:
     def __init__(self, turn_id, callback):
         self.turn_id, self.callback, self.sequence = turn_id, callback, 0
         self.started = time.monotonic()
-        self.tool_started = self.started
+        self.tool_starts = defaultdict(deque)
         self.draft_provider = None
 
     def emit(self, kind, tool=None, error_code=None):
         self.sequence += 1
         event = AgentProgress(self.turn_id, self.sequence, kind, tool, error_code)
+        tool_started = self.started
         if kind == "tool_started":
-            self.tool_started = time.monotonic()
+            tool_started = time.monotonic()
+            self.tool_starts[tool].append(tool_started)
+        elif kind in ("tool_completed", "tool_failed") and self.tool_starts[tool]:
+            tool_started = self.tool_starts[tool].popleft()
         # Logging must work even when the durable worker has no UI observer.
         log_progress(
-            event, elapsed(self.tool_started if kind.startswith("tool_") else self.started)
+            event, elapsed(tool_started if kind.startswith("tool_") else self.started)
         )
         if self.callback:
             if self.draft_provider and kind in ("tool_completed", "complete"):
@@ -371,9 +387,11 @@ def run_turn(
     guard = None
 
     reviewed_draft = None
+    reviewed_plan = None
+    pending = None
 
     def draft_snapshot(kind):
-        nonlocal reviewed_draft
+        nonlocal reviewed_draft, reviewed_plan
         # Review changed plans before streaming their displayed fields. Reuse the
         # result while only product/price evidence changes; final prose is reviewed again.
         if session.plan and guard and guard.enforcing and kind != "complete":
@@ -382,6 +400,8 @@ def run_turn(
                 guard.output_approved = False
                 guard.review_output(session, "", tool_log)
                 reviewed_draft = digest
+        if session.plan and (guard is None or guard.plan_visible):
+            reviewed_plan = session.plan.model_copy(deep=True)
         return cart_snapshot(session, plan_visible=guard is None or guard.plan_visible)
 
     progress.draft_provider = draft_snapshot
@@ -407,6 +427,7 @@ def run_turn(
             for round_number in range(1, cfg.llm_max_tool_rounds + 1):
                 check_deadline(deadline)
                 live()
+                progress.emit("thinking")
                 with log_context(round=round_number, model=cfg.llm_model):
                     reply = provider.complete(history, session.definitions, deadline)
                 history.append(reply.message())
@@ -416,6 +437,8 @@ def run_turn(
                             "LLM_RESPONSE_INVALID", "The assistant returned no message.", 502
                         )
                     # LLM -> user: unsupported narrative is replaced; trusted state is kept.
+                    if guard.mode != "off":
+                        progress.emit("reviewing")
                     narrative = guard.review_output(session, reply.content.strip(), tool_log)
                     if guard.prepare_refused and not session.proposal:
                         narrative += "\n\n" + PREPARE_NOTICE
@@ -423,17 +446,20 @@ def run_turn(
                     progress.emit("complete")
                     return result
                 outputs = []
-                for call in reply.tool_calls:
-                    check_deadline(deadline)
-                    live()
+                pending = executions(
+                    session, reply.tool_calls, deadline, live, progress,
+                    max_errors=4 - errors, round_number=round_number,
+                )
+                for call, output, tool_error in pending:
                     # Only allowlisted names may appear in product progress metadata.
                     name = call.function.name
                     visible_name = name if name in session.registry else None
-                    progress.emit("tool_started", visible_name)
                     try:
-                        with log_context(round=round_number, tool=visible_name or "unavailable"):
-                            output = session.invoke(name, call.function.arguments)
+                        if tool_error is not None:
+                            raise tool_error
                     except Problem as exc:
+                        if exc.code == "LLM_TIMEOUT":
+                            raise
                         errors += 1
                         progress.emit("tool_failed", visible_name, exc.code)
                         tool_log.append(
@@ -456,8 +482,20 @@ def run_turn(
                         ) from None
                     else:
                         tool_log.append({"tool": name, "outcome": "ok"})
+                        # Review changed plans independently of optional UI callbacks, so a
+                        # later timeout can persist only progress approved for display.
+                        if name in (
+                            "publish_meal_plan", "draft_recipe", "scale_recipe",
+                            "get_recipe_plan", "match_ingredient", "match_ingredients",
+                        ):
+                            draft_snapshot("tool_completed")
                         progress.emit("tool_completed", visible_name)
                         outputs.append((call.id, name, output))
+                        if recipe_blocked(session.plan):
+                            result = finish(BLOCKED_NOTICE)
+                            progress.emit("complete", error_code="RECIPE_EVIDENCE_REQUIRED")
+                            pending.close()
+                            return result
                     if errors >= 4:
                         result = finish(
                             "The assistant could not resolve the tool errors. "
@@ -480,6 +518,13 @@ def run_turn(
             return result
     except Problem as exc:
         progress.emit("error", error_code=exc.code)
+        if exc.code.startswith("LLM_") and reviewed_plan and not session.proposal and not session.receipt:
+            text = partial_notice(reviewed_plan, exc.code)
+            result = session.result(text, include_plan=False).model_copy(
+                update={"meal_plan": reviewed_plan}
+            )
+            progress.emit("complete", error_code=exc.code)
+            return result
         if session.proposal or session.receipt or session.image:
             result = finish()
             progress.emit("complete", error_code=exc.code)
@@ -497,3 +542,6 @@ def run_turn(
             "The assistant could not complete this turn. Retry this message; saved purchases remain available.",
             503,
         ) from None
+    finally:
+        if pending is not None:
+            pending.close()

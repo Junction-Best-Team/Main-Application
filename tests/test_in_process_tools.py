@@ -168,13 +168,15 @@ def test_agent_runner_http_client_never_reaches_the_tools():
     assert all("client" not in "".join(args) for _, args in tool_calls), tool_calls
     # The HTTP client goes to exactly the provider and the guardrail classifier.
     assert sorted(clients) == ["Guardrails", "chat_provider"]
-    # Tool execution is session.invoke(name, arguments): a local method, no URL or client.
+    # The bounded read executor still invokes local typed methods, without an HTTP client.
+    reads = parse("agent_reads.py")
+    assert not imported_roots(reads) & HTTP_LIBRARIES
     invokes = [
         ast.unparse(n)
-        for n in ast.walk(tree)
+        for n in ast.walk(reads)
         if isinstance(n, ast.Call) and ast.unparse(n.func) == "session.invoke"
     ]
-    assert invokes == ["session.invoke(name, call.function.arguments)"]
+    assert invokes == ["session.invoke(call.function.name, call.function.arguments)"]
 
 
 def test_provider_sends_the_tool_definitions_but_never_calls_them():

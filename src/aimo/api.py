@@ -509,6 +509,8 @@ def create_app(service=None):
             import anyio
 
             deadline, previous = time.monotonic() + 25, None
+            # Each stream ends after 25 seconds by design; ask the browser to come back quickly.
+            yield "retry: 1000\n\n"
             while time.monotonic() < deadline and not await request.is_disconnected():
                 # Revocation/session expiry continues to apply after connection establishment.
                 try:

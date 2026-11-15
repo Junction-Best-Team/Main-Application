@@ -101,12 +101,32 @@ def answer(identity, pid, left_out):
     }
 
 
+def not_included_now(messages, purchases):
+    """The items the CURRENT basket leaves out, for the card after a reload (Q-124 a).
+
+    Computed from the latest stored plan, never stored: [] unless the newest basket is open (not
+    cancelled, no order) and no newer plan was stored after it. A saved recipe plan has none (it must
+    be fully matched); an unreadable plan has none."""
+    plan_at = next((i for i in range(len(messages) - 1, -1, -1) if messages[i]["meal_plan"]), None)
+    basket_at = next(
+        (i for i in range(len(messages) - 1, -1, -1) if messages[i]["proposal_id"]), None
+    )
+    if plan_at is None or basket_at is None or plan_at > basket_at:
+        return []
+    basket = next(
+        (p for p in purchases if p["proposal_id"] == str(messages[basket_at]["proposal_id"])), None
+    )
+    if not basket or basket["order_id"] or basket["approval_status"] == "cancelled":
+        return []
+    return left_out_for_replay(messages[plan_at]["meal_plan"])
+
+
 def left_out_for_replay(plan_data):
     try:
         plan = MealPlan.model_validate(plan_data)
-    except ValidationError:
+        return [] if plan.recipe_plan_id else split_plain(plan)[1]
+    except (ValidationError, Problem):  # an unreadable stored plan lists nothing; reads never fail
         return []
-    return [] if plan.recipe_plan_id else split_plain(plan)[1]
 
 
 def not_included_text(left_out):

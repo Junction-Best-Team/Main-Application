@@ -46,8 +46,7 @@ implementation was replaced; existing shared models, product/purchasing code and
 fixtures were retained as contracts. Agent tests were rewritten; the existing
 purchasing integration scenario now exercises the HTTP provider protocol with
 scripted responses. No new framework, dependency, model weights or visual asset.
-Live-provider validation was skipped without configured credentials. See
-[internal agent](internal-agent.md) and [validation](validation.md).
+Live-provider validation was skipped without configured credentials at that stage.
 
 The owner then selected OpenRouter and supplied a private key. Codex configured
 ignored local settings and GitHub secret/variables, verified two live completions
@@ -78,13 +77,12 @@ Reference: [Junction general terms](https://www.hackjunction.com/terms-of-servic
 
 | Material | Date | Source / actual usage |
 | --- | --- | --- |
-| Seller gateway, normalization, ingestion/search, policy/workflow, eight HTTP/MCP tools, buyer inbox, PostgreSQL migrations, mock adapter, tests and packaging | 2026-11-14 | Implemented with Codex during this task, starting from main `76296c1`; agreed behavior from PR #2 head `b0d1ee3`. No earlier application implementation was copied. PR #3's findings/draft are retained and attributed separately. |
-| Tool sweep, CI script and `auto` upstream mode (labelled fixture fallback without an API key) | 2026-11-14 | `tests/sweep/run_sweep.py`, `tests/ci.sh`, `tests/test_upstream_mode.py`, `src/aimo/upstream.py`: written with Claude on top of PR #4. First real-key calls to the sponsor price/availability API were made this day (F-MVP-007). |
+| Seller gateway, normalization, ingestion/search, policy/workflow, eight HTTP/MCP tools, buyer inbox, PostgreSQL migrations, mock adapter, tests and packaging | 2026-11-14 | Implemented with Codex during this task, starting from main `76296c1`; agreed behavior from PR #2 head `b0d1ee3`. No earlier application implementation was copied. PR #3's findings/draft remain in Git history. |
+| Tool sweep, CI script and `auto` upstream mode (labelled fixture fallback without an API key) | 2026-11-14 | `tests/sweep/run_sweep.py`, `tests/ci.sh`, `tests/test_upstream_mode.py`, `src/aimo/upstream.py`: written with Claude on top of PR #4. First real-key calls to the sponsor price/availability API were made this day. |
 | Authored miniature fixture projections and invented commercial responses | 2026-11-14 | `src/aimo/fixtures.py` and `FixtureClient`; selected known product shapes exercise reported cases, but are not full catalog records or captured live responses. `demo-deposit` is a wholly fictional material. Real source records are verified privately by `scripts/verify_catalog.py`. |
 | Buyer UI | 2026-11-14 | Original React/CSS interface; system fonts, no third-party photos or downloaded visual assets. Styled text marks this as the challenge demo; it is not an official supplier checkout. |
 | PR #4 review fixes | 2026-11-14 | Codex changes to authority reevaluation, historical/current purchase views, documentation CSP and shared response contracts, with regression tests. Built on PR head `cd16b09`; no new services or dependencies. Swagger continues using FastAPI's jsDelivr assets, with nonced scripts on the documentation route. |
-| PR #4 second review | 2026-11-14 | Codex fixes on `ea8e9aa`: trusted product scope, prepare idempotency, exact pack arithmetic, withdrawal retention, bounded login and supplier retries, worker-only MCP database work, connection pooling, batched inbox, exact filtered retrieval and bounded product generations. Added migration 002 and psycopg-pool 3.3.3 (LGPL-3.0-only, per installed package metadata); no new service. Regression and container/browser/retrieval results are in `docs/validation.md`. |
-| Phase-0 product API stub | 2026-11-14 | `docs/api-stub-phase0.md`, written for [issue #66](https://github.com/Junction-Best-Team/Main-Application/issues/66). Documentation only, synthesized from the existing `src/aimo/api.py` routes and `schemas.py`/`chat_schemas.py` payload shapes; no new route, schema, or server was added. |
+| PR #4 second review | 2026-11-14 | Codex fixes on `ea8e9aa`: trusted product scope, prepare idempotency, exact pack arithmetic, withdrawal retention, bounded login and supplier retries, worker-only MCP database work, connection pooling, batched inbox, exact filtered retrieval and bounded product generations. Added migration 002 and psycopg-pool 3.3.3 (LGPL-3.0-only, per installed package metadata); no new service. Historical regression and container/browser/retrieval results remain in Git history. |
 | Buyer session Playwright coverage (issue #67) | 2026-11-14 | `frontend/e2e/session.spec.ts`, authored on branch `fm/junction-baremin-session`. Sign-in, bad-credentials error, reload session-restore and sign-out are mocked at the browser/API edge with Playwright route fixtures, matching the existing `chat.spec.ts` mocked-prior-art style — the mocking is in the test harness only; `src/main.tsx`'s own code already called the real `/api/login`, `/api/session`, `/api/logout` endpoints and was not changed. The real session contract (cookie `aimo_session`, `csrf_token`, 401 on bad credentials, 204 + cookie clear on logout) was additionally exercised once by hand with `curl` against a locally run `aimo serve` instance and an isolated Postgres container, confirming the mocked fixtures match the live API shape; that manual run is not committed as an automated check. |
 
 ### Integrated dependencies and model
@@ -99,14 +97,12 @@ The submission team still owns the final event disclosure and repository licence
 
 ## Chat purchasing migration — 2026-11-14
 
-Reused the existing application, purchasing/approval controls and frontend review components from latest develop `19bfda4`. Added internal typed LLM tools over existing HTTPX, persisted conversations and exact customer confirmation, converted the existing React entry point, and removed external HTTP/MCP adapters and the MCP dependency. No supplier checkout was added. Historical validation above refers to the prior gateway implementation; current verification is in `chat-purchasing.md`.
+Reused the existing application, purchasing/approval controls and frontend review components from latest develop `19bfda4`. Added internal typed LLM tools over existing HTTPX, persisted conversations and exact customer confirmation, converted the existing React entry point, and removed external HTTP/MCP adapters and the MCP dependency. No supplier checkout was added. Historical validation above refers to the prior gateway implementation; current checks are documented in README and `tests/README.md`.
 
 
 Person 2 review follow-up: preserved shared develop changes, added failure/HTTPS
 regressions and server-authored recipe notices, and split the previously prepared
-OpenRouter release code into PR #32 for runtime-owner review. The acceptance
-handoff in `internal-agent.md` records unresolved shared work; it is not a claim
-that recipe templates, deterministic scaling or trusted constraints were built.
+OpenRouter release code into PR #32 for runtime-owner review. That work did not yet include recipe templates, deterministic scaling or trusted constraints; later recipe work is recorded below.
 
 ## Automatic release migrations — 2026-11-14
 
@@ -191,7 +187,7 @@ scenario switcher, dependencies or backend/schema changes were imported.
 
 ## Scheduler UI (standing orders) — 2026-11-14
 
-Built on the production frontend after PR #131. The designer mockups of PR #102 (`ui/**/code.html`, schedule list and edit pages) were read as a visual reference only; no markup, store, fixtures or assets were copied, and the mockup fields the backend does not have (unload window, hub, SKU manifest editing, shipment tracking) were left out by the owner. Types come from the generated schema of the unmerged backend branches (`p3/scheduler-design`, `p3/scheduler-orders`). Everything the scheduler places is a MOCK order ("Accepted by demo order service"). The Playwright specs mock every `/api` call with invented values and are labelled as mocked coverage; nothing was run against a live backend. Details in `docs/scheduler-ui.md`.
+Built on the production frontend after PR #131. The designer mockups of PR #102 (`ui/**/code.html`, schedule list and edit pages) were read as a visual reference only; no markup, store, fixtures or assets were copied, and the mockup fields the backend does not have (unload window, hub, SKU manifest editing, shipment tracking) were left out by the owner. Types came from the generated schema of the then-unmerged scheduler backend branches. Everything the scheduler places is a MOCK order ("Accepted by demo order service"). The Playwright specs mock every `/api` call with invented values and are labelled as mocked coverage; nothing was run against a live backend. Details in `docs/scheduler-ui.md`.
 On 2026-11-14, the owner requested buyer policy settings. Reused the production
 React feature structure, Nordic Wholesale Commerce tokens/fonts, browser session
 and CSRF handling, immutable policy versions and purchasing revalidation. Added
@@ -333,3 +329,16 @@ Requests nesting fix (2026-11-15): reused the existing app shell, conversation n
 Past Orders header (2026-11-15): implemented the owner's revised in-chat mockup using existing typography, spacing, icons and order-history fixtures. No generated bitmap, external material or new dependency is shipped.
 
 Sidebar account menu (2026-11-15): used the owner's attached account-menu reference and reused the existing UserMenu, routes, session/CSRF sign-out, design tokens and authored browser fixtures. No new dependency, generated bitmap or external material is shipped.
+
+## Parallel chat harness — 2026-11-15
+
+Reused the typed tool registry, catalog readers, guardrail reviews, saved recipe
+revisions, draft projection and durable turn persistence. Added bounded concurrency
+with Python's standard library and authored fixture/provider/clock regressions. No
+new dependency, external asset, model training or copied implementation was added.
+The reported hosted conversation was inspected read-only; test commerce remains
+authored fixtures and orders remain mocks.
+
+Release CI restoration (2026-11-15): restored the workflow from the team's PR #194
+(`5306e29`) at the owner's request. Reused existing check selection and gate logic;
+no dependency or external material was added.

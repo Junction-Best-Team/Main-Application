@@ -1,8 +1,6 @@
-> Deployment update: [separate apps](separate-apps.md) supersedes this document’s single-container packaging and synchronous turn execution. Product authorization remains unchanged.
+# Chat purchasing
 
-# Chat purchasing migration — 2026-11-14
-
-This product scope supersedes the original external-agent/MCP entry points in `brief.md`. One existing React app → authenticated FastAPI → internal typed agent/Service → existing PostgreSQL/supplier connectors. Order placement is a persistent mock, never supplier checkout or stock reservation.
+This product scope supersedes the original external-agent/MCP entry points in `brief.md`. The React app calls authenticated FastAPI; a durable worker runs the internal typed agent/Service against PostgreSQL and supplier connectors. Order placement is a persistent mock, never supplier checkout or stock reservation.
 
 ## Integrated product
 
@@ -28,22 +26,15 @@ SSE publishes persisted conversation snapshots and two-second heartbeat comments
 
 ## Operations
 
-Run `migrate` as setup role for additive migration 003 before the new image; grant runtime access to new tables/sequences and revoke policy/identity provisioning as in `infra/kubernetes/bootstrap.py`. Never reset a production database. Existing policy versions, approvals, orders and audit history remain. `seed` still inserts missing demo data only. Configure the LLM through server-only environment/Secret fields from `.env.example`; local embeddings retain their independent pinned model.
+Apply migrations and runtime grants through the [release migration procedure](release-migrations.md)
+or the local setup in [README](../README.md). Never reset an existing database.
+Policy versions, approvals, orders and audit history remain; `seed` inserts missing demo data only.
+Configure server-only provider settings from `.env.example`.
 
-Keep the existing single image/Deployment/Service/database/ingress and allocations. Terraform and portable manifests have been inspected. No infrastructure is applied and no release switch is enabled. The actual selected cluster ingress still needs an operator's streaming smoke after deployment; static rendering/local checks do not establish production routing. Traefik needs no buffering middleware; the app also sets `X-Accel-Buffering: no`. Reused Nginx settings are documented in `deploy/README.md`.
-
-## Verification record
-
-Integrated local validation on 2026-11-14:
-
-- Ruff and backend PostgreSQL/pgvector suite pass, including the full carbonara request → clarification → five actual catalog matches → quantity/commercial/policy validation → authenticated customer confirmation → identical mock receipt retry. The provider and catalog/supplier facts are authored fixtures; no live supplier purchase is claimed.
-- Nine Playwright checks pass: seven UI route-fixture regressions plus live-server historical revision and removed-route checks. Generated OpenAPI/TypeScript and production frontend build pass.
-- Production multi-stage Docker image builds successfully with the original pinned local embedding model. A dedicated local application container preserves conversation messages, browser session, customer confirmation and identical receipt across an actual container restart.
-- Both Terraform stacks format, initialize with existing provider locks, validate and pass all nine mocked plan tests. Sixteen infrastructure helper tests and the Traefik 42.4.0 Helm render pass. No Terraform apply or remote deployment runs.
-- Through a disposable local Traefik v3.7.18 proxy (the image selected by the rendered chart), a persisted SSE snapshot and heartbeat arrive in 2.02 seconds, before the 25-second connection closes. Logout revocation is observed on the active stream. This uses a local file-provider route to the same app; the live Kubernetes controller/network/TLS is unverified and still requires the operator smoke after deployment.
-- Fixture-mode idle measurement: local application container about 49 MiB and 0.23% CPU; local Traefik about 62 MiB and 0% CPU. These are neither production embedding-model nor load measurements. Resource allocations are unchanged.
-
-No live conversational-provider run was made; configure the server's private LLM key and run the documented demo for that acceptance check. Ordering remains mock.
+The frontend, API and worker run as [separate apps](separate-apps.md).
+The [deployment runbook](../deploy/README.md) covers routing and SSE checks;
+static rendering and local tests do not establish production routing.
+SSE needs unbuffered proxy responses; the API also sets `X-Accel-Buffering: no`.
 
 ## When the model provider fails (owner Q-108)
 
@@ -68,3 +59,30 @@ unsure). It is stored with a closed turn keyed by the order, so a replay, a revi
 nothing, no model is called and no error text is shown. The model's history leaves it out (the order state
 comes from the persisted purchasing state). A scheduled run's own commit writes none. Later fulfilment changes
 show on the order card and receipt, not in the chat. Code: `order_notice.py`, `conversations.store_confirmation_line`.
+
+## Bounded parallel reads and interrupted planning
+
+The harness executes independent catalog/product/policy/recipe reads from one model
+response in groups of at most four. Each read owns isolated caches; successful results
+are applied in model order. Plan changes, matching, supplier lookups, memory changes,
+images and basket preparation remain ordered barriers. Cancellation/reclaim fences
+cache updates; late reads cannot publish progress or change the live session.
+
+Product search defaults to three candidates and inspects the first three with the
+existing catalog reader. These include the same bounded, screened evidence as
+`get_product`; the turn reuses those facts and identical searches. Additional results
+remain discovery summaries. Inspection never proves recipe suitability, selects a
+product, grants purchasing authority or replaces fresh preparation/confirmation checks.
+
+Saved recipe blockers that need reviewed quantities/forms/scaling or suitability/count/
+conversion evidence end the turn with the unresolved plan instead of more catalog
+searches. Absent/withdrawn products remain searchable. The underlying recipe evidence
+requirements are unchanged.
+
+The 90-second turn limit is unchanged. Changed plans are reviewed before display even
+without a UI observer. On a later provider failure or timeout, the last approved plan
+is saved as a partial answer and the customer can continue with a new message. Later
+unreviewed/rejected changes are withheld. If no reviewed progress exists, the ordinary
+failed-turn retry remains; timeouts use a specific fixed notice in the customer's
+language. Native Google transport timeouts retain `LLM_TIMEOUT` instead of being
+reported as generic unavailability.

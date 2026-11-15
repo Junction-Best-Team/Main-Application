@@ -207,8 +207,11 @@ class ConversationSummary(Model):
 
 
 class ChatActivityEvent(Model):
-    sequence: int = Field(ge=1, le=600)
-    kind: Literal["started", "tool_started", "tool_completed", "tool_failed", "complete", "error"]
+    sequence: int = Field(ge=1, le=640)
+    kind: Literal[
+        "started", "thinking", "tool_started", "tool_completed", "tool_failed", "reviewing",
+        "complete", "error",
+    ]
     label: str = Field(min_length=1, max_length=80)
 
 
@@ -253,6 +256,11 @@ class ConversationResponse(ConversationSummary):
     busy: bool = False
     activity: ChatActivity | None = None
     draft_cart: DraftCart | None = None
+    cart_not_included: list[CartNotIncluded] = Field(
+        default_factory=list,
+        description="Items the current basket leaves out (no product, no quantity, or removed by "
+        "the customer on the card), from the latest stored plan; empty without an open basket.",
+    )
     cart_editable: bool = False
     cart_edit_reason: str | None = Field(
         default=None, description="Why the number controls on the card are disabled, if they are."
