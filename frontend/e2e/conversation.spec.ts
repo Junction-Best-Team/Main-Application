@@ -354,9 +354,8 @@ test("busy affordance shows while a turn is in flight", async ({ page }) => {
   // Voice mode is disabled while a turn runs (send only shows with a draft).
   await expect(
     page.getByRole("button", { name: "Start voice mode" }),
-  ).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible();
-  await expect(page.getByText("Press Escape to cancel")).toBeVisible();
+  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
 });
 
 test("Escape while busy posts cancel and restores retry recovery", async ({
@@ -418,8 +417,7 @@ test("Escape while busy posts cancel and restores retry recovery", async ({
   );
 
   await page.goto(`/conversations/${conversationId}`);
-  await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible();
-  await expect(page.getByText("Press Escape to cancel")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("alert")).toHaveText(
     "The response was interrupted. Retry this request to continue.",
@@ -427,14 +425,11 @@ test("Escape while busy posts cancel and restores retry recovery", async ({
   await expect(page.getByLabel("Continue the conversation")).toHaveValue(
     retry.text,
   );
-  await expect(
-    page.getByRole("button", { name: "Retry request" }),
-  ).toBeEnabled();
-  await expect(page.getByText("Your draft is ready to send again.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry" })).toBeEnabled();
   expect(cancelHeaders?.["x-csrf-token"]).toBe(session.csrf_token);
 });
 
-test("Cancel button while busy posts the same cancel path as Escape", async ({
+test("Stop button while busy posts the same cancel path as Escape", async ({
   page,
 }) => {
   await mockBuyerSession(page);
@@ -493,16 +488,14 @@ test("Cancel button while busy posts the same cancel path as Escape", async ({
   );
 
   await page.goto(`/conversations/${conversationId}`);
-  await page.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "Stop" }).click();
   await expect(page.getByRole("alert")).toHaveText(
     "The response was interrupted. Retry this request to continue.",
   );
   await expect(page.getByLabel("Continue the conversation")).toHaveValue(
     retry.text,
   );
-  await expect(
-    page.getByRole("button", { name: "Retry request" }),
-  ).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Retry" })).toBeEnabled();
   expect(cancelHeaders?.["x-csrf-token"]).toBe(session.csrf_token);
 });
 
