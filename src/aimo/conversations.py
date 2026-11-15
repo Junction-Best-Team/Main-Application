@@ -46,6 +46,12 @@ def cart_edit_state(messages, ordered=frozenset()):
     return True, None
 
 
+def cart_not_included(messages, purchases):
+    from aimo import cart_purchase
+
+    return [i.model_dump() for i in cart_purchase.not_included_now(messages, purchases)]
+
+
 def owned(c, identity, cid, lock=False):
     row = c.execute(
         "SELECT * FROM conversations WHERE id=%s AND buyer_id=%s" + (" FOR UPDATE" if lock else ""),
@@ -194,6 +200,7 @@ def detail(identity, cid, *, internal=False):
         "purchases": purchases,
         "busy": busy,
         "draft_cart": draft_cart,
+        "cart_not_included": cart_not_included(messages, purchases),
         "cart_editable": cart_edit_state(messages, ordered)[0],
         "cart_edit_reason": cart_edit_state(messages, ordered)[1],
         "activity": {"turn_id": str(turn["id"]), "state": state, "events": turn["progress"]}

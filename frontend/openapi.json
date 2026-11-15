@@ -3443,6 +3443,14 @@
               }
             ]
           },
+          "cart_not_included": {
+            "items": {
+              "$ref": "#/components/schemas/CartNotIncluded"
+            },
+            "type": "array",
+            "title": "Cart Not Included",
+            "description": "Items the current basket leaves out (no product, no quantity, or removed by the customer on the card), from the latest stored plan; empty without an open basket."
+          },
           "cart_editable": {
             "type": "boolean",
             "title": "Cart Editable",
