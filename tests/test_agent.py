@@ -1020,6 +1020,11 @@ def test_loopback_provider_is_allowed_for_local_development(config, url):
 def test_unexpected_tool_failure_is_safe_and_preserves_saved_basket(
     monkeypatch, config, identity, prepared, failure, caplog
 ):
+    from aimo.config import settings
+
+    # About containing an unexpected tool failure, not about stop control (which would refuse an
+    # optional tool after the basket before it could fail): switch the stop control off here.
+    monkeypatch.setattr(settings(), "agent_stop_control", False)
     service = FakeService(identity)
     attempts = []
 

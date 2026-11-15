@@ -9,7 +9,7 @@ from uuid import UUID
 
 from pydantic import ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 
-from aimo import memory
+from aimo import agent_stop, memory
 from aimo.basket_errors import mismatch_problem, required_basket
 from aimo.chat_schemas import AgentTurn, MealPlan
 from aimo.config import settings
@@ -325,6 +325,12 @@ class ToolSession:
         # No tool input accepts it; prepare forwards it so policy can stop a loosened request.
         self.constraints = constraints
         self.supersede = None  # cart baskets only: cancel the conversation's older open baskets
+        # Stop control (agent_stop.py): the customer's messages of this conversation, the calls
+        # already made (as hashes) and the counters the end-of-turn event reports.
+        self.customer_texts = []
+        self.called_before = set()
+        self.called_now = set()
+        self.stats = {"tool_calls": 0, "repeated_calls": 0, "calls_after_prepare": 0}
         # Optional semantic review; deterministic checks here and in Service always apply.
         self.guard = guard
         self.preparation_key = "chat-" + fingerprint({"turn": identity["_turn_id"]})
@@ -664,9 +670,96 @@ class ToolSession:
     def needs_recipe_plan(self):
         return self.recipe_discovery_started and self.plan is None
 
+    @property
+    def plan_complete(self):
+        """Every item of the plan is matched (a customer-removed item needs no product)."""
+        if not self.plan or not self.plan.ingredients:
+            return False
+        for item in self.plan.ingredients:
+            if is_zero(item.amount) or item.status == "removed":
+                continue
+            if not item.product_id or (self.plan.recipe_plan_id and item.status != "matched"):
+                return False
+        return True
+
+    def stop_guidance(self):
+        """The state the turn is in once work is done or asked for (AGENT_STOP_CONTROL)."""
+        if self.prepared_digest is not None and self.proposal:
+            if self.proposal.get("policy_outcome") in ("denied", "needs_resolution"):
+                return (
+                    "The basket is prepared but blocked. Explain the blocker briefly and the next "
+                    "step; get_purchase_policy is allowed for that. Do not call other tools unless "
+                    "the customer asked for something else."
+                )
+            return (
+                "The basket is prepared. Do not call more tools unless the customer asked for "
+                "something else; reply briefly with the basket status and point to the Confirm "
+                "purchase button."
+            )
+        if agent_stop.advice_only(self.customer_texts):
+            return (
+                "The customer asked for advice only: answer directly; do not prepare a basket "
+                "or check out."
+            )
+        if self.plan_complete and agent_stop.wants_to_buy(self.customer_texts):
+            return (
+                "The customer asked to buy and the plan is complete: call prepare_order now with "
+                "the existing plan, or ask for the one missing fact (delivery date or destination)."
+            )
+        return ""
+
+    def begin_reply(self):
+        """A new model reply: calls of earlier replies can no longer be repeated."""
+        self.called_before |= self.called_now
+        self.called_now = set()
+
+    def forget(self, name, arguments):
+        """A call that failed did nothing: the same call may be tried again."""
+        key = agent_stop.call_key(name, arguments)
+        self.called_before.discard(key)
+        self.called_now.discard(key)
+
+    def discipline(self, name, arguments):
+        """None, or the Problem that refuses this call (never executed). Counts every call."""
+        if name not in self.registry or not settings().agent_stop_control:
+            return None
+        self.stats["tool_calls"] += 1
+        if self.prepared_digest is not None:
+            self.stats["calls_after_prepare"] += 1
+            pattern = agent_stop.OPTIONAL_AFTER_PREPARE.get(name)
+            asked = pattern and self.customer_texts and pattern.search(self.customer_texts[-1])
+            blocked = self.proposal and self.proposal.get("policy_outcome") in (
+                "denied",
+                "needs_resolution",
+            )
+            if pattern and not asked and not (name == "get_purchase_policy" and blocked):
+                return Problem(
+                    "TOOL_NOT_ALLOWED",
+                    f"The basket is already prepared in this turn. Do not call {name} unless the "
+                    "customer asks for it; reply briefly with the basket status and point to "
+                    "Confirm purchase.",
+                    422,
+                )
+        key = agent_stop.call_key(name, arguments)
+        if key in self.called_before or key in self.called_now:
+            self.stats["repeated_calls"] += 1
+        if key in self.called_before and name not in agent_stop.REPEATABLE:
+            return Problem(
+                "TOOL_REPEATED",
+                f"You already called {name} with the same arguments in this turn; use the "
+                "earlier result.",
+                422,
+            )
+        self.called_now.add(key)
+        return None
+
     def execution_guidance(self, remaining):
         """Server-owned workflow state; candidate discovery never selects a product."""
         clock = f"Turn time remaining: {max(0, int(remaining))} seconds. "
+        if settings().agent_stop_control and not self.needs_recipe_plan:
+            stop = self.stop_guidance()
+            if stop:
+                return clock + stop
         if self.needs_recipe_plan:
             return clock + (
                 "Recipe discovery has run. Publish the quantity plan now using scale_recipe "

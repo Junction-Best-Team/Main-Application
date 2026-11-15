@@ -405,6 +405,7 @@ def run_turn(
             ensure_live()
 
     session = ToolSession(identity, service, constraints=constraints)
+    session.customer_texts = [m["content"] for m in messages if m["role"] == "user"]
     if stored_plan:
         session.restore_plan(stored_plan)  # fails closed; see ToolSession.restore_plan
     today = datetime.now(ZoneInfo("Europe/Helsinki")).date().isoformat()
@@ -513,6 +514,8 @@ def run_turn(
                         if exc.code == "LLM_TIMEOUT":
                             raise
                         errors += 1
+                        if exc.code not in ("TOOL_REPEATED", "TOOL_NOT_ALLOWED"):
+                            session.forget(name, call.function.arguments)
                         progress.emit("tool_failed", visible_name, exc.code)
                         tool_log.append(
                             {"tool": visible_name or "unavailable", "outcome": exc.code}

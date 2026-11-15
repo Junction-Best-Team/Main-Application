@@ -158,6 +158,10 @@ def test_parallelism_is_bounded_and_children_do_not_mutate_parent(identity):
 
 
 def test_plan_and_prepare_are_barriers_between_read_groups(monkeypatch, config, identity):
+    from aimo.config import settings
+
+    # About group ordering; with stop control the policy read after prepare would be refused.
+    monkeypatch.setattr(settings(), "agent_stop_control", False)
     service = FakeService(identity)
     seen = scripted(
         monkeypatch,

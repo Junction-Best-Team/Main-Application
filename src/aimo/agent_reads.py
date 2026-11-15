@@ -6,6 +6,7 @@ from copy import deepcopy
 from itertools import islice
 
 from aimo.agent_provider import check_deadline
+from aimo.agent_stop import call_key
 from aimo.agent_tools import ToolSession
 from aimo.observability import log_context
 
@@ -24,6 +25,7 @@ def executions(session, calls, deadline, live, progress, *, max_errors, round_nu
     live session. Context is copied separately per task for turn/round log correlation.
     Only one bounded group is submitted at a time; reads never retry automatically.
     """
+    session.begin_reply()
     pending = iter(calls)
     carry = next(pending, None)
     while carry is not None:
@@ -54,6 +56,10 @@ def executions(session, calls, deadline, live, progress, *, max_errors, round_nu
                 check_deadline(deadline)
                 live()
                 name = call.function.name
+                refusal = session.discipline(name, call.function.arguments)
+                if refusal is not None:  # never executed: the model reads the plain reason
+                    jobs.append((call, None, refusal))
+                    continue
                 if name in RECIPE_READS:
                     session.recipe_discovery_started = True
                 progress.emit("tool_started", name if name in session.registry else None)
@@ -77,6 +83,8 @@ def executions(session, calls, deadline, live, progress, *, max_errors, round_nu
                 error = None
                 result = None
                 try:
+                    if child is None:
+                        raise future  # a refusal made before execution
                     if future:
                         while True:
                             live()
@@ -113,5 +121,6 @@ def invoke(session, call, round_number):
     with log_context(
         round=round_number,
         tool=call.function.name if call.function.name in session.registry else "unavailable",
+        args_fingerprint=call_key(call.function.name, call.function.arguments)[1],
     ):
         return session.invoke(call.function.name, call.function.arguments)
