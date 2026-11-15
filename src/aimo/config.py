@@ -80,6 +80,8 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://openrouter.ai/api/v1"
     llm_model: str = "gemini-4-carbon"
     llm_timeout_seconds: float = Field(default=45, gt=0, le=60)
+    # Leave at least a minute for final persistence before the 240-second worker lease.
+    llm_turn_timeout_seconds: float = Field(default=180, gt=0, le=180)
     llm_reasoning_effort: Literal["", "low", "medium", "high"] = "low"
     llm_max_completion_tokens: int = Field(default=8192, ge=1024, le=32768)
     llm_max_tool_rounds: int = Field(default=20, ge=1, le=24)

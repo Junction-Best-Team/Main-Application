@@ -14,6 +14,7 @@ PARALLEL_READS = frozenset(
     {"search_products", "get_product", "get_purchase_policy", "search_recipes", "get_recipe"}
 )
 MAX_PARALLEL_READS = 4
+RECIPE_READS = frozenset({"search_recipes", "get_recipe"})
 
 
 def executions(session, calls, deadline, live, progress, *, max_errors, round_number):
@@ -29,7 +30,10 @@ def executions(session, calls, deadline, live, progress, *, max_errors, round_nu
         group = [carry]
         if carry.function.name in PARALLEL_READS:
             for call in islice(pending, min(MAX_PARALLEL_READS, max_errors) - 1):
-                if call.function.name not in PARALLEL_READS:
+                if call.function.name not in PARALLEL_READS or (
+                    (call.function.name in RECIPE_READS)
+                    != (group[0].function.name in RECIPE_READS)
+                ):
                     carry = call
                     break
                 group.append(call)
@@ -50,6 +54,8 @@ def executions(session, calls, deadline, live, progress, *, max_errors, round_nu
                 check_deadline(deadline)
                 live()
                 name = call.function.name
+                if name in RECIPE_READS:
+                    session.recipe_discovery_started = True
                 progress.emit("tool_started", name if name in session.registry else None)
                 if executor:
                     key = (name, call.function.arguments)
@@ -58,6 +64,8 @@ def executions(session, calls, deadline, live, progress, *, max_errors, round_nu
                         child.products = deepcopy(session.products)
                         child.search_results = deepcopy(session.search_results)
                         child.recipe_details = deepcopy(session.recipe_details)
+                        child.recipe_discovery_started = session.recipe_discovery_started
+                        child.plan = deepcopy(session.plan)
                         context = copy_context()
                         future = executor.submit(context.run, invoke, child, call, round_number)
                         reads[key] = (child, future)

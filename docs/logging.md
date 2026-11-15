@@ -75,7 +75,14 @@ and collect logs before pod replacement if historical investigation is needed.
 
 New defaults select `gemini-4-carbon` through the native Google API, with
 `LLM_REASONING_EFFORT=low`, `LLM_MAX_COMPLETION_TOKENS=8192` and
-`LLM_TIMEOUT_SECONDS=45`. The overall 90-second turn budget remains unchanged.
+`LLM_TIMEOUT_SECONDS=45` bounds each chat-model request. The overall turn budget is
+`LLM_TURN_TIMEOUT_SECONDS=180` (configurable up to 180 seconds), including tool
+execution and semantic checks. This stays below the 240-second worker lease and
+shutdown grace period, and the 270-second health freshness limit. Catalog reads
+run in groups of up to four; supplier calls and plan/purchase mutations stay ordered.
+Once recipe discovery runs, catalog tools wait for a published quantity plan.
+Each model round receives the remaining time and current matching stage, so it
+can save selections incrementally and finish instead of repeatedly searching.
 Opaque reasoning/signature blocks are replayed unchanged between tool rounds
 within the turn; they are neither persisted in chat messages nor logged.
 Set `LLM_REASONING_EFFORT` to an empty string to omit that override for a different

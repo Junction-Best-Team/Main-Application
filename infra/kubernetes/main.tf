@@ -142,7 +142,7 @@ resource "kubernetes_deployment_v1" "apps" {
       }
       spec {
         automount_service_account_token  = false
-        termination_grace_period_seconds = each.key == "worker" ? 120 : 30
+        termination_grace_period_seconds = each.key == "worker" ? 240 : 30
         security_context {
           run_as_non_root = true
           run_as_user     = each.value.uid
