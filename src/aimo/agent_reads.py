@@ -57,6 +57,7 @@ def executions(session, calls, deadline, live, progress, *, max_errors, round_nu
                         child = ToolSession(session.identity, session.service)
                         child.products = deepcopy(session.products)
                         child.search_results = deepcopy(session.search_results)
+                        child.recipe_details = deepcopy(session.recipe_details)
                         context = copy_context()
                         future = executor.submit(context.run, invoke, child, call, round_number)
                         reads[key] = (child, future)
@@ -88,6 +89,7 @@ def executions(session, calls, deadline, live, progress, *, max_errors, round_nu
                 if error is None and child is not session:
                     session.products.update(child.products)
                     session.search_results.update(child.search_results)
+                    session.recipe_details.update(child.recipe_details)
                 yield call, result, error
                 if error is not None:
                     max_errors -= 1

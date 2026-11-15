@@ -12,7 +12,7 @@ import httpx
 
 from aimo.agent_provider import chat_provider, check_deadline, encode
 from aimo.agent_reads import executions
-from aimo.agent_recovery import BLOCKED_NOTICE, partial_notice, recipe_blocked
+from aimo.agent_recovery import partial_notice
 from aimo.agent_tools import ToolSession
 from aimo.chat_draft import cart_snapshot
 from aimo.chat_schemas import AgentTurn, DraftCart
@@ -59,8 +59,13 @@ Use stated dietary needs and budgets; ask about additional restrictions only whe
 there is a specific ambiguity. A missing budget need not block a draft or basket:
 leave budget_gross null, show actual costs when available, and retain policy limits.
 Never describe a missing budget as unlimited or loosen a stated budget/constraint.
-Read get_purchase_policy for allowed scope and destinations. Policy or supplier
-blockers do not prevent publishing a recipe draft or matching products. Keep the
+Do not call get_purchase_policy during greetings, recipe planning, product search,
+ingredient matching or cart building. Preparing a basket does not require this
+lookup: the backend enforces policy automatically. Use it only if needed to explain
+a policy-related blocker on an already prepared basket during checkout. The customer
+confirms with the purchase button outside chat; this tool never obtains confirmation
+or authorizes a purchase. Policy or supplier blockers do not prevent publishing a
+recipe draft or matching products. Keep the
 work visible, then explain the actual purchasing blockers briefly.
 Model assumptions require customer review, not new authority.
 For a direct product need, publish the requested items and quantities as a draft plan,
@@ -93,8 +98,19 @@ plan or drop its reference to bypass unresolved ingredients. Recipe changes requ
 a new customer message.
 """
 
-RECIPE_PROMPT = """For recipe requests, use search_recipes for ideas or a named dish, then
-get_recipe and scale_recipe for the selected version and requested portions.
+RECIPE_PROMPT = """For recipe requests, use search_recipes for ideas or a named dish.
+Its best_match contains the full top recipe, all ingredients, quantities,
+instructions and planning_issues. Use that recipe directly without a get_recipe
+call. Other matches in recipes are summaries: use get_recipe only for an
+alternative or a specific recipe ID/version. Keep scale_recipe separate for
+server-owned portion calculations. Inspect the full candidate's planning_issues
+before selecting a saved plan with scale_recipe. A recipe with
+missing quantities, unsupported scaling/units or unspecified ingredient forms is
+not suitable for the saved-plan workflow. Before selecting it, choose a complete
+alternative or use draft_recipe for a labelled assistant-authored estimate. Do not
+copy the source's missing quantities as if verified, and do not ask the customer
+to supply seasoning weights or scaling rules. Only call scale_recipe for a suitable
+version and the requested portions.
 Publish the scaled plan before investigating product scope, substitutions or
 supplier availability; then attach product matches. Do not spend the planning
 turn investigating policy blockers before giving the customer a recipe draft.
@@ -118,7 +134,13 @@ score is not suitability proof.
 Reload saved plans using get_recipe_plan across turns. Preserve unresolved ingredients,
 including seasonings and pantry items. Do not hide them or guess conversions, forms,
 spice scaling or yolk yields. Explain a missing saved-recipe fact briefly, rather
-than asking the customer to do arithmetic.
+than asking the customer to do arithmetic. An unresolved ingredient does not stop
+work on other ingredients: match those with usable quantities and forms. Do not
+repeat searches or matching for an ingredient whose reason requires reviewed
+recipe facts or product conversion evidence. Explain the specific remaining gap
+in ordinary cooking language, not internal evidence/review terminology. If the
+selected saved plan cannot be completed, offer to start a separate labelled recipe
+estimate in a new customer request; never silently replace the selected plan.
 Prepare only after all ingredients are matched; use purchase_amount/purchase_unit,
 combining duplicate SKUs. A changed recipe/portion count needs a new saved plan.
 If the customer requests a retry after expiry, policy/authority changes, corrected
@@ -491,11 +513,6 @@ def run_turn(
                             draft_snapshot("tool_completed")
                         progress.emit("tool_completed", visible_name)
                         outputs.append((call.id, name, output))
-                        if recipe_blocked(session.plan):
-                            result = finish(BLOCKED_NOTICE)
-                            progress.emit("complete", error_code="RECIPE_EVIDENCE_REQUIRED")
-                            pending.close()
-                            return result
                     if errors >= 4:
                         result = finish(
                             "The assistant could not resolve the tool errors. "

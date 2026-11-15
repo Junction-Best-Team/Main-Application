@@ -7,8 +7,23 @@ before rollout; recipe import remains an explicit operator action.
 
 ## Customer flow
 
-The customer names a meal and guest count. The assistant chooses a suitable saved
-recipe, scales it on the server, finds catalog products and prepares the basket.
+The customer names a meal and guest count. Internal recipe search returns the full
+best match, including all ingredients, quantities, instructions and planning issues,
+alongside ranked summaries. The assistant uses the best match directly; `get_recipe`
+is only needed for an alternative or a specific ID/version. `scale_recipe` retains
+server-owned portion calculations, reusing the inspected recipe details. The
+internal detail tool reports `planning_issues` for missing quantities, unsupported
+scaling/units and unspecified forms. Such candidates are not selected as saved
+plans: the assistant chooses a complete alternative or publishes a labelled
+assistant-authored estimate, including estimated seasoning amounts. For example,
+carbonara's formula-free damped pepper and unquantified salt use this estimate
+path. The source recipe remains unchanged. `scale_recipe` rejects an incomplete
+candidate before creating a saved plan, so the estimate path remains available.
+A suitable saved recipe is scaled on the server and matched to catalog products.
+The assistant's policy lookup is optional, only to explain a policy blocker on an
+already prepared basket during checkout. It is not a planning or basket-preparation
+step. The backend enforces policy automatically; the customer confirms with the
+purchase button outside chat.
 It chooses normal serving sizes and does not ask the customer to calculate grams,
 ingredient ratios or pack counts. Missing delivery facts are asked for only when
 needed for preparation; a missing hard budget is left unset, with policy limits
@@ -23,7 +38,10 @@ completeness, suitability or cooked-yield guarantee. It never creates a recipe
 database entry or replaces a selected unresolved saved recipe. Plans persist in
 ordinary conversation messages; Overview shows the latest draft before a proposal
 exists. Pricing, policy and dietary blockers do not prevent showing a draft, but
-still prevent a purchase. No new public API, schema migration or dependency.
+still prevent a purchase. An existing saved plan with an unresolved ingredient
+can continue matching other ingredients; the assistant explains the specific gap
+without discarding the plan or inventing reviewed evidence. No new public API,
+schema migration or dependency.
 
 ## Setup and import
 

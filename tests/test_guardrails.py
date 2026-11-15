@@ -435,6 +435,19 @@ def test_food_planning_review_has_customer_and_recipe_context(monkeypatch, confi
         "rerank_status": "disabled",
         "note": "Authored test recipe.",
     }
+    service.get_recipe = lambda *_: {
+        "recipe": {
+            "id": "source-id", "title": "Vegan lasagna",
+            "summary": "Lentil and vegetable lasagna idea; product labels need checking.",
+            "base_servings": 6, "category": "main", "instructions": ["Bake the lasagna."],
+            "ingredients": [{
+                "id": "lentils", "name": "Lentils", "quantity": "300", "unit": "g",
+                "scaling": "linear", "form": "dry",
+            }],
+        },
+        "version": "v1", "source": "fixture", "attribution": "Authored test recipe",
+        "license": "test-fixture",
+    }
     request = "We serve vegan lasagna at our Friday community game night. Can you help?"
     answer = (
         "I found a vegan lasagna recipe idea. How many people are coming, and what is "
