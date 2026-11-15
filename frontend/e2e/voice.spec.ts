@@ -348,7 +348,7 @@ test("provider unavailability releases the microphone and preserves typing", asy
   await page.getByRole("button", { name: "Start voice mode" }).click();
   await expect(page.getByRole("alert")).toContainText("Voice is unavailable");
   await expectReleased(page);
-  await page.getByRole("button", { name: "Back to chat" }).click();
+  await page.getByRole("button", { name: "End voice" }).click();
   await expect(
     page.getByRole("textbox", { name: "Continue the conversation" }),
   ).toBeEnabled();
@@ -418,10 +418,10 @@ test("a failed voice submission restores text and keeps its retry key", async ({
     toolCall: { functionCalls: [{ id: "call-1", name: "ask_aimo" }] },
   });
   await expect(
-    page.getByRole("button", { name: "Back to chat" }),
-  ).toBeVisible();
+    page.getByRole("region", { name: "Voice mode" }).getByRole("status"),
+  ).toHaveText("Voice stopped");
   await expectReleased(page);
-  await page.getByRole("button", { name: "Back to chat" }).click();
+  await page.getByRole("button", { name: "End voice" }).click();
   await expect(
     page.getByRole("textbox", { name: "Continue the conversation" }),
   ).toHaveValue("Carbonara for 200 people.");

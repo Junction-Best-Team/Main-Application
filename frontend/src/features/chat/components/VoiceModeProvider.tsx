@@ -7,7 +7,6 @@ import {
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../../../shared/api/client";
-import { Icon } from "../../../shared/components/DesignPrimitives";
 import { useAuth } from "../../auth/useAuth";
 import {
   createConversation,
@@ -17,14 +16,6 @@ import {
 import { createVoiceSession } from "../api/voiceApi";
 import { LiveVoice, type VoiceState } from "../model/liveVoice";
 import { VoiceContext } from "../model/VoiceContext";
-
-const phaseLabel = {
-  connecting: "Connecting voice…",
-  listening: "Listening",
-  thinking: "Aimo is working…",
-  speaking: "Aimo is speaking",
-  error: "Voice stopped",
-};
 
 function pause(signal: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
@@ -180,93 +171,16 @@ export function VoiceModeProvider({ children }: { children: ReactNode }) {
   }
 
   const active = state !== null && state.phase !== "error";
+  const setMuted = useCallback(
+    (muted: boolean) => live.current?.setMuted(muted),
+    [],
+  );
+  const level = useCallback(() => live.current?.level() ?? 0, []);
   return (
-    <VoiceContext.Provider value={{ active, start }}>
+    <VoiceContext.Provider
+      value={{ active, state, start, stop, setMuted, level }}
+    >
       {children}
-      {state && (
-        <section
-          aria-label="Voice mode"
-          className="fixed bottom-space-md left-space-md right-space-md z-50 mx-auto flex max-h-[70dvh] max-w-lg flex-col gap-space-md overflow-y-auto rounded-xl border border-primary-container bg-surface-pure p-space-md text-primary shadow-level-3 md:left-auto md:right-space-lg md:w-[26rem] md:p-space-lg"
-        >
-          <div className="flex items-center justify-between gap-space-sm">
-            <h2 className="m-0 flex items-center gap-space-sm font-headline text-headline-sm">
-              <Icon name="graphic_eq" /> Voice mode
-            </h2>
-            <button
-              type="button"
-              onClick={stop}
-              aria-label="Close voice mode"
-              className="flex size-11 shrink-0 items-center justify-center rounded-lg hover:bg-surface-container"
-            >
-              <Icon name="close" />
-            </button>
-          </div>
-          <div
-            role="status"
-            className="flex items-center gap-space-sm font-label text-label-lg"
-          >
-            <span
-              aria-hidden="true"
-              className={`size-3 shrink-0 rounded-full ${state.phase === "error" ? "bg-error" : state.muted ? "bg-outline" : "bg-status-fresh-green"}`}
-            />
-            {state.muted && state.phase === "listening"
-              ? "Microphone muted"
-              : phaseLabel[state.phase]}
-          </div>
-          <p className="m-0 text-body-sm text-secondary">
-            {state.phase === "thinking"
-              ? "Your request is saved in chat. Wait for Aimo’s reply."
-              : "Speak naturally. You can interrupt a spoken reply."}
-          </p>
-          {state.heard && (
-            <div className="rounded-lg bg-surface-container-low p-space-sm">
-              <p className="m-0 font-label text-label-md text-secondary">
-                You said
-              </p>
-              <p className="m-0 whitespace-pre-wrap break-words text-body-sm">
-                {state.heard}
-              </p>
-            </div>
-          )}
-          {state.reply && (
-            <details className="text-body-sm">
-              <summary className="cursor-pointer font-bold">
-                Saved reply
-              </summary>
-              <p className="whitespace-pre-wrap break-words">{state.reply}</p>
-            </details>
-          )}
-          {state.error && (
-            <p role="alert" className="m-0 text-body-sm text-error">
-              {state.error}
-            </p>
-          )}
-          <div className="flex flex-wrap gap-space-sm">
-            {active && (
-              <button
-                type="button"
-                aria-pressed={state.muted}
-                onClick={() => live.current?.setMuted(!state.muted)}
-                className="flex min-h-11 flex-1 items-center justify-center gap-space-xs rounded-lg border border-primary-container px-space-md py-space-sm font-label text-label-lg"
-              >
-                <Icon name={state.muted ? "mic_off" : "mic"} />
-                {state.muted ? "Unmute" : "Mute"}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={stop}
-              className="min-h-11 flex-1 rounded-lg bg-primary-container px-space-md py-space-sm font-label text-label-lg text-on-primary"
-            >
-              {active ? "End voice" : "Back to chat"}
-            </button>
-          </div>
-          <p className="m-0 text-body-sm text-secondary">
-            AI-generated voice. Audio is sent to Google while voice is on.
-            Review and confirm baskets on screen.
-          </p>
-        </section>
-      )}
     </VoiceContext.Provider>
   );
 }

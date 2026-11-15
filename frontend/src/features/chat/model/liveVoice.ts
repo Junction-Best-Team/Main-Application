@@ -35,6 +35,9 @@ export class LiveVoice {
   private capture: AudioWorkletNode | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
   private speakers = new Set<AudioBufferSourceNode>();
+  // Taps both the microphone and Aimo's playback so the orb can follow speech.
+  private meter: AnalyserNode | null = null;
+  private samples: Float32Array<ArrayBuffer> | null = null;
   private timers = new Set<ReturnType<typeof setTimeout>>();
   private nextAudioTime = 0;
   private ready = false;
@@ -105,6 +108,10 @@ export class LiveVoice {
       this.capture = new AudioWorkletNode(this.audio, "aimo-pcm-capture");
       this.source = this.audio.createMediaStreamSource(stream);
       this.source.connect(this.capture);
+      this.meter = this.audio.createAnalyser();
+      this.meter.fftSize = 512;
+      this.samples = new Float32Array(this.meter.fftSize);
+      this.source.connect(this.meter);
       this.capture.connect(this.audio.destination);
       this.capture.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
         if (!this.ready || this.state.muted || this.pending) return;
@@ -319,6 +326,7 @@ export class LiveVoice {
     const source = this.audio.createBufferSource();
     source.buffer = buffer;
     source.connect(this.audio.destination);
+    if (this.meter) source.connect(this.meter);
     this.speakers.add(source);
     source.onended = () => {
       source.disconnect();
@@ -329,6 +337,15 @@ export class LiveVoice {
     source.start(start);
     this.nextAudioTime = start + buffer.duration;
     this.update({ phase: "speaking" });
+  }
+
+  /** Loudness of the microphone plus playback, roughly 0 (silent) to 1. */
+  level() {
+    if (!this.meter || !this.samples || this.signal.signal.aborted) return 0;
+    this.meter.getFloatTimeDomainData(this.samples);
+    let sum = 0;
+    for (const sample of this.samples) sum += sample * sample;
+    return Math.min(1, Math.sqrt(sum / this.samples.length) * 4);
   }
 
   setMuted(muted: boolean) {
@@ -376,6 +393,7 @@ export class LiveVoice {
       this.capture.disconnect();
     }
     this.source?.disconnect();
+    this.meter?.disconnect();
     this.stopSpeakers();
     void this.audio?.close();
   }

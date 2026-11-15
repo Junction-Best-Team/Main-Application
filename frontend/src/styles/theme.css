@@ -5,6 +5,7 @@
 @import "./settings.css" layer(components);
 @import "./chat-markdown.css" layer(components);
 @import "./home.css" layer(components);
+@import "./voice-orb.css" layer(components);
 @import "tailwindcss/utilities" layer(utilities);
 
 /* `dark:` utilities follow the in-app theme toggle (html[data-theme]), not only the OS. */

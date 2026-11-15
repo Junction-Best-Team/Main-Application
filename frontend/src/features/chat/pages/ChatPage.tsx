@@ -1,5 +1,5 @@
 import { KitchenPattern } from "../../../shared/components/KitchenPattern";
-import { useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Badge } from "../../../shared/components/Badge";
 import { ErrorMessage } from "../../../shared/components/ErrorMessage";
@@ -10,6 +10,7 @@ import { useAuth } from "../../auth/useAuth";
 import { getPurchaseStatus } from "../../purchases/model/purchaseStatus";
 import { StagedOverview } from "../../purchases/components/StagedOverview";
 import { useChat } from "../hooks/useChat";
+import { useVoiceMode } from "../hooks/useVoiceMode";
 import { ConversationTranscript } from "../components/ConversationTranscript";
 import { ChatComposer } from "../components/ChatComposer";
 import {
@@ -48,6 +49,13 @@ export function ChatPage() {
     sendQueued,
     reload,
   } = useChat(conversationId);
+  // The voice orb floats over the end of the history: make room and keep the latest in view.
+  const voiceOpen = useVoiceMode().state !== null;
+  useEffect(() => {
+    const viewport = messageViewport.current;
+    if (voiceOpen && viewport)
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
+  }, [voiceOpen, messageViewport]);
   return (
     <main
       className={`chat-page isolate ${entering ? "chat-enter " : ""}mx-auto flex min-h-0 w-full max-w-[1720px] flex-1 flex-col gap-space-md p-margin-sm lg:flex-row lg:items-stretch md:gap-space-lg lg:gap-0 md:p-space-lg ${conversation?.purchases.length ? "pb-28 md:pb-28 lg:pb-space-lg" : ""}`}
@@ -182,6 +190,7 @@ export function ChatPage() {
                 check the latest state.
               </p>
             )}
+            {voiceOpen && <div aria-hidden="true" className="h-36 shrink-0" />}
           </div>
 
           <ChatComposer

@@ -10,6 +10,7 @@ import { Icon } from "../../../shared/components/DesignPrimitives";
 import { useVoiceMode } from "../hooks/useVoiceMode";
 import type { QueuedMessage } from "../hooks/useChat";
 import { AttachmentCards } from "./AttachmentCards";
+import { VoiceOrb } from "./VoiceOrb";
 import {
   attachmentSize,
   readAttachments,
@@ -90,6 +91,8 @@ export function ChatComposer({
   // The input stays enabled while Aimo answers so focus never leaves it; only
   // sending is held back when there is no queue to put the message in.
   const disabled = voice.active;
+  // While voice is on (or showing its last error) the round action ends it.
+  const voiceOpen = voice.state !== null;
   const sendBlocked = Boolean(busy) && !canQueue;
   // One action at a time: send while there is a draft or attachment, otherwise voice.
   const hasDraft = Boolean(text.trim()) || attachments.length > 0;
@@ -101,8 +104,7 @@ export function ChatComposer({
   } else if (retryBaselineRef.current === null) {
     retryBaselineRef.current = signature;
   }
-  const showRetry =
-    retryEligible && retryBaselineRef.current === signature;
+  const showRetry = retryEligible && retryBaselineRef.current === signature;
   function handleComposerKeyDown(
     event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) {
@@ -174,8 +176,9 @@ export function ChatComposer({
         }
       }}
       aria-label="Chat message"
-      className={`${home ? "home-composer" : "m-space-md mt-0 flex shrink-0 flex-col gap-space-md rounded-xl bg-surface-container-low p-space-sm shadow-sm"} ${dragging ? "outline-2 outline-primary-container" : ""}`}
+      className={`relative ${home ? "home-composer" : "m-space-md mt-0 flex shrink-0 flex-col gap-space-md rounded-xl bg-surface-container-low p-space-sm shadow-sm"} ${dragging ? "outline-2 outline-primary-container" : ""}`}
     >
+      <VoiceOrb />
       {queue && queue.length > 0 && (
         <ol aria-label="Queued messages" className="flex flex-col gap-space-xs">
           {queue.map((item, index) => (
@@ -270,7 +273,11 @@ export function ChatComposer({
           ref={inputRef}
           id="purchase-message"
           value={text}
-          onChange={(event) => onTextChange(event.target.value)}
+          onChange={(event) => {
+            // Typing after a voice error returns to plain chat.
+            if (voiceOpen && !voice.active) voice.stop();
+            onTextChange(event.target.value);
+          }}
           onKeyDown={handleComposerKeyDown}
           maxLength={4000}
           placeholder={
@@ -291,7 +298,35 @@ export function ChatComposer({
               : "flex shrink-0 items-center gap-space-xs pb-0.5"
           }
         >
-          {!home && busy ? (
+          {voiceOpen ? (
+            // Own key: reusing this element as Send would submit on the same click.
+            <button
+              key="end-voice"
+              type="button"
+              aria-label="End voice"
+              title="End voice"
+              onClick={() => {
+                voice.stop();
+                // The input unlocks on the next render.
+                requestAnimationFrame(focusInput);
+              }}
+              className={composerActionClassName}
+            >
+              <svg
+                aria-hidden="true"
+                focusable="false"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+              >
+                <path d="M6 6l12 12M18 6 6 18" />
+              </svg>
+            </button>
+          ) : !home && busy ? (
             <button
               type="button"
               aria-label="Stop"
