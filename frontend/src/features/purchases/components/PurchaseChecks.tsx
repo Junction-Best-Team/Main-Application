@@ -31,7 +31,9 @@ export function PurchaseChecks({
 }) {
   const status = getPurchaseStatus(p);
   const groups = groupChecks(p);
-  const expired = status === "expired" && !p.order_id;
+  const expired =
+    (status === "expired" || (p.approval_status as string) === "expired") &&
+    !p.order_id;
   const showExpired = expired || groups.expired.length > 0;
   return (
     <section className="decision-panel flex flex-col gap-space-sm [&_h3]:font-label [&_h3]:text-label-md [&_h3]:text-secondary">
