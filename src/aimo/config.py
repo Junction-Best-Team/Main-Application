@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     # CNF-038: a demo switch (off by default). On: a first run date may be today and the customer
     # can trigger the next run at once (POST /api/schedules/{id}/run-now). Every check still applies.
     scheduler_demo_mode: bool = False
+    # New chat messages one account may send per rolling hour (CHAT_RATE_LIMIT, 429, beyond it).
+    # Retries of an accepted message and confirmation turns never count. Raise it for testing.
+    chat_messages_per_hour: int = Field(default=60, ge=1, le=2000)
+    # Queued or running chat turns one account may have at once, across its conversations
+    # (CHAT_BUSY, 429, beyond it). Raise it for testing with several parallel conversations.
+    chat_active_turns_per_buyer: int = Field(default=3, ge=1, le=12)
     # Demo clock (owner Q-115): a per-buyer simulated time that moves only the derived fulfilment
     # status and the scheduler. Off by default; refused at startup with the live supplier.
     demo_clock_enabled: bool = False
