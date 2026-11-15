@@ -1663,6 +1663,13 @@ export interface components {
             /** Reasons */
             reasons: components["schemas"]["Reason"][];
             /**
+             * Reason Classes
+             * @description One class per reason code present. blocker: data or the request must change (unresolved or denied). exception: the customer's own confirmation can cover it. warning: shown, blocks nothing. expired: the supplier cutoff has passed and the basket is expired, so it can only be prepared again. Derived for display; it never changes whether a basket can be confirmed.
+             */
+            reason_classes?: {
+                [key: string]: "blocker" | "exception" | "warning" | "expired";
+            };
+            /**
              * Expires At
              * Format: date-time
              */
@@ -1919,6 +1926,13 @@ export interface components {
             fulfilment?: components["schemas"]["Fulfilment"] | null;
             /** Reasons */
             reasons: components["schemas"]["Reason"][];
+            /**
+             * Reason Classes
+             * @description One class per reason code present. blocker: data or the request must change (unresolved or denied). exception: the customer's own confirmation can cover it. warning: shown, blocks nothing. expired: the supplier cutoff has passed and the basket is expired, so it can only be prepared again. Derived for display; it never changes whether a basket can be confirmed.
+             */
+            reason_classes?: {
+                [key: string]: "blocker" | "exception" | "warning" | "expired";
+            };
             /**
              * Expires At
              * Format: date-time

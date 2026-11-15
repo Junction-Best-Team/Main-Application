@@ -341,6 +341,14 @@ class ProposalResponse(Model):
         description="The simulated fulfilment status once an order exists, otherwise null.",
     )
     reasons: list[Reason]
+    reason_classes: dict[str, Literal["blocker", "exception", "warning", "expired"]] = Field(
+        default_factory=dict,
+        description="One class per reason code present. blocker: data or the request must change "
+        "(unresolved or denied). exception: the customer's own confirmation can cover it. warning: "
+        "shown, blocks nothing. expired: the supplier cutoff has passed and the basket is expired, "
+        "so it can only be prepared again. Derived for display; it never changes whether a basket "
+        "can be confirmed.",
+    )
     expires_at: datetime
     next_action: NextAction
     approval_id: str | None = None
@@ -498,6 +506,11 @@ class CommercialEvidence(Model):
     base_unit: str | None = None
     price_basis: Literal["per_sales_unit"] | None = None
     quantity_unit: str | None = None
+    stock_verified: bool = Field(
+        default=False,
+        description="True only for a Stock line with a real, convertible amount and no open "
+        "reason on the product: the supplier confirms it can fulfil the sales quantity shown.",
+    )
 
 
 class LookupResponse(Model):

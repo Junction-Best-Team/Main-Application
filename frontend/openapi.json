@@ -5487,6 +5487,20 @@
             "type": "array",
             "title": "Reasons"
           },
+          "reason_classes": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "blocker",
+                "exception",
+                "warning",
+                "expired"
+              ]
+            },
+            "type": "object",
+            "title": "Reason Classes",
+            "description": "One class per reason code present. blocker: data or the request must change (unresolved or denied). exception: the customer's own confirmation can cover it. warning: shown, blocks nothing. expired: the supplier cutoff has passed and the basket is expired, so it can only be prepared again. Derived for display; it never changes whether a basket can be confirmed."
+          },
           "expires_at": {
             "type": "string",
             "format": "date-time",
@@ -6234,6 +6248,20 @@
             },
             "type": "array",
             "title": "Reasons"
+          },
+          "reason_classes": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "blocker",
+                "exception",
+                "warning",
+                "expired"
+              ]
+            },
+            "type": "object",
+            "title": "Reason Classes",
+            "description": "One class per reason code present. blocker: data or the request must change (unresolved or denied). exception: the customer's own confirmation can cover it. warning: shown, blocks nothing. expired: the supplier cutoff has passed and the basket is expired, so it can only be prepared again. Derived for display; it never changes whether a basket can be confirmed."
           },
           "expires_at": {
             "type": "string",
