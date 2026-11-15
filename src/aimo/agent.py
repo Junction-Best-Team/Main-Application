@@ -249,7 +249,8 @@ prices or availability without successful tool evidence; the card shows the stag
 # With the server-owned phases (docs/agent-phases.md) delivery details are never asked: they default
 # and the customer edits them on the card, so the paragraph that sent the model to ask is replaced.
 OLD_ASK_PARAGRAPH = """Ask only for a material fact you cannot derive: usually guest count, and delivery
-date/destination before preparing an order. Do useful recipe planning immediately,
+date/destination before preparing an order when automatic cart preparation is disabled.
+Do useful recipe planning immediately,
 even while delivery details are missing. Do not turn a meal request into a questionnaire.
 """
 PHASED_ASK_PARAGRAPH = """Ask at most ONE plain question, and only when a named dish has no recipe you can
