@@ -23,11 +23,11 @@ from aimo.agent_stop import (
 )
 from aimo.agent_tools import ToolSession
 from aimo.chat_activity import tool_detail
-from aimo.chat_draft import cart_snapshot
+from aimo.chat_draft import cart_snapshot, trusted_plan
 from aimo.chat_schemas import AgentTurn, DraftCart
 from aimo.config import settings
 from aimo.db import Problem, fingerprint
-from aimo.guardrails import PREPARE_NOTICE, Guardrails, Verdict
+from aimo.guardrails import OUTPUT_FALLBACK_KEPT_ORDER, PREPARE_NOTICE, Guardrails, Verdict
 from aimo.observability import elapsed, event, failure, log_context, operation
 
 BASE_PROMPT = """You are the customer's internal meal-purchasing assistant.
@@ -594,6 +594,15 @@ def run_turn(
             return session.result("Your ingredient plan is saved.", include_plan=False).model_copy(
                 update={"meal_plan": reviewed_plan.model_copy(deep=True)}
             )
+        if (guard is not None and guard.enforcing and not guard.output_approved
+                and not session.proposal and not session.receipt):
+            # The plan's wording was not approved: keep only its server-checked order lines, so
+            # the customer still gets a basket to review instead of a dead end.
+            kept = trusted_plan(session)
+            if kept is not None:
+                return session.result(OUTPUT_FALLBACK_KEPT_ORDER, include_plan=False).model_copy(
+                    update={"meal_plan": kept}
+                )
         return session.result(
             text,
             include_plan=guard is None or guard.plan_visible,

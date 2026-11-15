@@ -402,6 +402,11 @@ INPUT_BLOCKED_REPLY = "I can't help with that. I can help with food, products an
 OUT_OF_SCOPE_REPLY = INPUT_BLOCKED_REPLY
 OUTPUT_FALLBACK = "I can't help with that."
 OUTPUT_FALLBACK_EMPTY = OUTPUT_FALLBACK
+# Shown with the server-checked order list kept from a plan whose model wording was not approved.
+OUTPUT_FALLBACK_KEPT_ORDER = (
+    "I couldn't double-check my written reply, so I've left it out. Your order list is saved with "
+    "the products I looked up; check the prices and stock in Your order before you confirm."
+)
 PREPARE_NOTICE = (
     "No new basket was prepared because the request check did not pass. Confirm the "
     "delivery destination, date, budget, dietary needs and items in a new message."
