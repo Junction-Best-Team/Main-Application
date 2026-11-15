@@ -613,7 +613,7 @@ def execute_turn(turn, service, runner=None):
                 result = result.model_copy(
                     update={
                         "proposal_id": str(auto[0]),
-                        "text": (result.text + "\n\n" + auto[2])[:20000],
+                        "text": "\n\n".join(part for part in (result.text, auto[2]) if part)[:20000],
                     }
                 )
         if result.proposal_id:

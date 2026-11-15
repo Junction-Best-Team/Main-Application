@@ -246,7 +246,7 @@ def test_recipe_draft_scales_base_once_and_is_visible_without_delivery_or_budget
     assert result["purchase_authorized"] is False
     assert tools.result().meal_plan.portions == 500
     assert tools.result().proposal_id is None
-    assert "3 ingredients still need catalog matches." in tools.result().text
+    assert "3 ingredients still need product matches." in tools.result().text
     assert "Unresolved ingredients:" not in tools.result().text
     assert invoke(tools, "draft_recipe", draft_basis()) == result
     assert tools.service.calls == []
@@ -362,15 +362,13 @@ def test_carbonara_clarifies_then_returns_a_verified_full_basket(monkeypatch, co
     seen = scripted(
         monkeypatch,
         [
-            reply(call("get_purchase_policy")),
-            reply(
-                text="Which delivery date, destination, dietary requirements and budget should I use?"
-            ),
+            reply(text="How many portions of carbonara do you need?"),
         ],
     )
-    clarification = agent.run_turn(identity, HISTORY, service, on_progress=events.append)
+    initial = [{"role": "user", "content": "Ingredients for carbonara."}]
+    clarification = agent.run_turn(identity, initial, service, on_progress=events.append)
     assert clarification.proposal_id is None
-    assert "delivery date" in clarification.text
+    assert clarification.text == "How many portions of carbonara do you need?"
     assert not any(c[0] == "prepare" for c in service.calls)
     prompt = seen[0]["messages"][0]["content"]
     assert all(
@@ -378,11 +376,11 @@ def test_carbonara_clarifies_then_returns_a_verified_full_basket(monkeypatch, co
         for word in ("search_recipes", "scale_recipe", "guess conversions", "untrusted", "scope")
     )
 
-    history = HISTORY + [
+    history = initial + [
         {"role": "assistant", "content": clarification.text},
         {
             "role": "user",
-            "content": "Nov 16, hotel-helsinki, no dietary "
+            "content": "200 portions, Nov 16, hotel-helsinki, no dietary "
             "restrictions, 1000 EUR. Use traditional carbonara.",
         },
     ]
@@ -390,8 +388,7 @@ def test_carbonara_clarifies_then_returns_a_verified_full_basket(monkeypatch, co
     turn = agent.run_turn(identity, history, service, on_progress=events.append)
     assert turn.meal_plan == MealPlan(**meal())
     assert turn.proposal_id == service.saved["proposal_id"]
-    assert "Confirm purchase button" in turn.text
-    assert "No supplier order" in turn.text
+    assert turn.text == "The full matched basket is ready."
     assert all(c[1] == identity for c in service.calls)
     prepared = [c for c in service.calls if c[0] == "prepare"]
     assert len(prepared) == 1
@@ -536,9 +533,9 @@ def test_blocked_facts_remain_blocked_in_the_final_response(monkeypatch, config,
     service.saved["policy_outcome"] = outcome
     scripted(monkeypatch, prepared_script() + [reply(text="Review the facts.")])
     result = agent.run_turn(identity, HISTORY, service)
-    expected = "blocked by purchasing rules" if outcome == "denied" else "needs checking"
+    expected = "cannot be confirmed yet" if outcome == "denied" else "needs checking"
     assert expected in result.text
-    assert "See purchasing checks in Your order" in result.text
+    assert "Your order" in result.text
     assert "Outside standing scope" not in result.text
     assert "Confirm purchase button" not in result.text
 
@@ -560,10 +557,49 @@ def test_blocked_reply_keeps_the_basket_without_dumping_per_product_errors(ident
     invoke(session, "prepare_order", purchase())
     result = session.result("Here is your recipe estimate for 200 portions.")
     assert result.proposal_id == service.saved["proposal_id"]
-    assert "needs checking before it can be confirmed" in result.text
+    assert "needs checking before confirmation" in result.text
     assert "tax basis" not in result.text and "MISSING_PRICE" not in result.text
     assert service.saved["reasons"] == reasons  # detailed purchasing checks are retained
     assert len(result.text) < 300
+
+
+@pytest.mark.parametrize(
+    "outcome", ["ready_to_commit", "approval_required", "needs_resolution", "denied"]
+)
+def test_purchasing_warnings_are_never_appended_as_chat_prose(identity, outcome):
+    service = FakeService(identity)
+    service.saved["policy_outcome"] = outcome
+    warning = {
+        "code": "VARIABLE_WEIGHT",
+        "message": "Sold by variable weight: the final weight and price settle at delivery, "
+        "so this price is an estimate.",
+        "severity": "warning",
+    }
+    service.saved["reasons"] = [warning] * 6
+    session = matched_session(identity, service)
+    invoke(session, "prepare_order", purchase())
+    narrative = "Here is your carbonara recipe estimate for 200 portions."
+    result = session.result(narrative)
+    assert result.proposal_id == service.saved["proposal_id"]
+    assert "variable weight" not in result.text
+    assert service.saved["reasons"] == [warning] * 6
+    if outcome in ("ready_to_commit", "approval_required"):
+        assert result.text == narrative
+        assert "ready to review" in session.result().text  # recovery still has a trusted reply
+    else:
+        assert "Your order" in result.text and len(result.text) < 160
+
+
+def test_matched_recipe_reply_does_not_gain_a_disclaimer_or_checkout_script(identity):
+    session = matched_session(identity, FakeService(identity))
+    narrative = "Here is your carbonara recipe estimate for 200 portions."
+    result = session.result(narrative)
+    assert result.text == narrative
+    assert result.meal_plan == MealPlan(**meal())
+    assert result.proposal_id is None
+    guidance = session.execution_guidance(30)
+    assert "Do not ask for delivery details." in guidance
+    assert "ask only for missing delivery details" not in guidance
 
 
 @pytest.mark.parametrize("automatic", [False, True])
@@ -574,6 +610,10 @@ def test_provider_knows_whether_delivery_defaults_are_staged_automatically(
     seen = scripted(monkeypatch, [reply(text="What would you like to cook?")])
     agent.run_turn(identity, HISTORY, FakeService(identity))
     instructions = seen[0]["messages"][0]["content"]
+    assert "Do not ask for a delivery date, destination, location or address in chat." in instructions
+    assert "normally in one or two short sentences" in instructions
+    assert "Use at most three short sentences" not in instructions
+    assert "ask only for missing delivery details" not in instructions
     assert ("Automatic cart preparation is enabled" in instructions) == automatic
     if automatic:
         assert "tomorrow in Helsinki" in instructions
@@ -968,15 +1008,18 @@ def test_backend_result_scope_is_checked_before_associating_a_purchase(identity)
 
 def test_long_narrative_keeps_authoritative_state_notice(identity):
     service = FakeService(identity)
+    service.saved["policy_outcome"] = "denied"
     session = matched_session(identity, service)
     invoke(session, "prepare_order", purchase())
     result = session.result("x" * 20_000)
     assert len(result.text) <= 20_000
-    assert result.text.endswith("No supplier order has been placed.")
+    assert result.text.endswith(
+        "This basket cannot be confirmed yet; see purchasing checks in Your order."
+    )
 
 
-def test_variable_weight_estimate_reaches_the_trusted_notice(identity):
-    """BAS-007: the customer is told the price is an estimate even when the model forgets."""
+def test_variable_weight_estimate_stays_available_on_the_basket(identity):
+    """The card retains estimate evidence without injecting technical warnings into chat."""
     service = FakeService(identity)
     service.saved["policy_outcome"] = "ready_to_commit"
     service.saved["reasons"] = [
@@ -990,8 +1033,8 @@ def test_variable_weight_estimate_reaches_the_trusted_notice(identity):
     session = matched_session(identity, service)
     invoke(session, "prepare_order", purchase())
     text = session.result("Here is your basket.").text
-    assert "the final price is an estimate" in text
-    assert text.endswith("No supplier order has been placed.")
+    assert text == "Here is your basket."
+    assert session.proposal["reasons"] == service.saved["reasons"]
 
 
 def test_unsupported_dietary_tool_fields_require_resolution(identity):
@@ -1071,12 +1114,12 @@ def test_unexpected_provider_failure_is_safe_and_preserves_saved_basket(
     assert "private-provider-key" not in caplog.text + str(events)
 
 
-def test_final_recipe_labels_estimates_and_lists_unresolved_ingredients(identity):
+def test_unmatched_recipe_keeps_a_brief_notice_and_ingredient_details_in_the_plan(identity):
     session = ToolSession(identity, FakeService(identity))
     invoke(session, "publish_meal_plan", meal(matched=False))
     result = session.result("All ready.")
-    assert "Recipe quantities are estimates for customer review." in result.text
-    assert "Unresolved ingredients: pasta, eggs, pork, cheese, pepper." in result.text
+    assert result.text == "All ready.\n\n5 ingredients still need product matches."
+    assert result.meal_plan == MealPlan(**meal(matched=False))
     assert result.proposal_id is None
 
 

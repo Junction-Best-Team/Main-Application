@@ -41,8 +41,8 @@ When the customer says they want to confirm, buy, order or check out (for exampl
 prepare the basket; they are not asking you to approve anything. Never refuse it and never
 answer "I can't help". Use the plan and products already in the conversation and do not
 start a new search for them. Finish any missing matching, call prepare_order in the same
-turn, then tell the customer to review the exact basket and press Confirm purchase. If a
-delivery date or destination is still missing, follow the cart preparation mode below.
+turn when its delivery terms are available, then tell the customer to review the exact
+basket and press Confirm purchase. Otherwise follow the cart preparation mode below.
 
 The customer can change quantities on the cart card themselves. Their change arrives as a
 customer message ("I changed the cart on the card ...") and as the stored meal plan with the
@@ -50,10 +50,12 @@ new amounts. Keep those amounts; never undo a customer's edit. An ingredient wit
 was removed by the customer: keep it in the plan at "0" and do not buy it unless they ask.
 
 Use the supplied conversation and constraints; do not ask again for known facts.
-Ask only for a material fact you cannot derive: usually guest count, and delivery
-date/destination before preparing an order when automatic cart preparation is disabled.
-Do useful recipe planning immediately,
-even while delivery details are missing. Do not turn a meal request into a questionnaire.
+Ask only for a material recipe fact you cannot derive, such as guest count.
+Do not ask for a delivery date, destination, location or address in chat. Delivery
+settings belong in Your order. Use existing delivery terms when available; if they
+are missing and automatic preparation is disabled, keep the plan for the customer
+to prepare through Your order. Never invent delivery terms yourself.
+Do useful recipe planning immediately. Do not turn a meal request into a questionnaire.
 Choose a normal recipe serving size yourself; do not ask for grams per person,
 ingredient weights, recipe ratios, raw-to-cooked conversions or pack calculations.
 The customer describes the meal; you choose the recipe and tools do the scaling.
@@ -160,10 +162,14 @@ possible, and query supplier price/stock only for the shortlist. Prepare the
 complete basket when delivery facts are known, even if checks may block it, so the
 customer sees the real result. Never invent missing price, stock or conversion data.
 The plan card and Overview already show ingredient quantities: do not repeat that
-list in your reply. Use at most three short sentences: what you planned and for how
-many people, one important assumption or purchasing blocker, and the one next
-needed customer action. Do not give a checklist of optional questions. Do not dump
-internal policy versions, flags, product-scope lists or tool names. A missing saved
+list in your reply. Keep the conversation focused on the customer's current request,
+normally in one or two short sentences. Do not combine a recipe summary, delivery
+instructions and purchasing checks into a template. Ask at most one question, only
+when its answer is needed to continue the current task. Do not add a checkout prompt
+to every recipe reply. Purchasing checks belong in Your order: if they block the
+customer's next step, explain the one relevant issue in plain language, without
+copying reason lists, tax-basis or unit-conversion diagnostics. Do not dump internal
+policy versions, flags, product-scope lists or tool names. A missing saved
 recipe only needs the brief label 'recipe estimate', not an explanation of internal
 database limitations.
 
@@ -230,9 +236,10 @@ It uses the last basket's delivery terms, or tomorrow in Helsinki and the buyer'
 approved destination when there is no earlier basket. The customer reviews and can change
 these delivery details in Your order before explicitly confirming the exact basket.
 Do not say you are waiting for delivery details before checking prices or preparing the
-basket, or promise to do those later. Briefly describe the recipe and ask the customer to
-review the delivery details and purchasing checks in Your order. Do not claim confirmed
-prices or availability without successful tool evidence; the card shows the staged result.
+basket, or promise to do those later. Keep the reply focused on what the customer asked;
+the order card shows delivery settings and purchasing checks without a chat checklist.
+Do not claim confirmed prices or availability without successful tool evidence;
+the card shows the staged result.
 """
 
 
@@ -455,7 +462,11 @@ def run_turn(
 
     def finish(text=""):
         # Under enforcement a model-authored plan is shown only after a passed output review.
-        return session.result(text, include_plan=guard is None or guard.plan_visible)
+        return session.result(
+            text,
+            include_plan=guard is None or guard.plan_visible,
+            include_ready=guard is not None and guard.enforcing and not guard.output_approved,
+        )
 
     try:
         with httpx.Client(follow_redirects=False) as client:

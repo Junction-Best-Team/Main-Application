@@ -569,7 +569,7 @@ def test_output_review_failure_keeps_the_trusted_link(monkeypatch, config, guard
     scripted(monkeypatch, prepared_script() + [reply(text="Ready.")])
     result = run(identity, service)
     assert result.proposal_id == service.saved["proposal_id"]
-    assert result.text.startswith(OUTPUT_FALLBACK) and "Confirm purchase button" in result.text
+    assert result.text.startswith(OUTPUT_FALLBACK) and "Your basket is ready to review" in result.text
 
 
 def test_fake_approval_without_records_and_oversized_reply(monkeypatch, config, guard, identity):

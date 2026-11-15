@@ -268,7 +268,9 @@ def prepare_basket(
         lines=lines_of(items, recipe),
     )
     proposal = session.prepare(request)
-    notice = session.result("", include_plan=False).text + not_included_text(left_out)
+    # A background success updates the card without appending a checkout script to
+    # the recipe reply. Blockers and omitted ingredients must still be visible.
+    notice = session.purchase_notice(include_ready=False) + not_included_text(left_out)
     return proposal["proposal_id"], left_out, notice
 
 

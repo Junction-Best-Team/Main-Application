@@ -689,7 +689,8 @@ class ToolSession:
                 "for a free-form plan, or match_ingredients for a saved recipe. Do not "
                 "call draft_recipe again to change the recipe basis in this turn. "
                 "Do not research alternatives for an already suitable selection. Once matched, "
-                "finish basket checks or ask only for missing delivery details."
+                "finish basket checks using existing delivery terms, or leave preparation "
+                "to the automatic cart workflow or Your order. Do not ask for delivery details."
             )
         return clock
 
@@ -1063,45 +1064,37 @@ class ToolSession:
         self.receipt = result
         return result
 
-    def result(self, narrative="", include_plan=True):
+    def purchase_notice(self, include_ready=True):
+        """Brief trusted status; detailed reasons stay on the persisted basket."""
+        if self.proposal:
+            if self.proposal.get("order_id"):
+                return "This purchase has a saved mock receipt. No supplier order was placed."
+            if self.proposal["policy_outcome"] in ("denied", "needs_resolution"):
+                return (
+                    "This basket cannot be confirmed yet; see purchasing checks in Your order."
+                    if self.proposal["policy_outcome"] == "denied"
+                    else "This basket needs checking before confirmation; see Your order."
+                )
+            if include_ready:
+                return (
+                    "Your basket is ready to review in Your order. "
+                    "No supplier order has been placed."
+                )
+        elif self.receipt:
+            return "Accepted by demo order service. No supplier order or inventory reservation."
+        return ""
+
+    def result(self, narrative="", include_plan=True, *, include_ready=False):
         """Trusted status notices; ``include_plan=False`` withholds the model-authored plan."""
         plan = self.plan if include_plan else None
         if plan is not None and plan == self.restored and not self.proposal:
             plan = None  # a restored plan nobody used this turn must not carry on as a fresh answer
-        notice = ""
-        if self.proposal:
-            if self.proposal.get("order_id"):
-                notice = "This purchase has a saved mock receipt. No supplier order was placed."
-            elif self.proposal["policy_outcome"] in ("denied", "needs_resolution"):
-                notice = (
-                    "This basket is blocked by purchasing rules."
-                    if self.proposal["policy_outcome"] == "denied"
-                    else "This basket needs checking before it can be confirmed."
-                )
-                notice += " See purchasing checks in Your order for details."
-            else:
-                warnings = [
-                    reason["message"]
-                    for reason in self.proposal["reasons"]
-                    if reason.get("severity") == "warning"
-                ]
-                notice = (
-                    " ".join(dict.fromkeys(warnings))
-                    + (" " if warnings else "")
-                    + "Review the verified basket and exact revision, then use the Confirm "
-                    "purchase button. No supplier order has been placed."
-                )
-        elif self.receipt:
-            notice = "Accepted by demo order service. No supplier order or inventory reservation."
+        notice = self.purchase_notice(include_ready=include_ready or not narrative.strip())
         if plan:
-            recipe_notice = "Recipe quantities are estimates for customer review."
             unresolved = [item.name for item in plan.ingredients if not item.product_id]
             if unresolved:
-                if self.draft_basis is not None:
-                    recipe_notice += f" {len(unresolved)} ingredients still need catalog matches."
-                else:
-                    recipe_notice += " Unresolved ingredients: " + ", ".join(unresolved) + "."
-            notice = "\n\n".join(part for part in (recipe_notice, notice) if part)
+                unmatched_notice = f"{len(unresolved)} ingredients still need product matches."
+                notice = "\n\n".join(part for part in (unmatched_notice, notice) if part)
         if self.memory_changes:
             notice = "\n\n".join(p for p in (memory_notice(self.memory_changes), notice) if p)
         if notice:
