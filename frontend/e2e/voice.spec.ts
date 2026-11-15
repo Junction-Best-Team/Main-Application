@@ -610,3 +610,24 @@ test("the holding line is cut when the model says too much", async ({
   await page.waitForTimeout(300);
   expect(await voiceCount(page, "voicePlaybacks")).toBe(0);
 });
+
+test("home shows no orb over the hero, only an inline voice error", async ({
+  page,
+}) => {
+  await fixture(page);
+  await page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = async () => {
+      throw new DOMException("Denied", "NotAllowedError");
+    };
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Start voice mode" }).click();
+  const form = page.getByRole("form", { name: "Chat message" });
+  await expect(form.getByRole("alert")).toContainText(
+    "Microphone access was denied",
+  );
+  await expect(page).toHaveURL("/");
+  await expect(page.locator(".voice-orb")).toHaveCount(0);
+  await page.getByRole("button", { name: "End voice" }).click();
+  await expect(page.getByRole("region", { name: "Voice mode" })).toHaveCount(0);
+});

@@ -178,7 +178,7 @@ export function ChatComposer({
       aria-label="Chat message"
       className={`relative ${home ? "home-composer" : "m-space-md mt-0 flex shrink-0 flex-col gap-space-md rounded-xl bg-surface-container-low p-space-sm shadow-sm"} ${dragging ? "outline-2 outline-primary-container" : ""}`}
     >
-      <VoiceOrb />
+      <VoiceOrb orb={!home} />
       {queue && queue.length > 0 && (
         <ol aria-label="Queued messages" className="flex flex-col gap-space-xs">
           {queue.map((item, index) => (
