@@ -1135,6 +1135,15 @@ def test_selected_recipe_streams_unmatched_matched_and_checked_prices(monkeypatc
     saved = meal(False) | {"recipe_plan_id": str(uuid4()), "recipe_plan_revision": 1}
     for item in saved["ingredients"]:
         item.update(ingredient_id=item["name"], status="unresolved")
+    service.get_recipe = lambda *_: {
+        "recipe": {
+            "id": "recipe", "title": "Carbonara", "summary": "Authored recipe",
+            "base_servings": 4, "category": "main", "instructions": [],
+            "ingredients": [{"id": "pasta", "name": "Pasta", "quantity": "400",
+                             "unit": "g", "scaling": "linear", "form": "dry"}],
+        },
+        "version": "v1", "source": "fixture", "attribution": "Authored", "license": "test",
+    }
     service.scale_recipe = lambda actor, request: deepcopy(saved)
 
     def match(actor, request):

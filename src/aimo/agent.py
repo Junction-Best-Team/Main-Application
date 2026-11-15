@@ -12,7 +12,7 @@ import httpx
 
 from aimo.agent_provider import chat_provider, check_deadline, encode
 from aimo.agent_reads import executions
-from aimo.agent_recovery import BLOCKED_NOTICE, partial_notice, recipe_blocked
+from aimo.agent_recovery import partial_notice
 from aimo.agent_tools import ToolSession
 from aimo.chat_draft import cart_snapshot
 from aimo.chat_schemas import AgentTurn, DraftCart
@@ -59,7 +59,11 @@ Use stated dietary needs and budgets; ask about additional restrictions only whe
 there is a specific ambiguity. A missing budget need not block a draft or basket:
 leave budget_gross null, show actual costs when available, and retain policy limits.
 Never describe a missing budget as unlimited or loosen a stated budget/constraint.
-Read get_purchase_policy for allowed scope and destinations. Policy or supplier
+Read get_purchase_policy only when preparing checkout, after the customer wants to
+buy and the plan has catalog selections, or when the customer explicitly asks about
+purchasing rules or allowed destinations. Do not call it for greetings, recipe
+discovery, portion planning or ingredient matching. It reads rules; it never obtains
+customer confirmation. Policy or supplier
 blockers do not prevent publishing a recipe draft or matching products. Keep the
 work visible, then explain the actual purchasing blockers briefly.
 Model assumptions require customer review, not new authority.
@@ -94,7 +98,15 @@ a new customer message.
 """
 
 RECIPE_PROMPT = """For recipe requests, use search_recipes for ideas or a named dish, then
-get_recipe and scale_recipe for the selected version and requested portions.
+get_recipe for the best candidate. Search returns summaries, not ingredients or
+instructions; get_recipe is the detail read, not a second search. Inspect its
+planning_issues before selecting a saved plan with scale_recipe. A recipe with
+missing quantities, unsupported scaling/units or unspecified ingredient forms is
+not suitable for the saved-plan workflow. Before selecting it, choose a complete
+alternative or use draft_recipe for a labelled assistant-authored estimate. Do not
+copy the source's missing quantities as if verified, and do not ask the customer
+to supply seasoning weights or scaling rules. Only call scale_recipe for a suitable
+version and the requested portions.
 Publish the scaled plan before investigating product scope, substitutions or
 supplier availability; then attach product matches. Do not spend the planning
 turn investigating policy blockers before giving the customer a recipe draft.
@@ -118,7 +130,13 @@ score is not suitability proof.
 Reload saved plans using get_recipe_plan across turns. Preserve unresolved ingredients,
 including seasonings and pantry items. Do not hide them or guess conversions, forms,
 spice scaling or yolk yields. Explain a missing saved-recipe fact briefly, rather
-than asking the customer to do arithmetic.
+than asking the customer to do arithmetic. An unresolved ingredient does not stop
+work on other ingredients: match those with usable quantities and forms. Do not
+repeat searches or matching for an ingredient whose reason requires reviewed
+recipe facts or product conversion evidence. Explain the specific remaining gap
+in ordinary cooking language, not internal evidence/review terminology. If the
+selected saved plan cannot be completed, offer to start a separate labelled recipe
+estimate in a new customer request; never silently replace the selected plan.
 Prepare only after all ingredients are matched; use purchase_amount/purchase_unit,
 combining duplicate SKUs. A changed recipe/portion count needs a new saved plan.
 If the customer requests a retry after expiry, policy/authority changes, corrected
@@ -491,11 +509,6 @@ def run_turn(
                             draft_snapshot("tool_completed")
                         progress.emit("tool_completed", visible_name)
                         outputs.append((call.id, name, output))
-                        if recipe_blocked(session.plan):
-                            result = finish(BLOCKED_NOTICE)
-                            progress.emit("complete", error_code="RECIPE_EVIDENCE_REQUIRED")
-                            pending.close()
-                            return result
                     if errors >= 4:
                         result = finish(
                             "The assistant could not resolve the tool errors. "

@@ -22,13 +22,14 @@ from aimo.recipe_batch import MatchIngredients
 from aimo.recipe_schemas import (
     MatchIngredient,
     PlanReference,
+    Recipe,
     RecipeDetail,
     RecipeReference,
     RecipeSearch,
     RecipeSearchResult,
     ScaleRecipe,
 )
-from aimo.recipes import combine_by_product
+from aimo.recipes import combine_by_product, scaled_plan
 from aimo.schemas import (
     Amount,
     Contribution,
@@ -216,6 +217,12 @@ class InspectedSearchResponse(SearchResponse):
     products: list[InspectedCandidate | SearchCandidate]
 
 
+class RecipePlanningDetail(RecipeDetail):
+    """Internal planning guidance; does not change the public recipe response."""
+
+    planning_issues: list[dict[str, str]]
+
+
 class RecipeImageResult(Model):
     """The hosted illustration: its address and size, never dietary, product or purchase evidence."""
 
@@ -318,6 +325,7 @@ class ToolSession:
         self.prepared_digest = None
         self.products = {}
         self.search_results = {}
+        self.recipe_details = {}
         self.commercial = {}
         self.commercial_dates = {}
         self.memory_changes = []
@@ -349,7 +357,12 @@ class ToolSession:
                 ProductResponse,
             ),
             "get_purchase_policy": ToolSpec(
-                ReadPolicy, "Read current buyer scope and limits.", self.policy, PolicyResponse
+                ReadPolicy,
+                "Read buyer scope and limits at checkout preparation, or to answer an explicit "
+                "question about purchasing rules/destinations. Not needed for recipe planning "
+                "or ingredient matching. Does not obtain customer confirmation.",
+                self.policy,
+                PolicyResponse,
             ),
             "check_price_and_availability": ToolSpec(
                 PriceLookup,
@@ -413,7 +426,9 @@ class ToolSession:
             {
                 "search_recipes": ToolSpec(
                     FindRecipes,
-                    "Discover recipe ideas; not dietary or purchasing proof.",
+                    "Discover recipe summaries (ID, version, title, summary, base servings). "
+                    "No ingredients or instructions; read the selected candidate with get_recipe. "
+                    "Not dietary or purchasing proof.",
                     lambda r: self.checked(
                         RecipeSearchResult, self.service.search_recipes(self.identity, r)
                     ),
@@ -421,9 +436,11 @@ class ToolSession:
                 ),
                 "get_recipe": ToolSpec(
                     ReadRecipe,
-                    "Read the exact recipe basis and instructions.",
-                    lambda r: self.checked(RecipeDetail, self.service.get_recipe(self.identity, r)),
-                    RecipeDetail,
+                    "Read full ingredients, quantities, instructions and planning_issues. "
+                    "If issues exist, choose an alternative or draft_recipe BEFORE scale_recipe "
+                    "selects a saved plan. Empty issues do not prove product suitability.",
+                    self.recipe_detail,
+                    RecipePlanningDetail,
                 ),
                 "scale_recipe": ToolSpec(
                     ScaleToPortions,
@@ -482,7 +499,38 @@ class ToolSession:
     def scale_recipe(self, request):
         if self.prepared_digest is not None:
             raise Problem("MEAL_PLAN_LOCKED", "Request recipe changes in a new customer message.")
+        detail = self.recipe_detail(request)
+        if detail["planning_issues"]:
+            raise Problem(
+                "RECIPE_NOT_SCALABLE",
+                "This recipe has incomplete quantities, scaling or ingredient forms. "
+                "No saved plan was selected. Use draft_recipe for a complete labelled "
+                "recipe estimate, or inspect a different recipe; do not ask the customer "
+                "to supply seasoning weights or scaling rules.",
+                422,
+                details={"planning_issues": detail["planning_issues"]},
+            )
         return self.save_recipe_result(self.service.scale_recipe(self.identity, request))
+
+    def recipe_detail(self, request):
+        key = (request.recipe_id, request.version)
+        if key in self.recipe_details:
+            return self.recipe_details[key]
+        detail = self.checked(RecipeDetail, self.service.get_recipe(self.identity, request))
+        if (detail["recipe"]["id"], detail["version"]) != key:
+            raise Problem("TOOL_RESULT_INVALID", "The tool returned a different recipe version.", 502)
+        recipe = Recipe.model_validate(detail["recipe"])
+        # Preview only: inspecting a candidate must not create/lock a saved plan.
+        preview = scaled_plan(recipe, recipe.base_servings)
+        issues = []
+        for item in preview.ingredients:
+            if item.amount is None:
+                issues.append({"ingredient": item.name, "reason": item.reason})
+            if item.form == "unspecified":
+                issues.append({"ingredient": item.name, "reason": "Ingredient form is unspecified."})
+        result = detail | {"planning_issues": issues}
+        self.recipe_details[key] = result
+        return result
 
     def draft_recipe(self, request):
         if self.draft_basis is not None:

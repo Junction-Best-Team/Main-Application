@@ -74,10 +74,13 @@ existing catalog reader. These include the same bounded, screened evidence as
 remain discovery summaries. Inspection never proves recipe suitability, selects a
 product, grants purchasing authority or replaces fresh preparation/confirmation checks.
 
-Saved recipe blockers that need reviewed quantities/forms/scaling or suitability/count/
-conversion evidence end the turn with the unresolved plan instead of more catalog
-searches. Absent/withdrawn products remain searchable. The underlying recipe evidence
-requirements are unchanged.
+Recipe details expose missing quantities/forms and unsupported scaling/units before
+saved-plan selection. Incomplete candidates use a complete alternative or labelled
+assistant estimate; scaling refuses to persist them as a newly selected saved plan.
+Existing saved plans retain their unresolved ingredients while matching can continue
+for other items. The assistant explains the specific gaps and avoids repeated
+searches for facts catalog discovery cannot resolve. The underlying saved-recipe
+evidence requirements are unchanged.
 
 The 90-second turn limit is unchanged. Changed plans are reviewed before display even
 without a UI observer. On a later provider failure or timeout, the last approved plan

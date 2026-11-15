@@ -107,3 +107,63 @@ def test_timeout_preserves_partial_cart_and_existing_auto_prepare_without_orderi
     with connection() as c:
         assert c.execute("SELECT count(*) AS n FROM orders").fetchone()["n"] == 0
         assert c.execute("SELECT count(*) AS n FROM customer_confirmations").fetchone()["n"] == 0
+
+
+def test_incomplete_seasonings_fall_back_before_saved_plan_selection(
+    monkeypatch, tmp_path, buyer, service
+):
+    from test_agent_recipe_planning import estimate
+    from test_recipes import import_fixture, source_recipe
+
+    from aimo.config import settings
+
+    monkeypatch.setattr(settings(), "cart_auto_prepare", False)
+    monkeypatch.setattr(
+        agent, "settings", lambda: SimpleNamespace(llm_max_tool_rounds=12, llm_model="scripted")
+    )
+    raw = source_recipe()
+    raw["ingredients"][-1]["scaling"] = "damped"
+    raw["ingredients"].append({
+        "id": "salt", "name": {"en": "Salt for the water"}, "quantity": None,
+        "unit": "toTaste", "scaling": "fixed",
+    })
+    *_, versions = import_fixture(tmp_path, [raw])
+    reference = dict(versions[0])
+    script = iter([
+        reply(call("get_recipe", reference)),
+        reply(call("scale_recipe", reference | {"portions": 200})),
+        reply(call("draft_recipe", estimate())),
+        reply(text="I planned an estimate for 200 portions, including estimated salt and pepper."),
+    ])
+    seen = []
+
+    def complete(history, *_):
+        seen.append(deepcopy(history))
+        return AssistantReply.model_validate(next(script))
+
+    def unexpected_policy(*_):
+        raise AssertionError("Recipe planning should not read purchasing policy")
+
+    monkeypatch.setattr(service, "get_purchase_policy", unexpected_policy)
+    monkeypatch.setattr(agent, "chat_provider", lambda *_: SimpleNamespace(complete=complete))
+    cid = conversations.create(
+        buyer, ConversationCreate(title="Carbonara", idempotency_key=str(uuid4()))
+    )["id"]
+    result = conversations.message(
+        buyer, cid, MessageRequest(text="i want to sell 200 carbonara", idempotency_key=str(uuid4())), service
+    )
+    assert len(seen) == 4 and not result["busy"] and result["retry_message"] is None
+    message = result["messages"][-1]
+    plan = message["meal_plan"]
+    assert plan["recipe_plan_id"] is None and plan["portions"] == 200
+    assert {i["name"]: i["amount"] for i in plan["ingredients"]} == {
+        "Spaghetti": "20", "Black pepper": "0.1", "Salt for the water": "2"
+    }
+    assert "Assistant-drafted recipe estimate" in plan["notes"][0]
+    with connection() as c:
+        assert c.execute(
+            "SELECT count(*) AS n FROM recipe_plans rp JOIN conversation_turns t ON t.id::text=rp.turn_id "
+            "WHERE t.conversation_id=%s", (cid,),
+        ).fetchone()["n"] == 0
+        assert c.execute("SELECT count(*) AS n FROM orders").fetchone()["n"] == 0
+        assert c.execute("SELECT count(*) AS n FROM customer_confirmations").fetchone()["n"] == 0
