@@ -21,7 +21,6 @@ from test_agent import (  # noqa: F401 -- shared fixtures and authored transcrip
 from aimo import agent
 from aimo.agent_provider import AssistantReply
 from aimo.agent_reads import MAX_PARALLEL_READS, executions
-from aimo.agent_recovery import recipe_blocked
 from aimo.agent_tools import ToolSession
 from aimo.chat_schemas import MealPlan
 from aimo.db import Problem
@@ -290,39 +289,49 @@ def test_matched_plan_timeout_reports_only_unfinished_basket_checks(monkeypatch,
     assert "still need catalog matches" not in result.text
 
 
-def test_recipe_evidence_blocker_stops_before_more_searches(monkeypatch, config, identity):
-    plan = meal(False) | {"recipe_plan_id": "saved-plan", "recipe_plan_revision": 2}
+@pytest.mark.parametrize("blocker", ["quantity", "form", "evidence"])
+def test_one_recipe_gap_does_not_stop_other_ingredient_matching(
+    monkeypatch, config, identity, blocker
+):
+    plan_id = "6f1c1d2e-5b7a-4c3d-9a1e-0b2c3d4e5f60"
+    plan = meal(False) | {"recipe_plan_id": plan_id, "recipe_plan_revision": 2}
     for item in plan["ingredients"]:
-        item.update(
-            status="unresolved",
-            form="raw",
-            reason="No current reviewed evidence that this product fits the ingredient and form.",
-        )
+        item.update(ingredient_id=item["name"], status="unresolved", form="raw")
+    blocked = plan["ingredients"][-1]
+    if blocker == "quantity":
+        blocked.update(amount=None, reason="This ingredient needs a reviewed scaling rule.")
+    elif blocker == "form":
+        blocked["form"] = "unspecified"
+    else:
+        blocked["reason"] = "No current reviewed evidence that this product fits the ingredient and form."
+    original_blocked = deepcopy(blocked)
     service = FakeService(identity)
     service.get_recipe_plan = lambda *_: deepcopy(plan)
-    seen = scripted(
-        monkeypatch,
-        [
-            reply(
-                call("get_recipe_plan", {"plan_id": "6f1c1d2e-5b7a-4c3d-9a1e-0b2c3d4e5f60"}),
-                call("search_products", {"query": "more pasta"}),
-            )
-        ],
-    )
+
+    def match(*_):
+        plan["ingredients"][0].update(
+            product_id="pasta", status="matched", purchase_amount="20", purchase_unit="KG"
+        )
+        plan["recipe_plan_revision"] += 1
+        return deepcopy(plan)
+
+    service.match_ingredient = match
+    seen = scripted(monkeypatch, [
+        reply(call("get_recipe_plan", {"plan_id": plan_id})),
+        reply(call("get_product", {"product_id": "pasta"})),
+        reply(call("match_ingredient", {"plan_id": plan_id, "revision": 2,
+                                       "ingredient_id": "pasta", "product_id": "pasta"})),
+        reply(text="I matched the pasta. The pepper still needs a quantity for this recipe."),
+    ])
     result = agent.run_turn(identity, HISTORY, service)
-    assert len(seen) == 1 and service.calls == []
-    assert len(result.meal_plan.ingredients) == 5
-    assert "reviewed ingredient details" in result.text
+    assert len(seen) == 4
+    assert result.meal_plan.ingredients[0].status == "matched"
+    assert result.meal_plan.ingredients[-1] == MealPlan.model_validate(plan).ingredients[-1]
+    assert plan["ingredients"][-1] == original_blocked
+    assert "I matched the pasta" in result.text
+    assert "More product searches" not in result.text
     assert result.proposal_id is None
-
-
-def test_missing_product_remains_searchable():
-    plan = MealPlan.model_validate(meal(False) | {"recipe_plan_id": "saved"})
-    for item in plan.ingredients:
-        item.status, item.form, item.reason = "unresolved", "raw", "Product is absent or withdrawn."
-    assert not recipe_blocked(plan)
-    plan.ingredients[0].amount = None
-    assert recipe_blocked(plan)
+    assert not any(c[0] in ("policy", "prepare") for c in service.calls)
 
 
 def test_duplicate_reads_share_work_and_keep_log_context(identity, caplog):

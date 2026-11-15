@@ -156,8 +156,9 @@ and supplier calls remain ordered barriers. Search inspects three candidates and
 their full facts within the turn. Oversized history fails explicitly instead of silently
 dropping earlier requirements. A timed-out/cancelled parallel read cannot update the live
 session; its underlying I/O may finish in the isolated child. Ordered tools keep their own
-I/O timeouts. Reviewed partial plans survive later provider failure, and saved recipe
-facts/evidence blockers end discovery with an explanation. See [harness recovery](chat-purchasing.md#bounded-parallel-reads-and-interrupted-planning).
+I/O timeouts. Reviewed partial plans survive later provider failure. Recipe candidate
+readiness is checked before saved-plan selection, and ingredient gaps do
+not terminate work on other items. See [harness recovery](chat-purchasing.md#bounded-parallel-reads-and-interrupted-planning).
 
 | Tool group | Allowed operations |
 | --- | --- |
