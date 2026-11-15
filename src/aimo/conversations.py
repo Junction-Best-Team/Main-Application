@@ -151,7 +151,6 @@ def detail(identity, cid, *, internal=False):
         "activity": {"turn_id": str(turn["id"]), "state": state, "events": turn["progress"]}
         if turn
         else None,
-
         "retry_message": {
             "text": retry["text"],
             "idempotency_key": retry["key"],
@@ -167,6 +166,55 @@ def detail(identity, cid, *, internal=False):
         if retry and (not busy or not retry["attachments"])
         else None,
     }
+
+
+def cancel_turn(identity, cid):
+    """Buyer interrupt of a queued or running turn; reuse the failed/retry recovery path.
+
+    Cooperative only: a tool call already in flight finishes, then the worker fence
+    or ensure_attempt stops further rounds. Idempotent when the conversation is idle.
+    """
+    with connection() as c:
+        context(c, identity)
+        c.execute("SELECT id FROM buyers WHERE id=%s FOR UPDATE", (identity["buyer_id"],))
+        owned(c, identity, cid, lock=True)
+        turn = c.execute(
+            """SELECT * FROM conversation_turns WHERE conversation_id=%s
+            AND state IN ('queued','running') ORDER BY created_at LIMIT 1 FOR UPDATE""",
+            (cid,),
+        ).fetchone()
+        if turn:
+            c.execute(
+                """UPDATE conversation_turns SET state='failed',lease_until=%s
+                WHERE id=%s AND state IN ('queued','running')""",
+                (now(), turn["id"]),
+            )
+            # System-authored turns have no customer retry payload; settle closes them.
+            scheduler.settle_failed_system_turn(c, turn["id"], cid)
+            c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
+            event(
+                "chat.cancelled",
+                conversation_id=str(cid),
+                turn_id=str(turn["id"]),
+                previous_state=turn["state"],
+            )
+    return detail(identity, cid)
+
+
+def ensure_attempt(turn):
+    """Raise when this claimed attempt is no longer the live running lease (cancel/reclaim)."""
+    with connection() as c:
+        current = c.execute(
+            "SELECT attempt,state,lease_until FROM conversation_turns WHERE id=%s",
+            (turn["id"],),
+        ).fetchone()
+    if (
+        not current
+        or current["attempt"] != turn["attempt"]
+        or current["state"] != "running"
+        or current["lease_until"] <= now()
+    ):
+        raise Problem("TURN_REPLACED", "This response was replaced; reload the conversation.")
 
 
 def enqueue(identity, cid, body):
@@ -388,7 +436,11 @@ def execute_turn(turn, service, runner=None):
     if runner is None:
         from aimo.agent import run_turn
 
-        runner = partial(run_turn, on_progress=partial(record_progress, turn))
+        runner = partial(
+            run_turn,
+            on_progress=partial(record_progress, turn),
+            ensure_live=partial(ensure_attempt, turn),
+        )
     cid, tid, attempt = turn["conversation_id"], turn["id"], turn["attempt"]
     try:
         with connection() as c:

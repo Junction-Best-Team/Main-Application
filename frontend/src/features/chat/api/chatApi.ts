@@ -33,5 +33,15 @@ export const sendMessage = (
     body: JSON.stringify(request),
     signal,
   });
+export const cancelConversation = (
+  id: string,
+  csrfToken: string,
+  signal?: AbortSignal,
+) =>
+  api<Conversation>(`/api/conversations/${id}/cancel`, {
+    method: "POST",
+    headers: { "X-CSRF-Token": csrfToken },
+    signal,
+  });
 export const openConversationEvents = (id: string) =>
   new EventSource(`/api/conversations/${id}/events`);

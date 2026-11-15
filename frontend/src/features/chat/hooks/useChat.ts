@@ -14,6 +14,7 @@ import {
   getConversation,
   createConversation,
   sendMessage,
+  cancelConversation,
   openConversationEvents,
 } from "../api/chatApi";
 import { draftSignature, type ChatAttachment } from "../model/attachments";
@@ -29,6 +30,7 @@ export function useChat(conversationId?: string) {
   const [loading, setLoading] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const sendingRef = useRef(false);
+  const cancellingRef = useRef(false);
   const createKey = useRef(crypto.randomUUID());
   const messageViewport = useRef<HTMLDivElement>(null);
   const loadedConversation = useRef<string | null>(null);
@@ -256,6 +258,36 @@ export function useChat(conversationId?: string) {
     }
   }, [retryKey, retryText, retryAttachments, conversation?.busy, sending]);
   const busy = Boolean(sending || conversation?.busy);
+  const cancel = useCallback(async () => {
+    const id = activeConversation.current;
+    if (!id || !session || cancellingRef.current) return;
+    if (!sendingRef.current && !conversation?.busy) return;
+    cancellingRef.current = true;
+    try {
+      const result = await cancelConversation(id, session.csrf_token);
+      if (activeConversation.current !== id) return;
+      snapshotVersion.current++;
+      setConversation(result);
+    } catch (e) {
+      if (activeConversation.current === id) fail(e);
+    } finally {
+      cancellingRef.current = false;
+    }
+  }, [session, conversation?.busy, fail]);
+  useEffect(() => {
+    if (!busy || !conversationId) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (event.defaultPrevented) return;
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
+        return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      event.preventDefault();
+      void cancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [busy, conversationId, cancel]);
   return {
     conversation,
     text,
