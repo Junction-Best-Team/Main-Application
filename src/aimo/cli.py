@@ -151,6 +151,11 @@ def main():
     recipes.add_argument("--file", type=Path, required=True)
     recipes.add_argument("--expected-sha256", required=True)
     recipes.add_argument("--review-file", type=Path)
+    datasets = sub.add_parser(
+        "ingest-supplier-datasets", help="Explicit schema-owner import of Valio's static CSVs"
+    )
+    datasets.add_argument("--directory", type=Path, default=Path("data/supplier"))
+    datasets.add_argument("--download", action="store_true")
     evidence = sub.add_parser(
         "import-recipe-product-evidence", help="Privileged reviewed product annotations"
     )
@@ -239,6 +244,10 @@ def main():
 
         data = fixture_facts()
         print(json.dumps(publish(data, "authored-fixtures-v1", fingerprint(data))))
+    elif args.command == "ingest-supplier-datasets":
+        from aimo.supplier_datasets import import_datasets
+
+        print(json.dumps(import_datasets(args.directory, fetch=args.download)))
     elif args.command == "ingest-recipes":
         from aimo.recipe_import import ingest_recipes
 

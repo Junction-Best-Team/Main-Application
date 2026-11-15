@@ -18,6 +18,7 @@ exec .venv/bin/pytest -q -x --durations=5 \
   tests/test_isolation.py \
   tests/test_migrations.py \
   tests/test_runtime_permissions.py \
+  tests/test_supplier_datasets.py \
   tests/test_scheduler_flow.py \
   tests/test_readiness_migrations.py::test_a_fully_migrated_database_is_ready \
   tests/test_readiness_migrations.py::test_every_packaged_migration_from_008_has_a_probe_manifest_entry \

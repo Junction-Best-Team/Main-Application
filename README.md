@@ -82,6 +82,11 @@ Imports use Gemini Embedding 2 through the private `GEMINI_API_KEY`; uncached do
 
 For a quick authored-fixture catalog, use `uv run aimo fixture-catalog` instead of `ingest`. Set `EMBEDDING_BACKEND=fixture` in `.env` only when you also want deterministic fake embeddings; ingestion and serving must use the same setting. The default uses the real model, including for a small fixture catalog. The application always obtains commercial prices/stock from Valio; the authored supplier responses live only in the test harness. A fixture catalog does not provide prices.
 
+Valio's historical delivery reliability and product-group carbon CSVs have a separate,
+explicit [supplier dataset import](docs/supplier-datasets.md). They do not change prices,
+stock, embeddings or purchasing permissions. Importing stores the evidence for later
+product/API integration; this version does not display or rank products by those values.
+
 Run `docker compose --profile app up --build` after setup, then open [chat purchasing](http://localhost:8000/). Username: **buyer**. Read the generated `DEMO_BUYER_PASSWORD` privately from `.env`. Configure `GEMINI_API_KEY` privately for chat, semantic checks and search. The default chat model is `gemini-4-carbon`; `LLM_PROVIDER=google`, `GUARDRAIL_PROVIDER=google` and `EMBEDDING_BACKEND=google` select the native Google adapters. The browser never receives provider/API keys. `SECURE_COOKIES=false` is for localhost HTTP only. Hosted deployments require HTTPS and `SECURE_COOKIES=true`. See [operational logging](docs/logging.md) for request/turn correlation, safe error diagnostics, model settings and existing-deployment overrides.
 
 For frontend development, run `npm run dev --prefix frontend` and temporarily set `PUBLIC_BASE_URL=http://localhost:5173` for the backend. Vite proxies `/api`; production serves built assets from the separate frontend container, with Traefik routing API/SSE directly to FastAPI. The source of the browser's generated types is Python: `uv run python scripts/export_schema.py && npm run types --prefix frontend`.

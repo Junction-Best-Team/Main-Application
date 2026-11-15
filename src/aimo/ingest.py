@@ -139,12 +139,18 @@ def ingestion_lock():
 
 
 @operation("ingest.download")
-def download(path: Path) -> str:
+def download(path: Path, *, endpoint: str = DOWNLOAD_PATH) -> str:
     """Stream the supplier snapshot to `path` with bounded time, size and retries.
 
     Returns the SHA-256 of the written bytes. Callers compare it with an independently
     approved value; it is never itself evidence that the bytes are correct.
     """
+    if endpoint not in {
+        DOWNLOAD_PATH,
+        "/api/delivery-reliability/download",
+        "/api/carbon-footprint/download",
+    }:
+        raise CatalogError("DOWNLOAD_REJECTED", "Unsupported supplier download endpoint")
     cfg = settings()
     if not cfg.valio_aimo_api_key:
         raise CatalogError("CREDENTIALS_MISSING", "VALIO_AIMO_API_KEY is required for download")
@@ -152,7 +158,7 @@ def download(path: Path) -> str:
         raise CatalogError("DOWNLOAD_REJECTED", "The supplier base URL must use HTTPS")
     for attempt in range(1, cfg.catalog_download_attempts + 1):
         try:
-            return asyncio.run(_download_once(path, cfg))
+            return asyncio.run(_download_once(path, cfg, endpoint))
         except (_Retryable, TimeoutError, httpx.TransportError):
             if attempt == cfg.catalog_download_attempts:
                 raise CatalogError(
@@ -162,8 +168,8 @@ def download(path: Path) -> str:
     raise AssertionError("unreachable")  # pragma: no cover
 
 
-async def _download_once(path, cfg):
-    url = httpx.URL(cfg.valio_aimo_base_url + DOWNLOAD_PATH)
+async def _download_once(path, cfg, endpoint=DOWNLOAD_PATH):
+    url = httpx.URL(cfg.valio_aimo_base_url + endpoint)
     headers = {"X-API-Key": cfg.valio_aimo_api_key}
     # Cancel the actual network operation at the deadline, including incomplete
     # response headers. HTTPX's idle read timeout alone resets on each read.

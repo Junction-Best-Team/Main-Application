@@ -380,3 +380,11 @@ with Claude Code during the event.
 Supplier test fixtures reuse the existing authored `FixtureClient` responses, now in
 `tests/supplier_fixture.py`. They are installed only by pytest and the explicit offline
 API harness, and are excluded from application images. Production pricing has no fixture fallback.
+
+### Static supplier CSV import — 2026-11-15
+
+Reused the bounded authenticated catalog downloader and PostgreSQL import/grant
+conventions. Reliability and carbon files come from Valio's supplied challenge API;
+raw CSVs stay in ignored `data/`. Source hashes and semantics are documented in
+`docs/supplier-datasets.md`. Parser, concurrency and permission tests use authored CSVs
+and mocked HTTP only. No dependency or invented supplier value was added.
