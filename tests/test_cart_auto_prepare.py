@@ -77,6 +77,48 @@ def test_a_plan_the_model_only_published_is_prepared_for_tomorrow_in_helsinki(au
     assert d["draft_cart"] is None  # the exact basket replaces the display-only draft
 
 
+def test_background_success_keeps_one_focused_recipe_reply(auto):
+    narrative = "Here is your carbonara recipe estimate for 200 portions."
+    d = auto.turn(
+        "200 portions of carbonara", *MATCH,
+        tool_reply(call("publish_meal_plan", plan())), say(narrative),
+    )  # fmt: skip
+    basket = baskets(d)[0]
+    assert basket["policy_outcome"] not in ("denied", "needs_resolution")
+    assert d["messages"][-1]["text"] == narrative
+    assert d["messages"][-1]["proposal_id"] == basket["proposal_id"]
+    assert basket["order_id"] is None
+
+
+def test_background_blocker_is_brief_and_full_reasons_stay_on_the_basket(auto, monkeypatch):
+    lookup = auto.service.connector.lookup
+
+    def missing_prices(*args, **kwargs):
+        raw = lookup(*args, **kwargs)
+        raw["price"]["products"] = []
+        return raw
+
+    monkeypatch.setattr(auto.service.connector, "lookup", missing_prices)
+    narrative = "Here is your carbonara recipe estimate for 200 portions."
+    d = auto.turn(
+        "200 portions of carbonara", *MATCH,
+        tool_reply(call("publish_meal_plan", plan())), say(narrative),
+    )  # fmt: skip
+    basket = baskets(d)[0]
+    text = d["messages"][-1]["text"]
+    assert basket["policy_outcome"] == "needs_resolution" and basket["reasons"]
+    assert text == narrative + "\n\nThis basket needs checking before confirmation; see Your order."
+    assert "tax basis" not in text and "sales-unit" not in text
+    sent = auto.client.post(
+        f"/api/purchases/{basket['proposal_id']}/confirm", headers=auto.headers,
+        json={"proposal_id": basket["proposal_id"], "revision": basket["revision"],
+              "idempotency_key": str(uuid4())},
+    )  # fmt: skip
+    assert sent.status_code != 200
+    with connection() as c:
+        assert c.execute("SELECT count(*) AS n FROM orders").fetchone()["n"] == 0
+
+
 def test_an_edit_makes_a_new_basket_and_cancels_the_older_open_one(auto):
     first = baskets(auto.turn(*CUSTOMER_PLAN_TURN))[0]["proposal_id"]
     d = edited_turn(auto, more(EDIT))

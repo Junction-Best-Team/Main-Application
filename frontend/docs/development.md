@@ -29,7 +29,7 @@ there is a repeated visual/behavioral contract to maintain.
 ## Add or change an API call
 
 1. Change/confirm the Python contract with the backend owner.
-2. Export OpenAPI and regenerate types using the README commands.
+2. Export OpenAPI and regenerate types using the [root development guide](../../docs/development.md#update-the-browser-api-contract).
 3. Add the endpoint function in the owning feature's `api/` module. Use the
    shared `api<T>()` transport and generated input/output shapes.
 4. Pass the session CSRF token for writes. Keep private provider keys on the
