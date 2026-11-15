@@ -1171,11 +1171,6 @@ Add new findings below, under your track heading.
 - Date: 2026-11-15. Moved the expanded Recent list from the bottom of navigation into its Requests parent, before Schedule and Orders. Indentation and a bounded scrolling area keep long histories grouped and the following navigation reachable on desktop and mobile; pagination, errors and collapse controls stay together.
 - Verification: frontend `npm run check` and four focused fixture-backed Playwright checks passed at 1440/390px. Covered 31 requests, ordering/indentation, internal scrolling, collapse/reopen, loading older records, selection and mobile-menu dismissal; desktop/mobile screenshots inspected. No backend/schema changes, merge or deployment.
 
-### F-COMPOSER-COLOR-001: Match voice and send actions to the robot teal
-
-- Date: 2026-11-15. Replaced the shared composer's lime fill/navy icons with existing `primary-container` teal (`#005670`) and white icons, matching the owner's third-icon reference. Home and chat use the same style; hover uses existing deep navy.
-- Verification: frontend `npm run check` and 12 focused fixture-backed Playwright checks passed, covering voice/send switching, multiline/attachment submission, Ctrl+Enter, voice lifecycle and composer visibility across desktop/tablet/390/320px screens. Desktop Home, mobile Home send and mobile chat voice screenshots inspected. No backend/schema changes, merge or deployment.
-
 ### F-PAST-ORDERS-HEADER-001: Simplify the order-history header
 
 - Date: 2026-11-15. Implemented the owner's revised mockup: removed the customer-account badge, reduced title/vertical spacing, and aligned an outlined refresh button with the heading. Mobile stacks the heading and button. Removed the unused account placeholder.
@@ -1196,3 +1191,8 @@ Add new findings below, under your track heading.
 
 - Date: 2026-11-15. Added an Account trigger at the bottom of desktop navigation and the mobile drawer. Its upward-opening popup retains Account Settings, Memory and Sign out. Removed the desktop navbar and the mobile header account icon; the mobile navigation opener remains. Homepage height now fills the desktop viewport.
 - Verification: frontend `npm run check` passed. All 82 fixture-backed checks in `settings.spec.ts`, `preferences.spec.ts`, `session.spec.ts`, `chat.spec.ts` and `conversation.spec.ts` passed on a dedicated worktree server. After adding short-screen and mobile sign-out coverage, all 19 settings/session checks passed (85 distinct checks overall). Covered footer placement, upward popup bounds at 320–1440px and short heights, keyboard focus/Escape, dismissal, same-route mobile drawer closing, authenticated sign-out, chat scrolling and existing exact-revision purchasing controls. Desktop and short-mobile screenshots inspected. After incorporating the concurrent composer-style change from develop, `npm run check` and 17 focused navigation/composer/settings/session checks passed again. No live backend/provider/supplier calls, PR merge or deployment.
+
+### F-COMPOSER-COLOR-001: Match voice and send actions to the robot teal
+
+- Date: 2026-11-15. Replaced the shared composer's lime fill/navy icons with existing `primary-container` teal (`#005670`) and white icons, matching the owner's third-icon reference. Home and chat use the same style; hover uses existing deep navy.
+- Verification: frontend `npm run check` and 12 focused fixture-backed Playwright checks passed, covering voice/send switching, multiline/attachment submission, Ctrl+Enter, voice lifecycle and composer visibility across desktop/tablet/390/320px screens. Desktop Home, mobile Home send and mobile chat voice screenshots inspected. No backend/schema changes, merge or deployment.
