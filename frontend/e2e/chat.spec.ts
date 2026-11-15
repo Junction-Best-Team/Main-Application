@@ -819,6 +819,50 @@ test("Enter submits the composer when a draft is ready", async ({ page }) => {
   expect(posted).toBe(true);
 });
 
+test("composer clears as soon as send starts", async ({ page }) => {
+  await mockSession(page);
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: blankConversation }),
+  );
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(
+    `**/api/conversations/${conversationId}/messages`,
+    async (route) => {
+      await gate;
+      await route.fulfill({
+        json: {
+          ...blankConversation,
+          messages: [
+            {
+              id: 1,
+              role: "user",
+              text: "Carbonara for 200",
+              created_at: timestamp,
+            },
+            {
+              id: 2,
+              role: "assistant",
+              text: "Got it — what delivery date?",
+              created_at: timestamp,
+            },
+          ],
+        },
+      });
+    },
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  const composer = page.getByLabel("Continue the conversation");
+  await composer.fill("Carbonara for 200");
+  await page.getByRole("button", { name: "Send Order Request" }).click();
+  await expect(composer).toHaveValue("");
+  release();
+  await expect(page.getByText("Got it — what delivery date?")).toBeVisible();
+  await expect(composer).toHaveValue("");
+});
+
 test("purchase deep links survive sign-in and confirmation requires an explicit click", async ({
   page,
 }) => {
