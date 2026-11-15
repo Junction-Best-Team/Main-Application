@@ -1,6 +1,6 @@
 # Tests and CI procedure
 
-One command runs the checks locally. GitHub Actions (`.github/workflows/ci.yml`) selects backend lint/pytest/strict API sweep and frontend builds by changed paths on PRs into `develop` or `main`; frontend-only and documentation-only changes skip unrelated jobs, while manual runs check everything, including the full pytest suite. PRs run the small, explicit core-flow selection in `tests/pr-tests.sh` with fail-fast; exhaustive edge-case tests remain in the repository. Release PRs from this repository’s protected `develop` to `main` skip the repeated test/build/infra pass; source-branch validation and the CI gate remain. Merged pushes do not repeat these checks; the `CI gate` job waits for every applicable check. For a plain-language explanation of each test, see [TEST-GUIDE.md](TEST-GUIDE.md).
+One command runs the checks locally. GitHub Actions (`.github/workflows/ci.yml`) selects backend lint/pytest/strict API sweep and frontend builds by changed paths on PRs into `develop` or `main`; frontend-only and documentation-only changes skip unrelated jobs, while manual runs check everything, including the full pytest suite. PRs run the small, explicit core-flow selection in `tests/pr-tests.sh` with fail-fast; exhaustive edge-case tests remain in the repository. Release PRs from this repository’s protected `develop` to `main` run the backend job again with the full pytest suite (`tests/pr-tests.sh --full`) but skip the frontend and infrastructure passes; source-branch validation and the CI gate remain. Merged pushes do not repeat these checks; the `CI gate` job waits for every applicable check. For a plain-language explanation of each test, see [TEST-GUIDE.md](TEST-GUIDE.md).
 
 ```sh
 tests/pr-tests.sh                   # quick PR regressions (existing test DB + .venv required)
@@ -18,7 +18,7 @@ Needs Docker (PostgreSQL + pgvector, started by the script) and `uv`. The script
 | Layer | What it is | Needs | CI job in `ci.yml` | Local only |
 | --- | --- | --- | --- | :-: |
 | `ruff check src tests scripts` | Lint | nothing | Python lint and tests | |
-| `tests/pr-tests.sh` | Core app integration regressions against real PostgreSQL; manual CI uses `--full` | pgvector DB | Python lint and tests | |
+| `tests/pr-tests.sh` | Core app integration regressions against real PostgreSQL; the release PR (`develop` to `main`) and manual CI use `--full` | pgvector DB | Python lint and tests | |
 | Frontend `npm run build` | TypeScript check and production build | Node | Frontend types and build | |
 | `tests/sweep/run_sweep.py` | Black-box sweep of the buyer-facing API (sign-in, CSRF/Origin, conversations, purchases, approvals) against a running server; no LLM | server + DB | Python lint and tests | `--live` too |
 | `scripts/demo.py` | Demo helper rewritten for the chat product in PR #15 (not re-run here) | running server | | yes |

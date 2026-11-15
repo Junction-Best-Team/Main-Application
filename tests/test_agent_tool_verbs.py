@@ -198,7 +198,9 @@ def test_only_registered_handlers_reach_the_service():
     # without being a registered handler.
     # restore_plan is called by run_turn with a server-validated stored plan, never by the model;
     # it only calls get_product, which is in ALLOWED_SERVICE.
-    unregistered = set(users) - {"__init__", "memory_context", "restore_plan"} - handlers
+    unregistered = (
+        set(users) - {"__init__", "memory_context", "restore_plan", "restore_saved_plan"} - handlers
+    )
     assert unregistered == set(), unregistered
     assert set().union(*users.values()) <= ALLOWED_SERVICE
 

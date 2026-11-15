@@ -1,6 +1,6 @@
 """Shared internal agent and authenticated conversation contracts."""
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -128,6 +128,59 @@ class ConversationCreate(Model):
     idempotency_key: str = Field(min_length=8, max_length=120)
 
 
+class CartPurchaseRequest(Model):
+    """Prepare the order from the conversation's cart without the assistant (a customer button)."""
+
+    delivery_date: date
+    destination: str = Field(min_length=1, max_length=120)
+    request_id: str = Field(
+        min_length=8,
+        max_length=120,
+        description="Idempotency key: one per button press, reused when the press is retried.",
+    )
+
+
+class CartNotIncluded(Model):
+    name: str
+    amount: str | None
+    unit: str
+    reason: Literal["no_product", "no_quantity", "removed"]
+
+
+class CartLineEdit(Model):
+    product_id: str = Field(min_length=1, max_length=40)
+    sales_quantity: int = Field(
+        strict=True,
+        ge=0,
+        le=100000,
+        description="Whole sales units (packs) of this product in the basket. 0 leaves the line out "
+        "of the basket but keeps the product in the cart, so a later value above 0 brings it back.",
+    )
+
+
+class CartEditRequest(Model):
+    """The customer's own quantity edit on the card: only products already in the cart."""
+
+    request_id: str = Field(
+        min_length=8,
+        max_length=120,
+        description="Idempotency key: one per edit, reused when the edit is retried.",
+    )
+    lines: list[CartLineEdit] = Field(min_length=1, max_length=MAX_BASKET_LINES)
+
+    @model_validator(mode="after")
+    def one_edit_per_product(self):
+        ids = [line.product_id for line in self.lines]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Send one edit per product")
+        return self
+
+
+class CartPurchaseResponse(Model):
+    proposal: ProposalResponse
+    not_included: list[CartNotIncluded]
+
+
 class ChatMessage(Model):
     id: int
     role: Literal["user", "assistant", "system"]  # system: written by the scheduler, not a person
@@ -200,6 +253,10 @@ class ConversationResponse(ConversationSummary):
     busy: bool = False
     activity: ChatActivity | None = None
     draft_cart: DraftCart | None = None
+    cart_editable: bool = False
+    cart_edit_reason: str | None = Field(
+        default=None, description="Why the number controls on the card are disabled, if they are."
+    )
     retry_message: RetryMessage | None = None
 
 

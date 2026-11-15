@@ -14,6 +14,7 @@ from aimo import approval_workflow as workflow
 from aimo import (
     auth,
     cancellations,
+    cart_purchase,
     clock,
     conversations,
     errors,
@@ -27,6 +28,9 @@ from aimo import (
 )
 from aimo.attachments import raw_file
 from aimo.chat_schemas import (
+    CartEditRequest,
+    CartPurchaseRequest,
+    CartPurchaseResponse,
     ConversationCreate,
     ConversationList,
     ConversationResponse,
@@ -426,6 +430,37 @@ def create_app(service=None):
                 "Cache-Control": "no-store",
             },
         )
+
+    @app.post(
+        "/api/conversations/{conversation_id}/prepare-from-cart",
+        response_model=CartPurchaseResponse,
+    )
+    def conversation_prepare_from_cart(
+        conversation_id: UUID,
+        body: CartPurchaseRequest,
+        request: Request,
+        identity=Depends(buyer),
+    ):
+        """Prepare the cart's matched items as a basket, without the assistant. Nothing is ordered:
+        the customer still confirms the exact revision."""
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+        return cart_purchase.prepare_from_cart(identity, conversation_id, body, service)
+
+    @app.put("/api/conversations/{conversation_id}/cart", response_model=CartPurchaseResponse)
+    def conversation_edit_cart(
+        conversation_id: UUID,
+        body: CartEditRequest,
+        request: Request,
+        identity=Depends(buyer),
+    ):
+        """The customer's own pack-count edit of products already in the cart; prepares the basket
+        again. Nothing is ordered."""
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+        return cart_purchase.edit_cart(identity, conversation_id, body, service)
 
     @app.post("/api/conversations/{conversation_id}/messages", response_model=ConversationResponse)
     def send_message(
