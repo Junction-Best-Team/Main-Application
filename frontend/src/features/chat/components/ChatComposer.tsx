@@ -6,7 +6,9 @@ import {
   type KeyboardEvent,
 } from "react";
 import { DESIGN_PLACEHOLDERS as MOCK } from "../../../shared/lib/designPlaceholders";
+import { Icon } from "../../../shared/components/DesignPrimitives";
 import { useVoiceMode } from "../hooks/useVoiceMode";
+import type { QueuedMessage } from "../hooks/useChat";
 import { AttachmentCards } from "./AttachmentCards";
 import {
   attachmentSize,
@@ -26,6 +28,11 @@ type Props = {
   attachments: ChatAttachment[];
   onAttachmentsChange: (files: ChatAttachment[]) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  /** Messages typed while Aimo answers. Passing a queue lets Enter queue while busy. */
+  queue?: QueuedMessage[];
+  queuePaused?: boolean;
+  onRemoveQueued?: (id: string) => void;
+  onSendQueued?: (id: string) => void;
 };
 export function ChatComposer({
   appearance = "chat",
@@ -37,9 +44,20 @@ export function ChatComposer({
   attachments,
   onAttachmentsChange,
   onSubmit,
+  queue,
+  queuePaused,
+  onRemoveQueued,
+  onSendQueued,
 }: Props) {
   const home = appearance === "home";
   const voice = useVoiceMode();
+  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  // Keep the caret in the composer: on arrival, after sending and after queue
+  // actions. Touch screens skip the mount focus so the keyboard does not pop up.
+  const focusInput = () => inputRef.current?.focus({ preventScroll: true });
+  useEffect(() => {
+    if (window.matchMedia?.("(pointer: fine)").matches) focusInput();
+  }, []);
   const readingRef = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
@@ -52,7 +70,11 @@ export function ChatComposer({
   const [fileError, setFileError] = useState("");
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
-  const disabled = Boolean(busy) || voice.active;
+  const canQueue = Boolean(queue && conversationId);
+  // The input stays enabled while Aimo answers so focus never leaves it; only
+  // sending is held back when there is no queue to put the message in.
+  const disabled = voice.active;
+  const sendBlocked = Boolean(busy) && !canQueue;
   // One action at a time: send while there is a draft or attachment, otherwise voice.
   const hasDraft = Boolean(text.trim()) || attachments.length > 0;
   function handleComposerKeyDown(
@@ -66,7 +88,7 @@ export function ChatComposer({
     )
       return;
     event.preventDefault();
-    if (!hasDraft || disabled || reading) return;
+    if (!hasDraft || disabled || sendBlocked || reading) return;
     event.currentTarget.form?.requestSubmit();
   }
   async function addFiles(files: File[]) {
@@ -85,15 +107,18 @@ export function ChatComposer({
     }
   }
   const sendLabel = busy
-    ? "Working…"
+    ? canQueue
+      ? "Queue message"
+      : "Working…"
     : error && (text || attachments.length)
       ? "Retry request"
       : "Send Order Request";
   return (
     <form
       onSubmit={(event) => {
-        if (reading || disabled) event.preventDefault();
+        if (reading || disabled || sendBlocked) event.preventDefault();
         else void onSubmit(event);
+        focusInput();
       }}
       onDragEnter={(event) => {
         if (event.dataTransfer.types.includes("Files")) {
@@ -131,6 +156,62 @@ export function ChatComposer({
       aria-label="Chat message"
       className={`${home ? "home-composer" : "m-space-md mt-0 flex shrink-0 flex-col gap-space-md rounded-xl bg-surface-container-low p-space-sm shadow-sm"} ${dragging ? "outline-2 outline-primary-container" : ""}`}
     >
+      {queue && queue.length > 0 && (
+        <ol aria-label="Queued messages" className="flex flex-col gap-space-xs">
+          {queue.map((item, index) => (
+            <li
+              key={item.id}
+              className="flex min-w-0 items-center gap-space-sm rounded-lg border border-border-subtle bg-surface-pure py-space-xs pl-space-sm pr-space-xs text-body-sm text-on-surface"
+            >
+              <Icon
+                name="schedule"
+                className="shrink-0 text-[18px] text-secondary"
+              />
+              <span className="min-w-0 flex-1 truncate" title={item.text}>
+                {item.text ||
+                  `${item.attachments.length} file${item.attachments.length === 1 ? "" : "s"}`}
+              </span>
+              {item.text && item.attachments.length > 0 && (
+                <span className="shrink-0 text-label-sm text-secondary">
+                  +{item.attachments.length} file
+                  {item.attachments.length === 1 ? "" : "s"}
+                </span>
+              )}
+              {queuePaused && !busy && index === 0 && onSendQueued && (
+                <button
+                  type="button"
+                  aria-label={`Send queued message: ${item.text || "attachments"}`}
+                  title="Send now"
+                  onClick={() => {
+                    onSendQueued(item.id);
+                    focusInput();
+                  }}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-primary-container transition-colors hover:bg-surface-container-low focus-visible:outline-2 focus-visible:outline-primary-container"
+                >
+                  <Icon name="arrow_upward" className="text-[18px]" />
+                </button>
+              )}
+              <button
+                type="button"
+                aria-label={`Remove queued message: ${item.text || "attachments"}`}
+                title="Remove from queue"
+                onClick={() => {
+                  onRemoveQueued?.(item.id);
+                  focusInput();
+                }}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-secondary transition-colors hover:bg-surface-container-low hover:text-on-surface focus-visible:outline-2 focus-visible:outline-primary-container"
+              >
+                <Icon name="close" className="text-[18px]" />
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+      {queuePaused && !busy && Boolean(queue?.length) && (
+        <p className="px-space-sm text-label-sm text-secondary" role="status">
+          Queue paused. Send the next message when you are ready.
+        </p>
+      )}
       <AttachmentCards
         files={attachments.map((file) => ({
           ...file,
@@ -150,7 +231,9 @@ export function ChatComposer({
       )}
       {busy && !home && (
         <p className="px-space-sm text-label-sm text-secondary" role="status">
-          Press Escape to cancel
+          {canQueue
+            ? "Press Escape to cancel · Enter queues your next message"
+            : "Press Escape to cancel"}
         </p>
       )}
       {(dragging || reading) && (
@@ -172,6 +255,9 @@ export function ChatComposer({
         </label>
         {home ? (
           <textarea
+            ref={(element) => {
+              inputRef.current = element;
+            }}
             id="purchase-message"
             value={text}
             onChange={(event) => onTextChange(event.target.value)}
@@ -184,6 +270,9 @@ export function ChatComposer({
           />
         ) : (
           <input
+            ref={(element) => {
+              inputRef.current = element;
+            }}
             id="purchase-message"
             type="text"
             value={text}
@@ -207,7 +296,7 @@ export function ChatComposer({
               type="submit"
               aria-label={sendLabel}
               title={sendLabel}
-              disabled={disabled || reading}
+              disabled={disabled || sendBlocked || reading}
               className={composerActionClassName}
             >
               <svg
@@ -230,7 +319,7 @@ export function ChatComposer({
               aria-label="Start voice mode"
               title="Start voice mode"
               onClick={() => voice.start(conversationId)}
-              disabled={disabled || reading}
+              disabled={disabled || Boolean(busy) || reading}
               className={composerActionClassName}
             >
               <svg

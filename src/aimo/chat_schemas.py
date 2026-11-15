@@ -213,6 +213,9 @@ class ChatActivityEvent(Model):
         "complete", "error",
     ]
     label: str = Field(min_length=1, max_length=80)
+    # Completed tools only: a server-built summary of the validated result (recipe or product
+    # names, counts, mock basket totals). Never model arguments, prose or provider errors.
+    detail: str | None = Field(default=None, max_length=160)
 
 
 class ChatActivity(Model):

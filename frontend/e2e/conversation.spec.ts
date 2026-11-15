@@ -348,7 +348,9 @@ test("busy affordance shows while a turn is in flight", async ({ page }) => {
       .getByRole("status")
       .filter({ hasText: "Sending your request" }),
   ).toBeVisible();
-  await expect(page.getByLabel("Continue the conversation")).toBeDisabled();
+  // The composer stays usable (and focused) so the next message can be queued.
+  await expect(page.getByLabel("Continue the conversation")).toBeEnabled();
+  await expect(page.getByLabel("Continue the conversation")).toBeFocused();
   // Voice mode is disabled while a turn runs (send only shows with a draft).
   await expect(
     page.getByRole("button", { name: "Start voice mode" }),

@@ -509,6 +509,15 @@ for (const [width, height] of [
     await mockSession(page);
     let saved: Conversation = {
       ...blankConversation,
+      activity: {
+        turn_id: "scroll-test-turn",
+        state: "complete",
+        events: [
+          { sequence: 1, kind: "started", label: "Checking your request" },
+          { sequence: 2, kind: "thinking", label: "Thinking" },
+          { sequence: 3, kind: "complete", label: "Finished" },
+        ],
+      },
       messages: Array.from({ length: 30 }, (_, index) => ({
         id: index + 1,
         role: index % 2 ? "assistant" : "user",
@@ -577,6 +586,16 @@ for (const [width, height] of [
     await expect(
       page.getByText("Send Order Request", { exact: true }),
     ).toHaveCount(0);
+    // Screen-reader-only activity labels must stay inside the history's scroll
+    // boundary, including while its completed steps are expanded.
+    await page.getByRole("button", { name: /Show 2 steps/ }).click();
+    await expect(
+      page.getByRole("list", { name: "Activity steps" }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollHeight),
+    ).toBeLessThanOrEqual(height);
+    await page.getByRole("button", { name: /Hide 2 steps/ }).click();
     await history.hover();
     await page.mouse.wheel(0, -100000);
     await expect.poll(() => history.evaluate((node) => node.scrollTop)).toBe(0);
@@ -861,6 +880,73 @@ test("composer clears as soon as send starts", async ({ page }) => {
   release();
   await expect(page.getByText("Got it — what delivery date?")).toBeVisible();
   await expect(composer).toHaveValue("");
+});
+
+test("messages typed while Aimo works queue above the composer and send in order", async ({
+  page,
+}) => {
+  await mockSession(page);
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: blankConversation }),
+  );
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const posted: string[] = [];
+  await page.route(
+    `**/api/conversations/${conversationId}/messages`,
+    async (route) => {
+      const text = route.request().postDataJSON().text as string;
+      posted.push(text);
+      if (posted.length === 1) await gate;
+      await route.fulfill({
+        json: {
+          ...blankConversation,
+          messages: posted.map((message, index) => ({
+            id: index + 1,
+            role: "user",
+            text: message,
+            created_at: timestamp,
+          })),
+        },
+      });
+    },
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  const composer = page.getByLabel("Continue the conversation");
+  await expect(composer).toBeFocused();
+  await composer.fill("Carbonara for 200");
+  await composer.press("Enter");
+  await expect(composer).toHaveValue("");
+  await expect(composer).toBeFocused();
+
+  await composer.fill("Add a vegetarian option");
+  await composer.press("Enter");
+  await composer.fill("Never mind this one");
+  await page.getByRole("button", { name: "Queue message" }).click();
+  await expect(composer).toBeFocused();
+  const queued = page.getByRole("list", { name: "Queued messages" });
+  await expect(queued.getByRole("listitem")).toContainText([
+    "Add a vegetarian option",
+    "Never mind this one",
+  ]);
+
+  await page
+    .getByRole("button", {
+      name: "Remove queued message: Never mind this one",
+    })
+    .click();
+  await expect(composer).toBeFocused();
+  await expect(queued.getByRole("listitem")).toHaveCount(1);
+  expect(posted).toEqual(["Carbonara for 200"]);
+
+  release();
+  await expect(queued).toHaveCount(0);
+  await expect
+    .poll(() => posted)
+    .toEqual(["Carbonara for 200", "Add a vegetarian option"]);
+  await expect(composer).toBeFocused();
 });
 
 test("purchase deep links survive sign-in and confirmation requires an explicit click", async ({

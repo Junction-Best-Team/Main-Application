@@ -836,6 +836,8 @@ export interface components {
             kind: "started" | "thinking" | "tool_started" | "tool_completed" | "tool_failed" | "reviewing" | "complete" | "error";
             /** Label */
             label: string;
+            /** Detail */
+            detail?: string | null;
         };
         /** ChatMessage */
         ChatMessage: {
