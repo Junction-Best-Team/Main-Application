@@ -14,9 +14,6 @@ export const FILE_TYPES: Record<string, string> = {
   jpeg: "image/jpeg",
   webp: "image/webp",
 };
-export const ACCEPT_FILES = Object.keys(FILE_TYPES)
-  .map((ext) => `.${ext}`)
-  .join(",");
 export const attachmentSize = (file: ChatAttachment) =>
   Math.floor((file.data.length * 3) / 4) -
   (file.data.endsWith("==") ? 2 : file.data.endsWith("=") ? 1 : 0);

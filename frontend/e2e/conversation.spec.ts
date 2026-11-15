@@ -349,9 +349,9 @@ test("busy affordance shows while a turn is in flight", async ({ page }) => {
       .filter({ hasText: "Sending your request" }),
   ).toBeVisible();
   await expect(page.getByLabel("Continue the conversation")).toBeDisabled();
-  // The composer's buttons are disabled while a turn runs (the send button only shows with text).
+  // Voice mode is disabled while a turn runs (send only shows with a draft).
   await expect(
-    page.getByRole("button", { name: "Attach file" }),
+    page.getByRole("button", { name: "Start voice mode" }),
   ).toBeDisabled();
 });
 
