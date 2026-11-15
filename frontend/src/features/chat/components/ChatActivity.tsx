@@ -111,9 +111,12 @@ function ActivityGlyph() {
 export function ChatActivity({
   activity,
   busy,
+  stopped = false,
 }: {
   activity: Conversation["activity"];
   busy: boolean;
+  /** The customer stopped this turn: a calm "Stopped", not an error. */
+  stopped?: boolean;
 }) {
   const listId = useId();
   const listRef = useRef<HTMLOListElement>(null);
@@ -138,9 +141,10 @@ export function ChatActivity({
     const list = listRef.current;
     if (busy && open && list) list.scrollTop = list.scrollHeight;
   }, [busy, open, stepCount]);
-  if (!busy && !steps.length) return null;
-  const last = current?.events?.at(-1);
   const failed = !busy && current?.state === "failed";
+  const wasStopped = failed && stopped;
+  if (!busy && !steps.length && !wasStopped) return null;
+  const last = current?.events?.at(-1);
   const title = busy
     ? current?.state === "queued"
       ? "Waiting to start…"
@@ -153,9 +157,11 @@ export function ChatActivity({
             : current
               ? "Preparing your response…"
               : "Sending your request…"
-    : failed
-      ? "Response interrupted"
-      : "Finished";
+    : wasStopped
+      ? "Stopped"
+      : failed
+        ? "Response interrupted"
+        : "Finished";
 
   const header = (
     <>
@@ -163,7 +169,13 @@ export function ChatActivity({
         <ActivityGlyph />
       ) : (
         <Icon
-          name={failed ? "error_outline" : "check_circle"}
+          name={
+            wasStopped
+              ? "stop_circle"
+              : failed
+                ? "error_outline"
+                : "check_circle"
+          }
           className="shrink-0 text-[16px] text-wholesale-teal"
         />
       )}
@@ -219,9 +231,12 @@ export function ChatActivity({
                 name={
                   step.status === "complete"
                     ? "check"
-                    : step.status === "failed" || step.status === "interrupted"
-                      ? "error_outline"
-                      : "progress_activity"
+                    : step.status === "interrupted" && wasStopped
+                      ? "stop_circle"
+                      : step.status === "failed" ||
+                          step.status === "interrupted"
+                        ? "error_outline"
+                        : "progress_activity"
                 }
                 className={`shrink-0 text-[16px] ${step.status === "running" ? "activity-spin text-wholesale-teal" : ""}`}
               />
@@ -236,7 +251,9 @@ export function ChatActivity({
                     {step.status === "failed"
                       ? "Couldn't finish"
                       : step.status === "interrupted"
-                        ? "Interrupted"
+                        ? wasStopped
+                          ? "Stopped"
+                          : "Interrupted"
                         : "In progress"}
                   </span>
                 )}

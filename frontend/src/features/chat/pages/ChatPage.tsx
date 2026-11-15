@@ -43,6 +43,7 @@ export function ChatPage() {
     send,
     cancel,
     busy,
+    stopped,
     queue,
     queuePaused,
     removeQueued,
@@ -130,6 +131,7 @@ export function ChatPage() {
             <ConversationTranscript
               conversation={conversation}
               busy={busy}
+              stopped={stopped}
               onReviewBasket={(proposalId) =>
                 setSelection({ conversationId, proposalId })
               }

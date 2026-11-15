@@ -80,6 +80,10 @@ export function useChat(
   const routeConversation = useRef(conversationId);
   routeConversation.current = conversationId;
   const pendingStorage = `aimo-pending-${session?.buyer_id}-${conversationId}`;
+  // Retry keys of turns the customer stopped. The API records a stop like any
+  // unfinished turn, so remember it here (per tab) to show "Stopped", not an error.
+  const stoppedStorage = `aimo-stopped-${session?.buyer_id}-${conversationId}`;
+  const [stoppedKeys, setStoppedKeys] = useState<string[]>([]);
   const fail = useCallback(
     (e: unknown) => {
       if (e instanceof ApiError && e.status === 401) setSession(null);
@@ -116,6 +120,13 @@ export function useChat(
     setConversation(null);
     loadedConversation.current = null;
     setError(noError);
+    try {
+      setStoppedKeys(
+        JSON.parse(sessionStorage.getItem(stoppedStorage) || "[]"),
+      );
+    } catch {
+      setStoppedKeys([]);
+    }
     setAttachments([]);
     setQueue([]);
     const saved =
@@ -136,7 +147,7 @@ export function useChat(
     if (!conversationId) return;
     setLoading(true);
     void load().finally(() => setLoading(false));
-  }, [conversationId, load, pendingStorage]);
+  }, [conversationId, load, pendingStorage, stoppedStorage]);
   useRefresh(load, Boolean(conversationId));
   useEffect(() => {
     const recoverVoice = (event: Event) => {
@@ -375,6 +386,9 @@ export function useChat(
   const retryAttachments = JSON.stringify(
     conversation?.retry_message?.attachments ?? [],
   );
+  const stopped = Boolean(
+    retryKey && stoppedKeys.includes(retryKey) && !conversation?.busy,
+  );
   useEffect(() => {
     if (retryText !== undefined && !conversation?.busy && !sending) {
       // The composer stays usable while Aimo works; never replace a draft
@@ -383,12 +397,21 @@ export function useChat(
         setText(retryText);
         setAttachments(JSON.parse(retryAttachments));
       }
-      setError({
-        message:
-          "The response was interrupted. Retry this request to continue.",
-      });
+      // A turn the customer stopped shows "Stopped" in its activity instead.
+      if (!stopped)
+        setError({
+          message:
+            "The response was interrupted. Retry this request to continue.",
+        });
     }
-  }, [retryKey, retryText, retryAttachments, conversation?.busy, sending]);
+  }, [
+    retryKey,
+    retryText,
+    retryAttachments,
+    conversation?.busy,
+    sending,
+    stopped,
+  ]);
   const busy = Boolean(sending || conversation?.busy);
   // Send the next queued message once the turn ends. An error or interrupted
   // turn pauses the queue so the customer decides what happens next.
@@ -419,6 +442,20 @@ export function useChat(
     try {
       const result = await cancelConversation(id, session.csrf_token);
       if (activeConversation.current !== id) return;
+      const key = result.retry_message?.idempotency_key;
+      if (key)
+        setStoppedKeys((current) => {
+          const next = [...current.filter((k) => k !== key), key].slice(-20);
+          try {
+            sessionStorage.setItem(
+              `aimo-stopped-${session.buyer_id}-${id}`,
+              JSON.stringify(next),
+            );
+          } catch {
+            /* Without storage the stop still shows until the page reloads. */
+          }
+          return next;
+        });
       snapshotVersion.current++;
       setConversation(result);
     } catch (e) {
@@ -455,6 +492,7 @@ export function useChat(
     send,
     cancel,
     busy,
+    stopped,
     queue,
     queuePaused,
     removeQueued,

@@ -11,10 +11,13 @@ import { SystemMessage } from "./SystemMessage";
 export function ConversationTranscript({
   conversation,
   busy,
+  stopped = false,
   onReviewBasket,
 }: {
   conversation: Conversation | null;
   busy: boolean;
+  /** The customer stopped the latest turn. */
+  stopped?: boolean;
   /** Opens the existing Overview / purchase handoff for this proposal. */
   onReviewBasket?: (proposalId: string) => void;
 }) {
@@ -101,7 +104,11 @@ export function ConversationTranscript({
           </article>
         ),
       )}
-      <ChatActivity activity={conversation?.activity} busy={busy} />
+      <ChatActivity
+        activity={conversation?.activity}
+        busy={busy}
+        stopped={stopped}
+      />
     </div>
   );
 }
