@@ -26,7 +26,7 @@ The frontend runs as UID 101, API/worker as UID 10001, with non-root restricted
 security contexts and read-only roots. Requests total 650m CPU and 1,248 MiB
 memory for the three apps; limits are starting budgets, not measured capacity.
 Each backend process has its own bounded database pool; budget connections when
-scaling replicas. Worker shutdown allows 120 seconds for its bounded current turn.
+scaling replicas. Worker shutdown allows 240 seconds for its bounded current turn.
 
 Traefik routes API/SSE directly to the API Service. Keep buffering disabled and
 retain `X-Accel-Buffering: no`. SSE sends stored snapshots/heartbeats every two

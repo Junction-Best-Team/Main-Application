@@ -2,6 +2,7 @@
 
 import json
 from copy import deepcopy
+from threading import Barrier
 
 import pytest
 import test_agent as fixtures
@@ -188,6 +189,61 @@ def test_empty_recipe_search_does_not_read_a_recipe(identity):
     service.get_recipe = lambda *_: pytest.fail("Empty searches have no detail to read")
     result = ToolSession(identity, service).invoke("search_recipes", '{"query":"missing recipe"}')
     assert result["recipes"] == [] and result["best_match"] is None
+
+
+def test_recipe_discovery_requires_visible_plan_before_catalog_work(identity):
+    service = FakeService(identity)
+    service.search_recipes = lambda *_: {
+        "recipes": [], "rerank_status": "disabled", "note": "Authored empty corpus."
+    }
+    session = ToolSession(identity, service)
+    assert "search_products" in {d["function"]["name"] for d in session.definitions}
+    session.invoke("search_recipes", '{"query":"carbonara"}')
+    tools = {d["function"]["name"] for d in session.definitions}
+    assert "draft_recipe" in tools and "scale_recipe" in tools
+    assert "search_products" not in tools and "get_product" not in tools
+    with pytest.raises(Problem) as error:
+        session.invoke("get_product", '{"product_id":"pasta"}')
+    assert error.value.code == "MEAL_PLAN_REQUIRED" and not service.calls
+    session.invoke("draft_recipe", json.dumps(estimate()))
+    tools = {d["function"]["name"] for d in session.definitions}
+    assert "search_products" in tools and "draft_recipe" not in tools
+    session.invoke("get_product", '{"product_id":"pasta"}')
+    assert len(service.calls) == 1 and session.plan.portions == 200
+
+
+def test_mixed_recipe_and_catalog_calls_cannot_search_before_draft(
+    monkeypatch, config, identity
+):
+    service = FakeService(identity)
+    barrier = Barrier(2)
+    original_read = service.get_product
+
+    def read(who, product_id):
+        barrier.wait(timeout=2)  # Catalog reads must still overlap after recipe discovery.
+        return original_read(who, product_id)
+
+    service.get_product = read
+    service.search_recipes = lambda *_: {
+        "recipes": [], "rerank_status": "disabled", "note": "Authored empty corpus."
+    }
+    seen = scripted(monkeypatch, [
+        reply(call("search_recipes", {"query": "carbonara"}),
+              call("get_product", {"product_id": "pasta"})),
+        reply(call("draft_recipe", estimate())),
+        reply(call("get_product", {"product_id": "pasta"}),
+              call("get_product", {"product_id": "eggs"})),
+        reply(text="I planned a carbonara estimate for 200 portions."),
+    ])
+    result = agent.run_turn(identity, fixtures.HISTORY, service)
+    outputs = [json.loads(m["content"]) for m in seen[1]["messages"] if m["role"] == "tool"]
+    assert outputs[-1]["error"]["code"] == "MEAL_PLAN_REQUIRED"
+    assert sorted(c[2] for c in service.calls) == ["eggs", "pasta"]
+    assert result.meal_plan.portions == 200 and result.proposal_id is None
+    assert "Publish the quantity plan now" in seen[1]["messages"][0]["content"]
+    assert "7 unmatched ingredients" in seen[2]["messages"][0]["content"]
+    assert "search_products" not in {d["function"]["name"] for d in seen[1]["tools"]}
+    assert "search_products" in {d["function"]["name"] for d in seen[2]["tools"]}
 
 
 def test_search_best_match_scales_without_another_detail_tool_or_policy_lookup(
