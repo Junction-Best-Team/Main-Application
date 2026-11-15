@@ -183,8 +183,8 @@ _INTENT = (
     "of what the customer wants."
 )
 _DEFAULTS_NOTE = (
-    " `server_defaults` are the product's own default date and destination (tomorrow and the "
-    "policy's first destination); they are not statements by the customer."
+    " `server_defaults` are the product's own default date and destination (Helsinki today plus "
+    "three days and the policy's first destination); they are not statements by the customer."
 )
 PREPARE_CHECKS = {
     "destination_and_date": Check(

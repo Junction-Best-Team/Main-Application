@@ -187,13 +187,15 @@ PHASE_HIDDEN = {
     "open": frozenset(),
 }
 PHASE_ONE_QUESTION = (
-    "Ask at most ONE plain question, and only when a named dish has no recipe you can find or the guest "
-    "count cannot be assumed; otherwise do not ask."
+    "Ask at most one refining question per reply for a still-missing core fact (ingredients/quantities, "
+    "delivery date or destination). A full recipe is optional once ingredients are known; keep useful "
+    "shopping work moving while you ask."
 )
 CONTINUE_PHASE_NOTICE = (
     "Server notice, not from the customer: the basket is not prepared yet. Call prepare_order now with "
-    "the existing plan. The delivery date and destination are never asked: they default to tomorrow and "
-    "the policy's destination, and the customer edits them on the card."
+    "the existing plan. Use Helsinki today plus three days and the policy's destination when the "
+    "customer has not named them; you may still ask a brief refining question about date or destination "
+    "while preparing. The customer can also edit them on the card."
 )
 
 

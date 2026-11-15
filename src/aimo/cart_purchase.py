@@ -7,7 +7,7 @@ the lines, fresh supplier price and stock, policy, ceiling, the customer's state
 is the normal proposal. It authorizes nothing: the customer still confirms the exact revision.
 """
 
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from fractions import Fraction
 from math import floor
@@ -323,7 +323,7 @@ def refresh_basket(identity, cid, body, service):
 
     The cart is the stored plan (it holds the customer's own pack counts), so amounts are never
     changed here; the date and destination are the expired basket's (a date that has since passed
-    falls back to tomorrow, as everywhere). The supplier is asked again for price and stock and every
+    falls back to the default lead date, as everywhere). The supplier is asked again for price and stock and every
     purchasing check runs as usual. Nothing is confirmed or ordered. A retry with the same
     request_id gets the same basket."""
     if identity["role"] != "approver":
@@ -464,16 +464,16 @@ def plan_signature(plan_data):
 
 
 def terms_for(latest, policy):
-    """Delivery date and destination of the latest basket, else tomorrow (Helsinki) and the first
-    destination of the buyer's policy. A date that has passed falls back to tomorrow."""
-    tomorrow = scheduler.helsinki_today() + timedelta(days=1)
+    """Delivery date and destination of the latest basket, else Helsinki today plus three days and
+    the first destination of the buyer's policy. A date that has passed falls back to that default."""
+    earliest = scheduler.default_delivery_date()
     if latest:
         try:
             when = date.fromisoformat(latest["request"]["delivery_date"])
         except (KeyError, ValueError, TypeError):
-            when = tomorrow
-        return max(when, tomorrow), latest["request"]["destination"]
-    return tomorrow, (policy["rules"].get("destinations") or ["hotel-helsinki"])[0]
+            when = earliest
+        return max(when, earliest), latest["request"]["destination"]
+    return earliest, (policy["rules"].get("destinations") or ["hotel-helsinki"])[0]
 
 
 def same_basket(latest, lines, when, destination):

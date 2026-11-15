@@ -3,9 +3,9 @@
 
 Every rule the owner/coordinator named: edits create new baskets (older open ones are cancelled in the
 same transaction, never one with an order), no basket without a change, an empty cart has none, a
-failure never fails the turn, date and destination come from the latest basket (else tomorrow Helsinki and
-the first policy destination), the model's own prepare in a turn suppresses it, and a stale confirm gets
-"revised" with nothing ordered.
+failure never fails the turn, date and destination come from the latest basket (else Helsinki today plus
+three days and the first policy destination), the model's own prepare in a turn suppresses it, and a
+stale confirm gets "revised" with nothing ordered.
 """
 
 import threading
@@ -30,7 +30,7 @@ from aimo import scheduler
 from aimo.config import settings
 from aimo.db import Problem, connection
 
-TOMORROW = str(scheduler.helsinki_today() + timedelta(days=1))
+DEFAULT_DAY = str(scheduler.default_delivery_date())
 
 
 @pytest.fixture
@@ -70,7 +70,7 @@ def test_a_plan_the_model_only_published_is_prepared_for_tomorrow_in_helsinki(au
     d = auto.turn(*CUSTOMER_PLAN_TURN)
     assert len(baskets(d)) == 1 and not shows_draft_panel(d)
     basket = baskets(d)[0]
-    assert basket["request"]["delivery_date"] == TOMORROW
+    assert basket["request"]["delivery_date"] == DEFAULT_DAY
     assert basket["request"]["destination"] == "hotel-helsinki"
     assert basket["order_id"] is None  # prepared only; the customer confirms
     assert d["messages"][-1]["proposal_id"] == basket["proposal_id"]
@@ -189,7 +189,7 @@ def test_a_failure_never_fails_the_turn_and_the_draft_stays(auto, monkeypatch):
 
 def test_date_and_destination_come_from_the_latest_basket(auto):
     first = auto.turn(*CUSTOMER_PLAN_TURN)
-    assert baskets(first)[0]["request"]["delivery_date"] == TOMORROW
+    assert baskets(first)[0]["request"]["delivery_date"] == DEFAULT_DAY
     later = str(date.today() + timedelta(days=6))
     sent = auto.client.post(
         f"/api/conversations/{auto.turn.cid}/prepare-from-cart", headers=auto.headers,
@@ -320,7 +320,7 @@ def prepared_for(amounts):
     from test_draft_cart_purchase import prepared
 
     p = prepared()
-    p["delivery_date"] = TOMORROW
+    p["delivery_date"] = DEFAULT_DAY
     for line, amount in zip(p["lines"], amounts):
         line["amount"] = amount
     return p

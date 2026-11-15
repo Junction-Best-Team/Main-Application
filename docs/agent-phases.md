@@ -14,10 +14,10 @@ round (`phase` in the round's log context) and as `phase_path` in `agent.turn.en
 
 | Phase | Derived when | Hidden tools | Guidance (one line) |
 |---|---|---|---|
-| understand | no plan, no recipe discovery | match_ingredient(s), prepare_order | classify (advice / shopping / card edit / status); at most ONE plain question, only for an unknown dish or an unassumable guest count |
-| recipe | recipe discovery started, no plan | match_ingredient(s), prepare_order (catalog tools wait for the plan, as before) | publish the quantity plan now (scale_recipe / draft_recipe) |
+| understand | no plan, no recipe discovery | match_ingredient(s), prepare_order | classify (advice / shopping / card edit / status); at most one refining question for missing core facts (ingredients/date/destination); recipe optional once ingredients are known |
+| recipe | recipe discovery started, no plan | match_ingredient(s), prepare_order (catalog tools wait for the plan, as before) | publish the quantity plan now (free-form ingredients, scale_recipe or draft_recipe) |
 | match | a plan with unmatched items | scale_recipe, draft_recipe, prepare_order | N unmatched: search together, save the matches in ONE call |
-| prepare | plan complete, no basket, and the plan changed this turn, or a buy request, or a card edit | recipe and match tools, get_recipe_plan | call prepare_order now; delivery date and destination are never asked (tomorrow and the policy's destination; the card edits them) |
+| prepare | plan complete, no basket, and the plan changed this turn, or a buy request, or a card edit | recipe and match tools, get_recipe_plan | call prepare_order now; defaults are Helsinki today plus three days and the policy destination (card-editable); chat may still refine them |
 | finish | a basket was prepared this turn | everything except get_proposal/get_order, tools the customer names, the policy when blocked | 2 to 4 sentences: what was prepared, what is not included, review the exact basket and press Confirm purchase; never "purchased" |
 | advice | an explicit advice cue | prepare_order, publish_meal_plan | answer directly, no basket |
 | open | an unchanged plan from an earlier turn and no request | nothing | answer; tools only if needed |
@@ -28,8 +28,9 @@ Advice wins when unsure; nothing is ever confirmed, so a wrong "shopping" costs 
 Phases are enforced by the turn runner only. A hidden tool is not shown and, if called, answers
 `TOOL_NOT_ALLOWED` naming the phase and the available tools (after the arguments were validated; parallel
 reads are checked by the parent before dispatch). **Two phase refusals widen the restrictions for the rest of
-the turn**, so a wrongly derived phase is never a dead end. The prompt paragraph that sent the model to ask
-for delivery details is replaced while phases are on. No new tool, no migration, no contract change.
+the turn**, so a wrongly derived phase is never a dead end. Core chat facts stay ingredients, date and
+destination; defaults fill open date/destination while refining questions remain allowed. No new tool,
+no migration, no contract change.
 
 ## Continuation
 With phases on, a complete plan without a basket is continued ONCE even without a buy word and even when the

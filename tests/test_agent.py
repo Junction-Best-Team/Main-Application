@@ -601,7 +601,7 @@ def test_matched_recipe_reply_does_not_gain_a_disclaimer_or_checkout_script(iden
     assert result.meal_plan == MealPlan(**meal())
     assert result.proposal_id is None
     guidance = session.execution_guidance(30)
-    assert "Do not ask for delivery details." in guidance
+    assert "Helsinki today plus three days" in guidance or "Phase: PREPARE" in guidance
     assert "ask only for missing delivery details" not in guidance
 
 
@@ -613,14 +613,15 @@ def test_provider_knows_whether_delivery_defaults_are_staged_automatically(
     seen = scripted(monkeypatch, [reply(text="What would you like to cook?")])
     agent.run_turn(identity, HISTORY, FakeService(identity))
     instructions = seen[0]["messages"][0]["content"]
-    assert "Do not ask for a delivery date, destination, location or address in chat." in instructions
+    assert "Core purchase facts are the ingredients" in instructions
+    assert "Helsinki today plus three days" in instructions
     assert "normally in one or two short sentences" in instructions
     assert "Use at most three short sentences" not in instructions
-    assert "ask only for missing delivery details" not in instructions
+    assert "Do not ask for a delivery date, destination, location or address in chat." not in instructions
     assert ("Automatic cart preparation is enabled" in instructions) == automatic
     if automatic:
-        assert "tomorrow in Helsinki" in instructions
-        assert "Do not say you are waiting for delivery details" in instructions
+        assert "Keep asking refining questions" in instructions
+        assert "Do not refuse price checks or preparation only because date or destination is still open" in instructions
 
 
 @pytest.mark.parametrize(

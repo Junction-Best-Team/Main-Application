@@ -933,16 +933,19 @@ class ToolSession:
         return frozenset(set(self.registry) - keep)
 
     def default_terms(self):
-        """The product's own defaults for a basket: tomorrow (Helsinki) and the first destination of the
-        buyer's policy; None when the policy cannot be read. Used by the prepare check, never to buy."""
+        """The product's own defaults for a basket: Helsinki today plus three days and the first
+        destination of the buyer's policy; None when the policy cannot be read. Used by the prepare
+        check, never to buy."""
         try:
             if self.policy_destinations is None:
                 rules = self.checked(PolicyResponse, self.service.get_purchase_policy(self.identity))
                 self.policy_destinations = rules["rules"].get("destinations") or []
             if not self.policy_destinations:
                 return None
-            tomorrow = datetime.now(ZoneInfo("Europe/Helsinki")).date() + timedelta(days=1)
-            return {"delivery_date": tomorrow.isoformat(), "destination": self.policy_destinations[0]}
+            from aimo import scheduler as delivery_defaults
+
+            when = delivery_defaults.default_delivery_date()
+            return {"delivery_date": when.isoformat(), "destination": self.policy_destinations[0]}
         except Exception:
             return None
 
@@ -1001,7 +1004,8 @@ class ToolSession:
         if self.plan_complete and not self.brief_blocks_build and agent_stop.wants_to_buy(self.customer_texts):
             return (
                 "The customer asked to buy and the plan is complete: call prepare_order now with "
-                "the existing plan, or ask for the one missing fact (delivery date or destination)."
+                "the existing plan, using Helsinki today plus three days and the policy destination "
+                "when those are still open; you may also ask one brief refining question about them."
             )
         return ""
 
@@ -1064,15 +1068,17 @@ class ToolSession:
         head = f"Phase: {phase.upper()}. "
         if phase == "understand":
             return head + (
-                "Classify the message: advice (answer directly, no basket), a shopping request (find "
-                "the recipe or the products now), a card edit or a status question. "
+                "Classify the message: advice (answer directly, no basket), a shopping request "
+                "(ingredients or products are enough to build; a full recipe is optional), a card "
+                "edit or a status question. "
                 + agent_stop.PHASE_ONE_QUESTION
             )
         if phase == "recipe":
             return head + (
-                "If the customer has chosen the meal and portions, publish its quantity plan using "
-                "scale_recipe for a complete saved recipe or draft_recipe for a labelled estimate. "
-                "Catalog tools become available after the plan is published."
+                "If ingredients and quantities are already known, publish that free-form plan now. "
+                "Otherwise, when the meal and portions are chosen, publish using scale_recipe for a "
+                "complete saved recipe or draft_recipe for a labelled estimate. Catalog tools become "
+                "available after the plan is published."
             )
         if phase == "match":
             left = [
@@ -1094,17 +1100,18 @@ class ToolSession:
         if phase == "prepare" and self.auto_cart:
             return head + (
                 "The plan is complete. The server stages the basket right after your reply, with the "
-                "last basket's delivery terms or tomorrow and the buyer's first approved destination "
-                "(editable in Your order): do not call prepare_order. Do not ask for delivery details. "
-                "Reply in 2 to 4 sentences about the plan; the card shows the basket. Never say "
-                "purchased or ordered."
+                "last basket's delivery terms or Helsinki today plus three days and the buyer's first "
+                "approved destination (editable in Your order): do not call prepare_order. You may ask "
+                "one brief refining question about date or destination while saying which defaults "
+                "were used. Reply in 2 to 4 sentences about the plan; the card shows the basket. "
+                "Never say purchased or ordered."
             )
         if phase == "prepare":
             return head + (
                 "The plan is complete. Call prepare_order now with the existing plan, in this turn. "
-                "The delivery date and destination are never asked: use tomorrow's date and the first "
-                "destination of the policy (get_purchase_policy) unless the customer named others; the "
-                "customer edits them on the card. Do not ask for them and do not stop at the plan."
+                "Use Helsinki today plus three days and the first destination of the policy "
+                "(get_purchase_policy) unless the customer named others; you may ask one brief "
+                "refining question about date or destination while preparing. Do not stop at the plan."
             )
         if phase == "finish":
             if self.proposal and self.proposal.get("policy_outcome") in ("denied", "needs_resolution"):
@@ -1160,8 +1167,9 @@ class ToolSession:
                 "for a free-form plan, or match_ingredients for a saved recipe. Do not "
                 "call draft_recipe again to change the recipe basis in this turn. "
                 "Do not research alternatives for an already suitable selection. Once matched, "
-                "finish basket checks using existing delivery terms, or leave preparation "
-                "to the automatic cart workflow or Your order. Do not ask for delivery details."
+                "finish basket checks using existing delivery terms or Helsinki today plus three "
+                "days and the policy destination; you may ask one brief refining question about "
+                "date or destination while work continues."
             )
         return clock
 
