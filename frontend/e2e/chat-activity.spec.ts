@@ -74,8 +74,12 @@ for (const width of [1440, 390, 320]) {
     await expect(activity.getByRole("status")).toHaveText(
       "Searching recipes · Done",
     );
-    await expect(activity.getByText("1 step", { exact: true })).toBeVisible();
-    await expect(activity.locator("details")).not.toHaveAttribute("open");
+    const toggle = activity.getByRole("button");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(toggle).toContainText("Show 2 steps");
+    await expect(
+      activity.getByRole("list", { name: "Activity steps" }),
+    ).toHaveCount(0);
     await page.screenshot({
       path: testInfo.outputPath(`latest-step-${width}.png`),
     });
@@ -83,9 +87,9 @@ for (const width of [1440, 390, 320]) {
       page.getByRole("button", { name: "Start voice mode" }),
     ).toBeDisabled();
     await expect(page.getByLabel("Continue the conversation")).toBeDisabled();
-    await expect(activity.locator(".activity-sweep")).toHaveCSS(
+    await expect(activity.locator(".activity-dot").first()).toHaveCSS(
       "animation-name",
-      "activity-sweep",
+      "activity-dot",
     );
     snapshot = {
       ...snapshot,
@@ -95,16 +99,20 @@ for (const width of [1440, 390, 320]) {
     await expect(activity.getByRole("status")).toHaveText(
       "Checking a product…",
     );
-    await activity.getByText("3 steps", { exact: true }).click();
-    const steps = activity.getByRole("list", { name: "Tool activity" });
-    await expect(steps.getByRole("listitem")).toHaveCount(3);
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const steps = activity.getByRole("list", { name: "Activity steps" });
+    await expect(steps.getByRole("listitem")).toHaveCount(4);
     await expect(steps.getByRole("listitem").nth(0)).toContainText(
-      "Searching recipes · Done",
+      "Checking your request · Done",
     );
     await expect(steps.getByRole("listitem").nth(1)).toContainText(
-      "Searching products · Couldn't finish",
+      "Searching recipes · Done",
     );
     await expect(steps.getByRole("listitem").nth(2)).toContainText(
+      "Searching products · Couldn't finish",
+    );
+    await expect(steps.getByRole("listitem").nth(3)).toContainText(
       "Checking a product · In progress",
     );
     expect(
@@ -120,11 +128,11 @@ for (const width of [1440, 390, 320]) {
     await expect(activity.getByRole("status")).toHaveText(
       "Checking a product…",
     );
-    await activity.getByText("3 steps", { exact: true }).click();
-    await expect(steps.getByRole("listitem")).toHaveCount(3);
+    await toggle.click();
+    await expect(steps.getByRole("listitem")).toHaveCount(4);
     if (width === 320) {
       await page.emulateMedia({ reducedMotion: "reduce" });
-      await expect(activity.locator(".activity-sweep")).toHaveCSS(
+      await expect(activity.locator(".activity-dot").first()).toHaveCSS(
         "animation-name",
         "none",
       );
@@ -161,14 +169,14 @@ for (const width of [1440, 390, 320]) {
     await expect(
       page.getByText("What delivery date?", { exact: true }),
     ).toBeVisible();
-    await expect(activity.locator(".activity-sweep")).toHaveCount(0);
-    await expect(steps.getByRole("listitem").nth(2)).toContainText(
+    await expect(activity.locator(".activity-dot")).toHaveCount(0);
+    await expect(steps.getByRole("listitem").nth(3)).toContainText(
       "Checking a product · Done",
     );
     await page.reload();
     await expect(activity.getByRole("status")).toHaveText("Finished");
-    await activity.getByText("3 steps", { exact: true }).click();
-    await expect(steps.getByRole("listitem")).toHaveCount(3);
+    await toggle.click();
+    await expect(steps.getByRole("listitem")).toHaveCount(4);
   });
 }
 
@@ -233,9 +241,10 @@ test("activity header follows the latest saved step between tool calls", async (
   await expect(activity.getByRole("status")).toHaveText(
     "Checking prices and availability · Done",
   );
-  await activity.getByText("15 steps", { exact: true }).click();
+  const toggle = activity.getByRole("button", { name: /Show 15 steps/ });
+  await toggle.click();
   await expect(activity.getByRole("listitem")).toHaveCount(15);
-  await activity.getByText("15 steps", { exact: true }).click();
+  await activity.getByRole("button", { name: /Hide 15 steps/ }).click();
   await expect(activity.getByRole("list")).not.toBeVisible();
 
   events = [
@@ -286,9 +295,9 @@ test("interrupted activity stops moving and never marks an unfinished tool done"
   await page.goto(`/conversations/${cid}`);
   const activity = page.getByRole("region", { name: "Aimo activity" });
   await expect(activity.getByRole("status")).toHaveText("Response interrupted");
-  await expect(activity.locator(".activity-sweep")).toHaveCount(0);
-  await activity.getByText("1 step", { exact: true }).click();
-  await expect(activity.getByRole("listitem")).toContainText(
+  await expect(activity.locator(".activity-dot")).toHaveCount(0);
+  await activity.getByRole("button", { name: /Show 2 steps/ }).click();
+  await expect(activity.getByRole("listitem").nth(1)).toContainText(
     "Searching recipes · Interrupted",
   );
   await expect(
@@ -361,4 +370,65 @@ test("a delayed queued response cannot replace streamed tool activity", async ({
   await response;
   await expect(page.getByLabel("Continue the conversation")).toHaveValue("");
   await expect(status).toHaveText("Checking a product…");
+});
+
+test("model stages show as one ticking line that expands to every step", async ({
+  page,
+}) => {
+  await page.route("**/api/session", (route) =>
+    route.fulfill({
+      json: { username: "buyer", buyer_id: "demo-hotel", csrf_token: "test" },
+    }),
+  );
+  await page.route("**/api/conversations?*", (route) =>
+    route.fulfill({ json: { items: [], next_offset: null } }),
+  );
+  let events: ActivityEvent = [
+    initialEvents[0],
+    { sequence: 2, kind: "thinking", label: "Thinking" },
+  ];
+  await page.route(`**/api/conversations/${cid}`, (route) =>
+    route.fulfill({
+      json: {
+        id: cid,
+        title: "Hey",
+        created_at: timestamp,
+        updated_at: timestamp,
+        messages: [],
+        purchases: [],
+        cart_editable: false,
+        busy: true,
+        activity: { turn_id: tid, state: "running", events },
+      } satisfies Conversation,
+    }),
+  );
+  await page.route(`**/api/conversations/${cid}/events`, (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: ": heartbeat\n\n",
+    }),
+  );
+  await page.goto(`/conversations/${cid}`);
+  const activity = page.getByRole("region", { name: "Aimo activity" });
+  await expect(activity.getByRole("status")).toHaveText("Thinking…");
+  const toggle = activity.getByRole("button");
+  // The elapsed time is this browser's own clock, not a predicted completion time.
+  await expect(toggle.locator(".tabular-nums")).toHaveText(/^[12]s$/, {
+    timeout: 3_000,
+  });
+
+  events = [
+    ...(events ?? []),
+    { sequence: 3, kind: "reviewing", label: "Reviewing the reply" },
+  ];
+  await page.reload();
+  await expect(activity.getByRole("status")).toHaveText("Reviewing the reply…");
+  await toggle.click();
+  const steps = activity.getByRole("list", { name: "Activity steps" });
+  await expect(steps.getByRole("listitem")).toHaveText([
+    /Checking your request/,
+    /Thinking/,
+    /Reviewing the reply · In progress/,
+  ]);
+  await expect(steps.locator(".activity-spin")).toHaveCount(1);
 });

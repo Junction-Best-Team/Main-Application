@@ -833,7 +833,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "started" | "tool_started" | "tool_completed" | "tool_failed" | "complete" | "error";
+            kind: "started" | "thinking" | "tool_started" | "tool_completed" | "tool_failed" | "reviewing" | "complete" | "error";
             /** Label */
             label: string;
         };

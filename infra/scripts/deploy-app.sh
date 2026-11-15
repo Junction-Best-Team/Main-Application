@@ -35,6 +35,13 @@ done
 # rollout recovery trap or changing any application image.
 python3 "$(dirname "$0")/migrate-release.py"
 
+# Releases only swap images, so pod-template additions made in Terraform after the
+# one-time cutover never reach the cluster. Keep the API's voice-token key reference
+# (identical to infra/kubernetes/main.tf) on every release. Strategic merge matches the
+# container and variable by name, so an existing reference is a no-op; optional keeps
+# the API starting when the worker Secret has no Google key.
+kubectl -n "$NAMESPACE" patch deployment aimo-api --type=strategic -p '{"spec":{"template":{"spec":{"containers":[{"name":"api","env":[{"name":"GEMINI_API_KEY","valueFrom":{"secretKeyRef":{"name":"aimo-worker-runtime","key":"GEMINI_API_KEY","optional":true}}}]}]}}}}'
+
 rollback() {
   trap - ERR
   echo 'Release failed; restoring all changed components.' >&2

@@ -1201,3 +1201,8 @@ Add new findings below, under your track heading.
 
 - Date: 2026-11-15. Replaced the shared composer's lime fill/navy icons with existing `primary-container` teal (`#005670`) and white icons, matching the owner's third-icon reference. Home and chat use the same style; hover uses existing deep navy.
 - Verification: frontend `npm run check` and 12 focused fixture-backed Playwright checks passed, covering voice/send switching, multiline/attachment submission, Ctrl+Enter, voice lifecycle and composer visibility across desktop/tablet/390/320px screens. Desktop Home, mobile Home send and mobile chat voice screenshots inspected. No backend/schema changes, merge or deployment.
+
+### F-VOICE-DEPLOY-001: Deployed voice returned 503 because the API lacked the Google key
+
+- Date: 2026-11-15. The demo cluster's `aimo-api` logs showed `VOICE_UNAVAILABLE` 503s in 20–55 ms (before any Google call). The worker Secret holds `GEMINI_API_KEY`, but the live API Deployment had no `env` at all: PR #164 added the optional `secretKeyRef` only in Terraform, and releases (`deploy-app.sh`) change only images. Every release now applies the same reference with an idempotent strategic-merge patch after migrations and before the image updates.
+- Verification: read-only cluster inspection (pods, Secret key names without values, Deployment spec, API logs). `infra/tests` (51 tests) passed, including a new check of the patch payload and its order. The live cluster is unchanged until the next `develop` → `main` release or a manual patch; no merge, Terraform apply or deployment.
