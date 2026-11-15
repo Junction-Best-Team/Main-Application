@@ -419,13 +419,17 @@ test("Escape while busy posts cancel and restores retry recovery", async ({
   await page.goto(`/conversations/${conversationId}`);
   await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("alert")).toHaveText(
-    "The response was interrupted. Retry this request to continue.",
-  );
+  // A stop is the customer's choice: a calm "Stopped", not an error banner.
+  await expect(
+    page.getByRole("region", { name: "Aimo activity" }).getByRole("status"),
+  ).toHaveText("Stopped");
+  await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.getByLabel("Continue the conversation")).toHaveValue(
     retry.text,
   );
-  await expect(page.getByRole("button", { name: "Retry" })).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: "Send Order Request" }),
+  ).toBeEnabled();
   expect(cancelHeaders?.["x-csrf-token"]).toBe(session.csrf_token);
 });
 
@@ -489,13 +493,17 @@ test("Stop button while busy posts the same cancel path as Escape", async ({
 
   await page.goto(`/conversations/${conversationId}`);
   await page.getByRole("button", { name: "Stop" }).click();
-  await expect(page.getByRole("alert")).toHaveText(
-    "The response was interrupted. Retry this request to continue.",
-  );
+  // A stop is the customer's choice: a calm "Stopped", not an error banner.
+  await expect(
+    page.getByRole("region", { name: "Aimo activity" }).getByRole("status"),
+  ).toHaveText("Stopped");
+  await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.getByLabel("Continue the conversation")).toHaveValue(
     retry.text,
   );
-  await expect(page.getByRole("button", { name: "Retry" })).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: "Send Order Request" }),
+  ).toBeEnabled();
   expect(cancelHeaders?.["x-csrf-token"]).toBe(session.csrf_token);
 });
 

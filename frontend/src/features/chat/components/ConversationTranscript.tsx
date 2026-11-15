@@ -4,17 +4,19 @@ import { dateTime } from "../../../shared/lib/format";
 import { ChatActivity } from "./ChatActivity";
 import { MealPlanCard } from "./MealPlanCard";
 import { RecipeIllustration } from "./RecipeIllustration";
-import { SkuCards } from "./SkuCards";
 import { MessageMarkdown } from "./MessageMarkdown";
 import { AttachmentCards } from "./AttachmentCards";
 import { SystemMessage } from "./SystemMessage";
 export function ConversationTranscript({
   conversation,
   busy,
+  stopped = false,
   onReviewBasket,
 }: {
   conversation: Conversation | null;
   busy: boolean;
+  /** The customer stopped the latest turn. */
+  stopped?: boolean;
   /** Opens the existing Overview / purchase handoff for this proposal. */
   onReviewBasket?: (proposalId: string) => void;
 }) {
@@ -84,11 +86,6 @@ export function ConversationTranscript({
                 )}
                 {message.proposal_id && (
                   <>
-                    <SkuCards
-                      proposal={conversation.purchases.find(
-                        (p) => p.proposal_id === message.proposal_id,
-                      )}
-                    />
                     {onReviewBasket &&
                       conversation.purchases.some(
                         (p) =>
@@ -116,7 +113,11 @@ export function ConversationTranscript({
           </article>
         ),
       )}
-      <ChatActivity activity={conversation?.activity} busy={busy} />
+      <ChatActivity
+        activity={conversation?.activity}
+        busy={busy}
+        stopped={stopped}
+      />
     </div>
   );
 }
