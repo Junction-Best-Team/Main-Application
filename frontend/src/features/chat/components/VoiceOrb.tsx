@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { VoiceState } from "../model/liveVoice";
 import { useVoiceMode } from "../hooks/useVoiceMode";
 
 const phaseLabel = {
@@ -8,6 +9,9 @@ const phaseLabel = {
   speaking: "Aimo is speaking",
   error: "Voice stopped",
 };
+
+/** Just past the 380ms voice-orb-leave animation, so it reaches zero. */
+const LEAVE_MS = 400;
 
 const disclosure =
   "AI-generated voice. Audio is sent to Google while voice is on. Review and confirm baskets on screen.";
@@ -21,6 +25,23 @@ export function VoiceOrb({ orb: showOrb = true }: { orb?: boolean }) {
   const voice = useVoiceMode();
   const orb = useRef<HTMLButtonElement | null>(null);
   const { state, active, level } = voice;
+  // When voice ends, keep drawing the last orb briefly so it can shrink away.
+  const [last, setLast] = useState<VoiceState | null>(state);
+  const [leaving, setLeaving] = useState(false);
+  if (state && state !== last) {
+    setLast(state);
+    setLeaving(false);
+  } else if (!state && last && !leaving) {
+    setLeaving(true);
+  }
+  useEffect(() => {
+    if (!leaving) return;
+    const timer = setTimeout(() => {
+      setLast(null);
+      setLeaving(false);
+    }, LEAVE_MS);
+    return () => clearTimeout(timer);
+  }, [leaving]);
 
   // Follow speech loudness without re-rendering: write a smoothed CSS variable.
   useEffect(() => {
@@ -40,7 +61,23 @@ export function VoiceOrb({ orb: showOrb = true }: { orb?: boolean }) {
     };
   }, [active, level]);
 
-  if (!state) return null;
+  if (!state) {
+    if (!showOrb || !last || !leaving) return null;
+    // Decorative only: the "Voice mode" region is already gone for assistive tech.
+    return (
+      <div aria-hidden="true" className="voice-orb-dock" data-leaving="">
+        <div className="voice-orb-wrap" data-phase={last.phase}>
+          <div
+            className="voice-orb"
+            data-phase={last.phase}
+            data-muted={last.muted || undefined}
+          >
+            <OrbLayers />
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (!showOrb)
     return (
       <section aria-label="Voice mode">
@@ -77,16 +114,7 @@ export function VoiceOrb({ orb: showOrb = true }: { orb?: boolean }) {
           disabled={!active}
           onClick={() => voice.setMuted(!state.muted)}
         >
-          <span aria-hidden="true" className="voice-orb-layer voice-orb-base" />
-          <span
-            aria-hidden="true"
-            className="voice-orb-layer voice-orb-cloud"
-          />
-          <span aria-hidden="true" className="voice-orb-layer voice-orb-mist" />
-          <span
-            aria-hidden="true"
-            className="voice-orb-layer voice-orb-glint"
-          />
+          <OrbLayers />
         </button>
       </div>
       {/* Just the nebula on screen; the phase stays readable to screen readers. */}
@@ -101,5 +129,16 @@ export function VoiceOrb({ orb: showOrb = true }: { orb?: boolean }) {
         state.phase === "connecting" && <p className="sr-only">{disclosure}</p>
       )}
     </section>
+  );
+}
+
+function OrbLayers() {
+  return (
+    <>
+      <span aria-hidden="true" className="voice-orb-layer voice-orb-base" />
+      <span aria-hidden="true" className="voice-orb-layer voice-orb-cloud" />
+      <span aria-hidden="true" className="voice-orb-layer voice-orb-mist" />
+      <span aria-hidden="true" className="voice-orb-layer voice-orb-glint" />
+    </>
   );
 }

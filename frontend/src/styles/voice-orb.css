@@ -178,6 +178,25 @@
   backdrop-filter: blur(10px);
 }
 
+/* Ending voice: a small swell, then the nebula collapses to nothing. */
+.voice-orb-dock[data-leaving] .voice-orb-wrap {
+  animation: voice-orb-leave 380ms linear forwards;
+}
+
+@keyframes voice-orb-leave {
+  0% {
+    scale: 1;
+    animation-timing-function: ease-out;
+  }
+  22% {
+    scale: 1.08;
+    animation-timing-function: cubic-bezier(0.45, 0, 0.8, 0.4);
+  }
+  100% {
+    scale: 0;
+  }
+}
+
 @keyframes voice-orb-spin {
   to {
     rotate: 360deg;
