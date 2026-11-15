@@ -5,7 +5,7 @@ authority and run in every mode. **Semantic checks** (Gemini Decision 1) add a
 probabilistic opinion at five boundaries. A model "allow" never grants permission,
 skips validation or replaces the customer's confirmation.
 
-Code: `src/aimo/guardrails.py` (policy `guard-2026-11-14.5`), wired in
+Code: `src/aimo/guardrails.py` (policy `guard-2026-11-14.7`), wired in
 `agent.py`, `agent_tools.py` and `conversations.py`.
 
 ## What is deterministic
