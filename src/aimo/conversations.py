@@ -494,7 +494,7 @@ def restorable_plan(messages, live_cart=False):
     if (
         not isinstance(items, list)
         or not items
-        or any(not isinstance(i, dict) or not i.get("product_id") for i in items)
+        or any(not isinstance(i, dict) for i in items)
     ):
         return None
     return plan  # a partly matched plan too: unmatched items stay unmatched and are not bought
