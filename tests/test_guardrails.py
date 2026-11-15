@@ -28,6 +28,7 @@ from test_agent import (
 )
 
 from aimo import agent, guardrails
+from aimo.chat_draft import TRUSTED_PLAN_TITLE, trusted_plan
 from aimo.chat_schemas import MealPlan
 from aimo.db import Problem
 from aimo.guardrails import (
@@ -36,6 +37,7 @@ from aimo.guardrails import (
     OUT_OF_SCOPE_REPLY,
     OUTPUT_FALLBACK,
     OUTPUT_FALLBACK_EMPTY,
+    OUTPUT_FALLBACK_KEPT_ORDER,
     PREPARE_NOTICE,
     WITHHELD,
     DecisionsClient,
@@ -571,7 +573,9 @@ def test_tool_error_described_as_success_is_not_shown(monkeypatch, config, guard
         ],
     )
     result = run(identity, service)
-    assert result.text == OUTPUT_FALLBACK and result.meal_plan is None
+    # The false success claim is never shown; the checked order lines are kept for a new basket.
+    assert "successfully" not in result.text and result.text.startswith(OUTPUT_FALLBACK_KEPT_ORDER)
+    assert result.proposal_id is None and result.meal_plan.title == TRUSTED_PLAN_TITLE
     records = [s["state"] for s in seen if s["boundary"] == "assistant_output"][-1]
     assert {"tool": "prepare_order", "outcome": "SUPPLIER_DOWN"} in records["trusted_records"][
         "tool_calls"
@@ -1059,6 +1063,65 @@ def test_meal_plan_text_is_reviewed_and_withheld_when_rejected(
     assert result.text.startswith(OUTPUT_FALLBACK)
     assert result.proposal_id == service.saved["proposal_id"]  # trusted basket survives
     assert not any(e.draft for e in events)  # No unreviewed free-form plan in streaming drafts.
+
+
+class CatalogNames(FakeService):
+    """Catalog names differ from the model's ingredient names, so the projection is visible."""
+
+    def get_product(self, identity, product_id):
+        result = super().get_product(identity, product_id)
+        return result | {"name": f"Valio {product_id} 1 kg"}
+
+
+@pytest.mark.parametrize("check", ["unsupported_commercial", "false_status", "unsupported_dietary"])
+def test_unapproved_plan_keeps_only_its_checked_order_lines(
+    monkeypatch, config, guard, identity, check
+):
+    # Production 2026-11-15: an uncertain price/stock review of a 1 L milk plan withheld the
+    # plan, so no basket was prepared and the customer could not buy anything.
+    fake_jev(monkeypatch, **{check: 0.5})
+    plan = poisoned_plan()
+    plan["title"] = "Paid order, in stock, egg-free"
+    plan["ingredients"][0]["name"] = "pasta (EUR 1 and 500 in stock)"
+    plan["ingredients"][0]["reason"] = "Cheapest in stock"
+    scripted(
+        monkeypatch,
+        [
+            reply(*[call("get_product", {"product_id": n}) for n in NAMES]),
+            reply(call("publish_meal_plan", plan)),
+            reply(text="All 500 units are in stock for EUR 1."),
+        ],
+    )
+    service = CatalogNames(identity)
+    result = run(identity, service)
+    kept = result.meal_plan
+    assert result.text.startswith(OUTPUT_FALLBACK_KEPT_ORDER) and "500" not in result.text
+    assert result.proposal_id is None
+    assert kept.title == TRUSTED_PLAN_TITLE and kept.notes == [] and kept.instructions == []
+    assert [i.name for i in kept.ingredients] == [f"Valio {n} 1 kg" for n in NAMES]
+    assert [(i.product_id, i.amount, i.unit) for i in kept.ingredients] == [
+        (i["product_id"], i["amount"], i["unit"]) for i in meal()["ingredients"]
+    ]
+    shown = kept.model_dump_json()
+    model_text = [plan["title"], plan["notes"][0], plan["ingredients"][0]["name"], "Cheapest"]
+    assert all(text not in shown for text in model_text) and "paid" not in shown.lower()
+    assert not any(c[0] == "prepare" for c in service.calls)  # the server prepares it later
+
+
+def test_kept_order_lines_skip_products_the_server_did_not_read(identity):
+    session = SimpleNamespace(
+        plan=MealPlan(**meal()), restored=None, products={"pasta": {"name": "Valio pasta"}}
+    )
+    kept = trusted_plan(session)
+    assert [(i.name, i.product_id) for i in kept.ingredients] == [("Valio pasta", "pasta")]
+    session.products = {}
+    assert trusted_plan(session) is None
+    session.products = {"pasta": {"name": "Valio pasta"}}
+    session.restored = session.plan  # a plan restored from an earlier turn is not re-published
+    assert trusted_plan(session) is None
+    session.restored = None
+    session.plan = session.plan.model_copy(update={"recipe_plan_id": "saved-plan"})
+    assert trusted_plan(session) is None  # saved recipe plans keep their own review path
 
 
 def test_plan_without_basket_is_withheld_and_shadow_keeps_it(monkeypatch, config, guard, identity):

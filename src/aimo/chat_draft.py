@@ -3,7 +3,44 @@
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
-from aimo.chat_schemas import DraftCart, DraftCartItem, DraftPrice
+from aimo.chat_schemas import DraftCart, DraftCartItem, DraftPrice, Ingredient, MealPlan
+
+TRUSTED_PLAN_TITLE = "Your order"
+
+
+def trusted_plan(session):
+    """The purchasable facts of a plan whose model-written wording failed output review.
+
+    Keeps only lines whose product the server read this turn, named by the catalog name, with the
+    amount and unit the basket math uses. Every model-written text (title, notes, instructions,
+    ingredient names, reasons, rejected choices) is dropped, so nothing unreviewed is shown; the
+    basket built from it still passes every deterministic purchase rule and needs confirmation.
+    Saved recipe plans and plans restored from an earlier turn are not projected."""
+    plan = session.plan
+    if not plan or plan.recipe_plan_id or plan == session.restored:
+        return None
+    items = []
+    for item in plan.ingredients:
+        name = session.products.get(item.product_id, {}).get("name") if item.product_id else None
+        if not isinstance(name, str) or not name.strip():
+            continue
+        items.append(
+            Ingredient(
+                name=name.strip()[:240],
+                amount=item.amount,
+                unit=item.unit,
+                product_id=item.product_id,
+                ingredient_id=item.ingredient_id,
+                status=item.status,
+                purchase_amount=item.purchase_amount,
+                purchase_unit=item.purchase_unit,
+                product_fingerprint=item.product_fingerprint,
+                conversion=item.conversion,
+            )
+        )
+    if not items:
+        return None
+    return MealPlan(title=TRUSTED_PLAN_TITLE, portions=plan.portions, ingredients=items)
 
 
 def cart_snapshot(session, *, plan_visible):

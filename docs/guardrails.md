@@ -58,6 +58,11 @@ unsupported claims still block the reply; thresholds and purchasing controls are
 unchanged. Refusals use plain language ("I can't help with that.") instead of
 explaining internal verification or asking for the same request again. Saved
 proposal links and authoritative purchase status notices still appear when present.
+When the review withholds a new plain (non-recipe) plan and no basket exists yet, the
+reply says so and keeps only the plan's server-checked order lines: products read this
+turn, under their catalog names, with amount and unit. All model-written text is
+dropped, and the basket built from those lines still passes every deterministic rule
+and needs the customer's confirmation.
 
 The customer-facing scope is intentionally broad: food, drinks, nutrition, recipes,
 products, kitchen supplies, shopping, storage, serving and nearby food-related event
