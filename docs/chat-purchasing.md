@@ -28,8 +28,8 @@ saved plan for a locked recipe basket; `revise_recipe` supports explicit ingredi
 changes as a reviewed estimate and keeps unchanged product matches. Old proposals
 and receipts remain historical. Equivalent SKU changes still require product evidence.
 
-The cart owns SKU, pack and price details. Chat contains the conversation and optional
-collapsed recipe quantities, without a second set of SKU cards. Failed background
+The cart owns SKU, pack and price details. Chat contains the conversation and compact
+recipe entry, without a second set of SKU cards. Failed background
 preparation keeps the draft and explains that basket checking could not finish.
 
 ## Contracts and authorization

@@ -726,7 +726,7 @@ test("request starts a meal conversation and keeps messages through refresh", as
   await expect(
     page
       .getByRole("complementary", { name: "Overview" })
-      .getByText("Spaghetti 5 kg", { exact: true })
+      .getByTitle("Spaghetti 5 kg", { exact: true })
       .filter({ visible: true }),
   ).toHaveCount(1);
   await expect(
@@ -735,9 +735,9 @@ test("request starts a meal conversation and keeps messages through refresh", as
   const recipe = page.getByRole("region", { name: "Proposed meal plan" });
   await expect(recipe.getByText("20 KG", { exact: true })).toHaveCount(0);
   await expect(recipe.getByText("Spaghetti", { exact: true })).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: /Open recipe/ }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Open recipe/ })).toHaveCount(
+    0,
+  );
   await expect(
     page.getByRole("button", { name: "Review basket to confirm" }),
   ).toBeVisible();
@@ -816,7 +816,7 @@ for (const priced of [false, true]) {
     const items = page
       .getByRole("complementary", { name: "Overview" })
       .getByRole("listitem")
-      .filter({ hasText: "Spaghetti 5 kg" });
+      .filter({ has: page.getByTitle("Spaghetti 5 kg", { exact: true }) });
     if (priced) {
       await expect(items.getByText("€0.00", { exact: true })).toHaveCount(1);
     } else {
@@ -1425,9 +1425,9 @@ test(`free-form recipe plan stays compact without chat ingredient dump`, async (
   await expect(plan.getByText("open the basket for ingredients")).toBeVisible();
   await expect(plan.getByText("Salt", { exact: true })).toHaveCount(0);
   await expect(plan.getByText("Buy 7 ST", { exact: false })).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: /Open recipe/ }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Open recipe/ })).toHaveCount(
+    0,
+  );
   await expect(page.getByRole("dialog", { name: "Carbonara" })).toHaveCount(0);
   await expect(
     page.getByRole("link", { name: "Review basket and purchasing checks" }),
