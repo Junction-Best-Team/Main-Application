@@ -115,3 +115,77 @@ test("the strip fits a 390px phone", async ({ page }) => {
   const box = await strip(page).boundingBox();
   expect(box && box.x >= 0 && box.x + box.width <= 390).toBeTruthy();
 });
+
+for (const viewport of [
+  { width: 1280, height: 600 },
+  { width: 1366, height: 656 },
+  { width: 1440, height: 768 },
+  { width: 1512, height: 800 },
+]) {
+  for (const populated of [false, true]) {
+    test(`Home fits ${viewport.width}x${viewport.height} without scrolling (${populated ? "three schedules" : "empty"})`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize(viewport);
+      await mockHome(
+        page,
+        populated ? [schedule, pausedSchedule, stoppedSchedule] : [],
+      );
+      await page.goto("/");
+      await expect(strip(page)).toContainText(
+        populated ? "Breakfast dairy" : "No standing orders yet.",
+      );
+      await page.evaluate(() => document.fonts.ready);
+      await expect(
+        page.getByRole("heading", { name: "What are we cooking?" }),
+      ).toBeInViewport({ ratio: 1 });
+      await expect(
+        page.getByLabel("Your meal or purchasing request"),
+      ).toBeInViewport({ ratio: 1 });
+      await expect(
+        page.getByRole("button", { name: "Start voice mode" }),
+      ).toBeInViewport({ ratio: 1 });
+      await expect(strip(page)).toBeInViewport({ ratio: 1 });
+      await expect(page.locator("#home-demo-note")).toBeInViewport({
+        ratio: 1,
+      });
+      expect(
+        await page.evaluate(() => ({
+          width: document.documentElement.scrollWidth,
+          height: document.documentElement.scrollHeight,
+        })),
+      ).toEqual(viewport);
+      if (viewport.width === 1366 && populated) {
+        await page.screenshot({
+          path: testInfo.outputPath("home-laptop.png"),
+          fullPage: true,
+        });
+      }
+    });
+  }
+}
+
+test("Home keeps all content reachable on a short phone", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 568 });
+  await mockHome(page, [schedule, pausedSchedule, stoppedSchedule]);
+  await page.goto("/");
+  await expect(strip(page)).toContainText("Breakfast dairy");
+  await page.locator("#home-demo-note").scrollIntoViewIfNeeded();
+  await expect(page.locator("#home-demo-note")).toBeInViewport({ ratio: 1 });
+  await strip(page)
+    .getByRole("link", { name: /Seasonal vegetables/ })
+    .scrollIntoViewIfNeeded();
+  await expect(
+    strip(page).getByRole("link", { name: /Seasonal vegetables/ }),
+  ).toBeInViewport({ ratio: 1 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    390,
+  );
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({
+    path: testInfo.outputPath("home-short-phone.png"),
+    fullPage: true,
+  });
+});

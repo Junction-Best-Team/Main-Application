@@ -1180,3 +1180,9 @@ Add new findings below, under your track heading.
 
 - Date: 2026-11-15. Unified the home/chat voice and send buttons around the existing lime background and navy icon, including hover, focus and disabled styles. Both send buttons use the same upward arrow; removed unused home-only action styles.
 - Verification: frontend `npm run check` and seven focused fixture-backed Playwright home/navigation and composer checks passed across 1440/1024/390/320px layouts. Browser color checks confirmed matching normal/hover/icon colors for both actions on home/chat at 1440/390px; desktop/mobile screenshots inspected. No backend/API changes or live provider calls.
+
+
+### F-HOME-003: Fit the homepage into laptop viewports
+
+- Date: 2026-11-15. Replaced the large viewport-based top padding with automatic vertical centering and height-responsive gaps. Reused the existing homepage/composer styling; the heading, input, scheduled deliveries and demo notice fit without page scrolling at laptop sizes. Short phone screens can still scroll to every schedule and the demo notice.
+- Verification: reproduced the original overflow at 1366×656 before the fix. Frontend `npm run check` and 21 focused fixture-backed Playwright checks passed, including empty/three-schedule layouts at 1280×600, 1366×656, 1440×768 and 1512×800, mobile navigation, attachments, submission and retry. Inspected laptop and phone screenshots. No backend/API changes, merge or deployment.
