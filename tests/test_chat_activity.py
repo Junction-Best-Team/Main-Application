@@ -29,7 +29,7 @@ def queue(buyer):
 def test_real_worker_wires_observer_and_keeps_every_fast_tool_event(buyer, service, monkeypatch):
     cid, body = queue(buyer)
 
-    def runner(actor, history, shared, *, on_progress):
+    def runner(actor, history, shared, *, on_progress, ensure_live=None):
         progress = Progress(actor["_turn_id"], on_progress)
         progress.emit("started")
         for tool in ("search_recipes", "get_recipe", "search_products", "get_product"):
@@ -93,7 +93,7 @@ def test_expired_replaced_and_out_of_order_progress_cannot_publish(buyer, servic
 def test_failure_and_explicit_retry_reset_activity(buyer, service, monkeypatch):
     cid, body = queue(buyer)
 
-    def fail(actor, history, shared, *, on_progress):
+    def fail(actor, history, shared, *, on_progress, ensure_live=None):
         on_progress(AgentProgress(actor["_turn_id"], 1, "tool_started", "get_recipe"))
         raise Problem("TOOL_EXECUTION_FAILED", "private details", 503)
 
