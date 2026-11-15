@@ -673,6 +673,31 @@ class ToolSession:
         self.restored = plan.model_copy(deep=True)
         return True
 
+    def restore_saved_plan(self, plan_id):
+        """A saved recipe plan, reloaded by the server (never from message text) with its matched
+        products read again from the catalog. Fails closed like restore_plan."""
+        try:
+            plan = MealPlan.model_validate(
+                self.checked(
+                    MealPlan,
+                    self.service.get_recipe_plan(self.identity, ReadRecipePlan(plan_id=plan_id)),
+                )
+            )
+            if not plan.recipe_plan_id or str(plan.recipe_plan_id) != str(plan_id):
+                return False
+            found = {}
+            for pid in dict.fromkeys(i.product_id for i in plan.ingredients if i.product_id):
+                result = self.checked(ProductResponse, self.service.get_product(self.identity, pid))
+                if result["id"] != pid or result.get("deleted"):
+                    return False
+                found[pid] = result
+        except (Problem, ValidationError, TypeError, ValueError):
+            return False
+        self.products.update(found)
+        self.plan = plan
+        self.restored = plan.model_copy(deep=True)
+        return True
+
     def publish(self, plan):
         # The tool input is a subclass that only adds examples; compare and store the plain model.
         plan = MealPlan.model_validate(plan.model_dump())

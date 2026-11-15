@@ -141,7 +141,8 @@ def chat(monkeypatch, buyer):
             return turn
 
         yield SimpleNamespace(
-            turn=conversation(), new_conversation=conversation, client=client, headers=headers
+            turn=conversation(), new_conversation=conversation, client=client, headers=headers,
+            service=service, script=script
         )
 
 

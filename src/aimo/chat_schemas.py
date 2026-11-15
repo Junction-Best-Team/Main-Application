@@ -1,6 +1,6 @@
 """Shared internal agent and authenticated conversation contracts."""
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -126,6 +126,30 @@ class RetryMessage(Model):
 class ConversationCreate(Model):
     title: str = Field(default="New purchase", min_length=1, max_length=120)
     idempotency_key: str = Field(min_length=8, max_length=120)
+
+
+class CartPurchaseRequest(Model):
+    """Prepare the order from the conversation's cart without the assistant (a customer button)."""
+
+    delivery_date: date
+    destination: str = Field(min_length=1, max_length=120)
+    request_id: str = Field(
+        min_length=8,
+        max_length=120,
+        description="Idempotency key: one per button press, reused when the press is retried.",
+    )
+
+
+class CartNotIncluded(Model):
+    name: str
+    amount: str | None
+    unit: str
+    reason: Literal["no_product", "no_quantity"]
+
+
+class CartPurchaseResponse(Model):
+    proposal: ProposalResponse
+    not_included: list[CartNotIncluded]
 
 
 class ChatMessage(Model):

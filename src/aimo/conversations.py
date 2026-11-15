@@ -341,16 +341,17 @@ def store_failure_notice(cid, tid):
         event("chat.failure_notice_failed", conversation_id=str(cid), turn_id=str(tid))
 
 
-def customer_constraints(c, cid, tid):
+def customer_constraints(c, cid, tid=None):
     """The limits in force for one turn (POL-008): what the customer set on this message and
-    on earlier ones in this conversation, the latest value per name. A toggle set to false
+    on earlier ones in this conversation (all of them when `tid` is None), the latest value per name. A toggle set to false
     withdraws that requirement. Server-written records only; the model never supplies them."""
     rows = c.execute(
         """SELECT constraints FROM conversation_turns
         WHERE conversation_id=%s AND constraints IS NOT NULL
-        AND (created_at, id) <= (SELECT created_at, id FROM conversation_turns WHERE id=%s)
+        AND (%s::uuid IS NULL OR
+             (created_at, id) <= (SELECT created_at, id FROM conversation_turns WHERE id=%s))
         ORDER BY created_at, id""",
-        (cid, tid),
+        (cid, tid, tid),
     ).fetchall()
     merged = {}
     for row in rows:

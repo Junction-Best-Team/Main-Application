@@ -381,6 +381,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/conversations/{conversation_id}/prepare-from-cart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Conversation Prepare From Cart
+         * @description Prepare the cart's matched items as a basket, without the assistant. Nothing is ordered:
+         *     the customer still confirms the exact revision.
+         */
+        post: operations["conversation_prepare_from_cart_api_conversations__conversation_id__prepare_from_cart_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/conversations/{conversation_id}/messages": {
         parameters: {
             query?: never;
@@ -692,6 +713,44 @@ export interface components {
              * Format: date-time
              */
             cancelled_at: string;
+        };
+        /** CartNotIncluded */
+        CartNotIncluded: {
+            /** Name */
+            name: string;
+            /** Amount */
+            amount: string | null;
+            /** Unit */
+            unit: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "no_product" | "no_quantity";
+        };
+        /**
+         * CartPurchaseRequest
+         * @description Prepare the order from the conversation's cart without the assistant (a customer button).
+         */
+        CartPurchaseRequest: {
+            /**
+             * Delivery Date
+             * Format: date
+             */
+            delivery_date: string;
+            /** Destination */
+            destination: string;
+            /**
+             * Request Id
+             * @description Idempotency key: one per button press, reused when the press is retried.
+             */
+            request_id: string;
+        };
+        /** CartPurchaseResponse */
+        CartPurchaseResponse: {
+            proposal: components["schemas"]["ProposalResponse"];
+            /** Not Included */
+            not_included: components["schemas"]["CartNotIncluded"][];
         };
         /** ChatActivity */
         ChatActivity: {
@@ -3465,6 +3524,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation error. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    conversation_prepare_from_cart_api_conversations__conversation_id__prepare_from_cart_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CartPurchaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartPurchaseResponse"];
                 };
             };
             /** @description Validation error. */
