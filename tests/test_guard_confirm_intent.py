@@ -45,7 +45,8 @@ def test_the_question_still_names_every_attack_and_now_clears_the_customers_own_
 
 
 def test_the_policy_version_moved_so_cached_verdicts_and_logs_do_not_mix():
-    assert POLICY_VERSION == "guard-2026-11-14.7"
+    # The version only ever moves forward (develop has since bumped it past the confirm-intent one).
+    assert POLICY_VERSION >= "guard-2026-11-14.7"
 
 
 def test_the_phrase_lists_cover_english_finnish_and_swedish_and_the_named_attacks():

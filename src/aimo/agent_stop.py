@@ -8,6 +8,7 @@ and one bounded continuation; the guardrails, the confirmation button and every 
 import hashlib
 import json
 import re
+import unicodedata
 
 # A real request to buy: imperative or "I want / please / let's / go ahead" forms, en/fi/sv. Words like
 # "order" or "buy" alone are NOT enough (advice, questions and past orders contain them).
@@ -211,3 +212,31 @@ def is_advice_question(customer_texts):
 
 
 MAX_PRODUCT_SEARCHES = 8  # live round 1: a plan request used 15 searches in 9 rounds
+
+
+# --- basket labels must not claim a status (checked without the classifier) ---------------------------------
+LABEL_CLAIMS = re.compile(
+    r"\b(paid|approved?|confirmed|ordered|order (is )?placed|placed (the )?order|order complete[d]?|"
+    r"purchase[d]?|purchase complete[d]?|booked|reserved|delivered|shipped|ship now|discount\w*|gratis|"
+    r"free of charge|for free|guaranteed|safe for|allergy[- ]?free|authori[sz]ed|"
+    r"pagado|confirmado|aprobado|pedido realizado|"
+    r"maksettu|hyväksytty|vahvistettu|tilattu|varattu|toimitettu|alennus|ilmainen|"
+    r"betald|godkänd|bekräftad|beställd|reserverad|levererad|rabatt)\b|"
+    r"оплачен\w*|подтвержд\w*|одобрен\w*|заказан\w*|^\s*system\s*:",
+    re.IGNORECASE,
+)
+_SPACED = re.compile(r"(?<![^\W_])(?:[^\W_][\s.\-_*]){2,}[^\W_](?![^\W_])")
+
+
+def claims_status(text):
+    """True if a basket title claims a status (paid, approved, confirmed, ordered, ...). Folds case and
+    accents-width forms and joins spaced-out letters ("c o n f i r m e d") before matching."""
+    folded = unicodedata.normalize("NFKC", text or "").casefold()
+    folded = _SPACED.sub(lambda m: re.sub(r"[\s.\-_*]", "", m.group(0)), folded)
+    return bool(LABEL_CLAIMS.search(folded) or LABEL_CLAIMS.search(unicodedata.normalize("NFKC", text or "")))
+
+
+def cart_label(title):
+    """The label of a basket the server makes: the plan title unless it claims a status."""
+    title = (title or "").strip()
+    return "Cart" if not title or claims_status(title) else ("Cart: " + title)[:100]

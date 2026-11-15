@@ -17,6 +17,7 @@ from pydantic import ValidationError
 
 from aimo import approval_workflow as workflow
 from aimo import auth, catalog, request_brief, scheduler
+from aimo.agent_stop import cart_label
 from aimo.agent_tools import PrepareOrderInput, ToolSession, is_zero
 from aimo.chat_schemas import CartNotIncluded, MealPlan
 from aimo.config import settings
@@ -265,7 +266,7 @@ def prepare_basket(
             raise Problem("CART_NOT_VERIFIED", "The cart could not be verified.", 422)
     left_out_box.extend(left_out)
     request = PrepareOrderInput(
-        request_id=("Cart: " + session.plan.title)[:100],
+        request_id=cart_label(session.plan.title),
         destination=destination,
         delivery_date=delivery_date,
         requirements=requirements_from(limits),

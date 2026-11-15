@@ -27,6 +27,7 @@ from urllib.parse import urlsplit
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from aimo.agent_stop import claims_status
 from aimo.config import settings
 from aimo.db import Problem, fingerprint
 from aimo.google_api import GoogleAPIError, google_api_request
@@ -243,7 +244,8 @@ DEFAULTS_DATE_CHECK = Check(
     "`proposed_order.destination` and `proposed_order.delivery_date` are acceptable: either the "
     "customer stated or explicitly accepted them, or both equal `server_defaults` (the product's own "
     "default date and destination, shown and editable on the card) and the customer wrote no date "
-    "and no place anywhere in `conversation` or `attached_reference_files`. Any date or place the "
+    "and no place anywhere in `conversation` (including each entry's `untrusted_reference_files`). "
+    "Any date or place the "
     "customer did write wins and must match." + _INTENT,
     "Both are what the customer stated or accepted, or both equal `server_defaults` and the customer "
     "wrote no date and no place.",
@@ -251,15 +253,6 @@ DEFAULTS_DATE_CHECK = Check(
     "stated and from `server_defaults`.",
     risk_is_true=False,
     uncertain_passes=True,
-)
-
-# Claims a basket title must never make, in English, Finnish and Swedish. Checked without the classifier.
-LABEL_CLAIMS = re.compile(
-    r"\b(paid|approved|confirmed|ordered|reserved|delivered|shipped|discount\w*|guaranteed|safe for|"
-    r"allergy[- ]free|ship now|authori[sz]ed)\b|"
-    r"maksettu|hyväksytty|vahvistettu|tilattu|varattu|toimitettu|alennus|"
-    r"betald|godkänd|bekräftad|beställd|reserverad|levererad|rabatt",
-    re.IGNORECASE,
 )
 
 MEMORY_CHECKS = {
@@ -1318,7 +1311,7 @@ class Guardrails:
                     + ". Choose other products or ask the customer.",
                     422,
                 )
-            if self.enforcing and LABEL_CLAIMS.search(request.request_id or ""):
+            if self.enforcing and claims_status(request.request_id or ""):
                 self.prepare_refused = True
                 raise Problem(
                     "GUARDRAIL_BLOCKED",
