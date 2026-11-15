@@ -158,3 +158,19 @@ test("sign-out clears the session and a later reload requires login again", asyn
     page.getByRole("button", { name: "Sign in", exact: true }),
   ).toBeVisible();
 });
+
+test("mobile sidebar account signs out with the session CSRF token", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 568 });
+  const { logoutCalls } = await mockSession(page, true);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open menu" }).click();
+  const drawer = page.getByRole("dialog", { name: "Menu", exact: true });
+  await drawer.getByRole("button", { name: "User menu" }).click();
+  await drawer.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(drawer).toHaveCount(0);
+  expect(logoutCalls).toHaveLength(1);
+  expect(logoutCalls[0]["x-csrf-token"]).toBe(session.csrf_token);
+});
