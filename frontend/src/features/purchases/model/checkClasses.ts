@@ -8,7 +8,8 @@ import { shortName } from "./cardState";
 //   expired   the approval ran out: refresh
 // The class comes from ONE function, `classOf`: the proposal's `reason_classes[code]` when the server sends
 // it (additive field), else this table, else the check's severity.
-export type CheckClass = "blocker" | "exception" | "warning" | "expired";
+export type CheckClass =
+  "blocker" | "exception" | "warning" | "expired" | "info"; // a note that is none of these (e.g. WITHIN_AUTHORITY, severity "info"): shown plainly, no group
 type Reason = Proposal["reasons"][number];
 
 const BY_CODE: Record<string, CheckClass> = {
@@ -26,7 +27,13 @@ const BY_SEVERITY: Record<Reason["severity"], CheckClass> = {
   exception: "exception",
   warning: "warning",
 };
-const CLASSES: CheckClass[] = ["blocker", "exception", "warning", "expired"];
+const CLASSES: CheckClass[] = [
+  "blocker",
+  "exception",
+  "warning",
+  "expired",
+  "info",
+];
 
 /** Short human text per code (minimal on purpose); unknown codes show the server's own message. */
 const SHORT: Record<string, string> = {
@@ -70,7 +77,8 @@ export function classOf(p: Proposal, r: Reason): CheckClass {
   const sent = (p as { reason_classes?: Record<string, string> })
     .reason_classes?.[r.code];
   if (sent && (CLASSES as string[]).includes(sent)) return sent as CheckClass;
-  return BY_CODE[r.code] ?? BY_SEVERITY[r.severity];
+  // An unknown code with a severity outside the four (older or newer server) blocks nothing: a note.
+  return BY_CODE[r.code] ?? BY_SEVERITY[r.severity] ?? "info";
 }
 
 export type CheckItem = { code: string; text: string; product?: string };
@@ -92,6 +100,7 @@ export function groupChecks(p: Proposal): Record<CheckClass, CheckItem[]> {
     exception: [],
     warning: [],
     expired: [],
+    info: [],
   };
   for (const r of p.reasons) out[classOf(p, r)].push(toItem(p, r));
   return out;

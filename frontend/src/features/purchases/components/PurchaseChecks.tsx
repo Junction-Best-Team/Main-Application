@@ -90,6 +90,13 @@ export function PurchaseChecks({
           )}
         </div>
       )}
+      {groups.info.length > 0 && (
+        <ul className="m-0 list-none space-y-2 p-0 text-body-sm">
+          {groups.info.map((item, i) => (
+            <li key={i}>{item.text}</li>
+          ))}
+        </ul>
+      )}
       {p.request.budget_gross != null && (
         <p className="m-0">
           Mission budget: {currency(String(p.request.budget_gross))}
