@@ -19,11 +19,16 @@ type ServerMessage = {
     interrupted?: boolean;
     turnComplete?: boolean;
     inputTranscription?: { text?: string };
+    outputTranscription?: { text?: string };
     modelTurn?: {
       parts?: { inlineData?: { data: string; mimeType: string } }[];
     };
   };
 };
+
+/** Upper bound for the holding line spoken before Aimo's reply. */
+const HOLDING_SECONDS = 2.5;
+const HOLDING_WORDS = 6;
 
 // All errors shown to customers are authored here; never surface WebSocket URLs,
 // provider bodies, close reasons, or a short-lived credential.
@@ -35,6 +40,15 @@ export class LiveVoice {
   private capture: AudioWorkletNode | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
   private speakers = new Set<AudioBufferSourceNode>();
+  // One short holding line ("Let me check that") may play after the customer
+  // speaks and before the request reaches Aimo. Everything else waits for the
+  // saved reply. The window is capped so the model cannot say more on its own.
+  private holdingSources = new Set<AudioBufferSourceNode>();
+  private holdingSeconds = 0;
+  private holdingText = "";
+  private holdingDone = false;
+  // Soft "• • •" pulse while Aimo works on a request.
+  private thinkingLoop: ReturnType<typeof setInterval> | null = null;
   // Taps both the microphone and Aimo's playback so the orb can follow speech.
   private meter: AnalyserNode | null = null;
   private samples: Float32Array<ArrayBuffer> | null = null;
@@ -219,6 +233,7 @@ export class LiveVoice {
       this.update({ phase: this.pending ? "thinking" : "listening" });
     }
     if (content?.inputTranscription?.text) {
+      if (!this.input) this.resetHolding();
       this.input += content.inputTranscription.text;
       if (this.input.length > 4000) {
         this.fail(
@@ -246,11 +261,18 @@ export class LiveVoice {
       this.calls.add(call.id);
       void this.request(call);
     }
-    if (this.allowAudio) {
-      for (const part of content?.modelTurn?.parts ?? []) {
-        if (part.inlineData)
-          this.play(part.inlineData.data, part.inlineData.mimeType);
-      }
+    if (!this.allowAudio && content?.outputTranscription?.text) {
+      this.holdingText += content.outputTranscription.text;
+      // More than a holding phrase: cut it off and close the window.
+      if (this.holdingText.trim().split(/\s+/).length > HOLDING_WORDS)
+        this.endHolding(true);
+    }
+    for (const part of content?.modelTurn?.parts ?? []) {
+      if (!part.inlineData) continue;
+      if (this.allowAudio)
+        this.play(part.inlineData.data, part.inlineData.mimeType);
+      else if (this.holdingOpen())
+        this.play(part.inlineData.data, part.inlineData.mimeType, true);
     }
     if (content?.turnComplete) {
       this.allowAudio = false;
@@ -274,14 +296,18 @@ export class LiveVoice {
   private async request(call: FunctionCall) {
     this.pending = true;
     this.allowAudio = false;
-    this.stopSpeakers();
+    // Let the holding line finish; anything older is cut.
+    this.stopSpeakers(true);
+    this.endHolding(false);
     const text = this.input.trim();
     this.input = "";
     this.update({ phase: "thinking", heard: text, reply: "" });
+    this.startThinkingSound();
     try {
       const reply = await this.ask(text, this.signal.signal);
       if (this.signal.signal.aborted) return;
       this.pending = false;
+      this.stopThinkingSound();
       this.update({ reply });
       if (this.cancelled.has(call.id)) {
         this.update({ phase: "listening" });
@@ -309,7 +335,7 @@ export class LiveVoice {
     }
   }
 
-  private play(encoded: string, mime: string) {
+  private play(encoded: string, mime: string, holding = false) {
     if (!this.audio || !mime.startsWith("audio/pcm")) return;
     const binary = atob(encoded);
     if (binary.length % 2 || binary.length > 512 * 1024) throw new Error();
@@ -320,6 +346,13 @@ export class LiveVoice {
     if (!Number.isFinite(rate) || rate < 8000 || rate > 48000)
       throw new Error();
     const buffer = this.audio.createBuffer(1, binary.length / 2, rate);
+    if (holding) {
+      if (this.holdingSeconds + buffer.duration > HOLDING_SECONDS) {
+        this.endHolding(false);
+        return;
+      }
+      this.holdingSeconds += buffer.duration;
+    }
     const data = buffer.getChannelData(0);
     for (let i = 0; i < data.length; i++)
       data[i] = view.getInt16(i * 2, true) / 32768;
@@ -328,9 +361,11 @@ export class LiveVoice {
     source.connect(this.audio.destination);
     if (this.meter) source.connect(this.meter);
     this.speakers.add(source);
+    if (holding) this.holdingSources.add(source);
     source.onended = () => {
       source.disconnect();
       this.speakers.delete(source);
+      this.holdingSources.delete(source);
     };
     const start = Math.max(this.nextAudioTime, this.audio.currentTime);
     if (start - this.audio.currentTime > 90) throw new Error();
@@ -356,13 +391,72 @@ export class LiveVoice {
     this.update({ muted });
   }
 
-  private stopSpeakers() {
+  private stopSpeakers(keepHolding = false) {
     for (const source of this.speakers) {
+      if (keepHolding && this.holdingSources.has(source)) continue;
       source.stop();
       source.disconnect();
+      this.speakers.delete(source);
     }
-    this.speakers.clear();
-    this.nextAudioTime = 0;
+    if (!keepHolding) this.holdingSources.clear();
+    if (this.speakers.size === 0) this.nextAudioTime = 0;
+  }
+
+  private resetHolding() {
+    this.holdingSeconds = 0;
+    this.holdingText = "";
+    this.holdingDone = false;
+  }
+
+  private holdingOpen() {
+    return !this.holdingDone && !this.pending && Boolean(this.input.trim());
+  }
+
+  private endHolding(cut: boolean) {
+    this.holdingDone = true;
+    if (!cut) return;
+    for (const source of this.holdingSources) {
+      source.stop();
+      source.disconnect();
+      this.speakers.delete(source);
+    }
+    this.holdingSources.clear();
+    if (this.speakers.size === 0) this.nextAudioTime = 0;
+  }
+
+  private startThinkingSound() {
+    this.stopThinkingSound();
+    const pulse = () => {
+      const audio = this.audio;
+      if (!audio || audio.state !== "running" || !this.pending) return;
+      // Wait for the holding line to finish before the dots start.
+      if (this.speakers.size || audio.currentTime < this.nextAudioTime) return;
+      const start = audio.currentTime + 0.05;
+      for (let i = 0; i < 3; i++) {
+        const at = start + i * 0.22;
+        const tone = audio.createOscillator();
+        const gain = audio.createGain();
+        tone.type = "sine";
+        tone.frequency.value = 660 + i * 110;
+        gain.gain.setValueAtTime(0, at);
+        gain.gain.linearRampToValueAtTime(0.035, at + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.16);
+        tone.connect(gain).connect(audio.destination);
+        tone.onended = () => {
+          tone.disconnect();
+          gain.disconnect();
+        };
+        tone.start(at);
+        tone.stop(at + 0.18);
+      }
+    };
+    pulse();
+    this.thinkingLoop = setInterval(pulse, 1800);
+  }
+
+  private stopThinkingSound() {
+    if (this.thinkingLoop) clearInterval(this.thinkingLoop);
+    this.thinkingLoop = null;
   }
 
   private fail(error: string) {
@@ -376,6 +470,7 @@ export class LiveVoice {
     this.signal.abort();
     for (const timer of this.timers) clearTimeout(timer);
     this.timers.clear();
+    this.stopThinkingSound();
     if (this.socket) {
       this.socket.onclose = null;
       this.socket.onerror = null;

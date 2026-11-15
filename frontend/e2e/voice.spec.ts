@@ -51,8 +51,15 @@ async function fixture(
       voiceEvents?: EventTarget[];
       voiceTracks?: MediaStreamTrack[];
       voicePlaybacks?: number;
+      voiceTones?: number;
     };
     browser.voiceEvents = [];
+    browser.voiceTones = 0;
+    const createTone = AudioContext.prototype.createOscillator;
+    AudioContext.prototype.createOscillator = function () {
+      browser.voiceTones!++;
+      return createTone.call(this);
+    };
     browser.voiceTracks = [];
     browser.voicePlaybacks = 0;
     class Events extends EventTarget {
@@ -234,6 +241,13 @@ async function fixture(
   };
 }
 
+function voiceCount(page: Page, name: "voicePlaybacks" | "voiceTones") {
+  return page.evaluate(
+    (key) => (window as unknown as Record<string, number>)[key],
+    name,
+  );
+}
+
 async function expectReleased(page: Page) {
   await expect
     .poll(() =>
@@ -401,6 +415,8 @@ test("navigation ends voice and accepted work continues in saved chat", async ({
   await expect(
     page.getByRole("region", { name: "Voice mode" }).getByRole("status"),
   ).toHaveText("Aimo is working…");
+  // A soft "• • •" pulse plays while Aimo works.
+  await expect.poll(() => voiceCount(page, "voiceTones")).toBeGreaterThan(0);
   await page.screenshot({ path: "test-results/voice-desktop.png" });
   await page.getByRole("link", { name: "Orders", exact: true }).first().click();
   await expect(page.getByRole("region", { name: "Voice mode" })).toHaveCount(0);
@@ -493,4 +509,104 @@ test("backgrounding the chat releases the microphone", async ({ page }) => {
   });
   await expect(page.getByRole("region", { name: "Voice mode" })).toHaveCount(0);
   await expectReleased(page);
+});
+
+test("a short holding line may play after speech, before Aimo's reply", async ({
+  page,
+}) => {
+  const mock = await fixture(page, { delayed: true });
+  await page.goto(`/conversations/${id}`);
+  await page.getByRole("button", { name: "Start voice mode" }).click();
+  await expect(
+    page.getByRole("region", { name: "Voice mode" }).getByRole("status"),
+  ).toHaveText("Listening");
+  mock.send({
+    serverContent: { inputTranscription: { text: "Carbonara for 200." } },
+  });
+  mock.send({
+    serverContent: {
+      outputTranscription: { text: "Let me check that." },
+      modelTurn: {
+        parts: [
+          {
+            inlineData: {
+              data: "AAAA".repeat(240),
+              mimeType: "audio/pcm;rate=24000",
+            },
+          },
+        ],
+      },
+    },
+  });
+  await expect.poll(() => voiceCount(page, "voicePlaybacks")).toBe(1);
+  mock.send({
+    toolCall: { functionCalls: [{ id: "call-1", name: "ask_aimo" }] },
+  });
+  await expect.poll(() => mock.sent.length).toBe(1);
+  // The window closes once the request is sent: no more model audio until the reply.
+  mock.send({
+    serverContent: {
+      modelTurn: {
+        parts: [
+          {
+            inlineData: {
+              data: "AAAA".repeat(240),
+              mimeType: "audio/pcm;rate=24000",
+            },
+          },
+        ],
+      },
+    },
+  });
+  await page.waitForTimeout(300);
+  expect(await voiceCount(page, "voicePlaybacks")).toBe(1);
+});
+
+test("the holding line is cut when the model says too much", async ({
+  page,
+}) => {
+  const mock = await fixture(page, { delayed: true });
+  await page.goto(`/conversations/${id}`);
+  await page.getByRole("button", { name: "Start voice mode" }).click();
+  await expect(
+    page.getByRole("region", { name: "Voice mode" }).getByRole("status"),
+  ).toHaveText("Listening");
+  mock.send({
+    serverContent: { inputTranscription: { text: "Carbonara for 200." } },
+  });
+  // Too long to be a holding line (over 2.5 seconds of audio).
+  mock.send({
+    serverContent: {
+      modelTurn: {
+        parts: [
+          {
+            inlineData: {
+              data: "AAAA".repeat(50_000),
+              mimeType: "audio/pcm;rate=24000",
+            },
+          },
+        ],
+      },
+    },
+  });
+  // Too many words, even in a short chunk.
+  mock.send({
+    serverContent: {
+      outputTranscription: {
+        text: "Sure, I have already ordered all of that for you.",
+      },
+      modelTurn: {
+        parts: [
+          {
+            inlineData: {
+              data: "AAAA".repeat(240),
+              mimeType: "audio/pcm;rate=24000",
+            },
+          },
+        ],
+      },
+    },
+  });
+  await page.waitForTimeout(300);
+  expect(await voiceCount(page, "voicePlaybacks")).toBe(0);
 });
