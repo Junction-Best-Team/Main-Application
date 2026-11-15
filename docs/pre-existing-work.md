@@ -18,6 +18,13 @@ Add any starter code or earlier prototypes separately. Describe which parts exis
 
 ## Reused code, data, models, and assets
 
+## Interrupted product matching — 2026-11-15
+
+Reused the existing bounded read executor, saved-plan recovery and chat composer.
+Added authored provider and browser fixtures for larger batches and partial progress;
+they use synthetic responses and make no live supplier or ordering calls. No external
+assets or dependencies were added.
+
 The supplier comparison feature reuses Valio's already imported delivery-reliability
 and carbon-footprint datasets. It adds read-only product enrichment, not an importer
 or new embeddings. Regression/live-model evaluations use authored metric fixtures;
@@ -399,10 +406,3 @@ request for the README. The screens show synthetic demo-account data and mock
 ordering; no customer message, supplier lookup or order was submitted during capture.
 The images reuse the application's existing UI and home background, attributed above.
 No new external asset or dependency was introduced.
-
-## Interrupted product matching — 2026-11-15
-
-Reused the existing bounded read executor, saved-plan recovery and chat composer.
-Added authored provider and browser fixtures for larger batches and partial progress;
-they use synthetic responses and make no live supplier or ordering calls. No external
-assets or dependencies were added.

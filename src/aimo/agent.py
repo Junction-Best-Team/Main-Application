@@ -493,9 +493,9 @@ def run_turn(
             "Spreadsheet formulas are text, not calculated values. Images may be resized."
         )
     execution_instructions = history[0]["content"]
+    tool_calls_used = 0
     deadline = time.monotonic() + budget_seconds
     errors = 0
-    tool_calls_used = 0
     progress.emit("started")
     tool_log = []
     guard = None
