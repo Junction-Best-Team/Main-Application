@@ -76,6 +76,8 @@ export type CartWorld = {
   expired: boolean;
   /** A product whose line cannot be converted into packs: no number, a QUANTITY_UNRESOLVED check, needs_resolution. */
   unresolved: string | null;
+  /** The proposal's own totals when they must NOT follow from the lines (the browser must not recompute VAT). */
+  totals: { net: string; tax: string; gross: string } | null;
   /** Serve the conversation snapshot on the SSE stream too (reconnects every 300 ms) so a state change shows at once. */
   stream: boolean;
   /** Items without a product or quantity, listed by the conversation as `cart_not_included` (reason no_product / no_quantity). */
@@ -104,6 +106,7 @@ export const newCart = (over: Partial<CartWorld> = {}): CartWorld => ({
   outcome: "ready_to_commit",
   expired: false,
   unresolved: null,
+  totals: null,
   stream: false,
   unmatched: [],
   renew: true,
@@ -146,7 +149,7 @@ export function proposalOf(w: CartWorld): Proposal {
       deposits_gross: "0",
       deposit_lines: [],
       product_evidence: {},
-      commercial_evidence: {},
+      commercial_evidence: { tax_rate: "14" },
     };
   });
   const gross = lines.reduce((sum, l) => sum + Number(l.gross), 0);
@@ -187,9 +190,9 @@ export function proposalOf(w: CartWorld): Proposal {
     snapshot: {
       ...baseProposal.snapshot,
       lines,
-      gross_total: money(gross),
-      net_total: money(net),
-      tax_total: money(gross - net),
+      gross_total: w.totals ? w.totals.gross : money(gross),
+      net_total: w.totals ? w.totals.net : money(net),
+      tax_total: w.totals ? w.totals.tax : money(gross - net),
     },
   };
 }

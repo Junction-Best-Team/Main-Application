@@ -44,6 +44,18 @@ const qty = (page: Page, name: string) =>
     exact: true,
   });
 const tick = (page: Page, ms: number) => page.clock.runFor(ms);
+// Types into the number input of a panel that is not shown (a script, as no customer can): the card must still react.
+const typeHidden = (page: Page, name: string, value: string) =>
+  card(page)
+    .locator(`input[aria-label="Quantity of ${name}"]`)
+    .evaluate((el: HTMLInputElement, v: string) => {
+      const set = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!;
+      set.call(el, v);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    }, value);
 
 async function open(page: Page, over: Partial<CartWorld> = {}) {
   const world = newCart({ stream: true, ...over });
@@ -452,7 +464,7 @@ test("an edit brings the tab back to Items (here typed by a script into the hidd
 }) => {
   await open(page);
   await tab(page, "Checks").click();
-  await qty(page, PASTA.name).fill("5", { force: true }); // typed into the hidden panel by a script
+  await typeHidden(page, PASTA.name, "5");
   await selected(page, "Items");
 });
 
@@ -553,10 +565,210 @@ test("in debug mode every tab decision is logged with the reason", async ({
   await expect
     .poll(async () => (await tabLog(page)).map((e) => `${e.tab}:${e.why}`))
     .toContain("checks:user click");
-  await qty(page, PASTA.name).fill("5", { force: true });
+  await typeHidden(page, PASTA.name, "5");
   await expect
     .poll(async () => (await tabLog(page)).map((e) => `${e.tab}:${e.why}`))
     .toContain("items:edit");
   const text = JSON.stringify(await tabLog(page));
   expect(text).not.toMatch(/Spaghetti|Diced bacon|Eggs/); // no item names in the log
+});
+
+// --- the VAT breakdown: the "i" on the right of the total row ---------------------------------------
+
+const vatButton = (page: Page) =>
+  footer(page).getByRole("button", { name: "VAT breakdown" });
+const vat = (page: Page) => footer(page).getByTestId("card-vat");
+
+test("VAT is closed by default behind a real button named VAT breakdown; the total itself is not a button", async ({
+  page,
+}) => {
+  await open(page);
+  await expect(vatButton(page)).toBeVisible();
+  await expect(vatButton(page)).toHaveAttribute("aria-expanded", "false");
+  await expect(vat(page)).toBeHidden();
+  const controls = await vatButton(page).getAttribute("aria-controls");
+  expect(controls).toBeTruthy();
+  await expect(footer(page).locator(`[id="${controls}"]`)).toHaveCount(1);
+  await expect(
+    footer(page).getByRole("button", { name: /136[.,]00/ }),
+  ).toHaveCount(0);
+});
+
+test("pressing the i shows Excl. VAT, VAT 14% and Total under the total, pressing again hides them", async ({
+  page,
+}) => {
+  await open(page);
+  await vatButton(page).click();
+  await expect(vatButton(page)).toHaveAttribute("aria-expanded", "true");
+  await expect(vat(page)).toBeVisible();
+  await expect(vat(page)).toContainText("Excl. VAT");
+  await expect(vat(page)).toContainText("VAT 14%");
+  await expect(vat(page)).toContainText("Total");
+  await vatButton(page).click();
+  await expect(vatButton(page)).toHaveAttribute("aria-expanded", "false");
+  await expect(vat(page)).toBeHidden();
+});
+
+test("the amounts are the proposal's, never recomputed in the browser", async ({
+  page,
+}) => {
+  // Totals that do not follow from the lines: whatever the proposal says is what is shown.
+  await open(page, {
+    totals: { net: "111.11", tax: "24.89", gross: "136.00" },
+  });
+  await vatButton(page).click();
+  await expect(vat(page)).toContainText(/111[.,]11/);
+  await expect(vat(page)).toContainText(/24[.,]89/);
+  await expect(vat(page)).toContainText(/136[.,]00/);
+});
+
+test("the i works from the keyboard: Enter and Space toggle it", async ({
+  page,
+}) => {
+  await open(page);
+  await vatButton(page).focus();
+  await page.keyboard.press("Enter");
+  await expect(vat(page)).toBeVisible();
+  await page.keyboard.press("Space");
+  await expect(vat(page)).toBeHidden();
+});
+
+test("the i is on the right, level with the amount; the breakdown is under the total and above the button", async ({
+  page,
+}) => {
+  await open(page);
+  await vatButton(page).click();
+  const total = await footer(page).getByTestId("card-total-row").boundingBox();
+  const amount = await footer(page)
+    .getByText(/136[.,]00/)
+    .first()
+    .boundingBox();
+  const i = await vatButton(page).boundingBox();
+  const breakdown = await vat(page).boundingBox();
+  const button = await confirmButton(page).boundingBox();
+  // same line as the amount (vertical centres within a few pixels) and at the far right of the row
+  expect(
+    Math.abs(i!.y + i!.height / 2 - (amount!.y + amount!.height / 2)),
+  ).toBeLessThan(10);
+  expect(i!.x).toBeGreaterThan(amount!.x + amount!.width);
+  expect(i!.x + i!.width).toBeGreaterThan(total!.x + total!.width - 12);
+  // order in the page: total row, then the breakdown, then the Confirm purchase button
+  expect(breakdown!.y).toBeGreaterThanOrEqual(total!.y + total!.height - 1);
+  expect(breakdown!.y + breakdown!.height).toBeLessThanOrEqual(button!.y + 1);
+});
+
+test("when the order is not ready the chip is on the right of the row, before the i", async ({
+  page,
+}) => {
+  await open(page, { outcome: "approval_required" });
+  const chip = await footer(page).getByTestId("card-status-chip").boundingBox();
+  const i = await vatButton(page).boundingBox();
+  expect(chip!.x + chip!.width).toBeLessThanOrEqual(i!.x + 1);
+  expect(
+    Math.abs(chip!.y + chip!.height / 2 - (i!.y + i!.height / 2)),
+  ).toBeLessThan(10);
+});
+
+test("the breakdown stays open across tab switches and a basket update; a new basket closes it", async ({
+  page,
+}) => {
+  const world = await open(page, { renew: false });
+  await vatButton(page).click();
+  await tab(page, "Checks").click();
+  await tab(page, "Delivery").click();
+  await expect(vat(page)).toBeVisible();
+  world.revision += 1; // the same proposal, updated
+  await page.waitForTimeout(1200);
+  await expect(vat(page)).toBeVisible();
+  await expect(vatButton(page)).toHaveAttribute("aria-expanded", "true");
+  world.renew = true;
+  world.seq += 1; // a NEW proposal
+  world.revision = 1;
+  await expect(vat(page)).toBeHidden();
+  await expect(vatButton(page)).toHaveAttribute("aria-expanded", "false");
+});
+
+test("an unresolved total has no i at all", async ({ page }) => {
+  await open(page, { unresolved: "bacon" });
+  await expect(vatButton(page)).toHaveCount(0);
+});
+
+test("nothing about VAT in Checks or in More", async ({ page }) => {
+  await open(page);
+  await tab(page, "Checks").click();
+  await panel(page, "checks").getByRole("button", { name: "More" }).click();
+  await expect(panel(page, "checks")).not.toContainText(/\bVAT\b/i);
+});
+
+// --- the number control: carets on hover ----------------------------------------------------------
+
+const caretUp = (page: Page, name: string) =>
+  card(page).getByRole("button", {
+    name: `Increase quantity of ${name}`,
+    exact: true,
+  });
+const caretDown = (page: Page, name: string) =>
+  card(page).getByRole("button", {
+    name: `Decrease quantity of ${name}`,
+    exact: true,
+  });
+
+test("carets are invisible until the row is hovered, and shown by keyboard focus", async ({
+  page,
+}) => {
+  await open(page);
+  await expect(caretUp(page, PASTA.name)).toHaveCSS("opacity", "0");
+  await expect(caretDown(page, PASTA.name)).toHaveCSS("opacity", "0");
+  await qty(page, PASTA.name).hover();
+  await expect(caretUp(page, PASTA.name)).toHaveCSS("opacity", "1");
+  await expect(caretDown(page, PASTA.name)).toHaveCSS("opacity", "1");
+  await page.mouse.move(5, 5);
+  await expect(caretUp(page, PASTA.name)).toHaveCSS("opacity", "0");
+  await qty(page, PASTA.name).focus();
+  await expect(caretUp(page, PASTA.name)).toHaveCSS("opacity", "1");
+});
+
+test("the caret above is above the number and the caret below is below it", async ({
+  page,
+}) => {
+  await open(page);
+  const up = await caretUp(page, PASTA.name).boundingBox();
+  const number = await qty(page, PASTA.name).boundingBox();
+  const down = await caretDown(page, PASTA.name).boundingBox();
+  expect(up!.y + up!.height).toBeLessThanOrEqual(number!.y + 1);
+  expect(down!.y).toBeGreaterThanOrEqual(number!.y + number!.height - 1);
+});
+
+test("no plus or minus buttons and no dashed underline; the carets still change the number", async ({
+  page,
+}) => {
+  const world = await open(page);
+  for (const el of [caretUp(page, PASTA.name), caretDown(page, PASTA.name)])
+    await expect(el).not.toHaveText(/^[+−-]|add|remove/);
+  const input = qty(page, PASTA.name);
+  expect(
+    await input.evaluate((e) => getComputedStyle(e).borderBottomStyle),
+  ).not.toBe("dashed");
+  expect(
+    await input.evaluate((e) => getComputedStyle(e).textDecorationStyle),
+  ).not.toBe("dashed");
+  await caretUp(page, PASTA.name).click();
+  await expect(input).toHaveValue("5");
+  await tick(page, 650);
+  await expect.poll(() => world.puts.length).toBe(1);
+  expect(world.puts[0].body.lines).toEqual([
+    { product_id: "pasta", sales_quantity: 5 },
+  ]);
+});
+
+test.describe("on a touch screen", () => {
+  test.use({ hasTouch: true, isMobile: true });
+  test("the carets are faint all the time", async ({ page }) => {
+    await open(page);
+    const opacity = await caretUp(page, PASTA.name).evaluate((e) =>
+      Number(getComputedStyle(e).opacity),
+    );
+    expect(opacity).toBeGreaterThan(0.2);
+    expect(opacity).toBeLessThan(0.8);
+  });
 });

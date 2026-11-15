@@ -1,8 +1,7 @@
 import { useState } from "react";
-import { ErrorMessage } from "../../../shared/components/ErrorMessage";
 import type { Proposal } from "../../../shared/api/types";
 import { useDestinations } from "../hooks/useDestinations";
-import { usePrepareFromCart } from "../hooks/usePrepareFromCart";
+import type { usePrepareFromCart } from "../hooks/usePrepareFromCart";
 import { formatDate } from "../../schedules/model/scheduleStatus";
 import { tomorrowInHelsinki, type DraftCart } from "../model/cart";
 import { CART_COPY } from "../model/cartCopy";
@@ -16,16 +15,15 @@ const field =
  */
 export function DeliveryDetails({
   p,
-  conversationId,
   cart,
   working,
-  onPrepared,
+  prep,
 }: {
   p: Proposal;
-  conversationId: string;
   cart: DraftCart | null;
   working: boolean;
-  onPrepared?: (proposal: Proposal) => void;
+  /** The prepare-from-cart state, kept by the card so its error shows in the pinned footer. */
+  prep: ReturnType<typeof usePrepareFromCart>;
 }) {
   const destinations = useDestinations();
   const options = destinations.includes(p.request.destination)
@@ -33,10 +31,7 @@ export function DeliveryDetails({
     : [p.request.destination, ...destinations];
   const [date, setDate] = useState(p.request.delivery_date);
   const [destination, setDestination] = useState(p.request.destination);
-  const { prepare, busy, error, errorDebug } = usePrepareFromCart(
-    conversationId,
-    onPrepared,
-  );
+  const { prepare, busy } = prep;
   const earliest = tomorrowInHelsinki();
   const changed =
     date !== p.request.delivery_date || destination !== p.request.destination;
@@ -74,7 +69,6 @@ export function DeliveryDetails({
           <span className="font-body">{destination}</span>
         </p>
       )}
-      <ErrorMessage message={error} debug={errorDebug} />
       {changed && (
         <>
           <button

@@ -195,7 +195,10 @@ export function DraftCartPanel({
           )}
         </div>
       )}
-      <div className="mt-space-sm flex flex-col gap-space-xs">
+      <div
+        data-testid="card-footer"
+        className="mt-space-sm flex flex-col gap-space-xs"
+      >
         <ErrorMessage message={error} debug={errorDebug} />
         <button
           type="button"
@@ -209,6 +212,7 @@ export function DraftCartPanel({
         {reason && (
           <p
             id={reasonId}
+            data-testid="card-reason"
             className="m-0 text-label-sm text-on-surface-variant"
           >
             {reason}

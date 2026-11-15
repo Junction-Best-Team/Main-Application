@@ -5,8 +5,7 @@ export const CART_COPY = {
   preparing: "Preparing…",
   preparingOrder: "Preparing your order…",
   updateDelivery: "Update delivery details",
-  empty:
-    "Your cart is empty. Items appear here as the assistant plans your order.",
+  empty: "Empty",
   noItems: "Add items first",
   working: "The assistant is still working on your request.",
   notPrepared:
@@ -27,6 +26,7 @@ export const CART_COPY = {
   dateLabel: "Delivery date",
   destinationLabel: "Destination",
   notIncludedHeading: "Not included",
+  leftOut: "Left out",
   notIncludedWarning: "These items will not be ordered.",
   noProduct: "no product yet",
   removedByYou: "removed by you",

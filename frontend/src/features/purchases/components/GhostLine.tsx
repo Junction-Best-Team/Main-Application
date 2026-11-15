@@ -9,6 +9,7 @@ import { QuantityControl } from "./QuantityControl";
 export function GhostLine({
   id,
   removed,
+  label,
   disabled,
   describedBy,
   onRestore,
@@ -16,6 +17,8 @@ export function GhostLine({
 }: {
   id: string;
   removed: Removed;
+  /** The name shown (short, unless two rows would look the same); the full name stays in the title. */
+  label?: string;
   disabled: boolean;
   describedBy?: string;
   onRestore: () => void;
@@ -35,7 +38,9 @@ export function GhostLine({
         onClick={onRestore}
         className="min-w-0 cursor-pointer break-words border-0 bg-transparent p-0 text-left font-body text-body-sm text-on-surface"
       >
-        <span className="block line-through">{removed.name}</span>
+        <span className="block line-through" title={removed.name}>
+          {label ?? removed.name}
+        </span>
         <span className="block text-label-sm text-secondary">
           {EDIT_COPY.was(removed.lastQuantity, removed.salesUnit)}
         </span>
