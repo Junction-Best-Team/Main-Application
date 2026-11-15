@@ -58,6 +58,8 @@ def test_external_exception_logs_do_not_reintroduce_private_messages(caplog):
     rows = [json.loads(r.message) for r in caplog.records]
     assert rows[0]["event"] == "server.exception" and rows[0]["error_type"] == "RuntimeError"
     assert rows[1]["event"] == "database.pool_warning"
+    assert rows[0]["runtime_id"] == rows[1]["runtime_id"]
+    assert rows[0]["process_id"] == rows[1]["process_id"]
     assert "private-" not in caplog.text
 
 

@@ -116,6 +116,7 @@ class SafeExternalErrors(logging.Filter):
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                         "event": "server.exception" if record.exc_info else "database.pool_warning",
                         "level": record.levelname,
+                        **_runtime,
                         **_context.get(),
                         **details,
                     }
