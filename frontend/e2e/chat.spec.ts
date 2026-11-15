@@ -24,6 +24,7 @@ const blankConversation: Conversation = {
   title: "Carbonara for 200",
   created_at: timestamp,
   updated_at: timestamp,
+  cart_editable: false,
   messages: [],
   purchases: [],
   busy: false,

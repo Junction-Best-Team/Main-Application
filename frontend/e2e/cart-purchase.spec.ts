@@ -55,6 +55,7 @@ const withCart = (items: unknown[]): Conversation =>
     title: "Pasta lunch",
     created_at: timestamp,
     updated_at: timestamp,
+    cart_editable: false,
     busy: false,
     purchases: [],
     messages: [

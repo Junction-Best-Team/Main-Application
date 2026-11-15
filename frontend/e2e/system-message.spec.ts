@@ -16,6 +16,7 @@ const disrupted: Conversation = {
   title: "Standing order 13 Nov 2026: needs your attention",
   created_at: at,
   updated_at: at,
+  cart_editable: false,
   busy: false,
   purchases: [proposal],
   messages: [
