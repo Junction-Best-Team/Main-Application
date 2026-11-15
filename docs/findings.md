@@ -1196,3 +1196,8 @@ Add new findings below, under your track heading.
 
 - Date: 2026-11-15. The UniTools v2.0.0 source (SHA-256 verified) stores both recipes faithfully; import loses nothing. Across all 501 recipes no ingredient has a form, 1,956 use `damped` scaling without a formula, 828 use tsp/tbsp and 478 are "to taste"/pinch, so no saved recipe can currently reach a basket. Added `recipe-reviews/unitools-v2.0.0.json` with sourced forms and USDA spoon-to-gram conversions only.
 - Verification: imported into a local copy of the full 501-recipe fixture-embedding database (`embedded 2, reused 499`; originals retained). At 200 portions Carbonara resolves 5 of 7 lines (pepper scaling and salt quantity still need a decision) and Lasagne 10 of 14 (soffritto split, stock form, sheet form, nutmeg). Product evidence is still required for every line. Not imported into the shared DigitalOcean database: its access had expired. No live supplier calls, merge or deployment.
+
+### F-COMPOSER-COLOR-001: Match voice and send actions to the robot teal
+
+- Date: 2026-11-15. Replaced the shared composer's lime fill/navy icons with existing `primary-container` teal (`#005670`) and white icons, matching the owner's third-icon reference. Home and chat use the same style; hover uses existing deep navy.
+- Verification: frontend `npm run check` and 12 focused fixture-backed Playwright checks passed, covering voice/send switching, multiline/attachment submission, Ctrl+Enter, voice lifecycle and composer visibility across desktop/tablet/390/320px screens. Desktop Home, mobile Home send and mobile chat voice screenshots inspected. No backend/schema changes, merge or deployment.

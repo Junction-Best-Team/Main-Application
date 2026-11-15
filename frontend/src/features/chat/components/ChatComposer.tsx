@@ -14,7 +14,7 @@ import {
   type ChatAttachment,
 } from "../model/attachments";
 const composerActionClassName =
-  "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-status-fresh-green text-deep-ocean-navy transition-colors hover:enabled:bg-tertiary-fixed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container disabled:cursor-not-allowed disabled:opacity-50";
+  "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary transition-colors hover:enabled:bg-deep-ocean-navy focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container disabled:cursor-not-allowed disabled:opacity-50";
 
 type Props = {
   appearance?: "chat" | "home";
