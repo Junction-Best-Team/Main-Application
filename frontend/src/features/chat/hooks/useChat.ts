@@ -208,6 +208,10 @@ export function useChat(conversationId?: string) {
     setError(noError);
     const messageText = text.trim();
     const messageAttachments = attachments;
+    // Clear the composer as soon as send starts so the draft does not linger
+    // while create/send await. Restore the same draft below if send fails.
+    setText("");
+    setAttachments([]);
     const savedRetry = conversation?.retry_message;
     const matchingRetry =
       savedRetry?.text === messageText &&
@@ -290,8 +294,6 @@ export function useChat(conversationId?: string) {
             ? current
             : result;
         });
-        setText("");
-        setAttachments([]);
       }
     } catch (e) {
       if (
