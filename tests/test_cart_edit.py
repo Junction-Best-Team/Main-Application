@@ -252,3 +252,36 @@ def test_a_saved_recipe_cart_cannot_be_edited_yet_and_says_why(auto):
     assert locked["cart_editable"] is False and "saved recipe" in locked["cart_edit_reason"]
     sent = put(auto, [("pepper", 3)])
     assert sent.status_code == 422 and sent.json()["error"]["code"] == "RECIPE_BASKET_LOCKED"
+
+
+def test_pack_counts_of_a_saved_recipe_basket_stay_locked_and_change_nothing(auto):
+    """Q-127 is open: until the owner decides, PUT /cart on a saved recipe basket is refused with
+    the same code and the exact reason the card shows, and it writes nothing (no turn, no message,
+    no proposal revision), even when Q-126 lets the recipe's MATCHES be edited by the assistant."""
+    start(auto)
+    with connection() as c:
+        c.execute(
+            "UPDATE conversation_messages SET meal_plan=jsonb_set(meal_plan,'{recipe_plan_id}',"
+            "to_jsonb(%s::text)) WHERE meal_plan IS NOT NULL",
+            (str(uuid4()),),
+        )
+
+    def rows():
+        with connection() as c:
+            return [
+                c.execute(f"SELECT count(*) AS n FROM {t}").fetchone()["n"]
+                for t in ("conversation_turns", "conversation_messages", "proposal_revisions")
+            ]
+
+    before, shown = rows(), data(auto)
+    assert shown["cart_editable"] is False
+    assert shown["cart_edit_reason"] == (
+        "Change a product of a saved recipe by asking the assistant; "
+        "pack counts of a recipe basket cannot be edited here."
+    )
+    for lines in ([("pepper", 3)], [("pepper", 0)]):
+        sent = put(auto, lines)
+        assert sent.status_code == 422, sent.text
+        assert sent.json()["error"]["code"] == "RECIPE_BASKET_LOCKED"
+        assert sent.json()["error"]["message"] == shown["cart_edit_reason"]
+    assert rows() == before

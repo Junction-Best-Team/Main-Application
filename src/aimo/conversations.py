@@ -18,7 +18,8 @@ from aimo.purchases import context
 from aimo.turn_notice import NOTICE_KIND, failure_notice
 
 RECIPE_LOCKED_REASON = (
-    "A saved recipe basket cannot be edited here yet. Ask the assistant for a new recipe basket."
+    "Change a product of a saved recipe by asking the assistant; "
+    "pack counts of a recipe basket cannot be edited here."
 )
 
 
