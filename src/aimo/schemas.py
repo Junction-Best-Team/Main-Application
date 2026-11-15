@@ -208,11 +208,32 @@ class LoginRequest(Model):
     password: str = Field(min_length=1, max_length=256)
 
 
+REASON_KINDS = {
+    "denied": "blocker",
+    "unresolved": "blocker",
+    "exception": "approvable",
+    "warning": "note",
+}
+
+
 class Reason(Model):
     code: str
     message: str
     product_id: str | None = None
     severity: Literal["denied", "unresolved", "exception", "warning"]
+    kind: Literal["blocker", "approvable", "note"] | None = Field(
+        default=None,
+        description="What the reason means for the customer: blocker (the basket cannot be "
+        "confirmed until data or the request changes), approvable (an exception the customer's "
+        "own confirmation can cover when their authority lists it) or note (shown, blocks nothing). "
+        "Derived from severity; never changes whether a basket can be confirmed.",
+    )
+
+    @model_validator(mode="after")
+    def derive_kind(self):
+        if self.kind is None:
+            self.kind = REASON_KINDS[self.severity]
+        return self
 
 
 class NextAction(Model):

@@ -1789,6 +1789,11 @@ export interface components {
              * @enum {string}
              */
             severity: "denied" | "unresolved" | "exception" | "warning";
+            /**
+             * Kind
+             * @description What the reason means for the customer: blocker (the basket cannot be confirmed until data or the request changes), approvable (an exception the customer's own confirmation can cover when their authority lists it) or note (shown, blocks nothing). Derived from severity; never changes whether a basket can be confirmed.
+             */
+            kind?: ("blocker" | "approvable" | "note") | null;
         };
         /** RecipeImage */
         RecipeImage: {

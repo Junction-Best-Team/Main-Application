@@ -16,6 +16,7 @@ from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, js, now
 from aimo.purchases import build_snapshot, context, material_fingerprint
 from aimo.schemas import (
+    REASON_KINDS,
     CommitRequest,
     Constraint,
     DecisionRequest,
@@ -234,7 +235,7 @@ def render(
         "approval_status": status,
         "order_status": "accepted_mock" if committed else "not_placed",
         "fulfilment": fulfilment,
-        "reasons": r["reasons"],
+        "reasons": [{**x, "kind": REASON_KINDS[x["severity"]]} for x in r["reasons"]],
         "expires_at": r["expires_at"],
         "next_action": action,
         "approval_id": str(a["id"]) if a else None,
