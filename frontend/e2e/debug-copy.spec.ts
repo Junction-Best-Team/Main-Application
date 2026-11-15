@@ -38,17 +38,15 @@ async function mockChat(page: Page, conversation: unknown = blank) {
 
 // Every send answers 500 with the server's SERVER_ERROR text and a request id header.
 async function failSends(page: Page, status = 500) {
-  await page.route(
-    `**/api/conversations/${conversationId}/messages`,
-    (route) =>
-      route.fulfill({
-        status,
-        headers: { "x-request-id": "req-abc123" },
-        contentType: "application/json",
-        body: JSON.stringify({
-          error: { code: "SERVER_ERROR", message: SENTENCE },
-        }),
+  await page.route(`**/api/conversations/${conversationId}/messages`, (route) =>
+    route.fulfill({
+      status,
+      headers: { "x-request-id": "req-abc123" },
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: { code: "SERVER_ERROR", message: SENTENCE },
       }),
+    }),
   );
 }
 
@@ -82,9 +80,7 @@ async function stubClipboard(
   }, mode);
 }
 const copied = (page: Page) =>
-  page.evaluate(
-    () => (window as unknown as { __copied: string[] }).__copied,
-  );
+  page.evaluate(() => (window as unknown as { __copied: string[] }).__copied);
 
 async function sendTyped(page: Page, url = `/conversations/${conversationId}`) {
   await page.goto(url);
@@ -306,4 +302,71 @@ test("debug mode covers a failed Overview confirm", async ({ page }) => {
   expect(text).toContain("DECISION_CLOSED");
   expect(text).toContain("status: 409");
   expect(text).toContain(`/api/purchases/${ids.proposal}/confirm`);
+});
+
+const MARKER = "UPSTREAM-HTML-MARKER-7731";
+
+async function debugSetup(page: Page) {
+  await page.addInitScript(() => localStorage.setItem("aimo.debug", "1"));
+  await stubClipboard(page);
+  await mockChat(page);
+}
+
+test("a non-JSON 502 from the ingress copies kind, content type and no body text", async ({
+  page,
+}) => {
+  await debugSetup(page);
+  await page.route(`**/api/conversations/${conversationId}/messages`, (route) =>
+    route.fulfill({
+      status: 502,
+      contentType: "text/html",
+      body: `<html><body><h1>Upstream page ${MARKER}</h1></body></html>`,
+    }),
+  );
+  await sendTyped(page);
+  await expect(page.getByRole("alert").first()).toContainText(SENTENCE);
+  await copy(page).click();
+  const text = (await copied(page))[0];
+  expect(text).toContain("body: not JSON");
+  expect(text).toMatch(/content-type: text\/html/);
+  expect(text).toContain("status: 502");
+  expect(text).toContain("x-request-id: none");
+  expect(text).toMatch(/elapsed-ms: \d+/);
+  expect(text).toMatch(/status-text: .+/);
+  expect(text).not.toContain(MARKER);
+  expect(text).not.toContain("Upstream page");
+});
+
+test("a JSON error envelope is reported as such with its elapsed time", async ({
+  page,
+}) => {
+  await debugSetup(page);
+  await failSends(page);
+  await sendTyped(page);
+  await copy(page).click();
+  const text = (await copied(page))[0];
+  expect(text).toContain("body: JSON envelope");
+  expect(text).toContain("content-type: application/json");
+  expect(text).toMatch(/elapsed-ms: \d+/);
+});
+
+test("a network failure copies status 0 with no response headers", async ({
+  page,
+}) => {
+  await debugSetup(page);
+  await page.route(`**/api/conversations/${conversationId}/messages`, (route) =>
+    route.abort("connectionreset"),
+  );
+  await sendTyped(page);
+  await expect(page.getByRole("alert").first()).toContainText(
+    "Could not reach the service.",
+  );
+  await copy(page).click();
+  const text = (await copied(page))[0];
+  expect(text).toContain("status: 0");
+  expect(text).toContain("error-code: NETWORK_ERROR");
+  expect(text).toMatch(/elapsed-ms: \d+/);
+  expect(text).toContain("response: none (network failure)");
+  expect(text).not.toContain("x-request-id");
+  expect(text).not.toContain("content-type");
 });
