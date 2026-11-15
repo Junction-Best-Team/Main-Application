@@ -1,14 +1,11 @@
 # Weekend infrastructure
 
-**Separate-app update:** follow [the current cutover runbook](../docs/separate-apps.md).
-The Kubernetes stack now creates frontend/API/worker apps. Supply `image` (API),
+See [app operations](../docs/separate-apps.md) for independent images and durable jobs.
+The Kubernetes stack creates frontend/API/worker apps. Supply `image` (API),
 `worker_image`, and `frontend_image`; the helper requires all three image arguments.
-The older monolith rollout narrative below is historical and must not be used for
-the one-time cutover. The cloud/database stack remains unchanged.
 
 Terraform provisioning and release helpers. Creating a PR or passing its CI never provisions resources.
-Run plans for review; applying a plan is a separate operator action. This work was
-prepared without applying either stack.
+Run plans for review; applying a plan is a separate operator action.
 
 ## Two independent Terraform stacks
 
@@ -28,15 +25,10 @@ Defaults: Amsterdam, one 2-vCPU/4-GB worker, standard control plane, one managed
 The portable stack adds one Traefik LoadBalancer and a 1-GiB certificate volume.
 The app starts at **zero replicas** until the database/catalog are ready.
 
-For 30 hours, allow roughly **$3–4 before tax**, and budget $5 at the starting
-sizes. This is an estimate, not a spending cap. Registry charges, domain purchase,
-AI API usage, excess traffic and longer runtime are separate. Full catalog import
-and model inference have not been measured on this node. Increase capacity if
-observed resource use requires it. Billing continues until resources are deleted.
-Sources: [workers](https://www.digitalocean.com/pricing/droplets),
-[database](https://www.digitalocean.com/pricing/managed-databases),
-[load balancer](https://www.digitalocean.com/pricing/load-balancers),
-[storage](https://docs.digitalocean.com/products/volumes/details/pricing/).
+Check current cloud prices before provisioning. AI usage, registry charges,
+traffic and runtime are separate costs; billing continues until resources are
+deleted. See [catalog-sync capacity](../docs/catalog-sync.md#resources-and-capacity)
+when sizing full imports.
 
 ## Prerequisites
 
@@ -46,11 +38,8 @@ Sources: [workers](https://www.digitalocean.com/pricing/droplets),
   `192.0.2.10/32` is documentation-only and must be replaced before deployment.
 - An existing domain/subdomain whose DNS you can point at the load balancer.
   Terraform does not buy a domain or modify unrelated DNS zones.
-- The application image from **PR #4**, tagged by commit or digest and built for
-  `linux/amd64`. PR #2 supplies the design only; this branch does not duplicate
-  PR #4's app code or claim that an image has been published. Merge/build that
-  implementation before attempting the Kubernetes rollout. It includes the
-  pinned embedding model and static React assets in the same image.
+- The frontend, API and worker images, tagged by commit or digest and built for
+  `linux/amd64`. Build the three Docker targets or use a published release.
 - A registry reachable by the cluster. A public GHCR image requires no pull
   credentials; for a private registry, create an image-pull Secret in the target
   namespace through your secret-management process and set
@@ -72,7 +61,7 @@ the variable name. Revoke the token after teardown; expiry does not stop billing
 
 Terraform state and saved plans contain generated database credentials,
 kubeconfig and Kubernetes Secrets. `sensitive` hides terminal output, not state
-contents. This PR uses local state, ignored by Git; restrict its permissions and
+contents. The example setup uses local state, ignored by Git; restrict its permissions and
 use one operator. Before sharing operations across the team, configure an
 access-controlled encrypted remote backend with locking for **each** stack and
 migrate state. Never commit state, tfvars, kubeconfig or saved plans. There is no
@@ -99,9 +88,10 @@ PostgreSQL uses its private endpoint and verified TLS.
 Check that the resource names are unused and `vpc_cidr` does not overlap an
 existing VPC; override the range in your private tfvars when necessary.
 
-## Later rollout — requires an operator to apply reviewed plans
+## Initial setup
 
-These steps document the future deployment; none were performed for this PR.
+For an existing installation, use the release procedure below. Bootstrap is an
+explicit operator step for a new installation, after reviewing the plans.
 
 1. Apply the approved cloud plan: `terraform -chdir=infra/digitalocean apply demo.tfplan`.
 2. Prepare private portable inputs from the completed cloud outputs:
@@ -117,9 +107,9 @@ These steps document the future deployment; none were performed for this PR.
    ```
 
    The helper writes ignored `kubeconfig.generated.yaml` and
-   `runtime.auto.tfvars.json`, both mode 0600. It generates private demo buyer,
-   agent and session credentials once and refuses to overwrite existing inputs.
-   It never applies Terraform. Add `runtime_secrets = { LLM_API_KEY = ..., VALIO_AIMO_API_KEY = ... }`
+   `runtime.auto.tfvars.json`, both mode 0600. It generates private demo buyer
+   and session credentials once and refuses to overwrite existing inputs.
+   It never applies Terraform. Add `runtime_secrets = { GEMINI_API_KEY = ..., VALIO_AIMO_API_KEY = ... }`
    to the private JSON inputs using your secret manager/editor. JSON requires
    the equivalent object syntax. Keep credentials out of command history.
 
@@ -152,7 +142,7 @@ These steps document the future deployment; none were performed for this PR.
    `runtime_secrets.VALIO_AIMO_API_KEY`), then apply. Run
    `kubectl -n junction create job aimo-catalog-sync-initial --from=cronjob/aimo-catalog-sync`
    and wait for its JSON result `"outcome": "updated"`. It downloads, checks the
-   approved SHA-256 and count, embeds with the same pinned CPU model as serving,
+   approved SHA-256 and count, embeds with the same configured profile as serving,
    and activates atomically. See [catalog sync](../docs/catalog-sync.md).
 5. Before enabling serving, add `FORWARDED_ALLOW_IPS` to `runtime_secrets` with
    the actual ingress proxy IPs/CIDRs. Never use `*` or a publicly routable
@@ -160,9 +150,8 @@ These steps document the future deployment; none were performed for this PR.
    restrict direct application access to trusted proxies. This lets login
    throttling distinguish clients instead of locking every buyer behind one
    ingress address. The plan rejects enabling replicas without explicit proxy
-   trust. The application image supplies its own shared model name/revision pin.
-   For upgrades from earlier PR #4 revisions, also follow the migration 002,
-   prepare-key and privileged product-scope steps in [README](../README.md).
+   trust. Keep the API, worker and importer embedding profiles aligned as described
+   in [Google model configuration](../docs/google-models.md).
    Migration with an admin role must grant the runtime role access to any new
    tables, including `prepare_requests`; bootstrap's grant step covers them.
    After successful import, set `bootstrap_generation=null`,
@@ -171,7 +160,7 @@ These steps document the future deployment; none were performed for this PR.
    then starts serving with the restricted database role. Keep the private demo
    login credentials in your password manager before removing their local copy.
    Saved old plans/state backups still contain secrets; protect them as above.
-6. Check `/health/live` and `/health/ready`, then run PR #4's root/login, chat streaming, exact customer confirmation and
+6. Check `/health/live` and `/health/ready`, then run the root/login, persisted chat, exact customer confirmation and
    mock-receipt smoke flow. `upstream_mode="live"` is the default: set
    `runtime_secrets.VALIO_AIMO_API_KEY` before serving. The API and worker refuse
    missing keys, fixture mode or a supplier URL other than `https://junction26.valioaimo.fi`.
