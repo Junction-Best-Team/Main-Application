@@ -112,7 +112,7 @@ def test_timeout_preserves_partial_cart_and_existing_auto_prepare_without_orderi
 def test_incomplete_seasonings_fall_back_before_saved_plan_selection(
     monkeypatch, tmp_path, buyer, service
 ):
-    from test_agent_recipe_planning import estimate
+    from test_agent_recipe_planning import estimate, incomplete_carbonara
     from test_recipes import import_fixture, source_recipe
 
     from aimo.config import settings
@@ -122,11 +122,13 @@ def test_incomplete_seasonings_fall_back_before_saved_plan_selection(
         agent, "settings", lambda: SimpleNamespace(llm_max_tool_rounds=12, llm_model="scripted")
     )
     raw = source_recipe()
-    raw["ingredients"][-1]["scaling"] = "damped"
-    raw["ingredients"].append({
-        "id": "salt", "name": {"en": "Salt for the water"}, "quantity": None,
-        "unit": "toTaste", "scaling": "fixed",
-    })
+    basis = incomplete_carbonara()["recipe"]
+    raw["baseServings"] = basis["base_servings"]
+    raw["ingredients"] = [
+        {"id": i["id"], "name": {"en": i["name"]}, "quantity": i["quantity"],
+         "unit": i["unit"], "scaling": i["scaling"]}
+        for i in basis["ingredients"]
+    ]
     *_, versions = import_fixture(tmp_path, [raw])
     reference = dict(versions[0])
     script = iter([
@@ -157,7 +159,8 @@ def test_incomplete_seasonings_fall_back_before_saved_plan_selection(
     plan = message["meal_plan"]
     assert plan["recipe_plan_id"] is None and plan["portions"] == 200
     assert {i["name"]: i["amount"] for i in plan["ingredients"]} == {
-        "Spaghetti": "20", "Black pepper": "0.1", "Salt for the water": "2"
+        "Spaghetti": "20", "Guanciale": "10", "Egg yolks": "300", "Whole egg": "100",
+        "Pecorino romano": "6", "Black pepper": "0.1", "Salt for the water": "2",
     }
     assert "Assistant-drafted recipe estimate" in plan["notes"][0]
     with connection() as c:
