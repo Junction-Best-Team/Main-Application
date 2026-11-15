@@ -17,8 +17,10 @@ carbonara's formula-free damped pepper and unquantified salt use this estimate
 path. The source recipe remains unchanged. `scale_recipe` rejects an incomplete
 candidate before creating a saved plan, so the estimate path remains available.
 A suitable saved recipe is scaled on the server and matched to catalog products.
-Purchasing policy is read during checkout preparation or for an explicit policy
-question, not during recipe discovery or ingredient matching.
+The assistant's policy lookup is optional, only to explain a policy blocker on an
+already prepared basket during checkout. It is not a planning or basket-preparation
+step. The backend enforces policy automatically; the customer confirms with the
+purchase button outside chat.
 It chooses normal serving sizes and does not ask the customer to calculate grams,
 ingredient ratios or pack counts. Missing delivery facts are asked for only when
 needed for preparation; a missing hard budget is left unset, with policy limits

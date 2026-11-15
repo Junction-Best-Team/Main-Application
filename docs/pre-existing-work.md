@@ -347,7 +347,7 @@ no dependency or external material was added.
 
 Reused the existing saved-recipe scaler, assistant estimate flow, typed tools and
 parallel-read harness. Added internal candidate readiness guidance and preflight,
-removed the whole-turn ingredient-blocker stop, and scoped policy reads to checkout
-or explicit policy questions. Regression recipes, seasoning quantities and provider
-replies are authored fixtures; they are not reviewed cooking facts or live supplier
+removed the whole-turn ingredient-blocker stop, and scoped optional policy reads to
+explaining blockers on an already prepared basket during checkout. Regression recipes,
+seasoning quantities and provider replies are authored fixtures; they are not reviewed cooking facts or live supplier
 evidence. No dataset, dependency, schema or deployed configuration was changed.

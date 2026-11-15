@@ -358,9 +358,12 @@ class ToolSession:
             ),
             "get_purchase_policy": ToolSpec(
                 ReadPolicy,
-                "Read buyer scope and limits at checkout preparation, or to answer an explicit "
-                "question about purchasing rules/destinations. Not needed for recipe planning "
-                "or ingredient matching. Does not obtain customer confirmation.",
+                "Optional read-only lookup to explain a policy-related blocker on an already "
+                "prepared basket during checkout. Do not call during recipe planning, product "
+                "search, ingredient matching or cart building. Not a prerequisite for preparing "
+                "a basket or purchasing: the backend enforces policy automatically and the "
+                "customer confirms with the purchase button outside chat. This tool cannot "
+                "authorize or confirm a purchase.",
                 self.policy,
                 PolicyResponse,
             ),
