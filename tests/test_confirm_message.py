@@ -15,6 +15,7 @@ import pytest
 
 from aimo import auth, conversations, scheduler
 from aimo.chat_schemas import AgentTurn, ConversationCreate, ConversationResponse, MessageRequest
+from aimo.config import settings
 from aimo.db import Problem, connection
 from aimo.schemas import CommitRequest, PrepareRequest
 
@@ -190,7 +191,7 @@ def test_the_model_never_sees_the_line_and_the_chat_can_go_on(buyer, service, re
 def test_the_line_does_not_count_against_the_hourly_message_limit(
     buyer, service, request_data, monkeypatch
 ):
-    monkeypatch.setattr(conversations, "MAX_MESSAGES_PER_HOUR", 2)
+    monkeypatch.setattr(settings(), "chat_messages_per_hour", 2)
     cid, proposal = chat_with_basket(buyer, service, request_data)  # one customer turn
     confirm(service, buyer, proposal)
     reply = conversations.message(

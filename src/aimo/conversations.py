@@ -349,7 +349,6 @@ def enqueue(identity, cid, body):
 
 # Per-buyer chat bounds across conversations; accepted retries are never counted again.
 MAX_ACTIVE_TURNS = 3
-MAX_MESSAGES_PER_HOUR = 60
 
 
 def limit_turns(c, identity, new):
@@ -369,7 +368,7 @@ def limit_turns(c, identity, new):
             429,
             5,
         )
-    if new and counts["recent"] >= MAX_MESSAGES_PER_HOUR:
+    if new and counts["recent"] >= settings().chat_messages_per_hour:
         raise Problem(
             "CHAT_RATE_LIMIT",
             "This account reached its hourly message limit. Try again later.",
