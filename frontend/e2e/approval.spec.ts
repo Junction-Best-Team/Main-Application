@@ -39,7 +39,7 @@ test("historical approval stays superseded and links to committed terms", async 
   await expect(page.locator(".purchase-sheet")).toContainText("1,700.00");
   await expect(page.locator(".status-note")).toContainText("Superseded");
   await expect(
-    page.getByRole("button", { name: "Approve & Push to Dispatch" }),
+    page.getByRole("button", { name: "Confirm purchase" }),
   ).toHaveCount(0);
   await page.getByRole("link", { name: "View current revision 2" }).click();
   await expect(page).toHaveURL(
