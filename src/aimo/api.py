@@ -35,6 +35,7 @@ from aimo.chat_schemas import (
     ConversationCreate,
     ConversationList,
     ConversationResponse,
+    EditMessageRequest,
     MessageRequest,
 )
 from aimo.config import settings
@@ -504,6 +505,22 @@ def create_app(service=None):
             identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
         )
         return conversations.enqueue(identity, conversation_id, body)
+
+    @app.post(
+        "/api/conversations/{conversation_id}/messages/{message_id}/edit",
+        response_model=ConversationResponse,
+    )
+    def edit_conversation_message(
+        conversation_id: UUID,
+        message_id: int,
+        body: EditMessageRequest,
+        request: Request,
+        identity=Depends(buyer),
+    ):
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+        return conversations.edit_message(identity, conversation_id, message_id, body)
 
     @app.post("/api/conversations/{conversation_id}/cancel", response_model=ConversationResponse)
     def cancel_conversation(conversation_id: UUID, request: Request, identity=Depends(buyer)):

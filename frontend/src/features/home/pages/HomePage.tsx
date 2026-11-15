@@ -58,7 +58,7 @@ export function HomePage() {
         <StandingOrdersCard hold={entering} />
       </div>
       <p id="home-demo-note" className="home-demo-note">
-        Demo schedule · No supplier orders are placed.
+        No supplier orders are placed.
       </p>
     </main>
   );

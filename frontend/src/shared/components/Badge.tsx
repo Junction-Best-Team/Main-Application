@@ -32,12 +32,16 @@ const tones: Record<string, string> = {
   skipped: "bg-surface-container-high text-on-surface-variant",
 };
 
+const labels: Record<string, string> = {
+  accepted_mock: "Accepted",
+};
+
 export function Badge({ value }: { value: string }) {
   return (
     <span
       className={`badge ${value} inline-block rounded-full px-3 py-1.5 font-label text-label-sm font-bold whitespace-nowrap ${tones[value] ?? "bg-surface-container-high text-on-surface-variant"}`}
     >
-      {title(value)}
+      {labels[value] ?? title(value)}
     </span>
   );
 }

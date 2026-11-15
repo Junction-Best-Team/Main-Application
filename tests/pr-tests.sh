@@ -34,5 +34,7 @@ exec .venv/bin/pytest -q -x --durations=5 \
   tests/test_confirmation_contract.py::test_concurrent_confirmations_with_one_key_create_one_order \
   tests/test_agent_cannot_purchase.py::test_registry_exposes_only_read_and_prepare_operations \
   tests/test_workflow.py::test_four_outcomes_and_hard_requirements \
+  tests/test_chat_activity.py::test_terminal_error_code_remains_an_interruption_after_sanitization \
+  tests/test_agent_stop_control.py::test_product_searches_have_no_separate_stop_control_cap \
   tests/test_observability.py \
   tests/test_provider_diagnostics.py

@@ -128,7 +128,7 @@ export function DraftCartPanel({
                     </p>
                     <p className="text-label-sm">
                       {item.price.mode === "fixture"
-                        ? "Fixture price · invented demo data"
+                        ? "Catalog price"
                         : "Supplier price"}
                       {" · "}Delivery {item.price.delivery_date}
                     </p>

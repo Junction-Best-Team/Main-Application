@@ -4,13 +4,13 @@ export const DESIGN_PLACEHOLDERS = {
   shell: {
     hub: "Hub: Helsinki Sörnäinen",
     hubShort: "Sörnäinen",
-    account: { name: "Demo restaurant", number: "Acc #94821-FI" },
+    account: { name: "Restaurant", number: "Acc #94821-FI" },
   },
   /** Request screen (chat): context header, quota badge, composer hints. */
   request: {
     assistantSubtitle:
       "Meal planning, recipe parsing & ingredient restocking for Valio Aimo Wholesale",
-    context: "Demo restaurant • Service Context: Tasting Menu Weekend Prep",
+    context: "Restaurant • Service Context: Tasting Menu Weekend Prep",
     quota: "Account Quota Active (Tier A)",
     composerPlaceholder: "Ask Aimo…",
   },

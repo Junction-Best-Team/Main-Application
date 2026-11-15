@@ -429,7 +429,7 @@ test.describe("schedule detail", () => {
     await expect(page.getByTestId("run-line")).toContainText("464398");
   });
 
-  test.describe("demo mode: Run now (demo)", () => {
+  test.describe("demo mode: Run now", () => {
     const runNowUrl = (id: string) =>
       new RegExp(`/api/schedules/${id}/run-now$`);
 
@@ -446,7 +446,7 @@ test.describe("schedule detail", () => {
       );
     });
 
-    test("with the flag on it shows on an active schedule only, styled as a demo command", async ({
+    test("with the flag on it shows on an active schedule only", async ({
       page,
     }) => {
       await mockSignedIn(page, true);
@@ -457,10 +457,7 @@ test.describe("schedule detail", () => {
         json(route, detail(pausedSchedule)),
       );
       await page.goto(`/schedules/${ids.schedule}`);
-      await expect(
-        page.getByRole("button", { name: "Run now (demo)" }),
-      ).toBeVisible();
-      await expect(page.getByText("Demo command")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Run now" })).toBeVisible();
       await page.goto(`/schedules/${ids.pausedSchedule}`);
       await expect(
         page.getByRole("heading", { name: pausedSchedule.title, level: 1 }),
@@ -493,7 +490,7 @@ test.describe("schedule detail", () => {
         });
       });
       await page.goto(`/schedules/${ids.schedule}`);
-      await page.getByRole("button", { name: "Run now (demo)" }).click();
+      await page.getByRole("button", { name: "Run now" }).click();
       await expect(
         page
           .getByRole("region", { name: "Run history" })
@@ -523,7 +520,7 @@ test.describe("schedule detail", () => {
         });
       });
       await page.goto(`/schedules/${ids.schedule}`);
-      await page.getByRole("button", { name: "Run now (demo)" }).click();
+      await page.getByRole("button", { name: "Run now" }).click();
       // While the run is not finished the button is protected against a second click.
       await expect(
         page.getByRole("button", { name: "Running…" }),
@@ -534,9 +531,9 @@ test.describe("schedule detail", () => {
           .getByText("Order placed"),
       ).toBeVisible({ timeout: 15_000 });
       // Once the result is shown the button is back, with its normal label, within 2 s.
-      await expect(
-        page.getByRole("button", { name: "Run now (demo)" }),
-      ).toBeEnabled({ timeout: 2_000 });
+      await expect(page.getByRole("button", { name: "Run now" })).toBeEnabled({
+        timeout: 2_000,
+      });
       await expect(
         page.getByRole("button", { name: "Pause", exact: true }),
       ).toBeEnabled({ timeout: 2_000 });
@@ -551,7 +548,7 @@ test.describe("schedule detail", () => {
         problem(route, 403, "SCHEDULE_DEMO_DISABLED", "Demo mode is off."),
       );
       await page.goto(`/schedules/${ids.schedule}`);
-      await page.getByRole("button", { name: "Run now (demo)" }).click();
+      await page.getByRole("button", { name: "Run now" }).click();
       await expect(page.getByRole("alert")).toContainText("Demo mode is off.");
     });
   });

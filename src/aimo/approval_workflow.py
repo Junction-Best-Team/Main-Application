@@ -738,6 +738,7 @@ def commit_order(identity, request: CommitRequest, connector):
             "approval_status": a["status"] if a else "not_required",
             "order_status": "accepted_mock",
             "reasons": r["reasons"],
+            "approved_exceptions": r["required_exceptions"],
             "expires_at": r["expires_at"].isoformat(),
             "next_action": {"type": "complete", "tool": "get_order"},
             "label": "Accepted by demo order service",

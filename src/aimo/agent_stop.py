@@ -211,9 +211,6 @@ def is_advice_question(customer_texts):
     )
 
 
-MAX_PRODUCT_SEARCHES = 8  # live round 1: a plan request used 15 searches in 9 rounds
-
-
 # --- basket labels must not claim a status (checked without the classifier) ---------------------------------
 LABEL_CLAIMS = re.compile(
     r"\b(paid|approved?|confirmed|ordered|order (is )?placed|placed (the )?order|order complete[d]?|"

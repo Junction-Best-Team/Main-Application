@@ -33,6 +33,22 @@ export const sendMessage = (
     body: JSON.stringify(request),
     signal,
   });
+export const editMessage = (
+  conversationId: string,
+  messageId: number,
+  request: components["schemas"]["EditMessageRequest"],
+  csrfToken: string,
+  signal?: AbortSignal,
+) =>
+  api<Conversation>(
+    `/api/conversations/${conversationId}/messages/${messageId}/edit`,
+    {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrfToken },
+      body: JSON.stringify(request),
+      signal,
+    },
+  );
 export const cancelConversation = (
   id: string,
   csrfToken: string,

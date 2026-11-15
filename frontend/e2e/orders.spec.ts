@@ -116,7 +116,7 @@ test("placed rows offer Schedule this order and expand to the receipt details", 
   await expect(placed.locator(".purchase-sheet")).toContainText(
     "Spaghetti 5 kg",
   );
-  await expect(placed).toContainText("Accepted by demo order service");
+  await expect(placed).toContainText("Order accepted");
   await expect(
     placed.getByRole("button", { name: "Order details: Hotel breakfast" }),
   ).toHaveAttribute("aria-expanded", "true");

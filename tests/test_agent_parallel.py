@@ -25,6 +25,7 @@ from aimo.agent_provider import AssistantReply
 from aimo.agent_reads import MAX_PARALLEL_READS, executions
 from aimo.agent_tools import ToolSession
 from aimo.chat_schemas import MealPlan
+from aimo.config import Settings
 from aimo.db import Problem
 from aimo.schemas import ProductSummary
 
@@ -34,11 +35,12 @@ database = fixtures.database
 reset_buyers = fixtures.reset_buyers
 
 
-@pytest.mark.parametrize("configured,override,completed", [
-    (180, None, True), (140, None, True), (180, 110, False),
+@pytest.mark.parametrize("configured,override,remaining,completed", [
+    (360, None, 30, True), (300, None, 30, True),
+    (360, 200, 30, False), (360, None, 180, False),
 ])
-def test_turn_budget_supports_work_after_ninety_seconds_and_preserves_expiry(
-    monkeypatch, config, identity, configured, override, completed
+def test_turn_budget_supports_work_after_three_minutes_and_preserves_expiry(
+    monkeypatch, config, identity, configured, override, remaining, completed
 ):
     from aimo import agent_provider
 
@@ -48,8 +50,8 @@ def test_turn_budget_supports_work_after_ninety_seconds_and_preserves_expiry(
     monkeypatch.setattr(agent, "time", clock)
     monkeypatch.setattr(agent_provider, "time", clock)
     responses = iter([
-        (95, reply(call("publish_meal_plan", meal(False)))),
-        (30, reply(text="The draft is ready for matching.")),
+        (185, reply(call("publish_meal_plan", meal(False)))),
+        (remaining, reply(text="The draft is ready for matching.")),
     ])
     deadlines = []
 
@@ -68,10 +70,26 @@ def test_turn_budget_supports_work_after_ninety_seconds_and_preserves_expiry(
     assert ("time limit" not in result.text) is completed
 
 
-@pytest.mark.parametrize("seconds", [0, -1, 181, float("nan")])
+@pytest.mark.parametrize("seconds", [0, -1, 361, float("nan")])
 def test_turn_budget_cannot_outlive_lease_headroom(config, identity, seconds):
-    with pytest.raises(ValueError, match="at most 180"):
+    with pytest.raises(ValueError, match="at most 360"):
         agent.run_turn(identity, HISTORY, FakeService(identity), budget_seconds=seconds)
+
+
+@pytest.mark.parametrize("reads,limited", [(39, False), (40, True)])
+def test_default_round_budget_finishes_after_twenty_rounds_and_still_stops(
+    monkeypatch, config, identity, reads, limited
+):
+    config.llm_max_tool_rounds = Settings(_env_file=None).llm_max_tool_rounds
+    seen = scripted(monkeypatch, [
+        *[reply(call("get_product", {"product_id": f"p{i}"})) for i in range(reads)],
+        reply(text="Finished checking the products."),
+    ])
+    events = []
+    result = agent.run_turn(identity, HISTORY, FakeService(identity), on_progress=events.append)
+    assert len(seen) == 40
+    assert ("step limit" in result.text) is limited
+    assert events[-1].error_code == ("TOOL_ROUND_LIMIT" if limited else None)
 
 
 def calls(*ids):
@@ -298,6 +316,55 @@ def test_search_inspects_shortlist_once_and_keeps_candidates_unselected(identity
     assert [c[0] for c in service.calls].count("product") == 3
     assert [c[0] for c in service.calls].count("policy") == 1
     assert session.plan is None and session.proposal is None
+
+
+@pytest.mark.parametrize("ingredient_count,alternatives", [(15, 0), (22, 0), (22, 12), (22, 78)])
+def test_ingredient_search_batch_can_save_matches_without_a_separate_search_cap(
+    monkeypatch, config, identity, ingredient_count, alternatives
+):
+    from aimo.config import settings
+
+    monkeypatch.setattr(settings(), "agent_stop_control", True)
+    monkeypatch.setattr(settings(), "agent_phases", False)
+    ids = [f"ingredient-{n}" for n in range(ingredient_count)]
+    plan = {
+        "title": "Authored lasagna estimate", "portions": 50, "notes": [],
+        "ingredients": [{"name": pid, "amount": "1", "unit": "KG"} for pid in ids],
+    }
+    matched = deepcopy(plan)
+    for item in matched["ingredients"]:
+        item["product_id"] = item["name"]
+    queries = ids + [f"alternative-{n}" for n in range(alternatives)]
+    searched = []
+    service = FakeService(identity)
+
+    def search(_, request):
+        searched.append(request.query)
+        return {
+            "products": [{k: product(request.query)[k] for k in ProductSummary.model_fields}
+                         | {"score": 0.9, "match_is_suitability_proof": False}],
+            "generation": "fixture", "model": "fixture", "strategy": "keyword",
+            "note": "Authored candidates, not suitability evidence.",
+        }
+
+    service.search_products = search
+    seen = scripted(monkeypatch, [
+        reply(call("publish_meal_plan", plan)),
+        reply(*[call("search_products", {"query": query}) for query in queries]),
+        reply(call("publish_meal_plan", matched)),
+        reply(text="Your selections are saved for review."),
+    ])
+    events = []
+    result = agent.run_turn(identity, HISTORY, service, on_progress=events.append)
+    assert len(seen) == 4
+    assert sorted(searched) == sorted(queries)
+    assert [i.product_id for i in result.meal_plan.ingredients] == ids
+    assert result.proposal_id is None
+    assert not any(e.error_code == "TOOL_ERROR_LIMIT" for e in events)
+    # The complete search batch reaches the next model round before matches are saved.
+    outputs = [json.loads(m["content"]) for m in seen[2]["messages"] if m["role"] == "tool"]
+    assert not any(o.get("error") for o in outputs)
+    assert sum("products" in o.get("result", {}) for o in outputs) == len(queries)
 
 
 @pytest.mark.parametrize("code", ["LLM_TIMEOUT", "LLM_UNAVAILABLE"])
