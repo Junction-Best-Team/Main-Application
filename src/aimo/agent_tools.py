@@ -316,6 +316,38 @@ def is_zero(amount):
         return False
 
 
+# Exact conversions to the canonical units the baskets use. A value that would need more than the 4
+# decimals a plan can hold, or an unknown unit, is left as the model wrote it (never rounded).
+UNIT_FACTORS = {
+    "ml": ("L", Decimal("0.001")),
+    "cl": ("L", Decimal("0.01")),
+    "dl": ("L", Decimal("0.1")),
+    "l": ("L", Decimal(1)),
+    "g": ("KG", Decimal("0.001")),
+    "mg": ("KG", Decimal("0.000001")),
+    "kg": ("KG", Decimal(1)),
+}
+
+
+def normalise_units(plan):
+    """A free-form plan in canonical units: 750 ml becomes 0.75 L, 20000 g becomes 20 KG (live round 1:
+    SB-28 failed MEAL_BASKET_MISMATCH because the plan said ml and dl while the basket said L)."""
+    items = []
+    for item in plan.ingredients:
+        target = UNIT_FACTORS.get(item.unit.strip().casefold())
+        if target and item.amount is not None and item.unit != target[0]:
+            try:
+                value = Decimal(item.amount) * target[1]
+                TypeAdapter(Amount).validate_python(value)
+                item = item.model_copy(update={"amount": format(value.normalize(), "f"), "unit": target[0]})
+            except (InvalidOperation, ValidationError):
+                pass
+        elif target and item.unit != target[0]:
+            item = item.model_copy(update={"unit": target[0]})
+        items.append(item)
+    return plan.model_copy(update={"ingredients": items})
+
+
 class ToolSession:
     """Fresh per turn; persistent preparation deduplication belongs to Service."""
 
@@ -1138,11 +1170,17 @@ class ToolSession:
                 basis.base_servings,
                 amounts(basis),
             ):
+                expected = [
+                    {"name": i.name, "amount": i.amount, "unit": i.unit} for i in basis.ingredients
+                ]
                 raise Problem(
                     "DRAFT_QUANTITY_MISMATCH",
                     "Keep the server-scaled draft quantities, units and portions; only match "
-                    "products. Change the recipe in a new customer message.",
+                    "products. Keep exactly: "
+                    + "; ".join(f"{e['name']} {e['amount']} {e['unit']}" for e in expected)
+                    + f" for {basis.portions} portions. Change the recipe in a new customer message.",
                     422,
+                    details={"expected": expected, "portions": basis.portions},
                 )
             # Matching cannot remove the server's provenance and estimate labels.
             plan.notes = list(dict.fromkeys([*basis.notes, *plan.notes]))[:20]
@@ -1179,6 +1217,8 @@ class ToolSession:
                     "Read every selected product with get_product first.",
                     422,
                 )
+        if self.draft_totals is None:
+            plan = normalise_units(plan)  # a server-scaled draft keeps the server's own units
         self.plan = plan.model_copy(deep=True)
         return {"meal_plan": self.plan.model_dump(mode="json"), "purchase_authorized": False}
 
