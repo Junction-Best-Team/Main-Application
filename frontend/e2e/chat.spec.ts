@@ -1481,9 +1481,10 @@ for (const width of [1440, 390, 320]) {
     await expect(
       page.getByRole("complementary", { name: "Overview" }),
     ).toHaveCount(0);
+    // The card is always in a chat: empty, with its purchase button greyed out.
     await expect(
       page.getByRole("complementary", { name: "Draft cart" }),
-    ).toHaveCount(0);
+    ).toContainText("Your cart is empty");
     snapshot = {
       ...snapshot,
       messages: [
@@ -1526,11 +1527,10 @@ for (const width of [1440, 390, 320]) {
     await expect(
       draft.getByText("Price not checked", { exact: true }),
     ).toHaveCount(2);
+    // Nothing has a product yet, so the card's purchase button is greyed out.
     await expect(
-      draft.getByRole("button", {
-        name: /Confirm purchase|Approve & Push to Dispatch/,
-      }),
-    ).toHaveCount(0);
+      draft.getByRole("button", { name: "Confirm purchase" }),
+    ).toBeDisabled();
     snapshot = {
       ...snapshot,
       draft_cart: {

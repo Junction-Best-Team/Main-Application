@@ -268,5 +268,6 @@ export function useChat(conversationId?: string) {
     messageViewport,
     send,
     busy,
+    reload: load,
   };
 }

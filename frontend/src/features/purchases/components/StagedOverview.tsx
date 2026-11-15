@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import type { Proposal } from "../../../shared/api/types";
 import type { Conversation } from "../../../shared/api/types";
 import { usePurchaseDetail } from "../hooks/usePurchaseDetail";
 import { OverviewPanel } from "./OverviewPanel";
@@ -6,9 +7,12 @@ import { DraftCartPanel } from "./DraftCartPanel";
 export function StagedOverview({
   conversation,
   selectedId,
+  onPrepared,
 }: {
   conversation: Conversation | null;
   selectedId?: string;
+  /** A purchase was prepared from the cart: the chat shows it in the Overview. */
+  onPrepared?: (proposal: Proposal) => void;
 }) {
   const lastPlan = conversation?.messages
     .slice()
@@ -36,13 +40,28 @@ export function StagedOverview({
     !selectedId &&
     !conversation?.purchases.some((p) => p.proposal_id === draft.proposal_id)
   ) {
-    return <DraftCartPanel key={conversation?.id} cart={draft} />;
+    return (
+      <DraftCartPanel
+        key={conversation?.id}
+        cart={draft}
+        conversationId={conversation?.id}
+        working={conversation?.busy}
+        onPrepared={onPrepared}
+      />
+    );
   }
+  // The card is always there: with nothing to order it is empty and its button is greyed out.
   return latest || recipeDraft ? (
     <OverviewPanel
       key={conversation?.id ?? "new"}
       flow={flow}
       draft={recipeDraft}
     />
-  ) : null;
+  ) : (
+    <DraftCartPanel
+      key={conversation?.id ?? "new"}
+      cart={null}
+      conversationId={conversation?.id}
+    />
+  );
 }
