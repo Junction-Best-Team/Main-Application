@@ -287,3 +287,25 @@ def test_a_pack_count_edit_on_a_liter_plan_sets_exactly_that_many_packs(service,
         assert sent.status_code == 200, sent.text
         line = sent.json()["proposal"]["snapshot"]["lines"][0]["quantity"]
         assert line["sales_quantity"] == "3" and line["status"] == "derived"
+
+
+@pytest.mark.parametrize(
+    "code, size, amount, packs", [("G", "0.01", "250", "3"), ("ML", "0.001", "1500", "2")]
+)
+def test_a_unit_the_product_itself_lists_is_looked_up_as_given_before_any_normalising(
+    code, size, amount, packs
+):
+    """A product whose own unit map has the exact code G or ML is not turned into KG or L first."""
+    own = deepcopy(MILK)
+    own["units"] = {"ST": "1", code: size}  # 1 ST = 100 G, or 1000 ML
+    own["measures"]["KG"] = {"value": None, "status": "unknown", "basis": []}
+    own["measures"]["L"] = {"value": None, "status": "unknown", "basis": []}
+    q = packs_of(own, amount, code)
+    assert q["status"] == "derived" and q["sales_quantity"] == packs, q
+    assert q["basis"][0] == "units.sizeInBaseUnits"
+    # the lower-case spelling is not the product's code: it takes the exact scale instead (unknown here)
+    assert packs_of(own, amount, code.lower())["sales_quantity"] is None
+
+
+def packs_of(product, amount, unit):
+    return quantity(product, Decimal(amount), unit, True)

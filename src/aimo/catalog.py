@@ -160,7 +160,15 @@ def per_sales_for(p: dict, unit: str, count_evidence=None) -> tuple:
     The unit may be any spelling of L or KG or an exact scale of them (ml, cl, dl, g): the answer is
     then in that unit (a pack of 1 L holds 1000 ml). Any other unit is looked up as it is.
     """
+    # The unit exactly as given comes first: a product's own unit map or measures may list a code
+    # (G, ML, KG) that a spelling rule would otherwise rewrite. Only when that finds nothing is the
+    # unit normalised (a spelling of L or KG, or an exact scale of them).
+    per_sales, basis, conflicting = _per_sales_code(p, unit, count_evidence)
+    if per_sales is not None or conflicting:
+        return per_sales, basis, conflicting
     code, size = unit_scale(unit)
+    if (code, size) == (unit, 1):
+        return per_sales, basis, conflicting
     per_sales, basis, conflicting = _per_sales_code(p, code, count_evidence)
     if per_sales is not None and size != 1:
         per_sales, basis = per_sales / size, [*basis, "unit_scaled_exactly"]
