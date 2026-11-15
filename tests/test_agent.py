@@ -316,6 +316,66 @@ def test_draft_matching_retains_labels_and_prepares_exact_totals(identity):
     assert set(c[0] for c in service.calls) == {"product", "prepare"}
 
 
+def revised_basis():
+    # Authored fixture: more pasta, same dish/portions/ingredients plus one addition.
+    basis = draft_basis()
+    basis["ingredients"][0]["amount"] = "480"
+    basis["ingredients"].append({"name": "Salt", "amount": "8", "unit": "g"})
+    return basis
+
+
+def test_assistant_can_revise_its_own_draft_once_before_the_basket(identity):
+    tools = ToolSession(identity, FakeService(identity))
+    invoke(tools, "draft_recipe", draft_basis())
+    assert "draft_recipe" in {d["function"]["name"] for d in tools.definitions}
+    plan = invoke(tools, "draft_recipe", revised_basis())["meal_plan"]
+    assert [(i["name"], i["amount"]) for i in plan["ingredients"]][0] == ("Dry pasta", "60")
+    assert plan["portions"] == 500 and len(plan["ingredients"]) == 4
+    assert "Estimate revised once" in plan["notes"][-1]
+    assert invoke(tools, "draft_recipe", revised_basis())["meal_plan"] == plan  # replay is idempotent
+    assert "draft_recipe" not in {d["function"]["name"] for d in tools.definitions}
+    with pytest.raises(Problem) as error:
+        invoke(tools, "draft_recipe", draft_basis())
+    assert error.value.code == "MEAL_PLAN_LOCKED"
+    # Matching follows the revised totals, not the first estimate.
+    for index, item in enumerate(plan["ingredients"]):
+        item["product_id"] = f"ingredient-{index}"
+        invoke(tools, "get_product", {"product_id": item["product_id"]})
+    assert invoke(tools, "publish_meal_plan", plan)["meal_plan"]["ingredients"][0]["amount"] == "60"
+
+
+@pytest.mark.parametrize("change", ["portions", "omission", "customer_recipe"])
+def test_draft_revision_keeps_portions_ingredients_and_customer_recipes(change, identity):
+    tools = ToolSession(identity, FakeService(identity))
+    first = draft_basis()
+    revised = revised_basis()
+    if change == "portions":
+        revised["portions"] = 250
+    elif change == "omission":
+        revised["ingredients"] = revised["ingredients"][1:]
+    else:
+        first["source"] = revised["source"] = "customer_recipe"
+        tools.brief = SimpleNamespace(starting_point="customer_recipe", can_build=True)
+    original = invoke(tools, "draft_recipe", first)["meal_plan"]
+    with pytest.raises(Problem) as error:
+        invoke(tools, "draft_recipe", revised)
+    assert error.value.code == {
+        "portions": "DRAFT_PORTIONS_FIXED",
+        "omission": "INCOMPLETE_MEAL_PLAN",
+        "customer_recipe": "MEAL_PLAN_LOCKED",
+    }[change]
+    assert tools.plan.model_dump(mode="json") == original and not tools.redrafted
+
+
+def test_draft_revision_is_closed_once_the_basket_is_prepared(identity):
+    tools = ToolSession(identity, FakeService(identity))
+    invoke(tools, "draft_recipe", draft_basis())
+    tools.prepared_digest = "prepared"
+    with pytest.raises(Problem) as error:
+        invoke(tools, "draft_recipe", revised_basis())
+    assert error.value.code == "MEAL_PLAN_LOCKED"
+
+
 def test_draft_cannot_replace_a_selected_saved_recipe(identity):
     tools = ToolSession(identity, FakeService(identity))
     tools.plan = MealPlan(**meal(False), recipe_plan_id=str(uuid4()))

@@ -180,6 +180,7 @@ PHASE_HIDDEN = {
     # Price and substitution reads stay visible too: advice and status questions need them.
     "understand": _MATCH_TOOLS | {"prepare_order"},
     "recipe": _MATCH_TOOLS | {"prepare_order"},
+    # A drafted estimate may still be revised once while matching (ToolSession.can_redraft).
     "match": frozenset({"scale_recipe", "draft_recipe", "prepare_order"}),
     "prepare": _MATCH_TOOLS
     | {"get_recipe_plan", "scale_recipe", "draft_recipe", "search_recipes", "get_recipe"},
