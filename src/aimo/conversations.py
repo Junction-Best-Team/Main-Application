@@ -1,5 +1,6 @@
 """Buyer-scoped persisted chat, bounded turn leases, and exact purchase confirmation."""
 
+import logging
 from datetime import timedelta
 from decimal import Decimal
 from functools import partial
@@ -12,8 +13,9 @@ from aimo.chat_activity import record_progress
 from aimo.chat_schemas import AgentTurn
 from aimo.db import Problem, connection, fingerprint, js, now
 from aimo.guardrails import encode, proposal_view
-from aimo.observability import event, operation
+from aimo.observability import event, failure, operation
 from aimo.purchases import context
+from aimo.schemas import ProposalResponse
 from aimo.turn_notice import NOTICE_KIND, failure_notice
 
 
@@ -115,7 +117,23 @@ def detail(identity, cid, *, internal=False):
             (cid, now()),
         ).fetchone()
     pids = list(dict.fromkeys(str(m["proposal_id"]) for m in messages if m["proposal_id"]))
-    purchases = [workflow.get_proposal(identity, pid) for pid in pids]
+    purchases = []
+    for pid in pids:
+        try:
+            view = workflow.get_proposal(identity, pid)
+            ProposalResponse.model_validate(view)
+        except (ValueError, TypeError, KeyError, LookupError) as exc:
+            # One stored purchase that no longer fits the response models (an older revision shape)
+            # must not make every read and send of the whole conversation fail: leave it out, log it.
+            event(
+                "chat.purchase_unreadable",
+                level=logging.WARNING,
+                conversation_id=str(cid),
+                proposal_id=pid,
+                **failure(exc),
+            )
+            continue
+        purchases.append(view)
     draft_cart = draft["draft_cart"] if draft else None
     if draft_cart:
         # Persisted quotes may have expired since the worker checked them.
@@ -151,7 +169,6 @@ def detail(identity, cid, *, internal=False):
         "activity": {"turn_id": str(turn["id"]), "state": state, "events": turn["progress"]}
         if turn
         else None,
-
         "retry_message": {
             "text": retry["text"],
             "idempotency_key": retry["key"],
@@ -377,7 +394,12 @@ def restorable_plan(messages):
     if not isinstance(plan, dict) or plan.get("recipe_plan_id"):
         return None
     items = plan.get("ingredients")
-    if not items or any(not i.get("product_id") for i in items):
+    # Stored JSON is data from an earlier turn: anything but a list of ingredient objects is not offered.
+    if (
+        not isinstance(items, list)
+        or not items
+        or any(not isinstance(i, dict) or not i.get("product_id") for i in items)
+    ):
         return None
     return plan
 

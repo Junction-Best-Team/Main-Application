@@ -132,7 +132,7 @@ def render(
     fulfilment = None
     if order:  # simulated and derived on read; the order itself is never updated
         placed = c.execute(
-            """SELECT o.created_at, (q.request->>'delivery_date')::date AS delivery_date
+            """SELECT o.created_at, q.request->>'delivery_date' AS delivery_date
             FROM orders o JOIN proposal_revisions q ON q.proposal_id=o.proposal_id AND q.revision=o.revision
             WHERE o.id=%s""",
             (order["id"],),
@@ -721,7 +721,7 @@ def get_receipt(identity, proposal_id):
                 "NO_RECEIPT", "This purchase has no order yet, so there is no receipt.", 404
             )
         row = c.execute(
-            """SELECT o.receipt, o.created_at, (q.request->>'delivery_date')::date AS delivery_date,
+            """SELECT o.receipt, o.created_at, q.request->>'delivery_date' AS delivery_date,
             q.request->>'destination' AS destination
             FROM orders o JOIN proposal_revisions q ON q.proposal_id=o.proposal_id AND q.revision=o.revision
             WHERE o.id=%s AND o.buyer_id=%s""",
@@ -731,7 +731,7 @@ def get_receipt(identity, proposal_id):
             raise Problem("NOT_FOUND", "Order not found.", 404)
         return {
             **row["receipt"],
-            "delivery_date": row["delivery_date"],
+            "delivery_date": demo_clock.stored_date(row["delivery_date"]),
             "destination": row["destination"],
             "fulfilment": demo_clock.fulfilment_view(c, identity["buyer_id"])(
                 row["delivery_date"], row["created_at"]
