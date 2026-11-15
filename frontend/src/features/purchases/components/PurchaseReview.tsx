@@ -12,7 +12,7 @@ export function PurchaseReview({
   flow: ReturnType<typeof usePurchaseDetail>;
   notice?: string;
 }) {
-  const { p, error } = flow;
+  const { p, error, errorDebug } = flow;
   return (
     <main className="workspace mx-auto w-full max-w-[1320px] px-4 py-7 md:px-8 md:py-10">
       <Link
@@ -29,7 +29,7 @@ export function PurchaseReview({
           {notice}
         </p>
       )}
-      <ErrorMessage message={!p ? error : ""} />
+      <ErrorMessage message={!p ? error : ""} debug={errorDebug} />
       {!p ? (
         <p role="status">
           {error ? "Purchase could not be loaded." : "Loading purchase…"}

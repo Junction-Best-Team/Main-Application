@@ -6,7 +6,12 @@ import {
   type FormEvent,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { ApiError } from "../../../shared/api/client";
+import {
+  ApiError,
+  noError,
+  toErrorInfo,
+  type ErrorInfo,
+} from "../../../shared/api/client";
 import type { Conversation } from "../../../shared/api/types";
 import { useRefresh } from "../../../shared/hooks/useRefresh";
 import { useAuth } from "../../auth/useAuth";
@@ -24,7 +29,7 @@ export function useChat(conversationId?: string) {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
-  const [error, setError] = useState("");
+  const [errorInfo, setError] = useState<ErrorInfo>(noError);
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
@@ -39,7 +44,7 @@ export function useChat(conversationId?: string) {
   const fail = useCallback(
     (e: unknown) => {
       if (e instanceof ApiError && e.status === 401) setSession(null);
-      else setError((e as Error).message);
+      else setError(toErrorInfo(e));
     },
     [setSession],
   );
@@ -69,7 +74,7 @@ export function useChat(conversationId?: string) {
   useEffect(() => {
     setConversation(null);
     loadedConversation.current = null;
-    setError("");
+    setError(noError);
     setAttachments([]);
     const saved = sessionStorage.getItem(pendingStorage);
     try {
@@ -87,9 +92,10 @@ export function useChat(conversationId?: string) {
       const draft = (event as CustomEvent<{ id: string; text: string }>).detail;
       if (draft.id !== activeConversation.current) return;
       setText(draft.text);
-      setError(
-        "The voice request was interrupted. Retry this request to continue.",
-      );
+      setError({
+        message:
+          "The voice request was interrupted. Retry this request to continue.",
+      });
     };
     window.addEventListener("aimo-voice-draft", recoverVoice);
     return () => window.removeEventListener("aimo-voice-draft", recoverVoice);
@@ -139,7 +145,7 @@ export function useChat(conversationId?: string) {
       return;
     sendingRef.current = true;
     setSending(true);
-    setError("");
+    setError(noError);
     const messageText = text.trim();
     const messageAttachments = attachments;
     const savedRetry = conversation?.retry_message;
@@ -252,7 +258,10 @@ export function useChat(conversationId?: string) {
     if (retryText !== undefined && !conversation?.busy && !sending) {
       setText(retryText);
       setAttachments(JSON.parse(retryAttachments));
-      setError("The response was interrupted. Retry this request to continue.");
+      setError({
+        message:
+          "The response was interrupted. Retry this request to continue.",
+      });
     }
   }, [retryKey, retryText, retryAttachments, conversation?.busy, sending]);
   const busy = Boolean(sending || conversation?.busy);
@@ -262,7 +271,8 @@ export function useChat(conversationId?: string) {
     setText,
     attachments,
     setAttachments,
-    error,
+    error: errorInfo.message,
+    errorDebug: errorInfo.debug,
     loading,
     reconnecting,
     messageViewport,

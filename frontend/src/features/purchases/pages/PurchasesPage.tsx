@@ -101,7 +101,7 @@ export function PurchasesPage() {
   if (proposalId && !detail.p)
     return (
       <main className="p-space-lg">
-        <ErrorMessage message={detail.error} />
+        <ErrorMessage message={detail.error} debug={detail.errorDebug} />
         {!detail.error && <p role="status">Loading purchase…</p>}
       </main>
     );
