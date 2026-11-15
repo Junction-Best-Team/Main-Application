@@ -104,14 +104,33 @@ def label(buyer_id, c=None):
     return "demo" if offset_seconds(buyer_id, c) > 0 else "real"
 
 
+def stored_date(value):
+    """A stored delivery date (text or date) as a date, or None when it is missing or malformed."""
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def fulfilment_view(c, buyer_id):
-    """`f(delivery_date, accepted_at)`: the simulated status at the buyer's time (offset read once)."""
+    """`f(delivery_date, accepted_at)`: the simulated status at the buyer's time (offset read once).
+
+    The status is derived and informative: with a missing or malformed stored delivery date it is
+    None, never an error that would break reading the order, proposal or conversation.
+    """
     offset = offset_seconds(buyer_id, c)
     now = real_now() + timedelta(seconds=offset)
     mode = "demo" if offset > 0 else "real"
-    return lambda delivery_date, accepted_at=None: fulfilment(
-        delivery_date, now, clock=mode, accepted_at=accepted_at
-    )
+
+    def view(delivery_date, accepted_at=None):
+        day = stored_date(delivery_date)
+        if day is None:
+            return None
+        return fulfilment(day, now, clock=mode, accepted_at=accepted_at)
+
+    return view
 
 
 def _state(real, offset):
@@ -134,14 +153,15 @@ def state(buyer_id):
 def earliest_undelivered(c, buyer_id, now):
     """The delivery date of the buyer's earliest order that is not delivered at `now`, or None."""
     rows = c.execute(
-        """SELECT (r.request->>'delivery_date')::date AS delivery_date FROM orders o
+        """SELECT r.request->>'delivery_date' AS delivery_date FROM orders o
         JOIN proposal_revisions r ON r.proposal_id=o.proposal_id AND r.revision=o.revision
-        WHERE o.buyer_id=%s ORDER BY 1""",
+        WHERE o.buyer_id=%s""",
         (buyer_id,),
     ).fetchall()
-    for row in rows:
-        if fulfilment(row["delivery_date"], now)["status"] != "delivered":
-            return row["delivery_date"]
+    days = sorted(day for day in (stored_date(row["delivery_date"]) for row in rows) if day)
+    for day in days:  # an order whose stored date is unusable is skipped
+        if fulfilment(day, now)["status"] != "delivered":
+            return day
     return None
 
 

@@ -14,8 +14,6 @@ One query over three sources, newest first, one row per thing the customer cares
 Orders stay immutable (CNF-020); nothing here writes.
 """
 
-from datetime import date
-
 from aimo import clock as demo_clock
 from aimo.db import Problem, connection
 from aimo.db import now as clock
@@ -167,10 +165,8 @@ def _item(row, view):
         "line_names": row["names"][:MAX_LINE_NAMES],
         "cancel_reason": row["cancel_reason"],
         "placed_at": row["placed_at"],
-        "fulfilment": (
-            view(date.fromisoformat(row["delivery_date"]), row["placed_at"])
-            if row["status"] == "placed"
-            else None
-        ),
+        "fulfilment": view(row["delivery_date"], row["placed_at"])
+        if row["status"] == "placed"
+        else None,
         "updated_at": row["sort_at"],
     }
