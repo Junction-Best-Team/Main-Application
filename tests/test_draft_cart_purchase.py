@@ -104,9 +104,10 @@ def chat(monkeypatch, buyer):
     monkeypatch.setattr(internal, "settings", lambda: config)
     # These tests are about the model path; test_cart_auto_prepare.py turns the auto-prepare on.
     monkeypatch.setattr(settings(), "cart_auto_prepare", False)
-    script = []
+    script, seen = [], []
 
     def provider(request):
+        seen.append(json.loads(request.content)["messages"])  # what the model was shown
         return httpx.Response(200, json={"choices": [{"message": script.pop(0)}]})
 
     real = httpx.Client
@@ -145,7 +146,7 @@ def chat(monkeypatch, buyer):
 
         yield SimpleNamespace(
             turn=conversation(), new_conversation=conversation, client=client, headers=headers,
-            service=service, script=script
+            service=service, script=script, seen=seen
         )
 
 

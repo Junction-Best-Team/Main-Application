@@ -1600,6 +1600,77 @@
         }
       }
     },
+    "/api/conversations/{conversation_id}/cart": {
+      "put": {
+        "summary": "Conversation Edit Cart",
+        "description": "The customer's own pack-count edit of products already in the cart; prepares the basket\nagain. Nothing is ordered.",
+        "operationId": "conversation_edit_cart_api_conversations__conversation_id__cart_put",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CartEditRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartPurchaseResponse"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error. Every error body is an ErrorResponse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error. Every error body is an ErrorResponse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/conversations/{conversation_id}/messages": {
       "post": {
         "summary": "Send Message",
@@ -2811,6 +2882,58 @@
         ],
         "title": "CancellationResponse"
       },
+      "CartEditRequest": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 8,
+            "title": "Request Id",
+            "description": "Idempotency key: one per edit, reused when the edit is retried."
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/CartLineEdit"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Lines"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "request_id",
+          "lines"
+        ],
+        "title": "CartEditRequest",
+        "description": "The customer's own quantity edit on the card: only products already in the cart."
+      },
+      "CartLineEdit": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Product Id"
+          },
+          "sales_quantity": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "minimum": 0.0,
+            "title": "Sales Quantity",
+            "description": "Whole sales units (packs) of this product in the basket. 0 leaves the line out of the basket but keeps the product in the cart, so a later value above 0 brings it back."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "product_id",
+          "sales_quantity"
+        ],
+        "title": "CartLineEdit"
+      },
       "CartNotIncluded": {
         "properties": {
           "name": {
@@ -2836,7 +2959,8 @@
             "type": "string",
             "enum": [
               "no_product",
-              "no_quantity"
+              "no_quantity",
+              "removed"
             ],
             "title": "Reason"
           }
@@ -3255,6 +3379,23 @@
                 "type": "null"
               }
             ]
+          },
+          "cart_editable": {
+            "type": "boolean",
+            "title": "Cart Editable",
+            "default": false
+          },
+          "cart_edit_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cart Edit Reason",
+            "description": "Why the number controls on the card are disabled, if they are."
           },
           "retry_message": {
             "anyOf": [

@@ -402,6 +402,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/conversations/{conversation_id}/cart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Conversation Edit Cart
+         * @description The customer's own pack-count edit of products already in the cart; prepares the basket
+         *     again. Nothing is ordered.
+         */
+        put: operations["conversation_edit_cart_api_conversations__conversation_id__cart_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/conversations/{conversation_id}/messages": {
         parameters: {
             query?: never;
@@ -714,6 +735,29 @@ export interface components {
              */
             cancelled_at: string;
         };
+        /**
+         * CartEditRequest
+         * @description The customer's own quantity edit on the card: only products already in the cart.
+         */
+        CartEditRequest: {
+            /**
+             * Request Id
+             * @description Idempotency key: one per edit, reused when the edit is retried.
+             */
+            request_id: string;
+            /** Lines */
+            lines: components["schemas"]["CartLineEdit"][];
+        };
+        /** CartLineEdit */
+        CartLineEdit: {
+            /** Product Id */
+            product_id: string;
+            /**
+             * Sales Quantity
+             * @description Whole sales units (packs) of this product in the basket. 0 leaves the line out of the basket but keeps the product in the cart, so a later value above 0 brings it back.
+             */
+            sales_quantity: number;
+        };
         /** CartNotIncluded */
         CartNotIncluded: {
             /** Name */
@@ -726,7 +770,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "no_product" | "no_quantity";
+            reason: "no_product" | "no_quantity" | "removed";
         };
         /**
          * CartPurchaseRequest
@@ -876,6 +920,16 @@ export interface components {
             busy: boolean;
             activity?: components["schemas"]["ChatActivity"] | null;
             draft_cart?: components["schemas"]["DraftCart"] | null;
+            /**
+             * Cart Editable
+             * @default false
+             */
+            cart_editable: boolean;
+            /**
+             * Cart Edit Reason
+             * @description Why the number controls on the card are disabled, if they are.
+             */
+            cart_edit_reason?: string | null;
             retry_message?: components["schemas"]["RetryMessage"] | null;
         };
         /** ConversationSummary */
@@ -3567,6 +3621,59 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CartPurchaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CartPurchaseResponse"];
+                };
+            };
+            /** @description Validation error. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Error. Every error body is an ErrorResponse. */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Server error. Every error body is an ErrorResponse. */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    conversation_edit_cart_api_conversations__conversation_id__cart_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CartEditRequest"];
             };
         };
         responses: {

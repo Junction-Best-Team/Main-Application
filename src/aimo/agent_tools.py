@@ -3,7 +3,7 @@
 from collections import Counter
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any, Callable, Literal
 from uuid import UUID
 
@@ -270,6 +270,14 @@ def contains_nul(value):
     if isinstance(value, (list, tuple)):
         return any(contains_nul(v) for v in value)
     return False
+
+
+def is_zero(amount):
+    """The customer removed this item on the card: its amount is "0" and the product stays in the plan."""
+    try:
+        return amount is not None and Decimal(amount) == 0
+    except InvalidOperation:
+        return False
 
 
 class ToolSession:
@@ -661,7 +669,8 @@ class ToolSession:
             if plan.recipe_plan_id or not plan.ingredients:
                 return False
             for item in plan.ingredients:
-                TypeAdapter(Amount).validate_python(item.amount)
+                if not is_zero(item.amount):  # "0" = removed by the customer on the card
+                    TypeAdapter(Amount).validate_python(item.amount)
             # An ingredient without a product stays unmatched; only matched ids are verified.
             ids = list(dict.fromkeys(i.product_id for i in plan.ingredients if i.product_id))
             found = {}
@@ -744,8 +753,15 @@ class ToolSession:
                     422,
                 )
         for ingredient in plan.ingredients:
+            kept_removed = is_zero(ingredient.amount) and any(
+                i.name == ingredient.name
+                and i.product_id == ingredient.product_id
+                and is_zero(i.amount)
+                for i in (self.plan.ingredients if self.plan else [])
+            )  # the model may carry a customer's removal ("0") through, never invent one
             try:
-                TypeAdapter(Amount).validate_python(ingredient.amount)
+                if not kept_removed:
+                    TypeAdapter(Amount).validate_python(ingredient.amount)
             except ValidationError:
                 raise Problem(
                     "INVALID_MEAL_QUANTITY",
@@ -777,9 +793,15 @@ class ToolSession:
                 )
             unit = item.purchase_unit if self.plan.recipe_plan_id else item.unit
             amount = item.purchase_amount if self.plan.recipe_plan_id else item.amount
+            if is_zero(amount):
+                continue  # removed by the customer on the card: kept in the plan, never bought
             contributions.setdefault(item.product_id, []).append((Decimal(amount), unit))
             rows.append(
                 {"product_id": item.product_id, "amount": amount, "unit": unit, "name": item.name}
+            )
+        if not contributions:
+            raise Problem(
+                "INCOMPLETE_MEAL_PLAN", "Every item was removed; nothing is left to buy.", 422
             )
         for line in request.lines:
             offered.setdefault(line.product_id, []).append((line.amount, line.unit))
@@ -826,6 +848,8 @@ class ToolSession:
             # BAS-002: the line names the ingredients it combines (server-made, never client input).
             parts = {}
             for item in self.plan.ingredients:
+                if is_zero(item.amount):
+                    continue
                 parts.setdefault(item.product_id, []).append(
                     Contribution(ingredient=item.name, amount=item.amount, unit=item.unit)
                 )

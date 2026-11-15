@@ -28,6 +28,7 @@ from aimo import (
 )
 from aimo.attachments import raw_file
 from aimo.chat_schemas import (
+    CartEditRequest,
     CartPurchaseRequest,
     CartPurchaseResponse,
     ConversationCreate,
@@ -446,6 +447,20 @@ def create_app(service=None):
             identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
         )
         return cart_purchase.prepare_from_cart(identity, conversation_id, body, service)
+
+    @app.put("/api/conversations/{conversation_id}/cart", response_model=CartPurchaseResponse)
+    def conversation_edit_cart(
+        conversation_id: UUID,
+        body: CartEditRequest,
+        request: Request,
+        identity=Depends(buyer),
+    ):
+        """The customer's own pack-count edit of products already in the cart; prepares the basket
+        again. Nothing is ordered."""
+        auth.csrf_check(
+            identity, request.headers.get("x-csrf-token"), request.headers.get("origin")
+        )
+        return cart_purchase.edit_cart(identity, conversation_id, body, service)
 
     @app.post("/api/conversations/{conversation_id}/messages", response_model=ConversationResponse)
     def send_message(

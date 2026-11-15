@@ -9,17 +9,19 @@ is the normal proposal. It authorizes nothing: the customer still confirms the e
 
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
+from fractions import Fraction
+from math import floor
 from uuid import UUID, uuid4
 
 from pydantic import ValidationError
 
 from aimo import approval_workflow as workflow
-from aimo import auth, scheduler
-from aimo.agent_tools import PrepareOrderInput, ToolSession
+from aimo import auth, catalog, scheduler
+from aimo.agent_tools import PrepareOrderInput, ToolSession, is_zero
 from aimo.chat_schemas import CartNotIncluded, MealPlan
 from aimo.config import settings
-from aimo.conversations import customer_constraints, owned
-from aimo.db import Problem, connection, fingerprint, now
+from aimo.conversations import RECIPE_LOCKED_REASON, customer_constraints, owned
+from aimo.db import Problem, connection, fingerprint, js, now
 from aimo.observability import event
 from aimo.purchases import context
 from aimo.schemas import LineRequest, Requirements
@@ -36,6 +38,12 @@ def split_plain(plan):
     """(bought, not_included): an item needs a product and a quantity and a unit to be bought."""
     bought, left_out = [], []
     for item in plan.ingredients:
+        if item.amount is not None and is_zero(item.amount):
+            reason = "removed"  # the customer set it to 0 on the card: kept in the cart, not bought
+            left_out.append(
+                CartNotIncluded(name=item.name, amount=item.amount, unit=item.unit, reason=reason)
+            )
+            continue
         if item.amount is not None and not positive(item.amount):
             raise Problem("CART_NOT_VERIFIED", "The cart could not be verified.", 422)
         if not item.product_id:
@@ -159,6 +167,52 @@ def prepare_basket(identity, cid, stored, delivery_date, destination, key, limit
     return proposal["proposal_id"], left_out, notice
 
 
+def replay_of(identity, old, messages, digest):
+    """The same answer for a retried press or edit; a different body under the same key conflicts."""
+    if not old:
+        return None
+    if old["payload_hash"] != digest:
+        raise Problem("IDEMPOTENCY_CONFLICT", "This key already identifies another request.")
+    made = next((m for m in messages if m["turn_id"] == old["id"] and m["proposal_id"]), None)
+    if not made:
+        return None
+    before = [m for m in messages if m["id"] < made["id"] and m["meal_plan"]]
+    plan_data = made["meal_plan"] or (before[-1]["meal_plan"] if before else None)
+    return answer(
+        identity, made["proposal_id"], left_out_for_replay(plan_data) if plan_data else []
+    )
+
+
+def write_pair(identity, cid, tid, key, digest, summary, notice, pid, plan_data=None):
+    """A completed turn of one customer line and one assistant line that carries the basket."""
+    with connection() as c:
+        owned(c, identity, cid, lock=True)
+        busy = c.execute(
+            "SELECT 1 FROM conversation_turns WHERE conversation_id=%s AND state!='complete'",
+            (cid,),
+        ).fetchone()
+        if busy:
+            raise Problem("CONVERSATION_BUSY", "A response is in progress.", 409, 3)
+        made = c.execute(
+            """INSERT INTO conversation_turns(id,conversation_id,key,payload_hash,state,lease_until,
+            attempt,requested_by,worker_attempts,submitted_by)
+            VALUES(%s,%s,%s,%s,'complete',%s,%s,%s,0,%s) ON CONFLICT(conversation_id,key) DO NOTHING
+            RETURNING id""",
+            (tid, cid, key, digest, now(), uuid4(), identity["id"], identity["id"]),
+        ).fetchone()
+        if made:  # a concurrent identical request already wrote the pair; the proposal is the same
+            c.execute(
+                "INSERT INTO conversation_messages(conversation_id,turn_id,role,text) VALUES(%s,%s,'user',%s)",
+                (cid, tid, summary),
+            )
+            c.execute(
+                """INSERT INTO conversation_messages(conversation_id,turn_id,role,text,meal_plan,proposal_id)
+                VALUES(%s,%s,'assistant',%s,%s,%s)""",
+                (cid, tid, notice, js(plan_data) if plan_data else None, pid),
+            )
+            c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
+
+
 def prepare_from_cart(identity, cid, body, service):
     if identity["role"] != "approver":
         raise Problem("FORBIDDEN", "Only a buyer session can prepare a purchase.", 403)
@@ -177,21 +231,9 @@ def prepare_from_cart(identity, cid, body, service):
             WHERE conversation_id=%s AND notice IS NULL ORDER BY id""",
             (cid,),
         ).fetchall()
-        if old:
-            if old["payload_hash"] != digest:
-                raise Problem(
-                    "IDEMPOTENCY_CONFLICT", "This key already identifies another purchase request."
-                )
-            made = next(
-                (m for m in messages if m["turn_id"] == old["id"] and m["proposal_id"]), None
-            )
-            if made:  # replay: the same proposal, the same list of what was left out
-                before = [m for m in messages if m["id"] < made["id"] and m["meal_plan"]]
-                return answer(
-                    identity,
-                    made["proposal_id"],
-                    left_out_for_replay(before[-1]["meal_plan"]) if before else [],
-                )
+        replay = replay_of(identity, old, messages, digest)
+        if replay:
+            return replay
         unfinished = c.execute(
             "SELECT state FROM conversation_turns WHERE conversation_id=%s AND state!='complete'",
             (cid,),
@@ -215,32 +257,7 @@ def prepare_from_cart(identity, cid, body, service):
         identity, cid, stored, body.delivery_date, body.destination, key, limits, service, tid
     )
     summary = "Prepared from my cart for " + f"{body.delivery_date} to {body.destination}."
-    with connection() as c:
-        owned(c, identity, cid, lock=True)
-        busy = c.execute(
-            "SELECT 1 FROM conversation_turns WHERE conversation_id=%s AND state!='complete'",
-            (cid,),
-        ).fetchone()
-        if busy:
-            raise Problem("CONVERSATION_BUSY", "A response is in progress.", 409, 3)
-        made = c.execute(
-            """INSERT INTO conversation_turns(id,conversation_id,key,payload_hash,state,lease_until,
-            attempt,requested_by,worker_attempts,submitted_by)
-            VALUES(%s,%s,%s,%s,'complete',%s,%s,%s,0,%s) ON CONFLICT(conversation_id,key) DO NOTHING
-            RETURNING id""",
-            (tid, cid, body.request_id, digest, now(), uuid4(), identity["id"], identity["id"]),
-        ).fetchone()
-        if made:  # a concurrent identical press already wrote the pair; the proposal is the same
-            c.execute(
-                "INSERT INTO conversation_messages(conversation_id,turn_id,role,text) VALUES(%s,%s,'user',%s)",
-                (cid, tid, summary),
-            )
-            c.execute(
-                """INSERT INTO conversation_messages(conversation_id,turn_id,role,text,proposal_id)
-                VALUES(%s,%s,'assistant',%s,%s)""",
-                (cid, tid, notice, pid),
-            )
-            c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
+    write_pair(identity, cid, tid, body.request_id, digest, summary, notice, pid)
     return answer(identity, pid, left_out)
 
 
@@ -330,3 +347,111 @@ def auto_prepare(identity, cid, tid, result, service):
     if latest and str(latest["id"]) == str(pid):
         return None
     return pid, left_out, notice
+
+
+# --- the customer's own pack-count edit on the card ----------------------------------------------------
+
+
+def amount_for_packs(product, unit, packs):
+    """The plan amount (in the ingredient's unit) that is exactly `packs` sales units, from catalog
+    evidence only: packs x (unit per sales unit), rounded DOWN to 4 decimals (the plan's precision) and
+    checked to buy exactly that many packs. 0 is a removal."""
+    if packs == 0:
+        return "0"
+    per_sales, _, conflicting = catalog.per_sales_for(product, unit)
+    if conflicting or not per_sales:
+        raise Problem(
+            "CART_QUANTITY_UNKNOWN",
+            "There is no catalog evidence to set this quantity in packs.",
+            422,
+        )
+    amount = Decimal(floor(Fraction(packs) * per_sales * 10000)) / Decimal(10000)
+    for whole in (True, False):
+        got = catalog.quantity(product, amount, unit, whole)
+        if got["status"] == "derived" and Fraction(got["sales_quantity"]) == packs and amount > 0:
+            return format(amount.normalize(), "f")
+    raise Problem(
+        "CART_QUANTITY_UNKNOWN",
+        "This quantity cannot be set exactly in packs for this product.",
+        422,
+    )
+
+
+def edit_cart(identity, cid, body, service):
+    if identity["role"] != "approver":
+        raise Problem("FORBIDDEN", "Only a buyer session can edit the cart.", 403)
+    digest = fingerprint({"edit": sorted((x.product_id, x.sales_quantity) for x in body.lines)})
+    with connection() as c:
+        _, policy, _, _ = context(c, identity)
+        owned(c, identity, cid)
+        old = c.execute(
+            "SELECT id,payload_hash FROM conversation_turns WHERE conversation_id=%s AND key=%s",
+            (cid, body.request_id),
+        ).fetchone()
+        messages = c.execute(
+            """SELECT id,role,meal_plan,proposal_id,turn_id FROM conversation_messages
+            WHERE conversation_id=%s AND notice IS NULL ORDER BY id""",
+            (cid,),
+        ).fetchall()
+        replay = replay_of(identity, old, messages, digest)
+        if replay:
+            return replay
+        unfinished = c.execute(
+            "SELECT state FROM conversation_turns WHERE conversation_id=%s AND state!='complete'",
+            (cid,),
+        ).fetchone()
+        if unfinished:
+            raise Problem("CONVERSATION_BUSY", "A response is in progress.", 409, 3)
+        limits = customer_constraints(c, cid)
+        latest = latest_terms(c, cid)
+    stored = cart_plan(messages)
+    if isinstance(stored, dict) and stored.get("recipe_plan_id"):
+        raise Problem("RECIPE_BASKET_LOCKED", RECIPE_LOCKED_REASON, 422)
+    try:
+        plan = MealPlan.model_validate(stored)
+    except ValidationError:
+        raise Problem("CART_NOT_VERIFIED", "The cart could not be verified.", 422) from None
+    by_product = {}
+    for index, item in enumerate(plan.ingredients):
+        if item.product_id:
+            by_product.setdefault(item.product_id, []).append(index)
+    for line in body.lines:
+        if line.product_id not in by_product:
+            raise Problem(
+                "ITEM_NOT_IN_CART",
+                "That product is not in the cart.",
+                422,
+                details={"product_id": line.product_id},
+            )
+    tid = uuid4()
+    session = ToolSession(auth.internal_agent(identity) | {"_turn_id": str(tid)}, service)
+    matched = [i for i in plan.ingredients if i.product_id]
+    if not session.restore_plan(
+        plan.model_copy(update={"ingredients": matched}).model_dump(mode="json")
+    ):
+        raise Problem("CART_NOT_VERIFIED", "The cart could not be verified.", 422)
+    edited = plan.model_dump(mode="json")
+    told = []
+    for line in body.lines:
+        first, *rest = by_product[line.product_id]
+        item = edited["ingredients"][first]
+        item["amount"] = amount_for_packs(
+            session.products[line.product_id], item["unit"], line.sales_quantity
+        )
+        for other in rest:  # ingredients that share the product: the first one carries the quantity
+            edited["ingredients"][other]["amount"] = "0"
+        told.append(
+            f"{item['name']} removed"
+            if line.sales_quantity == 0
+            else f"{item['name']}: {line.sales_quantity} packs"
+        )
+    key = "edit-" + fingerprint({"conversation": str(cid), "key": body.request_id})
+    if edited == stored and latest:
+        return answer(identity, latest["id"], split_plain(plan)[1])  # nothing changed: no revision
+    when, destination = terms_for(latest, policy)
+    pid, left_out, notice = prepare_basket(
+        identity, cid, edited, when, destination, key, limits, service, tid
+    )
+    summary = "I changed the cart on the card: " + ", ".join(told) + "."
+    write_pair(identity, cid, tid, body.request_id, digest, summary, notice, pid, edited)
+    return answer(identity, pid, left_out)

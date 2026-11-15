@@ -17,6 +17,20 @@ from aimo.observability import event, operation
 from aimo.purchases import context
 from aimo.turn_notice import NOTICE_KIND, failure_notice
 
+RECIPE_LOCKED_REASON = (
+    "A saved recipe basket cannot be edited here yet. Ask the assistant for a new recipe basket."
+)
+
+
+def cart_edit_state(messages):
+    """(editable, reason) for the number controls on the card, from the latest stored plan."""
+    plan = next((m["meal_plan"] for m in reversed(messages) if m["meal_plan"]), None)
+    if not plan:
+        return False, "Add items to the cart first."
+    if isinstance(plan, dict) and plan.get("recipe_plan_id"):
+        return False, RECIPE_LOCKED_REASON
+    return True, None
+
 
 def owned(c, identity, cid, lock=False):
     row = c.execute(
@@ -149,6 +163,8 @@ def detail(identity, cid, *, internal=False):
         "purchases": purchases,
         "busy": busy,
         "draft_cart": draft_cart,
+        "cart_editable": cart_edit_state(messages)[0],
+        "cart_edit_reason": cart_edit_state(messages)[1],
         "activity": {"turn_id": str(turn["id"]), "state": state, "events": turn["progress"]}
         if turn
         else None,
