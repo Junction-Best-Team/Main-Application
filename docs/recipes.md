@@ -52,7 +52,7 @@ retain it privately, independently check its SHA-256, then run:
 # Worker environment: DATABASE_URL and embedding provider settings already supplied.
 aimo ingest-recipes --file /data/unitools-recipes.json --expected-sha256 VERIFIED_SHA256
 # With reviewed normalization, use the same command plus:
-# --review-file /data/recipe-reviews.json
+# --review-file recipe-reviews/unitools-v2.0.0.json   (see recipe-reviews/README.md)
 ```
 
 The importer validates every record before embedding; caches each successful batch;
