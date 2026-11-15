@@ -691,6 +691,20 @@ def test_product_searches_are_capped_per_turn_with_a_plain_way_forward(identity)
     )  # reads go on
 
 
+def test_revising_a_plan_does_not_reset_or_shrink_its_search_budget(identity):
+    from aimo.chat_schemas import MealPlan
+
+    session = ToolSession(identity, FakeService(identity))
+    plan = meal(False)
+    plan["ingredients"] = [dict(plan["ingredients"][0], name=f"item-{n}") for n in range(22)]
+    session.plan = MealPlan.model_validate(plan)
+    for n in range(30):
+        assert session.discipline("search_products", json.dumps({"query": f"item {n}"})) is None
+    session.plan = MealPlan.model_validate(meal(False))
+    assert session.discipline("search_products", '{"query":"another item"}').code == "SEARCH_LIMIT"
+    assert session.searches == 31
+
+
 def test_the_search_cap_is_off_with_the_switch_off(identity, monkeypatch):
     monkeypatch.setattr(settings(), "agent_stop_control", False)
     session = ToolSession(identity, FakeService(identity))

@@ -300,6 +300,55 @@ def test_search_inspects_shortlist_once_and_keeps_candidates_unselected(identity
     assert session.plan is None and session.proposal is None
 
 
+@pytest.mark.parametrize("ingredient_count,alternatives", [(15, 0), (22, 0), (22, 12)])
+def test_ingredient_search_batch_can_save_matches_even_after_search_exhaustion(
+    monkeypatch, config, identity, ingredient_count, alternatives
+):
+    from aimo.config import settings
+
+    monkeypatch.setattr(settings(), "agent_stop_control", True)
+    monkeypatch.setattr(settings(), "agent_phases", False)
+    ids = [f"ingredient-{n}" for n in range(ingredient_count)]
+    plan = {
+        "title": "Authored lasagna estimate", "portions": 50, "notes": [],
+        "ingredients": [{"name": pid, "amount": "1", "unit": "KG"} for pid in ids],
+    }
+    matched = deepcopy(plan)
+    for item in matched["ingredients"]:
+        item["product_id"] = item["name"]
+    queries = ids + [f"alternative-{n}" for n in range(alternatives)]
+    searched = []
+    service = FakeService(identity)
+
+    def search(_, request):
+        searched.append(request.query)
+        return {
+            "products": [{k: product(request.query)[k] for k in ProductSummary.model_fields}
+                         | {"score": 0.9, "match_is_suitability_proof": False}],
+            "generation": "fixture", "model": "fixture", "strategy": "keyword",
+            "note": "Authored candidates, not suitability evidence.",
+        }
+
+    service.search_products = search
+    seen = scripted(monkeypatch, [
+        reply(call("publish_meal_plan", plan)),
+        reply(*[call("search_products", {"query": query}) for query in queries]),
+        reply(call("publish_meal_plan", matched)),
+        reply(text="Your selections are saved for review."),
+    ])
+    events = []
+    result = agent.run_turn(identity, HISTORY, service, on_progress=events.append)
+    assert len(seen) == 4
+    assert sorted(searched) == sorted(queries[:ingredient_count + 8])
+    assert [i.product_id for i in result.meal_plan.ingredients] == ids
+    assert result.proposal_id is None
+    assert not any(e.error_code == "TOOL_ERROR_LIMIT" for e in events)
+    # Every refused search must reach the model, allowing it to save earlier candidates.
+    outputs = [json.loads(m["content"]) for m in seen[2]["messages"] if m["role"] == "tool"]
+    rejected = [o for o in outputs if o.get("error", {}).get("code") == "SEARCH_LIMIT"]
+    assert len(rejected) == max(0, alternatives - 8)
+
+
 @pytest.mark.parametrize("code", ["LLM_TIMEOUT", "LLM_UNAVAILABLE"])
 def test_reviewed_partial_plan_survives_provider_failure(monkeypatch, config, identity, code):
     scripted(

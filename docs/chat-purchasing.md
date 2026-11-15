@@ -110,6 +110,15 @@ existing catalog reader. These include the same bounded, screened evidence as
 remain discovery summaries. Inspection never proves recipe suitability, selects a
 product, grants purchasing authority or replaces fresh preparation/confirmation checks.
 
+The stop control allows eight exploratory/alternative searches plus one search for
+each ingredient in the largest plan seen during the turn (at most 108 searches).
+Plan revisions never reset this allowance. Search-limit refusals reach the model
+without consuming the broken-tool error allowance, so it can save candidates
+already found. The overall tool-call, round and time limits still apply. A terminal
+completion carrying an error is persisted as an interruption for the existing
+paused/continue UI; private error details stay server-side. This does not rewrite
+the activity of older completed turns.
+
 Recipe details expose missing quantities/forms and unsupported scaling/units before
 saved-plan selection. Incomplete candidates use a complete alternative or labelled
 assistant estimate; scaling refuses to persist them as a newly selected saved plan.

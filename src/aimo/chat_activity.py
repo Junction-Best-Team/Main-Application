@@ -153,6 +153,9 @@ def record_progress(turn, progress):
     """
     if str(progress.turn_id) != str(turn["id"]):
         return
+    # Error details stay server-side, but their terminal severity must survive
+    # sanitization so saved partial turns do not display as successfully finished.
+    kind = "error" if progress.kind == "complete" and progress.error_code else progress.kind
     later_round = (getattr(progress, "round_number", None) or 1) > 1
     label = {
         "started": "Checking your request",
@@ -161,10 +164,10 @@ def record_progress(turn, progress):
         "reviewing": "Reviewing the reply",
         "complete": "Finishing the response",
         "error": "Response interrupted",
-    }.get(progress.kind, TOOL_LABELS.get(progress.tool, "Using a tool"))
+    }.get(kind, TOOL_LABELS.get(progress.tool, "Using a tool"))
     detail = getattr(progress, "detail", None) if progress.kind == "tool_completed" else None
     item = ChatActivityEvent(
-        sequence=progress.sequence, kind=progress.kind, label=label, detail=detail
+        sequence=progress.sequence, kind=kind, label=label, detail=detail
     )
     update_draft = progress.draft_updated and (
         progress.draft is None or progress.draft.turn_id == str(turn["id"])

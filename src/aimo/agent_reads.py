@@ -9,6 +9,7 @@ from aimo.agent_limits import PARALLEL_READS
 from aimo.agent_provider import check_deadline
 from aimo.agent_stop import call_key
 from aimo.agent_tools import ToolSession
+from aimo.db import Problem
 from aimo.observability import event, log_context
 
 MAX_PARALLEL_READS = 4
@@ -110,7 +111,9 @@ def executions(session, calls, deadline, live, progress, *, max_errors, round_nu
                     session.search_results.update(child.search_results)
                     session.recipe_details.update(child.recipe_details)
                 yield call, result, error
-                if error is not None:
+                if error is not None and not (
+                    isinstance(error, Problem) and error.code == "SEARCH_LIMIT"
+                ):
                     max_errors -= 1
                     if max_errors <= 0:
                         return

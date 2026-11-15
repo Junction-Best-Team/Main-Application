@@ -211,7 +211,8 @@ def is_advice_question(customer_texts):
     )
 
 
-MAX_PRODUCT_SEARCHES = 8  # live round 1: a plan request used 15 searches in 9 rounds
+# Exploration allowance; an existing plan additionally gets one search per ingredient.
+MAX_PRODUCT_SEARCHES = 8
 
 
 # --- basket labels must not claim a status (checked without the classifier) ---------------------------------

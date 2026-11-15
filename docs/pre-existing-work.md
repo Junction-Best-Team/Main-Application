@@ -9,6 +9,10 @@ client with runtime correlation and safe failure metadata. Verification reuses a
 HTTP, worker, supplier and image fixtures; no new external logging service, dependency
 or live provider call was introduced.
 
+The ingredient-search budget follow-up reuses the same bounded executor, stop
+control and activity UI. Its 15/22-ingredient and limit-recovery transcripts are
+authored fixtures; verification does not replay customer turns or call live suppliers.
+
 ## Prepared before the event
 
 | Material | Date | Source or author | Prepared beforehand | Built during the event |
