@@ -307,3 +307,18 @@ def test_actual_agent_loop_routes_to_native_google_and_only_persists_visible_tex
     assert result.text == "Here is the milk product."
     assert "private" not in result.model_dump_json()
     assert len(seen) == 2 and "functionResponse" in seen[1]["contents"][-1]["parts"][0]
+
+
+def test_google_timeout_keeps_timeout_code_without_exposing_provider_detail(cfg, monkeypatch):
+    from aimo.google_api import GoogleAPIError
+
+    def fail(*args, **kwargs):
+        raise GoogleAPIError("TIMEOUT")
+
+    monkeypatch.setattr("aimo.google_chat.google_api_request", fail)
+    with pytest.raises(Problem) as error:
+        chat_provider(cfg, None).complete(
+            [{"role": "user", "content": "hello"}], [], time.monotonic() + 10
+        )
+    assert error.value.code == "LLM_TIMEOUT" and error.value.status == 504
+    assert "Google" not in error.value.message
