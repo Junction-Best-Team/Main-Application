@@ -20,7 +20,8 @@ from aimo.agent_provider import (
 )
 from aimo.attachments import image_context_bytes, model_text
 from aimo.db import Problem
-from aimo.google_api import GoogleAPIError, google_api_request
+from aimo.google_api import GoogleAPIError
+from aimo.google_provider import google_api_request
 from aimo.observability import event, operation
 
 

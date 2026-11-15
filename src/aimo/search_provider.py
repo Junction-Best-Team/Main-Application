@@ -61,7 +61,8 @@ def post(endpoint, payload):
                     **failure(exc),
                 )
                 retryable = True
-            except ValueError:
+            except ValueError as exc:
+                event("search.response_invalid", level=logging.WARNING, **failure(exc))
                 break
             if not retryable or attempt + 1 == cfg.search_max_attempts:
                 break

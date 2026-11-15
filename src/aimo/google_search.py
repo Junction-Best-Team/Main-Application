@@ -11,7 +11,8 @@ import httpx
 
 from aimo.config import settings
 from aimo.db import Problem
-from aimo.google_api import GoogleAPIError, google_api_request
+from aimo.google_api import GoogleAPIError
+from aimo.google_provider import google_api_request
 from aimo.observability import operation
 
 EMBEDDING_MODEL = "gemini-embedding-2"

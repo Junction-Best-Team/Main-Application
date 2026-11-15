@@ -9,7 +9,7 @@ from aimo.agent_limits import PARALLEL_READS
 from aimo.agent_provider import check_deadline
 from aimo.agent_stop import call_key
 from aimo.agent_tools import ToolSession
-from aimo.observability import log_context
+from aimo.observability import event, log_context
 
 MAX_PARALLEL_READS = 4
 RECIPE_READS = frozenset({"search_recipes", "get_recipe"})
@@ -48,6 +48,7 @@ def executions(session, calls, deadline, live, progress, *, max_errors, round_nu
         )
         jobs = []
         reads = {}
+        event("tool.group_started", round=round_number, group_size=len(group), parallel=bool(executor))
         try:
             for call in group:
                 check_deadline(deadline)
@@ -115,6 +116,9 @@ def executions(session, calls, deadline, live, progress, *, max_errors, round_nu
                         return
         finally:
             if executor:
+                unfinished = sum(not future.done() for _, future in reads.values())
+                if unfinished:
+                    event("tool.group_abandoned", round=round_number, unfinished_reads=unfinished)
                 # Running work is read-only and isolated. Never wait past the turn budget.
                 executor.shutdown(wait=False, cancel_futures=True)
 

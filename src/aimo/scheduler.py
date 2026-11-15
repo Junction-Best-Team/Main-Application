@@ -23,7 +23,7 @@ from aimo import cancellations, clock
 from aimo.approval_policy import can_approve
 from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, js
-from aimo.observability import event, failure
+from aimo.observability import event, failure, log_context, operation
 from aimo.schemas import CommitRequest, LookupRequest, PrepareRequest
 from aimo.upstream import HELSINKI
 
@@ -589,7 +589,9 @@ def run_due_schedules(service, *, now=None, materialise_first=True):
     if run is None:
         return created > 0
     try:
-        step(service, run, now, clock.app_now(run["buyer_id"]) if follow else None)
+        with log_context(run_id=str(run["id"]), authorization_id=str(run["authorization_id"]),
+                         state_before=run["status"]):
+            step(service, run, now, clock.app_now(run["buyer_id"]) if follow else None)
     except Exception as exc:
         # A failed step is retried with backoff; after the limit the run is a disruption.
         event("scheduler.step_failed", level=logging.WARNING, run_id=str(run["id"]), **failure(exc))
@@ -617,6 +619,8 @@ def retry_later(run, code, now):
             (attempts, now + timedelta(seconds=wait), now, run["id"]),
         )
         run_event(c, run["id"], "scheduler", "retry", {"code": code, "attempt": attempts})
+    event("scheduler.retry_scheduled", run_id=str(run["id"]), attempt=attempts,
+          retry_after=wait, error_code=code)
 
 
 def disrupt(c, run, auth, code, reason, now):
@@ -781,6 +785,7 @@ def skip(c, run, code, now, cancel_reason=None):
     run_event(c, run["id"], "scheduler", "skipped", {"code": code})
 
 
+@operation("scheduler.step")
 def step(service, run, now, buyer_now=None):
     with connection() as c:
         auth = c.execute(

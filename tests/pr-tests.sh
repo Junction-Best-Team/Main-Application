@@ -33,4 +33,6 @@ exec .venv/bin/pytest -q -x --durations=5 \
   tests/test_confirmation_contract.py::test_confirmation_never_authorizes_a_later_revision \
   tests/test_confirmation_contract.py::test_concurrent_confirmations_with_one_key_create_one_order \
   tests/test_agent_cannot_purchase.py::test_registry_exposes_only_read_and_prepare_operations \
-  tests/test_workflow.py::test_four_outcomes_and_hard_requirements
+  tests/test_workflow.py::test_four_outcomes_and_hard_requirements \
+  tests/test_observability.py \
+  tests/test_provider_diagnostics.py

@@ -23,7 +23,7 @@ from aimo.chat_schemas import CartNotIncluded, CartPurchaseRequest, MealPlan
 from aimo.config import settings
 from aimo.conversations import RECIPE_LOCKED_REASON, customer_constraints, owned
 from aimo.db import Problem, connection, fingerprint, js, now
-from aimo.observability import event
+from aimo.observability import event, failure
 from aimo.purchases import context
 from aimo.schemas import LineRequest, Requirements
 
@@ -126,7 +126,8 @@ def left_out_for_replay(plan_data):
     try:
         plan = MealPlan.model_validate(plan_data)
         return [] if plan.recipe_plan_id else split_plain(plan)[1]
-    except (ValidationError, Problem):  # an unreadable stored plan lists nothing; reads never fail
+    except (ValidationError, Problem) as exc:  # unreadable stored plans never fail reads
+        event("cart.saved_plan_unreadable", **failure(exc))
         return []
 
 
@@ -544,11 +545,11 @@ def auto_prepare(identity, cid, tid, result, service):
         )
     except Problem as exc:
         if exc.code not in ("EMPTY_CART", "CART_INCOMPLETE"):
-            event("cart.auto_prepare_failed", error_code=exc.code, conversation_id=str(cid))
+            event("cart.auto_prepare_failed", conversation_id=str(cid), **failure(exc))
             return None, [], "Your ingredient list is saved, but I couldn’t finish checking the basket. Please try again."
         return None
     except Exception as exc:  # a display convenience: it must never fail the customer's turn
-        event("cart.auto_prepare_failed", error_code=type(exc).__name__, conversation_id=str(cid))
+        event("cart.auto_prepare_failed", conversation_id=str(cid), **failure(exc))
         return None, [], "Your ingredient list is saved, but I couldn’t finish checking the basket. Please try again."
     if latest and str(latest["id"]) == str(pid):
         return None

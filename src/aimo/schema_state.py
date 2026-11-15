@@ -18,8 +18,7 @@ import logging
 from psycopg.rows import tuple_row
 
 from aimo.db import connection
-
-log = logging.getLogger(__name__)
+from aimo.observability import event, failure
 
 # Migration file name -> the objects the code needs from it: (kind, name...) with kind one of
 # table, view, index (a relation name), column (table, column), trigger (table, trigger),
@@ -139,5 +138,5 @@ def missing_migrations() -> list[str]:
         with connection() as c:
             return missing_in(c)
     except Exception as error:  # a healthy deployment must never be taken down by this probe
-        log.warning("Cannot probe the database schema; not reporting missing migrations: %s", error)
+        event("database.schema_probe_failed", level=logging.WARNING, **failure(error))
         return []

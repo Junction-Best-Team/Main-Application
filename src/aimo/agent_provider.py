@@ -234,6 +234,11 @@ class ChatProvider:
                             if type(usage.get(k)) is int
                         },
                     )
+                    reply_data = choice.get("message")
+                    reply_calls = reply_data.get("tool_calls") if isinstance(reply_data, dict) else None
+                    event("llm.response_shape", response_bytes=len(body),
+                          candidate_count=len(choices) if isinstance(choices, list) else 0,
+                          tool_call_count=len(reply_calls) if isinstance(reply_calls, list) else None)
                     return self.parse(body)
             except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError) as exc:
                 event(
