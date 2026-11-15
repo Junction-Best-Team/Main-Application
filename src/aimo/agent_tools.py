@@ -867,7 +867,7 @@ class ToolSession:
     @property
     def auto_cart(self):
         """The server stages the basket after the reply (cart_auto_prepare): the model does not prepare."""
-        return bool(getattr(settings(), "cart_auto_prepare", False))
+        return bool(settings().cart_auto_prepare)
 
     @property
     def brief_blocks_build(self):
@@ -1072,9 +1072,9 @@ class ToolSession:
             )
         if phase == "recipe":
             return head + (
-                "Recipe discovery has run. Publish the quantity plan now using scale_recipe for a "
-                "complete saved recipe or draft_recipe for a labelled estimate. Catalog tools become "
-                "available after the plan is published."
+                "If the customer has chosen the meal and portions, publish its quantity plan using "
+                "scale_recipe for a complete saved recipe or draft_recipe for a labelled estimate. "
+                "Catalog tools become available after the plan is published."
             )
         if phase == "match":
             left = [

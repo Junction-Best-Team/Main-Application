@@ -21,18 +21,48 @@ from test_draft_cart_purchase import (  # noqa: F401
 )
 
 POINTER = "Confirm purchase"
+CARD = "Your order"  # develop's own notices name the card; ours name both
 
 
 def last_text(d):
     return d["messages"][-1]["text"]
 
 
-def test_an_open_basket_from_the_server_points_to_the_button_once(auto):
-    d = auto.turn(*CUSTOMER_PLAN_TURN)
-    assert baskets(d) and last_text(d).count(POINTER) == 1
+def test_a_basket_staged_by_the_server_keeps_the_focused_reply(auto):
+    d = auto.turn(*CUSTOMER_PLAN_TURN)  # develop's design: the card shows the staged result
+    assert baskets(d) and POINTER not in last_text(d) or CARD in last_text(d)
+    assert last_text(d).startswith("Here is the plan.")
 
 
-def test_a_denied_basket_made_by_the_model_still_points_to_the_card(auto):
+def test_a_basket_the_model_prepared_gets_one_pointer_when_the_reply_names_neither(
+    auto, monkeypatch
+):
+    from aimo.config import settings
+
+    monkeypatch.setattr(settings(), "cart_auto_prepare", False)  # the model-prepares flow
+    d = auto.turn(
+        "200 portions of carbonara", *MATCH, tool_reply(call("publish_meal_plan", plan())),
+        tool_reply(call("prepare_order", prepared())), say("Done."),
+    )  # fmt: skip
+    assert baskets(d) and CARD in last_text(d) and last_text(d).count(POINTER) == 1
+
+
+def test_a_reply_that_already_names_the_card_gets_nothing_added(auto, monkeypatch):
+    from aimo.config import settings
+
+    monkeypatch.setattr(settings(), "cart_auto_prepare", False)
+    d = auto.turn(
+        "200 portions of carbonara", *MATCH, tool_reply(call("publish_meal_plan", plan())),
+        tool_reply(call("prepare_order", prepared())), say("Review the basket in Your order."),
+    )  # fmt: skip
+    assert baskets(d)
+    assert "nothing is ordered until you press" not in last_text(d)
+
+
+def test_a_denied_basket_made_by_the_model_points_to_the_card(auto, monkeypatch):
+    from aimo.config import settings
+
+    monkeypatch.setattr(settings(), "cart_auto_prepare", False)
     past = prepared() | {"delivery_date": str(date.today() - timedelta(days=1))}
     d = auto.turn(
         "200 portions of carbonara", *MATCH, tool_reply(call("publish_meal_plan", plan())),
@@ -40,23 +70,4 @@ def test_a_denied_basket_made_by_the_model_still_points_to_the_card(auto):
     )  # fmt: skip
     basket = baskets(d)[-1]
     assert basket["policy_outcome"] == "denied" and basket["order_id"] is None
-    assert POINTER in last_text(
-        d
-    )  # tells the customer where the basket is and that it is not ready
-
-
-def test_a_basket_the_budget_blocks_points_to_the_card_too(auto):
-    from uuid import uuid4
-
-    from aimo.worker import run_once
-
-    cid = auto.turn.cid
-    auto.client.post(
-        f"/api/conversations/{cid}/messages", headers=auto.headers,
-        json={"text": "200 portions of carbonara", "idempotency_key": str(uuid4()),
-              "constraints": {"budget_gross": "5"}},
-    )  # fmt: skip
-    auto.script.extend([*MATCH, tool_reply(call("publish_meal_plan", plan())), say("Plan ready.")])
-    assert run_once(auto.service)
-    d = auto.client.get(f"/api/conversations/{cid}").json()
-    assert baskets(d) and POINTER in last_text(d)
+    assert CARD in last_text(d)  # develop's own notice or ours: the card is named

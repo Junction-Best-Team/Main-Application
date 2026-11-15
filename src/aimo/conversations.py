@@ -27,11 +27,11 @@ RECIPE_LOCKED_REASON = (
 
 CONFIRM_POINTER = "Confirm purchase"
 OPEN_POINTER = (
-    "Review the exact basket on the card and press Confirm purchase; nothing is ordered until you do."
+    "Review the exact basket in Your order; nothing is ordered until you press Confirm purchase."
 )
 BLOCKED_POINTER = (
-    "The basket is on the card but needs attention first; its Confirm purchase button becomes "
-    "available once the reasons shown there are resolved."
+    "The basket needs attention first; resolve the reasons shown in Your order, then Confirm "
+    "purchase becomes available."
 )
 
 
@@ -637,7 +637,12 @@ def execute_turn(turn, service, runner=None):
             view = service.get_proposal(
                 actor, result.proposal_id
             )  # Never link another buyer/agent's proposal.
-            if CONFIRM_POINTER not in result.text and not view.get("order_id"):
+            if (
+                not auto  # a basket staged by the server keeps develop's focused reply and its own notice
+                and CONFIRM_POINTER not in result.text
+                and "Your order" not in result.text
+                and not view.get("order_id")
+            ):
                 # One fixed sentence whenever a basket exists after the turn (also a blocked one, or one
                 # the server made after the model's reply): where it is and what presses the order.
                 blocked = view.get("policy_outcome") in ("denied", "needs_resolution")

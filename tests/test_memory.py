@@ -797,6 +797,18 @@ def test_saved_memory_cannot_bypass_policy_evidence_or_confirmation(
         "10 L milk, usual destination.",
         service,
         [
+            # develop's request brief comes first in a conversation; the phases wait for it before preparing
+            reply(
+                call(
+                    "record_request",
+                    {
+                        "intent": "build_list",
+                        "goal": "10 L milk",
+                        "starting_point": "products",
+                        "missing_facts": [],
+                    },
+                )
+            ),
             reply(call("get_product", {"product_id": "464398"})),
             reply(call("publish_meal_plan", plan)),
             reply(
