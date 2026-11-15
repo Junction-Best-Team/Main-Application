@@ -208,3 +208,6 @@ def is_advice_question(customer_texts):
     return bool(asks) and not re.search(r"\d", latest) and not wants_to_buy(customer_texts) and not is_card_edit(
         customer_texts
     )
+
+
+MAX_PRODUCT_SEARCHES = 8  # live round 1: a plan request used 15 searches in 9 rounds

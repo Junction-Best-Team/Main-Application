@@ -333,6 +333,7 @@ class ToolSession:
         self.called_now = set()
         self.stats = {"tool_calls": 0, "repeated_calls": 0, "calls_after_prepare": 0}
         self.policy_destinations = None  # read lazily by default_terms
+        self.searches = 0  # product searches this turn (capped by the stop control)
         self.phase_refusals = 0  # after two refusals the phase restrictions widen for the turn
         self.enforce_phases = False  # the turn runner switches it on; direct callers and read-only
         # child sessions of parallel reads are not restricted (the parent decided before dispatch)
@@ -803,6 +804,17 @@ class ToolSession:
         if name not in self.registry or not settings().agent_stop_control:
             return None
         self.stats["tool_calls"] += 1
+        if name == "search_products":
+            self.searches += 1
+            if self.searches > agent_stop.MAX_PRODUCT_SEARCHES:
+                return Problem(
+                    "SEARCH_LIMIT",
+                    f"You already searched products {agent_stop.MAX_PRODUCT_SEARCHES} times in this "
+                    "turn. Stop searching: save the selections you have with publish_meal_plan (or "
+                    "match_ingredients), leave the rest unmatched with their reason, and prepare "
+                    "the basket.",
+                    422,
+                )
         key = agent_stop.call_key(name, arguments)
         repeated = key in self.called_before or key in self.called_now
         if repeated:

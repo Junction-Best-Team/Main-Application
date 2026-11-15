@@ -674,3 +674,32 @@ def test_no_retry_with_the_switch_off_or_without_time(identity, config, monkeypa
             identity, FakeService(identity), user("hello"), budget_seconds=10
         )  # under the 15 s guard
     assert len(seen) == 1
+
+
+# --- fix queue: tool sprawl cap and the language rule ------------------------------------------------------
+
+
+def test_product_searches_are_capped_per_turn_with_a_plain_way_forward(identity):
+    session = ToolSession(identity, FakeService(identity))
+    for n in range(8):
+        assert session.discipline("search_products", json.dumps({"query": f"item {n}"})) is None
+    problem = session.discipline("search_products", json.dumps({"query": "item 9"}))
+    assert problem.code == "SEARCH_LIMIT" and problem.status == 422
+    assert "8" in problem.message and "publish_meal_plan" in problem.message  # save what you have
+    assert (
+        session.discipline("get_product", json.dumps({"product_id": "pasta"})) is None
+    )  # reads go on
+
+
+def test_the_search_cap_is_off_with_the_switch_off(identity, monkeypatch):
+    monkeypatch.setattr(settings(), "agent_stop_control", False)
+    session = ToolSession(identity, FakeService(identity))
+    assert all(
+        session.discipline("search_products", json.dumps({"query": f"item {n}"})) is None
+        for n in range(12)
+    )
+
+
+def test_the_prompt_says_to_answer_in_the_customers_language():
+    text = " ".join(agent.system_prompt().split())
+    assert "language of the customer's latest message" in text and "Finnish" in text
