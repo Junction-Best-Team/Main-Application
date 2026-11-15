@@ -54,7 +54,7 @@ function RunItem({
   const current = run.reason?.current_gross_total;
   return (
     <li
-      className={`flex flex-col gap-space-sm rounded-lg border border-border-subtle p-space-md ${run.status === "skipped" ? "opacity-70" : ""} ${run.status === "disrupted" ? "border-amber-300 bg-amber-100/30" : ""}`}
+      className={`flex flex-col gap-space-sm rounded-lg border border-border-subtle p-space-md ${run.status === "skipped" ? "opacity-70" : ""} ${run.status === "disrupted" ? "border-amber-300 bg-amber-100/30 dark:border-amber-700 dark:bg-amber-900/20" : ""}`}
     >
       <div className="flex flex-col gap-space-xs sm:flex-row sm:items-center sm:justify-between">
         <div>

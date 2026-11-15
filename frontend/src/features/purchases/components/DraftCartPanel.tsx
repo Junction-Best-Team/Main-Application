@@ -1,8 +1,8 @@
 import { useState } from "react";
 import type { Proposal } from "../../../shared/api/types";
-import { Icon } from "../../../shared/components/DesignPrimitives";
 import { currency, dateTime } from "../../../shared/lib/format";
 import { useCartOpen } from "../hooks/useCartOpen";
+import { CartShell } from "./CartShell";
 import { useDestinations } from "../hooks/useDestinations";
 import { usePrepareFromCart } from "../hooks/usePrepareFromCart";
 import { ErrorMessage } from "../../../shared/components/ErrorMessage";
@@ -82,27 +82,14 @@ export function DraftCartPanel({
     ]);
   }
   return (
-    <aside
-      aria-label="Your order"
-      className="flex max-h-[45dvh] min-w-0 shrink-0 flex-col overflow-y-auto rounded-xl border border-border-subtle bg-surface-pure p-space-md shadow-sm lg:sticky lg:top-0 lg:max-h-full lg:w-80 xl:w-96"
+    <CartShell
+      label="Your order"
+      title="Your order"
+      open={open}
+      onToggle={toggleOpen}
+      headerExtra={<CardLogCopy />}
+      count={items.length || undefined}
     >
-      <div className="flex items-center justify-between gap-space-sm border-b border-border-subtle pb-space-sm">
-        <h2 className="m-0 font-headline text-headline-sm font-bold text-primary">
-          Your order
-        </h2>
-        <span className="flex items-center gap-space-sm">
-          <CardLogCopy />
-          <button
-            type="button"
-            aria-label={open ? "Collapse cart" : "Expand cart"}
-            aria-expanded={open}
-            onClick={toggleOpen}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border-0 bg-transparent p-0 text-secondary"
-          >
-            <Icon name={open ? "keyboard_arrow_down" : "keyboard_arrow_up"} />
-          </button>
-        </span>
-      </div>
       {(!cart || working) && (
         <p role="status" className="my-space-sm text-body-sm text-secondary">
           {cart ? CART_COPY.preparingOrder : CART_COPY.empty}
@@ -215,6 +202,6 @@ export function DraftCartPanel({
           </p>
         )}
       </div>
-    </aside>
+    </CartShell>
   );
 }

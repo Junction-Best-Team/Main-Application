@@ -1168,7 +1168,10 @@ test("history retains completed purchases and reports an actionable refresh erro
   ).toBeVisible();
   await expect(page.locator(".purchase-row")).toContainText("Placed");
   fail = true;
-  await page.getByRole("button", { name: "Refresh purchases" }).click();
+  // The list refreshes when the tab becomes visible again (useRefresh).
+  await page.evaluate(() =>
+    document.dispatchEvent(new Event("visibilitychange")),
+  );
   await expect(page.getByRole("alert")).toContainText("Refresh to retry");
   await expect(page.locator(".purchase-row")).toContainText("Placed");
 });

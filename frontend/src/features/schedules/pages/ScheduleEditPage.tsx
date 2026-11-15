@@ -1,3 +1,4 @@
+import { KitchenPattern } from "../../../shared/components/KitchenPattern";
 import { useState } from "react";
 import {
   Link,
@@ -35,7 +36,7 @@ import { isSuperseded, stopReasonText } from "../model/scheduleStatus";
 
 const EDITABLE = ["active", "paused", "stopped"];
 const shell =
-  "mx-auto flex w-full max-w-6xl flex-col gap-space-lg px-margin-sm py-space-lg md:px-margin md:py-space-xl";
+  "isolate mx-auto flex w-full max-w-6xl flex-col gap-space-lg px-margin-sm py-space-lg md:px-margin md:py-space-xl";
 const heading =
   "m-0 font-headline text-headline-lg-mobile tracking-normal text-primary md:text-headline-lg";
 const alertBox =
@@ -50,6 +51,7 @@ export function ScheduleEditPage() {
   if (loading)
     return (
       <main className={shell}>
+        <KitchenPattern seed={2} />
         <p role="status" className="m-0 text-on-surface-variant">
           Loading standing order…
         </p>
@@ -58,6 +60,7 @@ export function ScheduleEditPage() {
   if (!schedule)
     return (
       <main className={shell}>
+        <KitchenPattern seed={2} />
         <h1 className={heading}>Edit standing order</h1>
         <div role="alert" className={alertBox}>
           <p className="m-0 font-body text-body-md">
@@ -173,6 +176,7 @@ function EditFlow({
   if (isSuperseded(schedule) && schedule.replaced_by)
     return (
       <main className={shell}>
+        <KitchenPattern seed={2} />
         {top}
         <div role="alert" className={alertBox}>
           <p className="m-0 font-body text-body-md">
@@ -190,6 +194,7 @@ function EditFlow({
   if (!EDITABLE.includes(schedule.status))
     return (
       <main className={shell}>
+        <KitchenPattern seed={2} />
         {top}
         <div role="alert" className={alertBox}>
           <p className="m-0 font-body text-body-md">
@@ -208,6 +213,7 @@ function EditFlow({
   const needsSource = restart && !source;
   return (
     <main className={shell}>
+      <KitchenPattern seed={2} />
       {top}
       {schedule.status === "stopped" && schedule.stop_reason && (
         <p className="m-0 rounded-lg bg-secondary-container p-space-md font-body text-body-md text-on-secondary-container">

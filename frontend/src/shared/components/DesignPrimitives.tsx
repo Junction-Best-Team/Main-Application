@@ -48,7 +48,7 @@ export function InertInput({
   );
 }
 
-/** Material Symbols icon; decorative, hidden from assistive tech. */
+/** Material Symbols icon; decorative, hidden from assistive tech, never underlined. */
 export function Icon({
   name,
   className = "",
@@ -61,7 +61,8 @@ export function Icon({
       aria-hidden="true"
       className={`material-symbols-outlined ${className}`}
     >
-      {name}
+      {/* An inline block: a hovered link's underline is never drawn under the icon. */}
+      <span className="inline-block">{name}</span>
     </span>
   );
 }

@@ -1,12 +1,45 @@
+import { KitchenPattern } from "../../../shared/components/KitchenPattern";
 import { Link } from "react-router-dom";
 import { Icon } from "../../../shared/components/DesignPrimitives";
 import { ErrorMessage } from "../../../shared/components/ErrorMessage";
 import { ScheduleCard } from "../components/ScheduleCard";
 import { useSchedules } from "../hooks/useSchedules";
 import { isSuperseded } from "../model/scheduleStatus";
+import {
+  SkeletonLine,
+  SkeletonList,
+} from "../../../shared/components/SkeletonSwap";
 
 const primaryLink =
   "inline-flex items-center justify-center gap-space-xs self-start rounded-lg bg-primary-container px-space-lg py-3 font-label text-label-lg text-on-primary no-underline hover:bg-primary";
+
+/** ScheduleCard's fixed layout: a 28px title row with the 26px status pill, four 24px facts
+ *  in two columns, the 20px status line and the 34px action row (min-h-52 overall). */
+function ScheduleCardSkeleton() {
+  return (
+    <div className="flex min-h-52 flex-col gap-space-sm rounded-xl bg-surface-pure p-space-lg shadow-level-2">
+      <div className="flex h-7 items-center justify-between gap-space-sm">
+        <SkeletonLine height="h-7" bar="h-5" width="w-1/2" />
+        <SkeletonLine
+          height="h-[26px]"
+          bar="h-[26px] rounded-full"
+          width="w-20"
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-x-space-lg gap-y-space-xs">
+        <SkeletonLine height="h-6" width="w-3/4" />
+        <SkeletonLine height="h-6" width="w-2/3" />
+        <SkeletonLine height="h-6" width="w-1/2" />
+        <SkeletonLine height="h-6" width="w-1/3" />
+      </div>
+      <SkeletonLine height="h-5" bar="h-3" width="w-2/5" />
+      <div className="mt-auto flex h-[34px] items-center gap-x-space-lg">
+        <SkeletonLine height="h-[34px]" bar="h-4" width="w-24" />
+        <SkeletonLine height="h-[34px]" bar="h-[34px]" width="w-20" />
+      </div>
+    </div>
+  );
+}
 
 export function SchedulesPage() {
   const { items, nextOffset, loading, error, refresh, showMore, replace } =
@@ -15,7 +48,8 @@ export function SchedulesPage() {
   const visible = items.filter((s) => !isSuperseded(s));
   const empty = !loading && !error && visible.length === 0;
   return (
-    <main>
+    <main className="isolate">
+      <KitchenPattern seed={1} />
       <section className="border-b border-border-subtle bg-surface-pure px-margin-sm py-space-lg md:px-margin md:py-space-xl">
         <div className="mx-auto flex max-w-6xl flex-col justify-between gap-space-md md:flex-row md:items-end">
           <div className="flex flex-col gap-space-xs">
@@ -36,26 +70,22 @@ export function SchedulesPage() {
       <section className="px-margin-sm py-space-lg md:px-margin">
         <div className="mx-auto flex max-w-6xl flex-col gap-space-md">
           <ErrorMessage message={error} />
-          {loading && visible.length === 0 && (
-            <p
-              role="status"
-              className="m-0 py-space-lg text-center text-secondary"
-            >
-              Loading standing orders…
-            </p>
-          )}
-          {visible.length > 0 && (
-            <div className="grid grid-cols-1 gap-space-md lg:grid-cols-2">
-              {visible.map((s) => (
-                <ScheduleCard
-                  key={s.id}
-                  schedule={s}
-                  onChanged={replace}
-                  onStale={() => refresh(true)}
-                />
-              ))}
-            </div>
-          )}
+          <SkeletonList
+            loading={loading && visible.length === 0}
+            items={visible}
+            count={4}
+            label="Loading standing orders…"
+            className="grid grid-cols-1 gap-space-md lg:grid-cols-2"
+            itemKey={(s) => s.id}
+            renderSkeleton={() => <ScheduleCardSkeleton />}
+            renderItem={(s) => (
+              <ScheduleCard
+                schedule={s}
+                onChanged={replace}
+                onStale={() => refresh(true)}
+              />
+            )}
+          />
           {error && visible.length === 0 && !loading && (
             <button
               type="button"

@@ -11,8 +11,9 @@ import {
 import { ScheduleActions } from "./ScheduleActions";
 import { ScheduleChip } from "./ScheduleChip";
 
+// Only the words underline on hover, never the arrow beside them.
 const linkClass =
-  "inline-flex items-center gap-1 font-label text-label-md text-wholesale-teal no-underline hover:underline";
+  "group inline-flex items-center gap-1 font-label text-label-md text-wholesale-teal no-underline hover:no-underline";
 
 function nextRunText(s: Schedule) {
   if (s.status === "paused") return "Paused until resumed";
@@ -35,12 +36,14 @@ export function ScheduleCard({
   return (
     <article
       aria-labelledby={`schedule-${s.id}`}
-      className="flex flex-col gap-space-sm rounded-xl bg-surface-pure p-space-lg shadow-level-2"
+      // One fixed size for every card (and its skeleton): each part below has a set height.
+      className="flex min-h-52 flex-col gap-space-sm rounded-xl bg-surface-pure p-space-lg shadow-level-2"
     >
-      <div className="flex flex-col gap-space-xs sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex h-7 items-center justify-between gap-space-sm">
         <h2
           id={`schedule-${s.id}`}
-          className="m-0 min-w-0 font-headline text-headline-sm text-primary wrap-anywhere"
+          title={s.title}
+          className="m-0 min-w-0 truncate font-headline text-headline-sm text-primary"
         >
           <Link to={`/schedules/${s.id}`} className="text-primary no-underline">
             {s.title}
@@ -50,7 +53,7 @@ export function ScheduleCard({
           <ScheduleChip schedule={s} />
         </div>
       </div>
-      <dl className="m-0 grid grid-cols-1 gap-x-space-lg gap-y-space-xs text-body-md text-on-surface-variant sm:grid-cols-2">
+      <dl className="m-0 grid grid-cols-2 gap-x-space-lg gap-y-space-xs text-body-md text-on-surface-variant [&_dd]:min-w-0 [&_dd]:truncate [&>div]:h-6 [&>div]:min-w-0">
         <div className="flex items-center gap-space-xs">
           <Icon name="repeat" className="text-[18px] text-wholesale-teal" />
           <dt className="sr-only">Repeats</dt>
@@ -79,20 +82,19 @@ export function ScheduleCard({
           </dd>
         </div>
       </dl>
-      {s.last_run && (
-        <p className="m-0 text-body-sm text-on-surface-variant">
-          Last run: {RUN_STATUS_LABEL[s.last_run.status]} ·{" "}
-          {formatDate(s.last_run.scheduled_date)}
-        </p>
-      )}
-      {s.status === "stopped" && (
-        <p className="m-0 rounded-lg bg-amber-100 px-space-md py-space-sm text-body-sm text-amber-900">
-          {stopReasonText(s.stop_reason)}
-        </p>
-      )}
-      <div className="flex flex-wrap items-center gap-x-space-lg gap-y-space-sm">
+      {/* One reserved status line: why it stopped, else the last run. */}
+      <p
+        className={`m-0 h-5 truncate text-body-sm ${s.status === "stopped" ? "font-semibold text-amber-800 dark:text-amber-200" : "text-on-surface-variant"}`}
+      >
+        {s.status === "stopped"
+          ? stopReasonText(s.stop_reason)
+          : s.last_run
+            ? `Last run: ${RUN_STATUS_LABEL[s.last_run.status]} · ${formatDate(s.last_run.scheduled_date)}`
+            : ""}
+      </p>
+      <div className="mt-auto flex min-h-[34px] items-center gap-x-space-lg overflow-hidden whitespace-nowrap">
         <Link to={`/schedules/${s.id}`} className={linkClass}>
-          View details
+          <span className="group-hover:underline">View details</span>
           <Icon name="arrow_forward" className="text-[16px]" />
         </Link>
         {s.status === "stopped" && s.conversation_id && (
@@ -100,7 +102,7 @@ export function ScheduleCard({
             to={`/conversations/${s.conversation_id}`}
             className={linkClass}
           >
-            Open the conversation
+            <span className="group-hover:underline">Open the conversation</span>
           </Link>
         )}
         <ScheduleActions

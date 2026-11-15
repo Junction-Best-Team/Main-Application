@@ -5,11 +5,14 @@ import type { OrderListItem, Proposal } from "../../../shared/api/types";
 import { Badge } from "../../../shared/components/Badge";
 import { Icon } from "../../../shared/components/DesignPrimitives";
 import { ErrorMessage } from "../../../shared/components/ErrorMessage";
-import { currency, dateTime } from "../../../shared/lib/format";
+import { dateTime } from "../../../shared/lib/format";
 import { useAuth } from "../../auth/useAuth";
 import { formatDate } from "../../schedules/model/scheduleStatus";
 import { getPurchase } from "../api/purchasesApi";
-import { cancelReasonText } from "../model/orders";
+import { cancelReasonText, deliveryDay } from "../model/orders";
+import { OrderStatus } from "./OrderStatus";
+import { OrderRowDecor } from "./OrderRowDecor";
+import { RollingPrice } from "../../../shared/components/RollingPrice";
 import { PurchaseSheet } from "./PurchaseSheet";
 
 const secondaryButton =
@@ -21,6 +24,7 @@ const titleLink =
 
 export function OrderRow({
   item,
+  decorVariant = 0,
   expanded,
   onToggle,
   known,
@@ -36,6 +40,8 @@ export function OrderRow({
   cancelling: boolean;
   notice?: string;
   onCancel: (proposalId: string) => Promise<void>;
+  /** Which background pattern fills the row's empty middle (exploration). */
+  decorVariant?: number;
 }) {
   const [confirming, setConfirming] = useState(false);
   const title = item.title || "Order";
@@ -50,32 +56,42 @@ export function OrderRow({
   return (
     <article
       id={canExpand ? `order-${proposalId}` : undefined}
-      className="purchase-row min-w-0 scroll-mt-space-lg rounded-xl bg-surface-pure p-space-md shadow-level-2 md:p-space-lg"
+      className="purchase-row min-w-0 scroll-mt-space-lg overflow-hidden rounded-xl bg-surface-pure p-space-md shadow-level-2 md:p-space-lg"
     >
-      <div className="flex flex-col justify-between gap-space-md lg:flex-row lg:items-center">
-        <div className="flex min-w-0 flex-1 flex-col gap-space-xs">
-          <div className="flex flex-wrap items-center gap-space-sm font-label text-label-sm text-secondary">
-            <Badge value={item.status} />
+      <div className="relative isolate flex flex-col justify-between gap-space-md lg:flex-row lg:items-center">
+        {/* Faint pattern in the row's empty space (exploration, see OrderRowDecor). */}
+        <OrderRowDecor variant={decorVariant} expanded={expanded} />
+        {/* On desktop the left side only takes the width its content needs. */}
+        <div className="flex min-w-0 flex-1 flex-col gap-space-xs lg:flex-initial">
+          <div
+            data-decor="meta"
+            className="flex h-[26px] items-center gap-space-sm overflow-hidden whitespace-nowrap font-label text-label-sm text-secondary"
+          >
+            <OrderStatus item={item} />
             {item.status === "scheduled" && item.paused && (
               <Badge value="paused" />
             )}
-            {item.status === "scheduled" && item.scheduled_for && (
+            {/* When it arrives (or runs), next to the progress. */}
+            {item.status === "scheduled" && item.scheduled_for ? (
               <span className="font-bold text-primary">
                 Runs {formatDate(item.scheduled_for)}
               </span>
+            ) : (
+              item.status === "placed" &&
+              deliveryDay(item.fulfilment) && (
+                <span className="font-bold text-primary">
+                  {item.fulfilment?.status === "delivered"
+                    ? "Delivered"
+                    : "Delivery"}{" "}
+                  {formatDate(deliveryDay(item.fulfilment))}
+                </span>
+              )
             )}
-            {item.order_id && (
-              <span className="order-reference rounded bg-surface-container-high px-2 py-0.5 font-bold uppercase text-primary">
-                {item.order_id}
-              </span>
-            )}
-            <span>
-              {item.status === "placed" && item.placed_at
-                ? `Placed ${dateTime(item.placed_at)}`
-                : `Updated ${dateTime(item.updated_at)}`}
-            </span>
           </div>
-          <h2 className="m-0 font-headline text-headline-sm text-primary wrap-anywhere">
+          <h2
+            data-decor="title"
+            className="m-0 h-7 truncate font-headline text-headline-sm text-primary"
+          >
             {titleTarget ? (
               <Link to={titleTarget} className={titleLink}>
                 {title}
@@ -84,8 +100,13 @@ export function OrderRow({
               title
             )}
           </h2>
-          <div className="font-body text-body-sm text-on-surface-variant">
+          <div
+            data-decor="lines"
+            className="h-5 truncate font-body text-body-sm text-on-surface-variant"
+          >
             {item.line_count} {item.line_count === 1 ? "line" : "lines"}
+            {item.status === "cancelled" &&
+              ` · ${cancelReasonText(item.cancel_reason)}`}
             {item.status !== "scheduled" &&
               item.schedule_id &&
               item.schedule_title && (
@@ -100,11 +121,6 @@ export function OrderRow({
                 </>
               )}
           </div>
-          {item.status === "cancelled" && (
-            <p className="m-0 font-body text-body-sm text-on-surface-variant">
-              {cancelReasonText(item.cancel_reason)}
-            </p>
-          )}
           {notice && (
             <p
               role="alert"
@@ -114,28 +130,40 @@ export function OrderRow({
             </p>
           )}
         </div>
-        <div className="flex flex-col gap-space-sm lg:items-end">
-          <div className="flex items-center justify-between gap-space-md lg:justify-end">
-            <div className="font-headline text-headline-md font-bold text-primary lg:text-right">
-              {currency(item.gross_total, item.currency ?? "EUR")}{" "}
+        {/* The empty middle (the pattern is drawn behind the whole row). */}
+        <div className="hidden min-w-12 flex-1 lg:block" />
+        <div
+          data-decor="right"
+          className="flex shrink-0 flex-col gap-space-xs lg:items-end"
+        >
+          {/* When it was placed or last changed: at the right end of the row. */}
+          <div
+            data-decor="when"
+            className="flex h-[26px] items-center whitespace-nowrap font-label text-label-sm text-secondary"
+          >
+            {item.status === "placed" && item.placed_at
+              ? `Placed ${dateTime(item.placed_at)}`
+              : `Updated ${dateTime(item.updated_at)}`}
+          </div>
+          <div className="flex h-8 items-center justify-between gap-space-md lg:justify-end">
+            <div
+              data-decor="total"
+              className="font-headline text-headline-md font-bold text-primary lg:text-right"
+            >
+              <RollingPrice
+                value={item.gross_total}
+                currencyCode={item.currency ?? "EUR"}
+              />{" "}
               <span className="font-label text-label-sm font-normal text-secondary">
                 incl. VAT
               </span>
             </div>
-            {canExpand && proposalId && (
-              <button
-                type="button"
-                aria-label={`Order details: ${title}`}
-                aria-expanded={expanded}
-                aria-controls={`details-${proposalId}`}
-                onClick={() => onToggle(proposalId)}
-                className="cursor-pointer rounded-lg border-0 bg-surface-container-low p-3 text-primary hover:bg-surface-container-high"
-              >
-                <Icon name={expanded ? "expand_less" : "expand_more"} />
-              </button>
-            )}
           </div>
-          <div className="flex flex-wrap items-center gap-space-sm">
+          {/* Always reserved, so every row has the same height. */}
+          <div
+            data-decor="actions"
+            className="flex min-h-[34px] flex-wrap items-center gap-space-sm"
+          >
             {item.status === "placed" && item.order_id && !item.schedule_id && (
               <Link
                 to={`/schedules/new?order=${encodeURIComponent(item.order_id)}`}
@@ -185,11 +213,27 @@ export function OrderRow({
                   Cancel request
                 </button>
               ))}
+            {canExpand && proposalId && (
+              <button
+                type="button"
+                aria-label={`Order details: ${title}`}
+                aria-expanded={expanded}
+                aria-controls={`details-${proposalId}`}
+                onClick={() => onToggle(proposalId)}
+                className="flex h-[34px] w-[34px] cursor-pointer items-center justify-center rounded-lg border border-outline-variant bg-surface-pure p-0 text-primary hover:bg-surface-container-high"
+              >
+                <Icon name={expanded ? "expand_less" : "expand_more"} />
+              </button>
+            )}
           </div>
         </div>
       </div>
       {canExpand && proposalId && expanded && (
-        <PlacedDetails proposalId={proposalId} known={known} />
+        <PlacedDetails
+          proposalId={proposalId}
+          orderId={item.order_id}
+          known={known}
+        />
       )}
     </article>
   );
@@ -197,9 +241,11 @@ export function OrderRow({
 
 function PlacedDetails({
   proposalId,
+  orderId,
   known,
 }: {
   proposalId: string;
+  orderId?: string | null;
   known?: Proposal;
 }) {
   const { setSession } = useAuth();
@@ -225,8 +271,15 @@ function PlacedDetails({
       id={`details-${proposalId}`}
       className="mt-space-md flex flex-col gap-space-sm rounded-lg bg-surface-container-low p-space-md"
     >
-      <div className="font-label text-label-md uppercase tracking-wider text-secondary">
-        Ordered items
+      <div className="flex items-center justify-between gap-space-sm">
+        <div className="font-label text-label-md uppercase tracking-wider text-secondary">
+          Ordered items
+        </div>
+        {orderId && (
+          <span className="order-reference rounded bg-surface-container-high px-2 py-0.5 font-label text-label-sm font-bold uppercase text-primary">
+            Order {orderId}
+          </span>
+        )}
       </div>
       <ErrorMessage message={error} />
       {!p && !error && (

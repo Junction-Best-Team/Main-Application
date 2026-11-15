@@ -257,7 +257,7 @@ export function ChatComposer({
       <div
         className={
           home
-            ? "flex w-full min-w-0 flex-col"
+            ? "flex min-h-0 w-full min-w-0 flex-1 flex-col"
             : "flex w-full min-w-0 items-end gap-space-sm"
         }
       >

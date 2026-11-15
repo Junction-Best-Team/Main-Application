@@ -524,7 +524,10 @@ test("shows loading, empty and error states", async ({ page }) => {
   await expect(page.getByRole("status")).toContainText("Loading orders");
   await expect(page.getByText("No orders yet")).toBeVisible();
   mode = "fail";
-  await page.getByRole("button", { name: "Refresh purchases" }).click();
+  // The list refreshes when the tab becomes visible again (useRefresh).
+  await page.evaluate(() =>
+    document.dispatchEvent(new Event("visibilitychange")),
+  );
   await expect(page.getByRole("alert")).toContainText(
     "Orders are unavailable.",
   );

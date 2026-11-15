@@ -1,18 +1,18 @@
 import type { Schedule } from "../../../shared/api/types";
 import { scheduleChip, type ChipTone } from "../model/scheduleStatus";
 
-// Same pill look and token classes as shared/components/Badge, driven by the schedule chip tone.
+// Just the word in its colour, like the status on the Orders page (no pill).
 const toneClass: Record<ChipTone, string> = {
-  positive: "bg-green-100 text-green-900",
-  attention: "bg-amber-100 text-amber-900",
-  neutral: "bg-surface-container-high text-on-surface-variant",
-  negative: "bg-error-container text-on-error-container",
+  positive: "text-green-700 dark:text-green-300",
+  attention: "text-amber-700 dark:text-amber-300",
+  neutral: "text-secondary",
+  negative: "text-error",
 };
 
 export function ToneChip({ label, tone }: { label: string; tone: ChipTone }) {
   return (
     <span
-      className={`inline-block rounded-full px-3 py-1.5 font-label text-label-sm font-bold whitespace-nowrap ${toneClass[tone]}`}
+      className={`inline-flex h-[26px] items-center font-label text-label-sm font-bold whitespace-nowrap ${toneClass[tone]}`}
     >
       {label}
     </span>

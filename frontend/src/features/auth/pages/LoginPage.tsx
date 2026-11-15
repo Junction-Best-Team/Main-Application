@@ -61,14 +61,14 @@ export function LoginPage() {
           </div>
         </section>
         <section className="p-8 md:p-14">
-          <h2 className="mb-2 text-headline-md leading-8 font-bold text-deep-ocean-navy">
+          <h2 className="mb-2 text-headline-md leading-8 font-bold text-deep-ocean-navy dark:text-on-surface">
             Buyer sign in
           </h2>
           <p className="m-0 text-body-md text-on-surface-variant">
             Use your preconfigured buyer account.
           </p>
           <form onSubmit={submit} className="my-6">
-            <label className="mb-5 block text-label-lg text-deep-ocean-navy">
+            <label className="mb-5 block text-label-lg text-deep-ocean-navy dark:text-on-surface">
               Username
               <input
                 name="username"
@@ -78,7 +78,7 @@ export function LoginPage() {
                 className={field}
               />
             </label>
-            <label className="mb-5 block text-label-lg text-deep-ocean-navy">
+            <label className="mb-5 block text-label-lg text-deep-ocean-navy dark:text-on-surface">
               Password
               <input
                 name="password"
@@ -91,7 +91,7 @@ export function LoginPage() {
             <ErrorMessage message={error} />
             <button
               disabled={busy}
-              className="mt-2 box-border block h-11 w-full rounded border-0 bg-wholesale-teal px-4 py-0 text-body-md font-semibold text-on-primary hover:enabled:bg-deep-ocean-navy focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wholesale-teal disabled:opacity-50"
+              className="mt-2 box-border block h-11 w-full rounded border-0 bg-wholesale-teal px-4 py-0 dark:bg-primary-container text-body-md font-semibold text-on-primary hover:enabled:bg-deep-ocean-navy focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wholesale-teal disabled:opacity-50"
             >
               {busy ? "Signing in…" : "Sign in"}
             </button>
