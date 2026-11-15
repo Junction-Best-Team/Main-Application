@@ -61,7 +61,6 @@ export function VoiceOrb({ orb: showOrb = true }: { orb?: boolean }) {
   return (
     <section aria-label="Voice mode" className="voice-orb-dock">
       <div className="voice-orb-wrap" data-phase={state.phase}>
-        <span aria-hidden="true" className="voice-orb-ring" />
         <button
           ref={orb}
           type="button"
