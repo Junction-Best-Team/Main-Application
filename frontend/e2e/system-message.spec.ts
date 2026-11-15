@@ -83,7 +83,7 @@ test("the conversation still shows the composer and the purchase cards", async (
   await open(page);
   await expect(
     page.getByRole("list", { name: "Proposed items" }),
-  ).toContainText("Spaghetti");
+  ).toContainText("Spaghetti 5 kg");
   await expect(page.getByLabel("Continue the conversation")).toBeEnabled();
   await expect(page.getByText(disrupted.title).first()).toBeVisible();
 });
