@@ -5927,23 +5927,6 @@
               "warning"
             ],
             "title": "Severity"
-          },
-          "kind": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "blocker",
-                  "approvable",
-                  "note"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Kind",
-            "description": "What the reason means for the customer: blocker (the basket cannot be confirmed until data or the request changes), approvable (an exception the customer's own confirmation can cover when their authority lists it) or note (shown, blocks nothing). Derived from severity; never changes whether a basket can be confirmed."
           }
         },
         "additionalProperties": false,
