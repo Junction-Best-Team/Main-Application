@@ -38,12 +38,16 @@ def partial_notice(plan, code):
         for item in plan.ingredients
     )
     status = (
-        f"{remaining} ingredients still need catalog matches."
+        (
+            "1 ingredient still needs a catalog match."
+            if remaining == 1
+            else f"{remaining} ingredients still need catalog matches."
+        )
         if remaining
-        else "The ingredients have catalog selections; basket checks are unfinished."
+        else "The ingredients have catalog selections."
     )
     return (
         f"{cause} Your reviewed recipe progress is saved. {status} "
-        "Continue this conversation to finish the basket checks and any missing delivery details; "
+        "Review any prepared basket, or continue here for remaining basket checks and delivery details; "
         "no purchase was authorized."
     )

@@ -452,6 +452,7 @@ for (const width of [1440, 390]) {
     const snapshot: Conversation = {
       id: cid,
       title: "Parallel reads",
+      cart_editable: false,
       created_at: timestamp,
       updated_at: timestamp,
       messages: [

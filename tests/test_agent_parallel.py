@@ -284,7 +284,8 @@ def test_matched_plan_timeout_reports_only_unfinished_basket_checks(monkeypatch,
     )
     result = agent.run_turn(identity, HISTORY, FakeService(identity))
     assert result.meal_plan is not None and result.proposal_id is None
-    assert "basket checks are unfinished" in result.text
+    assert "ingredients have catalog selections" in result.text
+    assert "remaining basket checks" in result.text
     assert "still need catalog matches" not in result.text
 
 
