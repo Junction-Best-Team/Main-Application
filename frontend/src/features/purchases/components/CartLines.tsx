@@ -2,7 +2,7 @@ import { useId } from "react";
 import type { Proposal } from "../../../shared/api/types";
 import { currency } from "../../../shared/lib/format";
 import { ErrorMessage } from "../../../shared/components/ErrorMessage";
-import { useCartEdit } from "../hooks/useCartEdit";
+import type { useCartEdit } from "../hooks/useCartEdit";
 import { EDIT_COPY } from "../model/cartEdit";
 import { GhostLine } from "./GhostLine";
 import { QuantityControl } from "./QuantityControl";
@@ -14,20 +14,18 @@ import { QuantityControl } from "./QuantityControl";
  */
 export function CartLines({
   p,
-  conversationId,
+  edit,
   editable,
   reason,
   working,
-  onUpdated,
 }: {
   p: Proposal;
-  conversationId: string;
+  /** The edit state of the card (`useCartEdit`, kept by the panel so it outlives a new proposal). */
+  edit: ReturnType<typeof useCartEdit>;
   editable: boolean;
   reason: string | null;
   working: boolean;
-  onUpdated?: (proposal: Proposal) => void;
 }) {
-  const edit = useCartEdit({ conversationId, proposal: p, onUpdated });
   const reasonId = useId();
   const disabled = !editable || working;
   const why = !editable ? reason : working ? EDIT_COPY.working : null;

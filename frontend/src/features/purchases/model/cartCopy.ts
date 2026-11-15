@@ -12,6 +12,7 @@ export const CART_COPY = {
   notPrepared:
     "This order is not prepared yet. Ask the assistant to prepare it.",
   loadingOrder: "Loading your order…",
+  updatingOrder: "Updating your order…",
   orderUnavailable: "Your order could not be loaded. Refresh the status.",
   alreadyPlaced: "This order was already placed.",
   blockedByChecks:

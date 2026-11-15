@@ -76,6 +76,12 @@ export type CartWorld = {
   expired: boolean;
   /** Serve the conversation snapshot on the SSE stream too (reconnects every 300 ms) so a state change shows at once. */
   stream: boolean;
+  /** Like the real backend: an edit prepares a NEW proposal (new id, revision 1) and cancels the older one. */
+  renew: boolean;
+  /** How many times the proposal was renewed (0: the original id). */
+  seq: number;
+  /** The cancelled proposals, oldest first. */
+  old: Proposal[];
   conversationReads: number;
 };
 export const newCart = (over: Partial<CartWorld> = {}): CartWorld => ({
@@ -94,11 +100,19 @@ export const newCart = (over: Partial<CartWorld> = {}): CartWorld => ({
   outcome: "ready_to_commit",
   expired: false,
   stream: false,
+  renew: true,
+  seq: 0,
+  old: [],
   conversationReads: 0,
   ...over,
 });
 
 const money = (n: number) => n.toFixed(2);
+/** The current proposal's id: the original, or a new one after each edit (`renew`). */
+export const proposalIdOf = (w: CartWorld) =>
+  w.seq === 0
+    ? ids.proposal
+    : `${ids.proposal.slice(0, -3)}${String(w.seq).padStart(3, "0")}`;
 
 export function proposalOf(w: CartWorld): Proposal {
   const lines = PRODUCTS.filter((p) => w.qty[p.id] > 0).map((p) => {
@@ -133,6 +147,7 @@ export function proposalOf(w: CartWorld): Proposal {
   const net = lines.reduce((sum, l) => sum + Number(l.net), 0);
   return {
     ...baseProposal,
+    proposal_id: proposalIdOf(w),
     revision: w.revision,
     current_revision: w.revision,
     committed_revision: w.orderPlaced ? w.revision : null,
@@ -190,7 +205,7 @@ export function conversationOf(w: CartWorld): Conversation {
     created_at: timestamp,
     updated_at: timestamp,
     busy: w.busy,
-    purchases: prepared ? [p] : [],
+    purchases: prepared ? [...w.old, p] : [],
     messages:
       w.view === "empty"
         ? []
@@ -247,10 +262,14 @@ export async function openCart(page: Page, w: CartWorld) {
         : ": heartbeat\n\n",
     }),
   );
-  await page.route(`**/api/purchases/${ids.proposal}`, (route) =>
-    json(route, proposalOf(w)),
-  );
-  await page.route(`**/api/purchases/${ids.proposal}/confirm`, (route) => {
+  await page.route(`**/api/purchases/*`, (route) => {
+    const id = new URL(route.request().url()).pathname.split("/").at(-1);
+    const found = [...w.old, proposalOf(w)].find((x) => x.proposal_id === id);
+    return found
+      ? json(route, found)
+      : problem(route, 404, "NOT_FOUND", "Not found.");
+  });
+  await page.route(`**/api/purchases/*/confirm`, (route) => {
     w.confirmations.push(route.request().postDataJSON());
     w.orderPlaced = true;
     return json(route, { status: "accepted_mock", order_id: ids.sourceOrder });
@@ -271,8 +290,15 @@ export async function openCart(page: Page, w: CartWorld) {
     if (PRODUCTS.every((p) => next[p.id] === 0))
       return problem(route, 422, "EMPTY_CART", "The basket cannot be empty.");
     if (PRODUCTS.some((p) => next[p.id] !== w.qty[p.id])) {
+      if (w.renew) {
+        w.old.push({
+          ...proposalOf(w),
+          approval_status: "cancelled",
+        } as Proposal);
+        w.seq += 1;
+        w.revision = 1;
+      } else w.revision += 1;
       w.qty = next;
-      w.revision += 1;
     }
     const answer: CartPurchaseResponse = {
       proposal: proposalOf(w),

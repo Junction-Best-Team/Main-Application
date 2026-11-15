@@ -39,13 +39,16 @@ type Store = {
   values: Record<string, string>;
   removed: Record<string, Removed>;
   answer: Proposal | null;
+  /** The id of the proposal the card showed when the answer came: the answer replaces that one. */
+  answerFrom: string | null;
   updating: boolean;
   error: string;
   errorDebug?: ErrorDebug;
   note: string;
 };
 
-const quantityOf = (proposal: Proposal, id: string): number | null => {
+const quantityOf = (proposal: Proposal | null, id: string): number | null => {
+  if (!proposal) return 0;
   const line = proposal.snapshot.lines.find((l) => l.product_id === id);
   return line ? parseQuantity(String(line.quantity.sales_quantity ?? "")) : 0;
 };
@@ -65,8 +68,9 @@ export function useCartEdit({
   proposal,
   onUpdated,
 }: {
-  conversationId: string;
-  proposal: Proposal;
+  conversationId: string | undefined;
+  /** The basket the card loaded; null while it loads (the server's answer to an edit is shown meanwhile). */
+  proposal: Proposal | null;
   /** The server answered with the new basket (a new revision): the card shows it. */
   onUpdated?: (proposal: Proposal) => void;
 }) {
@@ -75,19 +79,24 @@ export function useCartEdit({
     values: {},
     removed: {},
     answer: null,
+    answerFrom: null,
     updating: false,
     error: "",
     note: "",
   });
   const [, redraw] = useReducer((n: number) => n + 1, 0);
   const s = store.current;
-  // The newest basket we know: the server's answer to our own edit until the card reloads past it.
-  const shown =
-    s.answer &&
-    s.answer.proposal_id === proposal.proposal_id &&
-    s.answer.revision > proposal.revision
-      ? s.answer
-      : proposal;
+  // The newest basket we know. An edit makes the server prepare a NEW proposal (new id) and cancel the
+  // older one, so the answer replaces the proposal that was shown when it came, until the card has
+  // loaded the new one; the lines, the ghosts and what was typed live on across that change.
+  const shown = ((): Proposal | null => {
+    const answer = s.answer;
+    if (!answer) return proposal;
+    if (!proposal) return answer;
+    if (proposal.proposal_id === answer.proposal_id)
+      return answer.revision > proposal.revision ? answer : proposal;
+    return proposal.proposal_id === s.answerFrom ? answer : proposal;
+  })();
   const shownRef = useRef(shown);
   shownRef.current = shown;
   const timer = useRef<number | undefined>(undefined);
@@ -151,7 +160,7 @@ export function useCartEdit({
     const { session: auth, conversationId: cid } = callbacks.current;
     if (inflight.current || !auth || !cid) return;
     const lines = dirtyLines();
-    if (lines.length === 0) {
+    if (lines.length === 0 || !shownRef.current) {
       if (store.current.updating) change({ updating: false });
       return;
     }
@@ -184,10 +193,11 @@ export function useCartEdit({
           stopGhost(sent.product_id);
           delete removed[sent.product_id];
         } else if (sent.sales_quantity === 0) {
-          const index = before.snapshot.lines.findIndex(
-            (l) => l.product_id === sent.product_id,
-          );
-          const line = before.snapshot.lines[index];
+          const index =
+            before?.snapshot.lines.findIndex(
+              (l) => l.product_id === sent.product_id,
+            ) ?? -1;
+          const line = before?.snapshot.lines[index];
           if (line) {
             removed[sent.product_id] = {
               index,
@@ -201,7 +211,12 @@ export function useCartEdit({
         }
       }
       shownRef.current = answer;
-      change({ values, removed, answer });
+      change({
+        values,
+        removed,
+        answer,
+        answerFrom: before?.proposal_id ?? null,
+      });
       callbacks.current.onUpdated?.(answer);
     } catch (e) {
       failed = true;
@@ -280,7 +295,8 @@ export function useCartEdit({
   }, []);
 
   // The rows: the server's lines, with the ghosts (and lines being put back) at their old places.
-  const rows: CartRow[] = shown.snapshot.lines.map((line) => {
+  const shownLines = shown?.snapshot.lines ?? [];
+  const rows: CartRow[] = shownLines.map((line) => {
     const server = parseQuantity(String(line.quantity.sales_quantity ?? ""));
     return {
       kind: "line",
@@ -294,7 +310,7 @@ export function useCartEdit({
     };
   });
   Object.entries(s.removed)
-    .filter(([id]) => !shown.snapshot.lines.some((l) => l.product_id === id))
+    .filter(([id]) => !shownLines.some((l) => l.product_id === id))
     .sort(([, a], [, b]) => a.index - b.index)
     .forEach(([id, removed]) => {
       const row: CartRow =

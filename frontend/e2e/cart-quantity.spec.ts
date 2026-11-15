@@ -6,6 +6,7 @@ import {
   newCart,
   openCart,
   PASTA,
+  proposalIdOf,
   type CartWorld,
 } from "./support/cartFixtures";
 
@@ -214,7 +215,8 @@ test("after the answer the card shows the new revision and total, and Confirm pu
   const world = await open(page);
   await qty(page, PASTA.name).fill("6");
   await tick(page, 650);
-  await expect(overview(page)).toContainText("Revision 2");
+  // The server prepared a NEW proposal for the edit (new id), as the real backend does.
+  await expect.poll(() => world.seq).toBe(1);
   // 6 x 28.50 + 2 x 6.00 + 1 x 10.00 = 193.00
   await expect(overview(page)).toContainText(/193[.,]00/);
   await expect(qty(page, PASTA.name)).toHaveValue("6");
@@ -222,7 +224,10 @@ test("after the answer the card shows the new revision and total, and Confirm pu
     .getByRole("button", { name: "Confirm purchase" })
     .click();
   await expect.poll(() => world.confirmations.length).toBe(1);
-  expect(world.confirmations[0]).toMatchObject({ revision: 2 });
+  expect(world.confirmations[0]).toMatchObject({
+    proposal_id: proposalIdOf(world), // the NEW proposal, not the cancelled one
+    revision: 1,
+  });
 });
 
 test("an edit that changes nothing sends nothing", async ({ page }) => {
@@ -315,7 +320,7 @@ for (const f of failures) {
     await expect(alert).toHaveCount(0);
     await expect(input).not.toHaveAttribute("aria-invalid", "true");
     await expect(input).toHaveValue("9");
-    await expect(overview(page)).toContainText("Revision 2");
+    await expect.poll(() => world.seq).toBe(1);
   });
 }
 
@@ -540,7 +545,7 @@ test("a ghost survives the card reloading the basket after another edit", async 
   await tick(page, 650);
   await expect.poll(() => world.puts.length).toBe(2);
   await expect.poll(() => world.conversationReads).toBeGreaterThan(reads);
-  await expect(overview(page)).toContainText("Revision 3");
+  await expect.poll(() => world.seq).toBe(2);
   await expect(ghost(page, "pasta")).toHaveAttribute("data-state", "ghost");
   await expect(qty(page, EGGS.name)).toHaveValue("2");
 });

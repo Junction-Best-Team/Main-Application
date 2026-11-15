@@ -7,6 +7,7 @@ import { ErrorMessage } from "../../../shared/components/ErrorMessage";
 import { Badge } from "../../../shared/components/Badge";
 import { getPurchaseStatus } from "../model/purchaseStatus";
 import { usePurchaseDetail } from "../hooks/usePurchaseDetail";
+import { useCartEdit } from "../hooks/useCartEdit";
 import { useCartOpen } from "../hooks/useCartOpen";
 import { CardLogCopy } from "./CardLogCopy";
 import { DisabledConfirm } from "./DisabledConfirm";
@@ -143,7 +144,16 @@ export function OverviewPanel({
   cartEdit?: { editable: boolean; reason: string | null };
   onPrepared?: (proposal: Proposal) => void;
 }) {
-  const { p, error, errorDebug } = flow;
+  const { error, errorDebug } = flow;
+  // The pack-count edits live here, not in the lines, because an edit makes the server prepare a new
+  // proposal: the lines, the ghosts and the typed numbers must outlive the change of proposal.
+  const edit = useCartEdit({
+    conversationId,
+    proposal: flow.p,
+    onUpdated: onPrepared,
+  });
+  const p = edit.shown;
+  const updating = !flow.p && Boolean(p); // the new proposal is loading; the answer is shown meanwhile
   const [storedOpen, toggleOpen] = useCartOpen("prepared");
   const open = drawer ? storedOpen : true;
   const closed =
@@ -211,16 +221,15 @@ export function OverviewPanel({
                 Revision {p.revision} / v{p.policy_version}
               </span>
               {conversationId &&
-              flow.canConfirm &&
+              (flow.canConfirm || updating) &&
               cartEdit &&
               (cartEdit.editable || cartEdit.reason) ? (
                 <CartLines
                   p={p}
-                  conversationId={conversationId}
+                  edit={edit}
                   editable={cartEdit.editable}
                   reason={cartEdit.reason}
                   working={working}
-                  onUpdated={onPrepared}
                 />
               ) : (
                 <Items p={p} />
@@ -260,7 +269,15 @@ export function OverviewPanel({
                   )}
                 </>
               )}
-              <PurchaseDecisionPanel {...flow} disabled={working} p={p} />
+              {updating ? (
+                <DisabledConfirm
+                  component="prepared"
+                  code="updating"
+                  reason={CART_COPY.updatingOrder}
+                />
+              ) : (
+                <PurchaseDecisionPanel {...flow} disabled={working} p={p} />
+              )}
               <InertButton
                 label="Export Manifest"
                 className="flex w-full items-center justify-center gap-1 rounded-lg bg-surface-container px-space-sm py-2.5 font-label text-label-sm font-bold text-deep-ocean-navy"
