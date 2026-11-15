@@ -217,7 +217,7 @@ test("Confirm purchase prepares the purchase from the cart and then shows the ex
   await expect(overview.getByText("Total estimated")).toBeVisible();
   await expect(
     overview.getByRole("button", {
-      name: /Approve & Push to Dispatch|Confirm purchase/,
+      name: /Confirm purchase/,
     }),
   ).toBeEnabled();
   await expect(card(page)).toHaveCount(0);
@@ -308,4 +308,175 @@ test("on a phone the button is reachable without opening the card, and nothing s
     () => document.documentElement.scrollWidth - window.innerWidth,
   );
   expect(overflow).toBeLessThanOrEqual(0);
+});
+
+// --- the card shows the exact proposal as soon as there is one (owner's "always finalised" design) --
+
+const decidable = { ...proposal, can_decide: true };
+const withProposal = (
+  items: unknown[],
+  over: Partial<Conversation> = {},
+  p = decidable,
+): Conversation => ({
+  ...withCart(items),
+  purchases: [p],
+  draft_cart: {
+    turn_id: turnId,
+    title: "Pasta lunch",
+    items: items as NonNullable<Conversation["draft_cart"]>["items"],
+    proposal_id: p.proposal_id,
+  },
+  ...over,
+});
+const overview = (page: Page) =>
+  page.getByRole("complementary", { name: "Overview" });
+const finalButton = (page: Page) =>
+  overview(page).getByRole("button", { name: "Confirm purchase" });
+
+async function openProposal(
+  page: Page,
+  conversation: Conversation,
+  p = decidable,
+) {
+  await page.route(`**/api/purchases/${p.proposal_id}`, (route) =>
+    json(route, p),
+  );
+  await open(page, conversation);
+}
+
+test("with a prepared purchase the card shows its exact lines and total and one green Confirm purchase", async ({
+  page,
+}) => {
+  await openProposal(page, withProposal([pasta, salt]));
+  await expect(
+    overview(page).getByText("Spaghetti 5 kg").first(),
+  ).toBeVisible();
+  await expect(overview(page).getByText("Total estimated")).toBeVisible();
+  await expect(finalButton(page)).toBeEnabled();
+  await expect(card(page)).toHaveCount(0);
+});
+
+test("one press of Confirm purchase commits that exact revision", async ({
+  page,
+}) => {
+  const confirmations: Record<string, unknown>[] = [];
+  await openProposal(page, withProposal([pasta]));
+  await page.route(
+    `**/api/purchases/${decidable.proposal_id}/confirm`,
+    (route) => {
+      confirmations.push(route.request().postDataJSON());
+      return json(route, { ...decidable, status: "revised" });
+    },
+  );
+  await finalButton(page).click();
+  expect(confirmations).toHaveLength(1);
+  expect(confirmations[0].revision).toBe(1);
+  expect(confirmations[0].proposal_id).toBe(decidable.proposal_id);
+});
+
+test("the card keeps the delivery date and destination and lists what is not included", async ({
+  page,
+}) => {
+  await openProposal(page, withProposal([pasta, salt]));
+  const date = overview(page).getByLabel("Delivery date");
+  await expect(date).toHaveValue("2026-11-16"); // this purchase's delivery date
+  await expect(date).toHaveAttribute("min", "2026-11-15");
+  await expect(overview(page).getByText("Destination:")).toContainText(
+    "hotel-helsinki",
+  );
+  const left = overview(page).getByRole("region", { name: "Not included" });
+  await expect(left).toContainText("Salt · no product or quantity yet");
+  await expect(left).not.toContainText("Pasta");
+  // Nothing changed yet, so there is nothing to update.
+  await expect(
+    overview(page).getByRole("button", { name: "Update delivery details" }),
+  ).toHaveCount(0);
+});
+
+test("changing the delivery date prepares the purchase again and the card shows the new revision", async ({
+  page,
+}) => {
+  const bodies: Record<string, unknown>[] = [];
+  const next = {
+    ...decidable,
+    revision: 2,
+    current_revision: 2,
+    request: { ...decidable.request, delivery_date: "2026-11-18" },
+  };
+  let prepared = false;
+  const conversation = withProposal([pasta]);
+  await page.route(`**/api/purchases/${decidable.proposal_id}`, (route) =>
+    json(route, prepared ? next : decidable),
+  );
+  await open(page, conversation);
+  await page.unroute(`**/api/conversations/${conversationId}`);
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    json(route, prepared ? withProposal([pasta], {}, next) : conversation),
+  );
+  await page.route(PREPARE, (route) => {
+    bodies.push(route.request().postDataJSON());
+    prepared = true;
+    return json(route, { proposal: next, not_included: [] });
+  });
+  await overview(page).getByLabel("Delivery date").fill("2026-11-18");
+  await overview(page)
+    .getByRole("button", { name: "Update delivery details" })
+    .click();
+  await expect(
+    overview(page).getByText("Revision 2 / v1").first(),
+  ).toBeVisible();
+  await expect(overview(page).getByLabel("Delivery date")).toHaveValue(
+    "2026-11-18",
+  );
+  expect(bodies).toEqual([
+    {
+      delivery_date: "2026-11-18",
+      destination: "hotel-helsinki",
+      request_id: expect.stringMatching(/^.{8,120}$/),
+    },
+  ]);
+});
+
+test("a date before tomorrow cannot be applied", async ({ page }) => {
+  await openProposal(page, withProposal([pasta]));
+  await overview(page).getByLabel("Delivery date").fill("2026-11-14");
+  await expect(
+    overview(page).getByRole("button", { name: "Update delivery details" }),
+  ).toBeDisabled();
+});
+
+test("while the assistant works the card is dimmed and Confirm purchase is greyed out", async ({
+  page,
+}) => {
+  await openProposal(page, withProposal([pasta], { busy: true }));
+  await expect(overview(page)).toHaveAttribute("aria-busy", "true");
+  await expect(finalButton(page)).toBeDisabled();
+});
+
+test("a stale press is answered in plain words and the card shows the new revision", async ({
+  page,
+}) => {
+  const next = { ...decidable, revision: 2, current_revision: 2 };
+  let revised = false;
+  await page.route(`**/api/purchases/${decidable.proposal_id}`, (route) =>
+    json(route, revised ? next : decidable),
+  );
+  await open(page, withProposal([pasta]));
+  await page.route(
+    `**/api/purchases/${decidable.proposal_id}/confirm`,
+    (route) => {
+      revised = true;
+      return json(route, { ...next, status: "revised" });
+    },
+  );
+  await finalButton(page).click();
+  await expect(
+    overview(page).getByText(
+      "Terms changed during verification. Review the new revision and confirm again.",
+    ),
+  ).toBeVisible();
+  await expect(
+    overview(page).getByText("Revision 2 / v1").first(),
+  ).toBeVisible();
+  await expect(finalButton(page)).toBeEnabled();
 });

@@ -1,18 +1,14 @@
-import { useRef, useState } from "react";
-import { ApiError } from "../../../shared/api/client";
+import { useState } from "react";
 import type { Proposal } from "../../../shared/api/types";
 import { Icon } from "../../../shared/components/DesignPrimitives";
 import { currency, dateTime } from "../../../shared/lib/format";
-import { newIdempotencyKey } from "../../../shared/lib/idempotency";
-import { useAuth } from "../../auth/useAuth";
-import { prepareFromCart } from "../api/cartApi";
 import { useDestinations } from "../hooks/useDestinations";
+import { usePrepareFromCart } from "../hooks/usePrepareFromCart";
+import { NotIncluded } from "./NotIncluded";
 import {
   cartBlockedReason,
   tomorrowInHelsinki,
   includedItems,
-  notIncludedItems,
-  notIncludedReason,
   type DraftCart,
 } from "../model/cart";
 import { CART_COPY } from "../model/cartCopy";
@@ -37,7 +33,6 @@ export function DraftCartPanel({
   working?: boolean;
   onPrepared?: (proposal: Proposal) => void;
 }) {
-  const { session } = useAuth();
   const [open, setOpen] = useState(false);
   const items = cart?.items ?? [];
   const matched = items.filter((item) => item.matched).length;
@@ -52,38 +47,18 @@ export function DraftCartPanel({
     pickedDestination && destinations.includes(pickedDestination)
       ? pickedDestination
       : (destinations[0] ?? CART_COPY.defaultDestination);
-  const left = notIncludedItems(cart);
   const reason = cartBlockedReason(cart, date, earliest, working);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const key = useRef<{ signature: string; value: string } | null>(null);
+  const { prepare, busy, error } = usePrepareFromCart(
+    conversationId,
+    onPrepared,
+  );
   const reasonId = "cart-confirm-reason";
-  async function prepare() {
-    if (!cart || !session || !conversationId || reason || busy) return;
-    // The same cart, date and destination reuse one key, so a retry cannot prepare two purchases.
-    const signature = JSON.stringify([
+  function press() {
+    if (!cart || reason || busy) return;
+    void prepare({ date, destination }, [
       cart.turn_id,
-      date,
-      destination,
       includedItems(cart).map((i) => [i.product_id, i.amount]),
     ]);
-    if (key.current?.signature !== signature)
-      key.current = { signature, value: newIdempotencyKey() };
-    setBusy(true);
-    setError("");
-    try {
-      const result = await prepareFromCart(session.csrf_token, conversationId, {
-        delivery_date: date,
-        destination,
-        request_id: key.current.value,
-      });
-      key.current = null; // the next press is a new request
-      onPrepared?.(result.proposal);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : CART_COPY.prepareFailed);
-    } finally {
-      setBusy(false);
-    }
   }
   return (
     <aside
@@ -156,24 +131,7 @@ export function DraftCartPanel({
               </li>
             ))}
           </ul>
-          {left.length > 0 && (
-            <section
-              aria-label={CART_COPY.notIncludedHeading}
-              className="rounded-lg bg-amber-50 p-space-sm text-body-sm text-amber-950"
-            >
-              <p className="m-0 font-label text-label-md font-bold">
-                {CART_COPY.notIncludedHeading}
-              </p>
-              <p className="m-0">{CART_COPY.notIncludedWarning}</p>
-              <ul className="m-0 list-none p-0">
-                {left.map((item, index) => (
-                  <li key={index}>
-                    {item.name} · {notIncludedReason(item)}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
+          <NotIncluded cart={cart} />
           {includedItems(cart).length > 0 && (
             <div className="flex flex-col gap-space-sm">
               <label className="flex flex-col gap-1 font-label text-label-md text-primary">
@@ -230,7 +188,7 @@ export function DraftCartPanel({
           type="button"
           disabled={Boolean(reason) || busy}
           aria-describedby={reason ? reasonId : undefined}
-          onClick={() => void prepare()}
+          onClick={press}
           className="cursor-pointer rounded-lg border-0 bg-green-700 px-space-md py-3 font-label text-label-lg font-bold text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-surface-container-high disabled:text-on-surface-variant"
         >
           {busy ? CART_COPY.preparing : CART_COPY.button}

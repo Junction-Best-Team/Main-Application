@@ -57,7 +57,7 @@ confirm lives in the **Overview** panel (or Past Orders for placed receipts).
    `conversation` full snapshots (busy affordance while a turn runs).
 3. **Proposal detail** — open baskets stay in Overview; placed mock orders link
    to `/purchases/{proposal_id}` for the receipt.
-4. **Revision-bound confirm** — click **Approve & Push to Dispatch** in Overview
+4. **Revision-bound confirm** — click **Confirm purchase** in Overview
    (chat text must never buy). Body is
    `{ proposal_id, revision, idempotency_key }` with session cookie + `X-CSRF-Token`.
    Repeat the same key → saved receipt; stale revision → re-review; expired/closed →

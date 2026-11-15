@@ -3,6 +3,7 @@
 export const CART_COPY = {
   button: "Confirm purchase",
   preparing: "Preparing…",
+  updateDelivery: "Update delivery details",
   empty:
     "Your cart is empty. Items appear here as the assistant plans your order.",
   noItems: "Add items first",

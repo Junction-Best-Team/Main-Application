@@ -56,6 +56,10 @@ export function StagedOverview({
       key={conversation?.id ?? "new"}
       flow={flow}
       draft={recipeDraft}
+      conversationId={conversation?.id}
+      cart={draft ?? null}
+      working={conversation?.busy}
+      onPrepared={onPrepared}
     />
   ) : (
     <DraftCartPanel

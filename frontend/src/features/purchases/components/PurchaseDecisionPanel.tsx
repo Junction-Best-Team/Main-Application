@@ -3,10 +3,13 @@ import type { Proposal } from "../../../shared/api/types";
 import { Badge } from "../../../shared/components/Badge";
 import { InertButton } from "../../../shared/components/DesignPrimitives";
 import { currency } from "../../../shared/lib/format";
+import { CART_COPY } from "../model/cartCopy";
 import { getPurchaseStatus } from "../model/purchaseStatus";
 type Props = {
   p: Proposal;
   busy: boolean;
+  /** Greys the confirm button without changing its label (the assistant is working on the cart). */
+  disabled?: boolean;
   message: string;
   canConfirm: boolean;
   confirm: () => Promise<void>;
@@ -16,6 +19,7 @@ type Props = {
 export function PurchaseDecisionPanel({
   p,
   busy,
+  disabled = false,
   message,
   canConfirm,
   confirm,
@@ -63,10 +67,10 @@ export function PurchaseDecisionPanel({
           </p>
           <button
             className="primary full mt-3 block w-full rounded border border-status-fresh-green bg-status-fresh-green px-4 py-3 font-label text-label-lg font-bold text-deep-ocean-navy hover:enabled:bg-tertiary-fixed"
-            disabled={busy}
+            disabled={busy || disabled}
             onClick={confirm}
           >
-            {busy ? "Verifying purchase…" : "Approve & Push to Dispatch"}
+            {busy ? "Verifying purchase…" : CART_COPY.button}
           </button>
           <InertButton
             label="Save as Draft"

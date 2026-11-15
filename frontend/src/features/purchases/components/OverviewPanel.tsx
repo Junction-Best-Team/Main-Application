@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { MealPlan, Proposal } from "../../../shared/api/types";
+import type { DraftCart } from "../model/cart";
 import { currency } from "../../../shared/lib/format";
 import { Icon, InertButton } from "../../../shared/components/DesignPrimitives";
 import { DESIGN_PLACEHOLDERS as MOCK } from "../../../shared/lib/designPlaceholders";
@@ -7,6 +8,8 @@ import { ErrorMessage } from "../../../shared/components/ErrorMessage";
 import { Badge } from "../../../shared/components/Badge";
 import { getPurchaseStatus } from "../model/purchaseStatus";
 import { usePurchaseDetail } from "../hooks/usePurchaseDetail";
+import { DeliveryDetails } from "./DeliveryDetails";
+import { NotIncluded } from "./NotIncluded";
 import { PurchaseDecisionPanel } from "./PurchaseDecisionPanel";
 import { PurchaseSheet } from "./PurchaseSheet";
 
@@ -117,11 +120,21 @@ export function OverviewPanel({
   drawer = true,
   showEvidence = true,
   draft,
+  conversationId,
+  cart = null,
+  working = false,
+  onPrepared,
 }: {
   flow: ReturnType<typeof usePurchaseDetail>;
   drawer?: boolean;
   showEvidence?: boolean;
   draft?: MealPlan;
+  /** In a chat: the conversation whose cart this purchase was prepared from (delivery details can change). */
+  conversationId?: string;
+  cart?: DraftCart | null;
+  /** The assistant is working on this conversation: the card is dimmed and cannot be confirmed. */
+  working?: boolean;
+  onPrepared?: (proposal: Proposal) => void;
 }) {
   const { p, error } = flow;
   const [open, setOpen] = useState(false);
@@ -134,7 +147,8 @@ export function OverviewPanel({
     <aside
       id="overview"
       aria-label="Overview"
-      className={`${drawer ? "fixed inset-x-3 bottom-4 z-30 max-h-[70dvh] lg:sticky lg:inset-x-auto lg:bottom-auto lg:top-0 lg:z-auto lg:max-h-full lg:w-80 lg:shrink-0 xl:w-96" : "w-full"} flex min-w-0 flex-col overflow-y-auto rounded-xl border border-border-subtle bg-surface-pure p-space-md shadow-level-3 lg:shadow-sm`}
+      aria-busy={working || undefined}
+      className={`${drawer ? "fixed inset-x-3 bottom-4 z-30 max-h-[70dvh] lg:sticky lg:inset-x-auto lg:bottom-auto lg:top-0 lg:z-auto lg:max-h-full lg:w-80 lg:shrink-0 xl:w-96" : "w-full"} flex min-w-0 flex-col overflow-y-auto rounded-xl border border-border-subtle bg-surface-pure p-space-md shadow-level-3 lg:shadow-sm ${working ? "opacity-70" : ""}`}
     >
       <div className="flex items-center justify-between gap-space-sm border-b border-border-subtle pb-space-sm">
         <h2 className="m-0 font-headline text-headline-sm font-bold text-primary">
@@ -208,7 +222,22 @@ export function OverviewPanel({
                   <PurchaseSheet p={p} />
                 </details>
               )}
-              <PurchaseDecisionPanel {...flow} p={p} />
+              {conversationId && flow.canConfirm && (
+                <>
+                  <DeliveryDetails
+                    key={`${p.proposal_id}-${p.revision}-${p.request.delivery_date}-${p.request.destination}`}
+                    p={p}
+                    conversationId={conversationId}
+                    cart={cart}
+                    working={working}
+                    onPrepared={onPrepared}
+                  />
+                  {cart?.proposal_id === p.proposal_id && (
+                    <NotIncluded cart={cart} />
+                  )}
+                </>
+              )}
+              <PurchaseDecisionPanel {...flow} disabled={working} p={p} />
               <InertButton
                 label="Export Manifest"
                 className="flex w-full items-center justify-center gap-1 rounded-lg bg-surface-container px-space-sm py-2.5 font-label text-label-sm font-bold text-deep-ocean-navy"
