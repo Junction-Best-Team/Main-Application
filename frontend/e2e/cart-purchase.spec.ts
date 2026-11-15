@@ -480,3 +480,102 @@ test("a stale press is answered in plain words and the card shows the new revisi
   ).toBeVisible();
   await expect(finalButton(page)).toBeEnabled();
 });
+
+// --- default open, collapsible, remembered, never moved by updates -------------------------------
+
+const toggle = (page: Page, name: "Collapse cart" | "Expand cart") =>
+  page.getByRole("complementary").getByRole("button", { name });
+
+for (const [label, width] of [
+  ["desktop", 1440],
+  ["phone", 390],
+] as const) {
+  test(`the card is open by default on a ${label} and its toggle says so`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, withCart([pasta, salt]));
+    await expect(toggle(page, "Collapse cart")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    await expect(card(page).getByText("Spaghetti 5 kg")).toBeVisible();
+    await expect(card(page).getByLabel("Delivery date")).toBeVisible();
+  });
+}
+
+test("collapsing hides the lines, the choice is remembered after a reload, and expanding brings them back", async ({
+  page,
+}) => {
+  await open(page, withCart([pasta, salt]));
+  await toggle(page, "Collapse cart").click();
+  await expect(toggle(page, "Expand cart")).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  await expect(card(page).getByText("Spaghetti 5 kg")).toBeHidden();
+  await expect(confirm(page)).toBeVisible(); // the button stays reachable
+  await page.reload();
+  await expect(toggle(page, "Expand cart")).toBeVisible();
+  await expect(card(page).getByText("Spaghetti 5 kg")).toBeHidden();
+  await toggle(page, "Expand cart").click();
+  await expect(card(page).getByText("Spaghetti 5 kg")).toBeVisible();
+  await page.reload();
+  await expect(toggle(page, "Collapse cart")).toBeVisible();
+});
+
+test("an update never opens or closes the card: the choice survives the draft becoming a purchase", async ({
+  page,
+}) => {
+  let prepared = false;
+  const conversation = withCart([pasta]);
+  await page.route(`**/api/purchases/${decidable.proposal_id}`, (route) =>
+    json(route, decidable),
+  );
+  await open(page, conversation);
+  await page.unroute(`**/api/conversations/${conversationId}`);
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    json(route, prepared ? withProposal([pasta]) : conversation),
+  );
+  await page.route(PREPARE, (route) => {
+    prepared = true;
+    return json(route, { proposal: decidable, not_included: [] });
+  });
+  await toggle(page, "Collapse cart").click();
+  await confirm(page).click();
+  await expect(overview(page)).toBeVisible();
+  await expect(toggle(page, "Expand cart")).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  await expect(overview(page).getByText("Total estimated")).toBeVisible();
+  await expect(overview(page).getByText("Spaghetti 5 kg").first()).toBeHidden();
+});
+
+test("a new chat remembers the choice too, and an unreadable store means open", async ({
+  page,
+}) => {
+  await open(page, null);
+  await toggle(page, "Collapse cart").click();
+  await page.reload();
+  await expect(toggle(page, "Expand cart")).toBeVisible();
+  // Storage that throws (private window, blocked site data) must not break the card.
+  await page.addInitScript(() => {
+    const { getItem, setItem } = Storage.prototype;
+    Storage.prototype.getItem = function (key: string) {
+      if (key === "aimo.cart.open") throw new Error("blocked");
+      return getItem.call(this, key);
+    };
+    Storage.prototype.setItem = function (key: string, value: string) {
+      if (key === "aimo.cart.open") throw new Error("blocked");
+      return setItem.call(this, key, value);
+    };
+  });
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.reload();
+  await expect(toggle(page, "Collapse cart")).toBeVisible();
+  await toggle(page, "Collapse cart").click();
+  await expect(toggle(page, "Expand cart")).toBeVisible();
+  expect(errors).toEqual([]);
+});

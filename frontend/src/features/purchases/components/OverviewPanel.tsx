@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { MealPlan, Proposal } from "../../../shared/api/types";
 import type { DraftCart } from "../model/cart";
 import { currency } from "../../../shared/lib/format";
@@ -8,6 +7,7 @@ import { ErrorMessage } from "../../../shared/components/ErrorMessage";
 import { Badge } from "../../../shared/components/Badge";
 import { getPurchaseStatus } from "../model/purchaseStatus";
 import { usePurchaseDetail } from "../hooks/usePurchaseDetail";
+import { useCartOpen } from "../hooks/useCartOpen";
 import { DeliveryDetails } from "./DeliveryDetails";
 import { NotIncluded } from "./NotIncluded";
 import { PurchaseDecisionPanel } from "./PurchaseDecisionPanel";
@@ -137,7 +137,8 @@ export function OverviewPanel({
   onPrepared?: (proposal: Proposal) => void;
 }) {
   const { p, error } = flow;
-  const [open, setOpen] = useState(false);
+  const [storedOpen, toggleOpen] = useCartOpen();
+  const open = drawer ? storedOpen : true;
   const closed =
     p &&
     ["expired", "rejected", "superseded", "policy_changed"].includes(
@@ -167,10 +168,10 @@ export function OverviewPanel({
           {drawer && (
             <button
               type="button"
-              aria-label={open ? "Collapse overview" : "Expand overview"}
+              aria-label={open ? "Collapse cart" : "Expand cart"}
               aria-expanded={open}
-              onClick={() => setOpen(!open)}
-              className="flex h-9 w-9 items-center justify-center rounded-lg border-0 bg-transparent p-0 text-secondary lg:hidden"
+              onClick={toggleOpen}
+              className="flex h-9 w-9 items-center justify-center rounded-lg border-0 bg-transparent p-0 text-secondary"
             >
               <Icon name={open ? "keyboard_arrow_down" : "keyboard_arrow_up"} />
             </button>
@@ -180,14 +181,14 @@ export function OverviewPanel({
       <ErrorMessage message={error} />
       <div className="flex flex-col gap-space-sm pt-space-sm">
         {!p && draft ? (
-          <div className={drawer && !open ? "hidden lg:block" : ""}>
+          <div className={drawer && !open ? "hidden" : ""}>
             <DraftItems plan={draft} />
           </div>
         ) : !p ? (
           !error && (
             <p
               role="status"
-              className={`m-0 text-body-sm text-on-surface-variant ${drawer && !open ? "hidden lg:block" : ""}`}
+              className={`m-0 text-body-sm text-on-surface-variant ${drawer && !open ? "hidden" : ""}`}
             >
               Loading the proposed basket…
             </p>
@@ -195,7 +196,7 @@ export function OverviewPanel({
         ) : (
           <>
             <div
-              className={`${drawer && !open ? "hidden lg:flex" : "flex"} flex-col gap-space-sm ${closed ? "opacity-60" : ""}`}
+              className={`${drawer && !open ? "hidden" : "flex"} flex-col gap-space-sm ${closed ? "opacity-60" : ""}`}
             >
               <Badge value={getPurchaseStatus(p)} />
               <span className="font-label text-label-sm text-secondary">
@@ -208,7 +209,7 @@ export function OverviewPanel({
               <Total p={p} />
             </div>
             <div
-              className={`${drawer && !open ? "hidden lg:flex" : "flex"} flex-col gap-space-sm`}
+              className={`${drawer && !open ? "hidden" : "flex"} flex-col gap-space-sm`}
             >
               <p className="m-0 rounded bg-secondary-container/40 p-2 text-body-sm text-primary">
                 {p.snapshot.mode === "fixture"

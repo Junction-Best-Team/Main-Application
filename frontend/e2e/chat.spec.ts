@@ -223,8 +223,6 @@ for (const width of [1440, 320]) {
     );
     await page.goto(`/conversations/${conversationId}`);
     const overview = page.getByRole("complementary", { name: "Overview" });
-    if (width < 1024)
-      await overview.getByRole("button", { name: "Expand overview" }).click();
     await expect(overview).toContainText("3 draft ingredients");
     await expect(overview).toContainText("500 portions");
     await expect(overview).toContainText("50 KG");
@@ -240,14 +238,10 @@ for (const width of [1440, 320]) {
       fullPage: true,
     });
     await page.reload();
-    if (width < 1024)
-      await overview.getByRole("button", { name: "Expand overview" }).click();
     await expect(overview).toContainText("3 draft ingredients");
     // A real proposal takes over; only then are price and confirmation controls displayed.
     prepared = true;
     await page.reload();
-    if (width < 1024)
-      await overview.getByRole("button", { name: "Expand overview" }).click();
     await expect(overview).toContainText("1 items staged");
     await expect(overview).toContainText("Total estimated");
     await expect(
@@ -1275,12 +1269,10 @@ for (const width of [1440, 390]) {
     await expect(
       page.getByRole("list", { name: "Proposed items" }),
     ).toContainText("4 BAG");
-    if (width < 768) {
-      await expect(
-        panel.getByRole("button", { name: "Confirm purchase" }),
-      ).not.toBeVisible();
-      await panel.getByRole("button", { name: "Expand overview" }).click();
-    }
+    // The card is open by default now, so the confirm button is visible at every width.
+    await expect(
+      panel.getByRole("button", { name: "Confirm purchase" }),
+    ).toBeVisible();
     await expect(
       panel.getByRole("button", { name: "Save as Draft" }),
     ).toBeDisabled();
@@ -1509,8 +1501,6 @@ for (const width of [1440, 390, 320]) {
     await expect(
       page.getByRole("complementary", { name: "Overview" }),
     ).toHaveCount(0); // The live cart takes precedence over the saved recipe draft.
-    if (width < 1024)
-      await draft.getByRole("button", { name: "Expand draft cart" }).click();
     await expect(
       draft.getByText("Product to match", { exact: true }),
     ).toHaveCount(2);
@@ -1569,8 +1559,6 @@ for (const width of [1440, 390, 320]) {
       path: testInfo.outputPath(`draft-cart-${width}.png`),
     });
     await page.reload();
-    if (width < 1024)
-      await draft.getByRole("button", { name: "Expand draft cart" }).click();
     await expect(draft.getByText(/28\.50.*BAG incl. VAT/)).toBeVisible();
     snapshot = {
       ...snapshot,
@@ -1592,8 +1580,6 @@ for (const width of [1440, 390, 320]) {
     const overview = page.getByRole("complementary", { name: "Overview" });
     await expect(overview).toBeVisible({ timeout: 10_000 });
     await expect(draft).toHaveCount(0);
-    if (width < 1024)
-      await overview.getByRole("button", { name: "Expand overview" }).click();
     await expect(
       overview.getByRole("button", { name: "Confirm purchase" }),
     ).toBeEnabled();

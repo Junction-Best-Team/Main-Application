@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Proposal } from "../../../shared/api/types";
 import { Icon } from "../../../shared/components/DesignPrimitives";
 import { currency, dateTime } from "../../../shared/lib/format";
+import { useCartOpen } from "../hooks/useCartOpen";
 import { useDestinations } from "../hooks/useDestinations";
 import { usePrepareFromCart } from "../hooks/usePrepareFromCart";
 import { NotIncluded } from "./NotIncluded";
@@ -33,7 +34,7 @@ export function DraftCartPanel({
   working?: boolean;
   onPrepared?: (proposal: Proposal) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, toggleOpen] = useCartOpen();
   const items = cart?.items ?? [];
   const matched = items.filter((item) => item.matched).length;
   const destinations = useDestinations();
@@ -71,10 +72,10 @@ export function DraftCartPanel({
         </h2>
         <button
           type="button"
-          aria-label={open ? "Collapse draft cart" : "Expand draft cart"}
+          aria-label={open ? "Collapse cart" : "Expand cart"}
           aria-expanded={open}
-          onClick={() => setOpen(!open)}
-          className="flex h-9 w-9 items-center justify-center rounded-lg border-0 bg-transparent p-0 text-secondary lg:hidden"
+          onClick={toggleOpen}
+          className="flex h-9 w-9 items-center justify-center rounded-lg border-0 bg-transparent p-0 text-secondary"
         >
           <Icon name={open ? "keyboard_arrow_down" : "keyboard_arrow_up"} />
         </button>
@@ -83,9 +84,7 @@ export function DraftCartPanel({
         {cart ? `${matched} of ${items.length} items matched` : CART_COPY.empty}
       </p>
       {cart && (
-        <div
-          className={`${open ? "flex" : "hidden lg:flex"} flex-col gap-space-sm`}
-        >
+        <div className={`${open ? "flex" : "hidden"} flex-col gap-space-sm`}>
           <h3 className="font-label text-label-md font-bold text-primary">
             {cart.title}
           </h3>
