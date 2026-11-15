@@ -211,10 +211,6 @@ def is_advice_question(customer_texts):
     )
 
 
-# Exploration allowance; an existing plan additionally gets one search per ingredient.
-MAX_PRODUCT_SEARCHES = 8
-
-
 # --- basket labels must not claim a status (checked without the classifier) ---------------------------------
 LABEL_CLAIMS = re.compile(
     r"\b(paid|approved?|confirmed|ordered|order (is )?placed|placed (the )?order|order complete[d]?|"

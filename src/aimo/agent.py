@@ -720,10 +720,7 @@ def run_turn(
                     except Problem as exc:
                         if exc.code == "LLM_TIMEOUT":
                             raise
-                        # Search exhaustion is a workflow boundary, not a broken tool.
-                        # Return every refusal so the model can save candidates already read.
-                        if exc.code != "SEARCH_LIMIT":
-                            errors += 1
+                        errors += 1
                         if exc.code != "TOOL_REPEATED" and (
                             exc.code != "TOOL_NOT_ALLOWED" or getattr(exc, "phase", False)
                         ):

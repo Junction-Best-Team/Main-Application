@@ -676,41 +676,16 @@ def test_no_retry_with_the_switch_off_or_without_time(identity, config, monkeypa
     assert len(seen) == 1
 
 
-# --- fix queue: tool sprawl cap and the language rule ------------------------------------------------------
+# --- product discovery and the language rule -------------------------------------------------------------
 
 
-def test_product_searches_are_capped_per_turn_with_a_plain_way_forward(identity):
-    session = ToolSession(identity, FakeService(identity))
-    for n in range(8):
-        assert session.discipline("search_products", json.dumps({"query": f"item {n}"})) is None
-    problem = session.discipline("search_products", json.dumps({"query": "item 9"}))
-    assert problem.code == "SEARCH_LIMIT" and problem.status == 422
-    assert "8" in problem.message and "publish_meal_plan" in problem.message  # save what you have
-    assert (
-        session.discipline("get_product", json.dumps({"product_id": "pasta"})) is None
-    )  # reads go on
-
-
-def test_revising_a_plan_does_not_reset_or_shrink_its_search_budget(identity):
-    from aimo.chat_schemas import MealPlan
-
-    session = ToolSession(identity, FakeService(identity))
-    plan = meal(False)
-    plan["ingredients"] = [dict(plan["ingredients"][0], name=f"item-{n}") for n in range(22)]
-    session.plan = MealPlan.model_validate(plan)
-    for n in range(30):
-        assert session.discipline("search_products", json.dumps({"query": f"item {n}"})) is None
-    session.plan = MealPlan.model_validate(meal(False))
-    assert session.discipline("search_products", '{"query":"another item"}').code == "SEARCH_LIMIT"
-    assert session.searches == 31
-
-
-def test_the_search_cap_is_off_with_the_switch_off(identity, monkeypatch):
-    monkeypatch.setattr(settings(), "agent_stop_control", False)
+@pytest.mark.parametrize("enabled", [True, False])
+def test_product_searches_have_no_separate_stop_control_cap(identity, monkeypatch, enabled):
+    monkeypatch.setattr(settings(), "agent_stop_control", enabled)
     session = ToolSession(identity, FakeService(identity))
     assert all(
         session.discipline("search_products", json.dumps({"query": f"item {n}"})) is None
-        for n in range(12)
+        for n in range(100)
     )
 
 

@@ -389,8 +389,6 @@ class ToolSession:
         self.called_now = set()
         self.stats = {"tool_calls": 0, "repeated_calls": 0, "calls_after_prepare": 0}
         self.policy_destinations = None  # read lazily by default_terms
-        self.searches = 0  # product searches this turn (capped by the stop control)
-        self.search_limit = agent_stop.MAX_PRODUCT_SEARCHES
         self.phase_refusals = 0  # after two refusals the phase restrictions widen for the turn
         self.enforce_phases = False  # the turn runner switches it on; direct callers and read-only
         # child sessions of parallel reads are not restricted (the parent decided before dispatch)
@@ -1023,20 +1021,6 @@ class ToolSession:
         if name not in self.registry or not settings().agent_stop_control:
             return None
         self.stats["tool_calls"] += 1
-        if name == "search_products":
-            self.searches += 1
-            limit = self.product_search_limit()
-            if self.searches > limit:
-                event("tool.search_limit", searches=self.searches, search_limit=limit,
-                      ingredient_count=len(self.plan.ingredients) if self.plan else 0)
-                return Problem(
-                    "SEARCH_LIMIT",
-                    f"You already searched products {limit} times in this "
-                    "turn. Stop searching: save the selections you have with publish_meal_plan (or "
-                    "match_ingredients), leave the rest unmatched with their reason, and prepare "
-                    "the basket.",
-                    422,
-                )
         key = agent_stop.call_key(name, arguments)
         repeated = key in self.called_before or key in self.called_now
         if repeated:
@@ -1139,22 +1123,9 @@ class ToolSession:
             )
         return head + "Answer the customer; call a tool only if it is needed."
 
-    def product_search_limit(self):
-        """One search per plan ingredient plus eight alternatives; never reset by revisions."""
-        if self.plan:
-            self.search_limit = max(
-                self.search_limit, len(self.plan.ingredients) + agent_stop.MAX_PRODUCT_SEARCHES
-            )
-        return self.search_limit
-
     def execution_guidance(self, remaining):
         """Server-owned workflow state; candidate discovery never selects a product."""
         clock = f"Turn time remaining: {max(0, int(remaining))} seconds. "
-        if settings().agent_stop_control:
-            clock += (
-                f"Product searches remaining: {max(0, self.product_search_limit() - self.searches)}. "
-                "Save suitable selections before searching for alternatives. "
-            )
         if self.identity.get("_conversation_id") and not self.brief_recorded:
             clock += "Use record_request to carry forward and update the customer's known facts before changing their plan. "
         if self.brief and not self.brief.can_build:
