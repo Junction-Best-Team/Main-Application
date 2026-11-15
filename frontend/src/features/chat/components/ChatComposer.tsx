@@ -295,7 +295,7 @@ export function ChatComposer({
           className={
             home
               ? "home-composer-actions w-full"
-              : "flex shrink-0 items-center gap-space-xs pb-0.5"
+              : "flex shrink-0 items-center gap-space-xs p-space-sm"
           }
         >
           {voiceOpen ? (
