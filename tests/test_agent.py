@@ -668,6 +668,42 @@ def test_error_limit_stops_inside_a_batch_before_later_tool_calls(monkeypatch, c
     assert all(e.tool is None for e in events)
 
 
+@pytest.mark.parametrize("rejections", [1, 2])
+def test_request_brief_gets_one_correction_before_asking_customer(
+    monkeypatch, config, identity, rejections
+):
+    attempts = []
+
+    def check(self, previous, proposed, structured_changes=()):
+        attempts.append(proposed)
+        if len(attempts) <= rejections:
+            raise Problem("REQUEST_BRIEF_UNVERIFIED", "Clarify the request.", 422)
+
+    monkeypatch.setattr(Guardrails, "check_request_brief", check)
+    brief = {"intent": "build_list", "goal": "Lasagna", "starting_point": "dish", "portions": 50}
+    seen = scripted(monkeypatch, [
+        reply(call("record_request", brief)),
+        reply(call("record_request", brief), call("get_product", {"product_id": "milk"})),
+        reply(text="Let's work out the ingredients."),
+    ])
+    service = FakeService(identity)
+    events = []
+    result = agent.run_turn(identity, HISTORY, service, on_progress=events.append)
+    assert len(attempts) == 2
+    assert result.proposal_id is None and result.meal_plan is None
+    assert events[-1].kind == "complete"
+    if rejections == 2:
+        assert len(seen) == 2  # No third provider call that can hang or time out.
+        assert service.calls == []  # Stop the batch before subsequent tools.
+        assert "one message" in result.text
+        assert events[-1].error_code == "REQUEST_BRIEF_UNVERIFIED"
+    else:
+        assert len(seen) == 3
+        assert [c[0] for c in service.calls] == ["product"]
+        assert result.text == "Let's work out the ingredients."
+        assert events[-1].error_code is None
+
+
 def test_progress_shows_thinking_each_round_and_reviewing_only_when_guarded(
     monkeypatch, config, identity
 ):
