@@ -586,6 +586,8 @@ class ToolSession:
                     "the server scales to portions and publishes the draft. No purchase authority. "
                     "Then inspect products and publish_meal_plan with these exact returned totals "
                     "and product IDs. Never use to bypass an unresolved saved recipe plan. "
+                    "Prefer weight or volume (g, ml) over pieces, also for eggs (in-shell weight, "
+                    "about 60 g each): supplier packs convert from weight, rarely from a count. "
                     "Before the basket you may revise your own estimate ONCE, e.g. after seeing "
                     "the products: send the complete base recipe again with the same portions "
                     "and every ingredient kept.",
@@ -1326,6 +1328,27 @@ class ToolSession:
             if per_sales_for(details, unit)[0] and not per_sales_for(details, unit)[2]
         ]
 
+    def require_pack_conversion(self, plan):
+        """While the own estimate can still be revised, refuse a match whose amount cannot become
+        packs (eggs counted in pieces, a box known only by weight) when another unit would."""
+        if not self.can_redraft:
+            return  # nothing to revise with: the card shows the line for the customer to resolve
+        for item in plan.ingredients:
+            details = self.products.get(item.product_id) if item.product_id else None
+            if not details or item.amount is None:
+                continue
+            usable = self.pack_size_units(details)
+            if not usable or per_sales_for(details, item.unit)[0]:
+                continue
+            raise Problem(
+                "QUANTITY_UNRESOLVED",
+                f"{details['name']} converts to packs only from {' or '.join(usable)}, not from "
+                f"{item.unit}. Revise the estimate once with draft_recipe giving {item.name} by "
+                "weight or volume (eggs: in-shell weight, about 60 g each), then match again.",
+                422,
+                details={"ingredient": item.name, "product_id": item.product_id, "units": usable},
+            )
+
     def in_scope(self, product_id):
         if "scope" not in self.__dict__:
             rules = self.policy(None)["rules"]
@@ -1461,6 +1484,7 @@ class ToolSession:
                 )
             # Matching cannot remove the server's provenance and estimate labels.
             plan.notes = list(dict.fromkeys([*basis.notes, *plan.notes]))[:20]
+            self.require_pack_conversion(plan)
         if self.plan:
             previous = Counter(i.name.strip().casefold() for i in self.plan.ingredients)
             current = Counter(i.name.strip().casefold() for i in plan.ingredients)

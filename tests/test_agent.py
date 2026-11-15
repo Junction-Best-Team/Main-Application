@@ -367,6 +367,49 @@ def test_draft_revision_keeps_portions_ingredients_and_customer_recipes(change, 
     assert tools.plan.model_dump(mode="json") == original and not tools.redrafted
 
 
+def egg_box(product_id):
+    # Authored fixture shaped like a catalog egg box: sold per box, known only by net weight.
+    result = product(product_id)
+    result.update(name="Egg box 12.3 kg", sales_unit="KI", base_unit="KI", units={"KI": "1.0"})
+    result["measures"] = {
+        "L": {"value": None, "status": "unknown", "basis": []},
+        "KG": {"value": "12.3", "status": "known", "basis": ["authored fixture netWeight"]},
+    }
+    return result
+
+
+def test_counted_eggs_are_restated_by_weight_so_the_box_resolves(identity):
+    service = FakeService(identity)
+    service.get_product = lambda identity, pid: egg_box(pid)
+    tools = ToolSession(identity, service)
+    by_count = {"title": "Omelette estimate", "base_servings": 4, "portions": 40,
+                "ingredients": [{"name": "Eggs", "amount": "8", "unit": "piece"}]}
+    plan = invoke(tools, "draft_recipe", by_count)["meal_plan"]
+    invoke(tools, "get_product", {"product_id": "eggs"})
+    plan["ingredients"][0]["product_id"] = "eggs"
+    with pytest.raises(Problem) as error:
+        invoke(tools, "publish_meal_plan", plan)
+    assert error.value.code == "QUANTITY_UNRESOLVED" and "KG" in error.value.message
+    by_weight = by_count | {"ingredients": [{"name": "Eggs", "amount": "480", "unit": "g"}]}
+    plan = invoke(tools, "draft_recipe", by_weight)["meal_plan"]
+    plan["ingredients"][0]["product_id"] = "eggs"
+    published = invoke(tools, "publish_meal_plan", plan)["meal_plan"]
+    assert published["ingredients"][0]["amount"] == "4.8" and published["ingredients"][0]["unit"] == "KG"
+
+
+def test_counted_line_reaches_the_card_once_no_revision_is_left(identity):
+    service = FakeService(identity)
+    service.get_product = lambda identity, pid: egg_box(pid)
+    tools = ToolSession(identity, service)
+    by_count = {"title": "Omelette estimate", "base_servings": 4, "portions": 40,
+                "ingredients": [{"name": "Eggs", "amount": "8", "unit": "piece"}]}
+    invoke(tools, "draft_recipe", by_count)
+    plan = invoke(tools, "draft_recipe", by_count | {"base_servings": 5})["meal_plan"]
+    invoke(tools, "get_product", {"product_id": "eggs"})
+    plan["ingredients"][0]["product_id"] = "eggs"
+    assert invoke(tools, "publish_meal_plan", plan)["meal_plan"]["ingredients"][0]["unit"] == "piece"
+
+
 def test_draft_revision_is_closed_once_the_basket_is_prepared(identity):
     tools = ToolSession(identity, FakeService(identity))
     invoke(tools, "draft_recipe", draft_basis())
