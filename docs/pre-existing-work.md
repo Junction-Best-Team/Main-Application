@@ -354,3 +354,13 @@ cooking facts or live supplier evidence. Recipe search reuses the existing detai
 reader to include the full best match and planning issues, cached for scaling; other
 matches remain summaries. No dataset, dependency, public schema or deployed
 configuration was changed.
+
+### Chat turn throughput — 2026-11-15
+
+Reused the parallel catalog-read executor, inspected shortlist cache and reviewed
+partial-plan recovery already on develop. Added recipe-before-catalog sequencing,
+per-round time/stage guidance and a 180-second configurable turn budget. Tests
+use authored provider replies and catalogs. Two local live Google/guardrail runs
+used only authored in-memory catalogs: one preserved an egg-unit blocker; the
+complete-catalog run matched six ingredients in 40.09 seconds. No customer chat,
+supplier lookup, order, dataset, dependency or deployed configuration was changed.

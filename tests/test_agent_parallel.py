@@ -4,6 +4,7 @@ import json
 import time
 from copy import deepcopy
 from threading import Barrier, Event, Lock
+from types import SimpleNamespace
 
 import pytest
 import test_agent as fixtures
@@ -30,6 +31,46 @@ config = fixtures.config
 identity = fixtures.identity
 database = fixtures.database
 reset_buyers = fixtures.reset_buyers
+
+
+@pytest.mark.parametrize("configured,override,completed", [
+    (180, None, True), (140, None, True), (180, 110, False),
+])
+def test_turn_budget_supports_work_after_ninety_seconds_and_preserves_expiry(
+    monkeypatch, config, identity, configured, override, completed
+):
+    from aimo import agent_provider
+
+    config.llm_turn_timeout_seconds = configured
+    clock = SimpleNamespace(value=1000)
+    clock.monotonic = lambda: clock.value
+    monkeypatch.setattr(agent, "time", clock)
+    monkeypatch.setattr(agent_provider, "time", clock)
+    responses = iter([
+        (95, reply(call("publish_meal_plan", meal(False)))),
+        (30, reply(text="The draft is ready for matching.")),
+    ])
+    deadlines = []
+
+    def complete(*args):
+        deadline = args[-1]
+        deadlines.append(deadline)
+        seconds, response = next(responses)
+        clock.value += seconds
+        agent_provider.check_deadline(deadline)
+        return AssistantReply.model_validate(response)
+
+    monkeypatch.setattr(agent, "chat_provider", lambda *_: SimpleNamespace(complete=complete))
+    result = agent.run_turn(identity, HISTORY, FakeService(identity), budget_seconds=override)
+    assert deadlines == [1000 + (override or configured)] * 2
+    assert result.meal_plan is not None and result.proposal_id is None
+    assert ("time limit" not in result.text) is completed
+
+
+@pytest.mark.parametrize("seconds", [0, -1, 181, float("nan")])
+def test_turn_budget_cannot_outlive_lease_headroom(config, identity, seconds):
+    with pytest.raises(ValueError, match="at most 180"):
+        agent.run_turn(identity, HISTORY, FakeService(identity), budget_seconds=seconds)
 
 
 def calls(*ids):

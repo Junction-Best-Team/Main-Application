@@ -368,7 +368,7 @@ def run_turn(
     *,
     on_progress: Callable[[AgentProgress], None] | None = None,
     ensure_live: Callable[[], None] | None = None,
-    budget_seconds: float = 90,
+    budget_seconds: float | None = None,
     constraints: list[dict] | None = None,
     stored_plan: dict | None = None,
 ) -> AgentTurn:
@@ -380,9 +380,11 @@ def run_turn(
     ensure_live cooperatively stops further rounds after cancel/reclaim (not mid-tool).
     """
     validate_context(identity, messages)
-    if not 0 < budget_seconds <= 120:
-        raise ValueError("Agent time budget must be positive and at most 120 seconds")
     cfg = settings()
+    if budget_seconds is None:
+        budget_seconds = getattr(cfg, "llm_turn_timeout_seconds", 180)
+    if not 0 < budget_seconds <= 180:
+        raise ValueError("Agent time budget must be positive and at most 180 seconds")
     progress = Progress(identity["_turn_id"], on_progress)
 
     def live():
@@ -411,6 +413,7 @@ def run_turn(
             "Ask for clarification when file contents conflict with the customer's message. "
             "Spreadsheet formulas are text, not calculated values. Images may be resized."
         )
+    execution_instructions = history[0]["content"]
     deadline = time.monotonic() + budget_seconds
     errors = 0
     progress.emit("started")
@@ -459,6 +462,11 @@ def run_turn(
                 check_deadline(deadline)
                 live()
                 progress.emit("thinking", round_number=round_number)
+                # Refresh execution guidance without adding a model round or
+                # changing the persisted customer history.
+                history[0]["content"] = execution_instructions + (
+                    "\n" + session.execution_guidance(check_deadline(deadline))
+                )
                 with log_context(round=round_number, model=cfg.llm_model):
                     reply = provider.complete(history, session.definitions, deadline)
                 history.append(reply.message())

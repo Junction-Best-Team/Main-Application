@@ -16,6 +16,10 @@ variables {
 run "safe_initial_plan" {
   command = plan
   assert {
+    condition     = kubernetes_deployment_v1.apps["worker"].spec[0].template[0].spec[0].termination_grace_period_seconds == 240
+    error_message = "Worker shutdown must leave room for a 180-second chat turn and final persistence."
+  }
+  assert {
     condition     = kubernetes_deployment_v1.apps["api"].spec[0].replicas == "0" && length(kubernetes_job_v1.bootstrap) == 0
     error_message = "Initial setup must not start the app or run privileged setup jobs."
   }
