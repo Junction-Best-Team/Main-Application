@@ -7,6 +7,7 @@ from math import ceil, lcm
 
 from aimo.numeric import D, fraction_text
 from aimo.schemas import Requirements
+from aimo.units import catalog_unit, unit_scale
 
 VOLUME = {"LTR": D(1), "MLT": D(".001"), "CLT": D(".01"), "DLT": D(".1")}
 MASS = {"KGM": D(1), "GRM": D(".001")}
@@ -155,7 +156,18 @@ def per_sales_for(p: dict, unit: str, count_evidence=None) -> tuple:
 
     Returns (per_sales or None, basis, conflicting). Shared by `quantity` and
     `combine_in_priority_unit`; the sales unit must already have a positive factor.
+
+    The unit may be any spelling of L or KG or an exact scale of them (ml, cl, dl, g): the answer is
+    then in that unit (a pack of 1 L holds 1000 ml). Any other unit is looked up as it is.
     """
+    code, size = unit_scale(unit)
+    per_sales, basis, conflicting = _per_sales_code(p, code, count_evidence)
+    if per_sales is not None and size != 1:
+        per_sales, basis = per_sales / size, [*basis, "unit_scaled_exactly"]
+    return per_sales, basis, conflicting
+
+
+def _per_sales_code(p: dict, unit: str, count_evidence=None) -> tuple:
     factors = {k: Fraction(v) for k, v in p["units"].items()}
     sales = factors[p["sales_unit"]]
     per_sales, basis = None, []
@@ -265,6 +277,7 @@ def combine_in_priority_unit(
     """
     if not items:
         return _unknown_combination("No quantities were given.")
+    items = [(amount, catalog_unit(unit)) for amount, unit in items]
     factors = {k: Fraction(v) for k, v in p["units"].items()}
     sales = factors.get(p["sales_unit"])
     if not sales or sales <= 0 or p["conflicts"]:
