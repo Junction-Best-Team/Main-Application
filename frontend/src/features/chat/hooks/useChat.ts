@@ -19,6 +19,7 @@ import {
   getConversation,
   createConversation,
   sendMessage,
+  editMessage as editMessageRequest,
   cancelConversation,
   openConversationEvents,
 } from "../api/chatApi";
@@ -464,6 +465,55 @@ export function useChat(
       cancellingRef.current = false;
     }
   }, [session, conversation?.busy, fail]);
+  const editMessage = useCallback(
+    async (messageId: number, nextText: string) => {
+      const id = activeConversation.current;
+      if (!id || !session || sendingRef.current) return;
+      if (conversation?.busy) return;
+      sendingRef.current = true;
+      setSending(true);
+      setError(noError);
+      const storageKey = `aimo-pending-edit-${session.buyer_id}-${id}-${messageId}`;
+      let key = crypto.randomUUID();
+      try {
+        const saved = JSON.parse(sessionStorage.getItem(storageKey) || "null");
+        if (saved?.text === nextText) key = saved.idempotency_key;
+      } catch {
+        /* A missing pending edit starts a new request. */
+      }
+      sessionStorage.setItem(
+        storageKey,
+        JSON.stringify({ text: nextText, idempotency_key: key }),
+      );
+      try {
+        const result = await editMessageRequest(
+          id,
+          messageId,
+          { text: nextText, idempotency_key: key },
+          session.csrf_token,
+        );
+        sessionStorage.removeItem(storageKey);
+        if (activeConversation.current !== id) return;
+        snapshotVersion.current++;
+        setConversation(result);
+      } catch (e) {
+        if (activeConversation.current === id) {
+          fail(e);
+          try {
+            const result = await getConversation(id);
+            if (activeConversation.current === id) setConversation(result);
+          } catch {
+            /* Keep the actionable edit error. */
+          }
+        }
+        throw e;
+      } finally {
+        sendingRef.current = false;
+        setSending(false);
+      }
+    },
+    [session, conversation?.busy, fail],
+  );
   useEffect(() => {
     if (!busy || !conversationId) return;
     const onKey = (event: KeyboardEvent) => {
@@ -472,6 +522,7 @@ export function useChat(
       if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
         return;
       if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      if (document.querySelector('[data-message-edit="true"]')) return;
       event.preventDefault();
       void cancel();
     };
@@ -491,6 +542,7 @@ export function useChat(
     messageViewport,
     send,
     cancel,
+    editMessage,
     busy,
     stopped,
     queue,

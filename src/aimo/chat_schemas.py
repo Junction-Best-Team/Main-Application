@@ -108,6 +108,19 @@ class MessageRequest(Model):
         return self
 
 
+class EditMessageRequest(Model):
+    """Replace a persisted user message's text and regenerate from that point."""
+
+    text: str = Field(max_length=4000)
+    idempotency_key: str = Field(min_length=8, max_length=120)
+
+    @model_validator(mode="after")
+    def validate_message(self):
+        if not self.text.strip():
+            raise ValueError("Write a message or attach a file.")
+        return self
+
+
 class RetryConstraints(Model):
     """The limits of an unfinished message, in the shape the client sends them back."""
 
@@ -221,8 +234,14 @@ class ConversationSummary(Model):
 class ChatActivityEvent(Model):
     sequence: int = Field(ge=1, le=640)
     kind: Literal[
-        "started", "thinking", "tool_started", "tool_completed", "tool_failed", "reviewing",
-        "complete", "error",
+        "started",
+        "thinking",
+        "tool_started",
+        "tool_completed",
+        "tool_failed",
+        "reviewing",
+        "complete",
+        "error",
     ]
     label: str = Field(min_length=1, max_length=80)
     # Completed tools only: a server-built summary of the validated result (recipe or product

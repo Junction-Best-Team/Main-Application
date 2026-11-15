@@ -42,6 +42,7 @@ export function ChatPage() {
     messageViewport,
     send,
     cancel,
+    editMessage,
     busy,
     stopped,
     queue,
@@ -132,6 +133,7 @@ export function ChatPage() {
               conversation={conversation}
               busy={busy}
               stopped={stopped}
+              onEditMessage={editMessage}
               onReviewBasket={(proposalId) =>
                 setSelection({ conversationId, proposalId })
               }
