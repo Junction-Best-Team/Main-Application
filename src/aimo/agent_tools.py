@@ -46,6 +46,7 @@ from aimo.schemas import (
     SearchRequest,
     SearchResponse,
 )
+from aimo.units import catalog_unit
 
 # Recipe discovery must produce a visible quantity plan before catalog exploration.
 # Direct product requests that never enter recipe discovery keep their existing tools.
@@ -949,6 +950,7 @@ class ToolSession:
             amount = item.purchase_amount if self.plan.recipe_plan_id else item.amount
             if is_zero(amount):
                 continue  # removed by the customer on the card: kept in the plan, never bought
+            unit = catalog_unit(unit)  # `l` and `liter` are the catalog's L
             contributions.setdefault(item.product_id, []).append((Decimal(amount), unit))
             rows.append(
                 {"product_id": item.product_id, "amount": amount, "unit": unit, "name": item.name}

@@ -150,7 +150,9 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
             f"Shortlist plus deposits exceeds {MAX_MATERIALS} materials.",
             422,
         )
-    check_order_weight(request, products, policy["rules"].get("whole_sales_units", True), count_evidence)
+    check_order_weight(
+        request, products, policy["rules"].get("whole_sales_units", True), count_evidence
+    )
     raw = connector.lookup(buyer["upstream_customer"], ids, request.delivery_date)
     evidence = upstream.validate_lookup(
         raw, buyer["upstream_customer"], ids, request.delivery_date, products, current
@@ -209,7 +211,8 @@ def build_snapshot(identity, request: PurchaseRequest, connector):
         if q["sales_quantity"] is None:
             add(
                 "QUANTITY_UNRESOLVED",
-                "Requested quantity has no unambiguous supported conversion.",
+                "This product has no pack size in its data; pick a product that does "
+                "or ask for a number of packs.",
                 pid,
             )
             complete = False
