@@ -237,7 +237,6 @@ for (const width of [1440, 320]) {
     );
     await page.goto(`/conversations/${conversationId}`);
     const overview = page.getByRole("complementary", { name: "Overview" });
-    await expect(overview).toContainText("3 draft ingredients");
     await expect(overview).toContainText("500 portions");
     await expect(overview).toContainText("50 KG");
     await expect(overview).toContainText("125 L");
@@ -245,23 +244,20 @@ for (const width of [1440, 320]) {
     await expect(
       overview.getByRole("button", { name: "Confirm purchase" }),
     ).toBeDisabled();
-    await expect(overview).not.toContainText("Total estimated");
+    await expect(overview).not.toContainText("Total");
     await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
     await page.screenshot({
       path: testInfo.outputPath(`recipe-draft-${width}.png`),
       fullPage: true,
     });
     await page.reload();
-    await expect(overview).toContainText("3 draft ingredients");
     // A real proposal takes over; only then are price and confirmation controls displayed.
     prepared = true;
     await page.reload();
-    await expect(overview).toContainText("1 items staged");
-    await expect(overview).toContainText("Total estimated");
+    await expect(overview).toContainText("Total");
     await expect(
       overview.getByRole("button", { name: "Confirm purchase" }),
     ).toBeVisible();
-    await expect(overview).not.toContainText("3 draft ingredients");
   });
 }
 
@@ -1174,7 +1170,9 @@ test("legacy approval links keep the original revision and closed states have no
   await expect(
     page.locator(".purchase-sheet").getByText("Revision 1 / v1"),
   ).toBeVisible();
-  await expect(page.locator(".status-note")).toContainText("Superseded");
+  await expect(page.getByTestId("card-status-chip")).toContainText(
+    "Superseded",
+  );
   await expect(
     page.getByRole("link", { name: "View current revision 2" }),
   ).toHaveAttribute("href", `/purchases/${proposalId}`);
@@ -1194,7 +1192,7 @@ test("legacy approval links keep the original revision and closed states have no
       }),
     );
     await page.goto(`/purchases/${proposalId}`);
-    await expect(page.locator(".status-note")).toContainText(
+    await expect(page.getByTestId("card-status-chip")).toContainText(
       state === "expired" ? "Expired" : "Rejected",
     );
     await expect(
@@ -1653,7 +1651,6 @@ for (const width of [1440, 390]) {
     });
     await page.goto(`/conversations/${conversationId}`);
     const panel = page.getByRole("complementary", { name: "Overview" });
-    await expect(panel).toContainText("1 items staged");
     await expect(
       panel.getByRole("button", { name: "Call account manager" }),
     ).toHaveCount(0);
@@ -1667,15 +1664,11 @@ for (const width of [1440, 390]) {
     await expect(
       panel.getByRole("button", { name: "Confirm purchase" }),
     ).toBeVisible();
+    await panel.getByRole("tab", { name: "Details" }).click();
     await expect(
-      panel.getByRole("button", { name: "Save as Draft" }),
+      panel.getByRole("switch", { name: "Allow substitutions" }),
     ).toBeDisabled();
-    await expect(
-      panel.getByRole("button", { name: "Export Manifest" }),
-    ).toBeDisabled();
-    await expect(
-      panel.getByRole("switch", { name: "Substitutions allowed" }),
-    ).toBeDisabled();
+    await panel.getByRole("tab", { name: "Items" }).click();
     expect(revisions).toEqual([]);
     await panel.getByRole("button", { name: "Confirm purchase" }).click();
     await expect(panel.getByRole("status")).toContainText("Terms changed");
@@ -1768,7 +1761,6 @@ for (const state of ["denied", "expired", "rejected"] as const) {
     );
     await page.goto(`/conversations/${conversationId}`);
     const panel = page.getByRole("complementary", { name: "Overview" });
-    await expect(panel).toContainText("1 items staged");
     await expect(
       panel.getByRole("button", { name: "Call account manager" }),
     ).toHaveCount(0);
@@ -1778,12 +1770,13 @@ for (const state of ["denied", "expired", "rejected"] as const) {
     await expect(
       panel.getByRole("button", { name: "Confirm purchase" }),
     ).toBeDisabled();
-    if (state === "denied")
+    if (state === "denied") {
+      await panel.getByRole("tab", { name: "Checks" }).click();
       await expect(panel.getByRole("alert")).toContainText(
         "cannot be approved",
       );
-    else
-      await expect(panel.locator(".status-note")).toContainText(
+    } else
+      await expect(panel.getByTestId("card-status-chip")).toContainText(
         state === "expired" ? "Expired" : "Rejected",
       );
   });
@@ -1860,7 +1853,7 @@ for (const width of [1440, 390, 320]) {
     // The card is always in a chat: empty, with its purchase button greyed out.
     await expect(
       page.getByRole("complementary", { name: "Your order" }),
-    ).toContainText("Your cart is empty");
+    ).toContainText("Empty");
     snapshot = {
       ...snapshot,
       messages: [
@@ -1975,7 +1968,7 @@ for (const width of [1440, 390, 320]) {
     await expect(
       overview.getByRole("button", { name: "Confirm purchase" }),
     ).toBeEnabled();
-    await expect(overview.getByText("Total estimated")).toBeVisible();
+    await expect(overview.getByTestId("card-total-row")).toBeVisible();
   });
 }
 
@@ -2495,7 +2488,7 @@ test("proposal message offers Review basket handoff into Overview", async ({
   ).toBeVisible();
   await handoff.click();
   const overview = page.getByRole("complementary", { name: "Overview" });
-  await expect(overview).toContainText("1 items staged");
+  await expect(overview.getByTestId("card-total-row")).toBeVisible();
   await expect(
     overview.getByRole("button", { name: "Confirm purchase" }),
   ).toBeVisible();

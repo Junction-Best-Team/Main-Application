@@ -111,7 +111,7 @@ test("a new chat already has the card: empty, with a greyed Confirm purchase and
 }) => {
   await open(page, null);
   await expect(card(page)).toBeVisible();
-  await expect(card(page)).toContainText("Your cart is empty");
+  await expect(card(page)).toContainText("Empty");
   await expect(confirm(page)).toBeDisabled();
   await expect(confirm(page)).toHaveAccessibleDescription("Add items first");
   await expect(card(page).getByLabel("Delivery date")).toHaveCount(0);
@@ -215,7 +215,7 @@ test("Confirm purchase prepares the purchase from the cart and then shows the ex
   await confirm(page).click();
   const overview = page.getByRole("complementary", { name: "Overview" });
   await expect(overview).toBeVisible();
-  await expect(overview.getByText("Total estimated")).toBeVisible();
+  await expect(overview.getByTestId("card-total-row")).toBeVisible();
   await expect(
     overview.getByRole("button", {
       name: /Confirm purchase/,
@@ -349,10 +349,8 @@ test("with a prepared purchase the card shows its exact lines and total and one 
   page,
 }) => {
   await openProposal(page, withProposal([pasta, salt]));
-  await expect(
-    overview(page).getByText("Spaghetti 5 kg").first(),
-  ).toBeVisible();
-  await expect(overview(page).getByText("Total estimated")).toBeVisible();
+  await expect(overview(page).getByText("Spaghetti").first()).toBeVisible();
+  await expect(overview(page).getByTestId("card-total-row")).toBeVisible();
   await expect(finalButton(page)).toBeEnabled();
   await expect(card(page)).toHaveCount(0);
 });
@@ -379,19 +377,21 @@ test("the card keeps the delivery date and destination and lists what is not inc
   page,
 }) => {
   await openProposal(page, withProposal([pasta, salt]));
-  const date = overview(page).getByLabel("Delivery date");
-  await expect(date).toHaveValue("2026-11-16"); // this purchase's delivery date
-  await expect(date).toHaveAttribute("min", "2026-11-15");
-  await expect(overview(page).getByText("Destination:")).toContainText(
-    "hotel-helsinki",
-  );
   const left = overview(page).getByRole("region", { name: "Not included" });
   await expect(left).toContainText("Salt · no product or quantity yet");
   await expect(left).not.toContainText("Pasta");
-  // Nothing changed yet, so there is nothing to update.
-  await expect(
-    overview(page).getByRole("button", { name: "Update delivery details" }),
-  ).toHaveCount(0);
+  await overview(page).getByRole("tab", { name: "Delivery" }).click();
+  await expect(overview(page).getByLabel("Delivery date")).toHaveValue(
+    "2026-11-16", // this purchase's delivery date
+  );
+  await expect(overview(page).getByTestId("card-panel-delivery")).toContainText(
+    "hotel-helsinki",
+  );
+  const date = overview(page).getByLabel("Delivery date");
+  await expect(date).toHaveValue("2026-11-16");
+  await expect(date).toHaveAttribute("min", "2026-11-15");
+  // Nothing changed yet, so there is nothing to save and nothing to warn about.
+  await expect(overview(page).getByTestId("delivery-hint")).toHaveCount(0);
 });
 
 test("changing the delivery date prepares the purchase again and the card shows the new revision", async ({
@@ -419,16 +419,15 @@ test("changing the delivery date prepares the purchase again and the card shows 
     prepared = true;
     return json(route, { proposal: next, not_included: [] });
   });
+  await overview(page).getByRole("button", { name: "Edit delivery" }).click();
   await overview(page).getByLabel("Delivery date").fill("2026-11-18");
-  await overview(page)
-    .getByRole("button", { name: "Update delivery details" })
-    .click();
-  await expect(
-    overview(page).getByText("Revision 2 / v1").first(),
-  ).toBeVisible();
+  await overview(page).getByLabel("Delivery date").press("Enter");
+  // Saved: back to the list, which shows the new date, and the card shows the new revision.
   await expect(overview(page).getByLabel("Delivery date")).toHaveValue(
     "2026-11-18",
   );
+  await overview(page).getByRole("tab", { name: "Details" }).click();
+  await expect(overview(page)).toContainText("2 · created");
   expect(bodies).toEqual([
     {
       delivery_date: "2026-11-18",
@@ -440,10 +439,9 @@ test("changing the delivery date prepares the purchase again and the card shows 
 
 test("a date before tomorrow cannot be applied", async ({ page }) => {
   await openProposal(page, withProposal([pasta]));
+  await overview(page).getByRole("button", { name: "Edit delivery" }).click();
   await overview(page).getByLabel("Delivery date").fill("2026-11-14");
-  await expect(
-    overview(page).getByRole("button", { name: "Update delivery details" }),
-  ).toBeDisabled();
+  await expect(overview(page).getByTestId("delivery-hint")).toBeVisible();
 });
 
 test("while the assistant works the card is dimmed and Confirm purchase is greyed out", async ({
@@ -476,9 +474,8 @@ test("a stale press is answered in plain words and the card shows the new revisi
       "Terms changed during verification. Review the new revision and confirm again.",
     ),
   ).toBeVisible();
-  await expect(
-    overview(page).getByText("Revision 2 / v1").first(),
-  ).toBeVisible();
+  await overview(page).getByRole("tab", { name: "Details" }).click();
+  await expect(overview(page)).toContainText("2 · created");
   await expect(finalButton(page)).toBeEnabled();
 });
 
@@ -550,7 +547,8 @@ test("an update never closes the card: it stays open while the draft becomes a p
     "aria-expanded",
     "true",
   );
-  await expect(overview(page).getByText("Total estimated")).toBeVisible();
+  await expect(overview(page).getByTestId("card-total-row")).toBeVisible();
+  await expect(overview(page).getByText("Spaghetti 5 kg").first()).toBeHidden();
 });
 
 test("a new chat remembers the choice too, and an unreadable store means open", async ({
@@ -599,9 +597,8 @@ test("the card shows the newest basket that is not cancelled", async ({
     json(route, old),
   );
   await open(page, { ...withProposal([pasta]), purchases: [current, old] });
-  await expect(
-    overview(page).getByText("Revision 2 / v1").first(),
-  ).toBeVisible();
+  await overview(page).getByRole("tab", { name: "Details" }).click();
+  await expect(overview(page)).toContainText("2 · created");
   await expect(finalButton(page)).toBeEnabled();
 });
 
@@ -619,6 +616,6 @@ test("after an order is placed the card offers no second purchase and no edits",
   await expect(finalButton(page)).toBeDisabled();
   await expect(overview(page).getByLabel("Delivery date")).toHaveCount(0);
   await expect(
-    overview(page).getByRole("button", { name: "Update delivery details" }),
+    overview(page).getByRole("button", { name: "Save" }),
   ).toHaveCount(0);
 });

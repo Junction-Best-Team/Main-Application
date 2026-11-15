@@ -1,8 +1,8 @@
 import { useId } from "react";
 import type { Proposal } from "../../../shared/api/types";
 import { currency } from "../../../shared/lib/format";
-import { ErrorMessage } from "../../../shared/components/ErrorMessage";
 import type { useCartEdit } from "../hooks/useCartEdit";
+import { displayNames } from "../model/cardState";
 import { EDIT_COPY } from "../model/cartEdit";
 import { GhostLine } from "./GhostLine";
 import { QuantityControl } from "./QuantityControl";
@@ -18,6 +18,7 @@ export function CartLines({
   editable,
   reason,
   working,
+  onEdit,
 }: {
   p: Proposal;
   /** The edit state of the card (`useCartEdit`, kept by the panel so it outlives a new proposal). */
@@ -25,27 +26,40 @@ export function CartLines({
   editable: boolean;
   reason: string | null;
   working: boolean;
+  /** The customer typed or pressed a control: the card goes back to its Items tab. */
+  onEdit?: () => void;
 }) {
   const reasonId = useId();
   const disabled = !editable || working;
   const why = !editable ? reason : working ? EDIT_COPY.working : null;
-  const message = edit.error || (edit.invalid.length ? EDIT_COPY.invalid : "");
+  // Rows that would show the same short name keep their weight (names are shortened for display only).
+  const names = displayNames(
+    edit.rows.map((row) =>
+      row.kind === "ghost" ? row.removed.name : row.name,
+    ),
+  );
+  const labelOf = (index: number) => names[index];
+  const typed = (id: string, text: string, now = false) => {
+    onEdit?.();
+    edit.setText(id, text, now);
+  };
   return (
     <div className="flex flex-col gap-space-sm">
-      <span className="font-label text-label-sm font-bold uppercase tracking-wider text-secondary">
-        Ingredients &amp; staged items
-      </span>
       <ul className="m-0 flex list-none flex-col gap-2 p-0 font-body text-body-sm text-on-surface">
-        {edit.rows.map((row) =>
+        {edit.rows.map((row, index) =>
           row.kind === "ghost" ? (
             <GhostLine
               key={row.id}
               id={row.id}
               removed={row.removed}
+              label={labelOf(index)}
               disabled={disabled}
               describedBy={why ? reasonId : undefined}
-              onRestore={() => edit.restore(row.id)}
-              onText={(text) => edit.setText(row.id, text)}
+              onRestore={() => {
+                onEdit?.();
+                edit.restore(row.id);
+              }}
+              onText={(text) => typed(row.id, text)}
             />
           ) : (
             <li
@@ -54,7 +68,9 @@ export function CartLines({
               data-product-id={row.id}
               className="flex items-center justify-between gap-space-sm border-b border-border-subtle/50 py-1"
             >
-              <span className="min-w-0 break-words">{row.name}</span>
+              <span className="min-w-0 break-words" title={row.name}>
+                {labelOf(index)}
+              </span>
               <div className="flex shrink-0 flex-col items-end gap-1 text-right font-mono text-primary">
                 {row.server === null ? (
                   <span className="font-bold">Unresolved {row.salesUnit}</span>
@@ -67,8 +83,8 @@ export function CartLines({
                       disabled={disabled}
                       invalid={edit.flagged.has(row.id)}
                       describedBy={why ? reasonId : undefined}
-                      onText={(text) => edit.setText(row.id, text)}
-                      onSave={() => edit.setText(row.id, row.text, true)}
+                      onText={(text) => typed(row.id, text)}
+                      onSave={() => typed(row.id, row.text, true)}
                       onLeave={() => edit.settle(row.id)}
                     />
                     <span className="text-label-sm">{row.salesUnit}</span>
@@ -101,16 +117,6 @@ export function CartLines({
         >
           {why}
         </p>
-      )}
-      <ErrorMessage message={message} debug={edit.errorDebug} />
-      {edit.error && (
-        <button
-          type="button"
-          onClick={edit.retry}
-          className="cursor-pointer self-start rounded-lg border border-outline-variant bg-surface-pure px-space-md py-2 font-label text-label-md text-primary"
-        >
-          {EDIT_COPY.tryAgain}
-        </button>
       )}
       <p
         role="status"
