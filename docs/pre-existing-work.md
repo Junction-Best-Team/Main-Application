@@ -327,3 +327,5 @@ no new dependencies, assets or external material.
 Requests nesting fix (2026-11-15): reused the existing app shell, conversation navigation/pagination and authored browser fixtures. No new dependencies, assets or external material.
 
 Past Orders header (2026-11-15): implemented the owner's revised in-chat mockup using existing typography, spacing, icons and order-history fixtures. No generated bitmap, external material or new dependency is shipped.
+
+Sidebar account menu (2026-11-15): used the owner's attached account-menu reference and reused the existing UserMenu, routes, session/CSRF sign-out, design tokens and authored browser fixtures. No new dependency, generated bitmap or external material is shipped.
