@@ -86,7 +86,7 @@ publish a catalog. Embedding outages return typed errors without switching model
 Reranker outages retain filtered hybrid results with `rerank_status=unavailable`.
 Provider error bodies and secrets are never surfaced in errors.
 
-Use a separate evaluation database and preserve the historical E5 report:
+Use a separate evaluation database and write a fresh report:
 
 ```sh
 python scripts/evaluate_search.py --output docs/search-evaluation-openrouter.json
@@ -98,22 +98,11 @@ descriptive top-one/top-five results, violations, latency and reranker availabil
 Expand the labeled Finnish/English set before claiming broad quality/capacity.
 Production cluster latency remains an operator check because this PR does not deploy.
 
-Recorded full-catalog runs: [final evaluation](search-evaluation-openrouter.json)
-and [reranker comparison](search-reranker-comparison.json). The 8B reranker reached
-20/21 descriptive top-five hits (saved E5 baseline: 17/21; 0.6B reranker: 19/21).
-Two 8B runs had 12–14/21 labeled top-one hits and 2.1–2.9 second descriptive median
-latency, with no filter violations or reranker outages. The Finnish flank-steak
-case remains a miss. Ranking variability and incomplete labels limit these claims.
-
 ## Costs
 
-On 2026-11-14, embedding prices start at $0.01/million tokens; our real probe routed
-at **$0.04/million**. Reranking is listed at $0.20/million. Routing, text length,
-retries and ingredient searches affect usage. For 17,546 products at 250–500
-tokens/product, one import is roughly $0.04–$0.35 at those embedding rates.
-Reranking 30 candidates of that size is about $1.50–$3 per 1,000 searches before
-query/instruction overhead. These are estimates, not caps; chat, hosting and
-credit-purchase fees are separate. The 8,000-character text limit is not a token limit.
+Embedding and reranking calls consume provider credit. Usage depends on document
+length, routing, retries and candidate counts; consult the provider's model pages
+for pricing before a full import.
 
 References: [embedding model](https://openrouter.ai/qwen/qwen3-embedding-8b),
 [reranker](https://openrouter.ai/qwen/qwen3-reranker-8b),

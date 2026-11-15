@@ -3,8 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 // Buyer session path: sign in, failed-login error, session restore on reload,
 // sign out. Mocked at the browser<->API edge, matching chat.spec.ts prior art.
 // The real contract (cookie session + CSRF token, status codes, error shape)
-// is verified separately against the running backend; see docs/pre-existing-work.md
-// and docs/findings.md (F-CHAT-002).
+// was checked separately against the running backend; see docs/pre-existing-work.md.
 
 const session = {
   username: "buyer",

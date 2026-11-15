@@ -74,7 +74,7 @@ A check that cannot run is reported as `SKIP` with its reason, never as a pass. 
 
 ## Frontend: no UI tests in CI
 
-The UI in the repository is an old mockup, so CI only type-checks and builds it (job "Frontend types and build"). The Playwright specs a teammate wrote for the chat UI (`frontend/e2e/`, with `tests/browser_revision_fixture.py`) are left untouched and can be run by hand (`npm run test --prefix frontend`, see `README.md`); no CI job runs them, and `tests/ci.sh` has no browser option. When the real UI design is added, decide then how to test it (component tests with Vitest were tried and measured 82.6% of `main.tsx` lines; the idea was dropped with the browser job, see `docs/history/2026-11-14-mvp.md`).
+CI type-checks and builds the production React app (job "Frontend types and build"). Run Playwright locally with `npm run test --prefix frontend` for authored route fixtures, or `npm run test:integration --prefix frontend` against the fixture backend/database. See [frontend testing](../frontend/docs/testing.md). Browser tests do not run in CI, and `tests/ci.sh` has no browser option.
 
 ## Feature coverage
 
