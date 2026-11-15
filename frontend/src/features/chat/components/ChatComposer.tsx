@@ -5,7 +5,6 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
-import { Icon } from "../../../shared/components/DesignPrimitives";
 import { DESIGN_PLACEHOLDERS as MOCK } from "../../../shared/lib/designPlaceholders";
 import { useVoiceMode } from "../hooks/useVoiceMode";
 import { AttachmentCards } from "./AttachmentCards";
@@ -14,6 +13,9 @@ import {
   readAttachments,
   type ChatAttachment,
 } from "../model/attachments";
+const composerActionClassName =
+  "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-status-fresh-green text-deep-ocean-navy transition-colors hover:enabled:bg-tertiary-fixed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container disabled:cursor-not-allowed disabled:opacity-50";
+
 type Props = {
   appearance?: "chat" | "home";
   conversationId?: string;
@@ -195,29 +197,21 @@ export function ChatComposer({
               aria-label={sendLabel}
               title={sendLabel}
               disabled={disabled || reading}
-              className={
-                home
-                  ? "home-send"
-                  : "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary disabled:cursor-not-allowed disabled:opacity-50"
-              }
+              className={composerActionClassName}
             >
-              {home ? (
-                <svg
-                  aria-hidden="true"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.75"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M12 20V4m-7 7 7-7 7 7" />
-                </svg>
-              ) : (
-                <Icon name="arrow_forward" className="text-[22px]" />
-              )}
+              <svg
+                aria-hidden="true"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 20V4m-7 7 7-7 7 7" />
+              </svg>
             </button>
           ) : (
             <button
@@ -226,11 +220,7 @@ export function ChatComposer({
               title="Start voice mode"
               onClick={() => voice.start(conversationId)}
               disabled={disabled || reading}
-              className={
-                home
-                  ? "home-send"
-                  : "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface-pure text-on-surface transition-colors hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container disabled:cursor-not-allowed disabled:opacity-50"
-              }
+              className={composerActionClassName}
             >
               <svg
                 aria-hidden="true"

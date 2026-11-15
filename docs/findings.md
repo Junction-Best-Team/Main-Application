@@ -1170,3 +1170,8 @@ Add new findings below, under your track heading.
 
 - Date: 2026-11-15. Moved the expanded Recent list from the bottom of navigation into its Requests parent, before Schedule and Orders. Indentation and a bounded scrolling area keep long histories grouped and the following navigation reachable on desktop and mobile; pagination, errors and collapse controls stay together.
 - Verification: frontend `npm run check` and four focused fixture-backed Playwright checks passed at 1440/390px. Covered 31 requests, ordering/indentation, internal scrolling, collapse/reopen, loading older records, selection and mobile-menu dismissal; desktop/mobile screenshots inspected. No backend/schema changes, merge or deployment.
+
+### F-COMPOSER-COLORS-001: Consistent voice and send actions
+
+- Date: 2026-11-15. Unified the home/chat voice and send buttons around the existing lime background and navy icon, including hover, focus and disabled styles. Both send buttons use the same upward arrow; removed unused home-only action styles.
+- Verification: frontend `npm run check` and seven focused fixture-backed Playwright home/navigation and composer checks passed across 1440/1024/390/320px layouts. Browser color checks confirmed matching normal/hover/icon colors for both actions on home/chat at 1440/390px; desktop/mobile screenshots inspected. No backend/API changes or live provider calls.
