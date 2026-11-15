@@ -139,11 +139,9 @@ def import_datasets(directory: Path, *, fetch=False, datasets=(RELIABILITY, CARB
                 key,
             )
             matched = c.execute(
-                "SELECT count(*) AS n FROM supplier_dataset_values v "
-                "JOIN active_catalog a ON true "
-                "JOIN products p ON p.generation=a.generation AND p.id=v.product_id "
-                "WHERE v.dataset=%s AND v.sha256=%s",
-                key,
+                "SELECT count(*) AS n FROM products "
+                "WHERE generation=(SELECT generation FROM active_catalog) AND id=ANY(%s)",
+                ([pid for pid, _ in rows],),
             ).fetchone()["n"]
             result[dataset.name] = {
                 "sha256": dataset.sha256,
