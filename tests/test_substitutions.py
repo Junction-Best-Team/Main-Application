@@ -3,7 +3,7 @@
 Proposed interface (contract C1): `Service.list_substitution_candidates(identity, product_id)`
 returns candidates, each with `source: "supplier_rule"` (buyer-list entries, `source: "buyer_list"`,
 come after them). The supplier's raw shape is `product["substitutions"] = [{"product": "<owner
-id>", "substituteProduct": "<id>"}]` (docs/findings.md F-DATA-004). The rules are candidates only
+id>", "substituteProduct": "<id>"}]`. The rules are candidates only
 and are re-checked against the active catalog: the target must exist, must not be deleted and must
 not be the product itself. Nothing is built yet, so the tests besides the control are strict xfails.
 

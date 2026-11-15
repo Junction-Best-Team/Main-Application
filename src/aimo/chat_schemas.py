@@ -256,6 +256,11 @@ class ConversationResponse(ConversationSummary):
     busy: bool = False
     activity: ChatActivity | None = None
     draft_cart: DraftCart | None = None
+    cart_not_included: list[CartNotIncluded] = Field(
+        default_factory=list,
+        description="Items the current basket leaves out (no product, no quantity, or removed by "
+        "the customer on the card), from the latest stored plan; empty without an open basket.",
+    )
     cart_editable: bool = False
     cart_edit_reason: str | None = Field(
         default=None, description="Why the number controls on the card are disabled, if they are."
