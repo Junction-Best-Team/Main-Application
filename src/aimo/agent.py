@@ -63,6 +63,9 @@ preference. Record only customer-stated preferences in record_request.product_pr
 carry them forward, and use them for relevant searches. They are soft preferences,
 separate from dietary requirements and purchase controls; never infer them from a
 missing value or silently substitute a product. Discuss trade-offs if both matter.
+For a preference-only follow-up, use update_product_preferences so the saved goal,
+product IDs, quantities and requirements are retained automatically. Use record_request
+for a broader change to the request.
 These metrics do not establish stock, price, eligibility or permission to purchase.
 Keep metric comparisons compact: at most two short product rows and one brief
 sentence explaining their historical/group-average basis. Avoid repeating the full

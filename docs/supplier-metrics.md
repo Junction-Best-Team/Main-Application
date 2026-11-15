@@ -26,6 +26,8 @@ delay a list for that answer, infer a preference, or make it a purchasing requir
 `record_request.product_preferences` retains explicit choices across turns. One saved
 preference automatically applies to subsequent product searches; with both preferences,
 the assistant explains trade-offs instead of inventing a combined score.
+For a preference-only follow-up, `update_product_preferences` changes that field while
+retaining all other request facts on the server, with the same semantic/author checks.
 
 ## Storage and rollout
 

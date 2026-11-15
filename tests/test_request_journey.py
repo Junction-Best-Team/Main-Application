@@ -110,11 +110,18 @@ def test_exploring_a_different_idea_does_not_replace_an_existing_basket(auto):
 def test_optional_product_preferences_survive_turns_without_becoming_checkout_requirements(auto):
     preference = ["lower_carbon"]
     auto.turn(
-        "Prefer lower carbon where you have data. I haven't chosen lunch yet.",
-        tool_reply(call("record_request",brief(intent="explore",product_preferences=preference))),
+        "I haven't chosen lunch yet. Compare some ideas.",
+        tool_reply(call("record_request",brief(intent="explore"))),
         say("Would you prefer pasta or soup?"),
     )
+    before = remembered(auto).model_dump(mode="json")
+    auto.turn(
+        "Prefer lower carbon where you have data; I'm still comparing.",
+        tool_reply(call("update_product_preferences",{"product_preferences":preference})),
+        say("I'll favor lower estimated carbon values where available."),
+    )
     assert remembered(auto).product_preferences == preference
+    assert remembered(auto).model_dump(mode="json") == before | {"product_preferences":preference}
     chosen = build(auto,product_preferences=preference)
     assert remembered(auto).product_preferences == preference
     assert remembered(auto).missing_facts == []

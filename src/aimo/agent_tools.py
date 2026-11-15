@@ -65,6 +65,13 @@ class ResizePlan(Model):
     portions: int = Field(ge=1, le=10000)
 
 
+class ProductPreferences(Model):
+    product_preferences: list[Literal["lower_carbon", "higher_delivery_reliability"]] = Field(
+        max_length=2,
+        description="Replace only the customer's optional comparison preferences. Empty clears them; all other saved request facts stay unchanged.",
+    )
+
+
 class ProductRequest(Model):
     product_id: str = Field(min_length=1, max_length=40)
 
@@ -363,6 +370,16 @@ class ToolSession:
                 self.record_request,
                 RequestBrief,
             ),
+            "update_product_preferences": ToolSpec(
+                ProductPreferences,
+                "Update only explicit customer-stated comparison preferences on an existing "
+                "request. Preserve its goal, product scope, quantities, budget and requirements "
+                "on the server. Use this for a preference-only follow-up; use record_request "
+                "when the customer changes the meal/products or other request facts. Optional "
+                "preferences never block purchase readiness or authorize a purchase.",
+                self.update_product_preferences,
+                RequestBrief,
+            ),
             "resize_plan": ToolSpec(
                 ResizePlan,
                 "Recalculate the existing plan for a customer-requested portion change in a new "
@@ -559,6 +576,13 @@ class ToolSession:
         request_brief.save(self.identity, brief)
         self.brief, self.brief_recorded = brief.model_copy(deep=True), True
         return self.brief.model_dump(mode="json")
+
+    def update_product_preferences(self, request):
+        if self.brief is None:
+            raise Problem("REQUEST_BRIEF_REQUIRED", "Record the current request first.", 422)
+        return self.record_request(self.brief.model_copy(
+            deep=True, update={"product_preferences": request.product_preferences}
+        ))
 
     def resize_plan(self, request):
         if not self.plan or self.prepared_digest is not None or self.draft_basis is not None:

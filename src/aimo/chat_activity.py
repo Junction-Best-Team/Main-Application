@@ -7,6 +7,7 @@ from aimo.db import connection, js, now
 # tools may add a short detail built from their validated server result (tool_detail).
 TOOL_LABELS = {
     "record_request": "Understanding your request",
+    "update_product_preferences": "Updating product preferences",
     "resize_plan": "Adjusting portions",
     "revise_recipe": "Updating your recipe",
     "search_recipes": "Searching recipes",
