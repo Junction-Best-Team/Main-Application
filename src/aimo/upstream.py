@@ -316,7 +316,7 @@ def check_supplier_startup():
 def effective_mode() -> str:
     """`auto` uses the live API when a key is configured and labelled fixtures when it is not.
 
-    The key exists and teammates have it (see docs/findings.md); the fixture fallback only keeps
+    The key exists and teammates have it (see README.md); the fixture fallback only keeps
     the app runnable without it. Fixture evidence is always labelled `mode: fixture`.
     """
     cfg = settings()
