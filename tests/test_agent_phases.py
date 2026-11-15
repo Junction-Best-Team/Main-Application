@@ -466,3 +466,33 @@ def test_tool_call_log_lines_carry_the_phase(identity, config, monkeypatch, capl
     run(identity, FakeService(identity), user("ingredients for 200 portions of carbonara"))
     started = [json.loads(r.message) for r in caplog.records if '"tool.call.started"' in r.message]
     assert started and all(e.get("phase") == "understand" for e in started)
+
+
+# --- checkout fixes (Q-134 a): prefer candidates that can actually be bought -----------------------------
+
+
+def open_match_session(identity):
+    session = ToolSession(identity, FakeService(identity))
+    for n in ("pasta", "eggs", "pork", "cheese", "pepper"):
+        invoke(session, "get_product", {"product_id": n})
+    open_plan = meal()
+    open_plan["ingredients"][-1]["product_id"] = None
+    invoke(session, "publish_meal_plan", open_plan)
+    session.customer_texts = ["carbonara for 20"]
+    return session
+
+
+def test_the_match_line_prefers_buyable_candidates_with_the_facts_the_server_exposes(identity):
+    text = open_match_session(identity).execution_guidance(60)
+    assert "Phase: MATCH" in text
+    for field in ("pack_size_units", "in_scope", "stock_verified"):
+        assert field in text, field
+    assert "check_price_and_availability" in text and "ONE" in text  # one call for the shortlist
+    assert "not one call per product" in text  # one call for the shortlist
+    assert "ask for a number of packs" in text  # an empty pack_size_units is not guessed
+
+
+def test_with_the_phases_off_the_match_line_is_unchanged(identity, monkeypatch):
+    monkeypatch.setattr(settings(), "agent_phases", False)
+    text = open_match_session(identity).execution_guidance(60)
+    assert "pack_size_units" not in text and "stock_verified" not in text

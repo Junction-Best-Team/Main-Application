@@ -911,7 +911,11 @@ class ToolSession:
                 "(the top three candidates already include inspected product details), then save the "
                 "matches in ONE call: publish_meal_plan with the exact existing quantities for a "
                 "free-form plan, match_ingredients for a saved recipe. Do not research alternatives "
-                "for a suitable selection. When every ingredient is matched, the basket comes next."
+                "for a suitable selection. Prefer candidates that can be bought: in_scope true (not "
+                "false), a non-empty pack_size_units (an empty one cannot be converted to packs: ask "
+                "for a number of packs or prefer another product), and stock_verified true. Check the "
+                "shortlist with ONE check_price_and_availability call for all its products, not one "
+                "call per product. When every ingredient is matched, the basket comes next."
             )
         if phase == "prepare":
             return head + (
