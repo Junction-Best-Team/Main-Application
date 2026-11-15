@@ -579,3 +579,45 @@ test("a new chat remembers the choice too, and an unreadable store means open", 
   await expect(toggle(page, "Expand cart")).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+// --- several baskets in one chat: the card is the current one; an order closes the card ------------
+
+test("the card shows the newest basket that is not cancelled", async ({
+  page,
+}) => {
+  const old = {
+    ...decidable,
+    proposal_id: "11111111-1111-4111-8111-111111111111",
+    approval_status: "cancelled",
+  } as typeof decidable;
+  const current = { ...decidable, revision: 2, current_revision: 2 };
+  await page.route(`**/api/purchases/${current.proposal_id}`, (route) =>
+    json(route, current),
+  );
+  await page.route(`**/api/purchases/${old.proposal_id}`, (route) =>
+    json(route, old),
+  );
+  await open(page, { ...withProposal([pasta]), purchases: [current, old] });
+  await expect(
+    overview(page).getByText("Revision 2 / v1").first(),
+  ).toBeVisible();
+  await expect(finalButton(page)).toBeEnabled();
+});
+
+test("after an order is placed the card offers no second purchase and no edits", async ({
+  page,
+}) => {
+  const placed = {
+    ...decidable,
+    approval_status: "approved",
+    order_status: "accepted_mock",
+    order_id: "c1a2b3c4-d5e6-4f70-8a9b-0c1d2e3f4a5b",
+  } as typeof decidable;
+  await openProposal(page, withProposal([pasta], {}, placed), placed);
+  await expect(overview(page)).toContainText("Accepted by demo order service");
+  await expect(finalButton(page)).toHaveCount(0);
+  await expect(overview(page).getByLabel("Delivery date")).toHaveCount(0);
+  await expect(
+    overview(page).getByRole("button", { name: "Update delivery details" }),
+  ).toHaveCount(0);
+});

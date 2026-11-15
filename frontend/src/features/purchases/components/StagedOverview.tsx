@@ -4,6 +4,17 @@ import type { Conversation } from "../../../shared/api/types";
 import { usePurchaseDetail } from "../hooks/usePurchaseDetail";
 import { OverviewPanel } from "./OverviewPanel";
 import { DraftCartPanel } from "./DraftCartPanel";
+// A chat can hold several baskets (a changed cart prepares a new one and cancels the older). The card
+// is the newest one that is not cancelled; if all are, the newest.
+const currentBasket = (conversation: Conversation | null) => {
+  const all = conversation?.purchases ?? [];
+  return (
+    [...all]
+      .reverse()
+      .find((p) => (p.approval_status as string) !== "cancelled") ?? all.at(-1)
+  );
+};
+
 export function StagedOverview({
   conversation,
   selectedId,
@@ -28,7 +39,7 @@ export function StagedOverview({
       : undefined;
   const latest =
     conversation?.purchases.find((p) => p.proposal_id === selectedId) ??
-    (recipeDraft ? undefined : conversation?.purchases.at(-1));
+    (recipeDraft ? undefined : currentBasket(conversation));
   const flow = usePurchaseDetail({ proposalId: latest?.proposal_id });
   const { load } = flow;
   useEffect(() => {

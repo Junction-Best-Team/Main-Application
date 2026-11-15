@@ -23,3 +23,25 @@ The right-hand card is always in a chat. Wording lives in one file, `frontend/sr
 - On a phone the empty/draft card sits below the chat in the page flow, never over the composer.
 
 Specs: `frontend/e2e/cart-purchase.spec.ts` (mocked API, local runs).
+
+## Handoff (6c, end of session)
+
+Done on `p3/cart-purchase-ui` (all with mocked specs in `frontend/e2e/cart-purchase.spec.ts`, local runs):
+always-rendered card; empty/draft/purchase states; green one-press "Confirm purchase"; delivery date + destination
+(`DeliveryDetails.tsx`, `hooks/usePrepareFromCart.ts`); "Not included" list (`NotIncluded.tsx`); default-open collapsible
+card remembered in localStorage (`hooks/useCartOpen.ts`); newest non-cancelled basket is the card
+(`StagedOverview.currentBasket`); after an order the card has no Confirm button and no date/destination controls
+(they only render while `flow.canConfirm`).
+
+Not done:
+- **Quantity controls and the 15 s ghost line** (taken over by junction-b4 on `p3/cart-quantity-ui`). Hook in `OverviewPanel.tsx`
+  at the lines list (`Items`), inside the block rendered only when `conversationId` is set (same place as `DeliveryDetails`);
+  the proposed `PUT /api/conversations/{id}/cart` body is `{request_id, lines:[{product_id, sales_quantity}]}` (a7 may change it);
+  disable the controls with `conversation.cart_editable` / `cart_edit_reason` when a7's fields land (not in the generated
+  schema yet; read them as optional). The ghost is client-side state keyed by product id, kept 15 s.
+- **Server reasons**: `cart_editable` false "This order was already placed." and 409 `BASKET_ALREADY_ORDERED` are not
+  handled specially yet (the card already hides its controls once the purchase has an order); `REQUEST_REVISED` on confirm
+  shows the server message through the existing error line and reloads the purchase (no dedicated spec yet).
+- The receipt link on an ordered card exists only on `p3/flow-ui` ("View receipt", `OverviewPanel`); this branch has none.
+- Merge order: after a7's backend (routes are a typed mock in `api/cartApi.ts`). Conflicts to expect with `p3/flow-ui` and
+  `p3/debug-copy` in `OverviewPanel.tsx`, `StagedOverview.tsx`, `useChat.ts`, `ChatPage.tsx` (small).
