@@ -11,12 +11,39 @@ from aimo import attachments, auth, cancellations, order_notice, scheduler
 from aimo.approval_policy import can_approve
 from aimo.chat_activity import record_progress
 from aimo.chat_schemas import AgentTurn
+from aimo.config import settings
 from aimo.db import Problem, connection, fingerprint, js, now
 from aimo.guardrails import encode, proposal_view
 from aimo.observability import event, failure, operation
 from aimo.purchases import context
 from aimo.schemas import ProposalResponse
 from aimo.turn_notice import NOTICE_KIND, failure_notice
+
+RECIPE_LOCKED_REASON = (
+    "Change a product of a saved recipe by asking the assistant; "
+    "pack counts of a recipe basket cannot be edited here."
+)
+
+
+def cart_edit_state(messages, ordered=frozenset()):
+    """(editable, reason) for the number controls on the card, from the latest stored plan.
+    `ordered`: ids of baskets that have an order; the cart is closed when its latest basket is one."""
+    plan_at = next((i for i in range(len(messages) - 1, -1, -1) if messages[i]["meal_plan"]), None)
+    if plan_at is None:
+        return False, "Add items to the cart first."
+    basket_at = next(
+        (i for i in range(len(messages) - 1, -1, -1) if messages[i]["proposal_id"]), None
+    )
+    if (
+        basket_at is not None
+        and plan_at <= basket_at
+        and str(messages[basket_at]["proposal_id"]) in ordered
+    ):
+        return False, "This order was already placed."
+    plan = messages[plan_at]["meal_plan"]
+    if isinstance(plan, dict) and plan.get("recipe_plan_id"):
+        return False, RECIPE_LOCKED_REASON
+    return True, None
 
 
 def owned(c, identity, cid, lock=False):
@@ -134,6 +161,7 @@ def detail(identity, cid, *, internal=False):
             )
             continue
         purchases.append(view)
+    ordered = {p["proposal_id"] for p in purchases if p["order_id"]}
     draft_cart = draft["draft_cart"] if draft else None
     if draft_cart:
         # Persisted quotes may have expired since the worker checked them.
@@ -166,6 +194,8 @@ def detail(identity, cid, *, internal=False):
         "purchases": purchases,
         "busy": busy,
         "draft_cart": draft_cart,
+        "cart_editable": cart_edit_state(messages, ordered)[0],
+        "cart_edit_reason": cart_edit_state(messages, ordered)[1],
         "activity": {"turn_id": str(turn["id"]), "state": state, "events": turn["progress"]}
         if turn
         else None,
@@ -184,6 +214,55 @@ def detail(identity, cid, *, internal=False):
         if retry and (not busy or not retry["attachments"])
         else None,
     }
+
+
+def cancel_turn(identity, cid):
+    """Buyer interrupt of a queued or running turn; reuse the failed/retry recovery path.
+
+    Cooperative only: a tool call already in flight finishes, then the worker fence
+    or ensure_attempt stops further rounds. Idempotent when the conversation is idle.
+    """
+    with connection() as c:
+        context(c, identity)
+        c.execute("SELECT id FROM buyers WHERE id=%s FOR UPDATE", (identity["buyer_id"],))
+        owned(c, identity, cid, lock=True)
+        turn = c.execute(
+            """SELECT * FROM conversation_turns WHERE conversation_id=%s
+            AND state IN ('queued','running') ORDER BY created_at LIMIT 1 FOR UPDATE""",
+            (cid,),
+        ).fetchone()
+        if turn:
+            c.execute(
+                """UPDATE conversation_turns SET state='failed',lease_until=%s
+                WHERE id=%s AND state IN ('queued','running')""",
+                (now(), turn["id"]),
+            )
+            # System-authored turns have no customer retry payload; settle closes them.
+            scheduler.settle_failed_system_turn(c, turn["id"], cid)
+            c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
+            event(
+                "chat.cancelled",
+                conversation_id=str(cid),
+                turn_id=str(turn["id"]),
+                previous_state=turn["state"],
+            )
+    return detail(identity, cid)
+
+
+def ensure_attempt(turn):
+    """Raise when this claimed attempt is no longer the live running lease (cancel/reclaim)."""
+    with connection() as c:
+        current = c.execute(
+            "SELECT attempt,state,lease_until FROM conversation_turns WHERE id=%s",
+            (turn["id"],),
+        ).fetchone()
+    if (
+        not current
+        or current["attempt"] != turn["attempt"]
+        or current["state"] != "running"
+        or current["lease_until"] <= now()
+    ):
+        raise Problem("TURN_REPLACED", "This response was replaced; reload the conversation.")
 
 
 def enqueue(identity, cid, body):
@@ -358,16 +437,17 @@ def store_failure_notice(cid, tid):
         event("chat.failure_notice_failed", conversation_id=str(cid), turn_id=str(tid))
 
 
-def customer_constraints(c, cid, tid):
+def customer_constraints(c, cid, tid=None):
     """The limits in force for one turn (POL-008): what the customer set on this message and
-    on earlier ones in this conversation, the latest value per name. A toggle set to false
+    on earlier ones in this conversation (all of them when `tid` is None), the latest value per name. A toggle set to false
     withdraws that requirement. Server-written records only; the model never supplies them."""
     rows = c.execute(
         """SELECT constraints FROM conversation_turns
         WHERE conversation_id=%s AND constraints IS NOT NULL
-        AND (created_at, id) <= (SELECT created_at, id FROM conversation_turns WHERE id=%s)
+        AND (%s::uuid IS NULL OR
+             (created_at, id) <= (SELECT created_at, id FROM conversation_turns WHERE id=%s))
         ORDER BY created_at, id""",
-        (cid, tid),
+        (cid, tid, tid),
     ).fetchall()
     merged = {}
     for row in rows:
@@ -376,20 +456,36 @@ def customer_constraints(c, cid, tid):
     return [r for r in merged.values() if r["value"] is not False]
 
 
-def restorable_plan(messages):
+def restorable_plan(messages, live_cart=False):
     """The meal plan the customer last saw and has not yet turned into a basket, else None.
 
-    Only the latest assistant answer counts, and only if it carries a complete plan matched to
-    products and no basket was prepared from it or after it. A plan the conversation has moved
+    Only the latest assistant answer counts, and only if it carries a plain meal plan (matched or
+    partly matched) and no basket was prepared from it or after it. A plan the conversation has moved
     past (a later text answer, a revised ingredient list) is not offered again. The result is
     still re-verified from the catalog by ToolSession.restore_plan.
+
+    With a live cart (the cart is always the exact basket and the assistant may edit it) the latest
+    assistant message that carries a plan is restored even when a basket exists for it, because the
+    next edit starts from that plan; a revised basket then replaces the open one.
     """
     shown = [m for m in messages if not m.get("notice")]
-    last = next((i for i in range(len(shown) - 1, -1, -1) if shown[i]["role"] == "assistant"), None)
+    if live_cart:
+        last = next(
+            (
+                i
+                for i in range(len(shown) - 1, -1, -1)
+                if shown[i]["role"] == "assistant" and shown[i].get("meal_plan")
+            ),
+            None,
+        )
+    else:
+        last = next(
+            (i for i in range(len(shown) - 1, -1, -1) if shown[i]["role"] == "assistant"), None
+        )
     if last is None:
         return None
     plan = shown[last].get("meal_plan")
-    if not plan or any(m.get("proposal_id") for m in shown[last:]):
+    if not plan or (not live_cart and any(m.get("proposal_id") for m in shown[last:])):
         return None
     if not isinstance(plan, dict) or plan.get("recipe_plan_id"):
         return None
@@ -398,10 +494,10 @@ def restorable_plan(messages):
     if (
         not isinstance(items, list)
         or not items
-        or any(not isinstance(i, dict) or not i.get("product_id") for i in items)
+        or any(not isinstance(i, dict) for i in items)
     ):
         return None
-    return plan
+    return plan  # a partly matched plan too: unmatched items stay unmatched and are not bought
 
 
 @operation("chat.execute", context_arg="turn")
@@ -410,7 +506,11 @@ def execute_turn(turn, service, runner=None):
     if runner is None:
         from aimo.agent import run_turn
 
-        runner = partial(run_turn, on_progress=partial(record_progress, turn))
+        runner = partial(
+            run_turn,
+            on_progress=partial(record_progress, turn),
+            ensure_live=partial(ensure_attempt, turn),
+        )
     cid, tid, attempt = turn["conversation_id"], turn["id"], turn["attempt"]
     try:
         with connection() as c:
@@ -451,7 +551,7 @@ def execute_turn(turn, service, runner=None):
             scheduler.provider_message(m["role"], m["text"]) | {"attachments": m["attachments"]}
             for m in shown
         ]
-        stored = restorable_plan(data["messages"])
+        stored = restorable_plan(data["messages"], settings().cart_auto_prepare)
         # Structured persisted plans and status survive refresh, restarts and a provider context reset.
         for index, msg in enumerate(shown):
             if msg["meal_plan"]:
@@ -496,6 +596,19 @@ def execute_turn(turn, service, runner=None):
                 )
             )
         )
+        auto = None
+        if not prepared and turn.get("submitted_by") == identity["id"]:
+            from aimo import cart_purchase
+
+            # The cart is always the exact basket: a turn that changed it prepares it again.
+            auto = cart_purchase.auto_prepare(identity, cid, tid, result, service)
+            if auto:
+                result = result.model_copy(
+                    update={
+                        "proposal_id": str(auto[0]),
+                        "text": (result.text + "\n\n" + auto[2])[:20000],
+                    }
+                )
         if result.proposal_id:
             service.get_proposal(
                 actor, result.proposal_id
@@ -537,6 +650,8 @@ def execute_turn(turn, service, runner=None):
                 ),
             )
             c.execute("UPDATE conversation_turns SET state='complete' WHERE id=%s", (tid,))
+            if auto:  # the basket replaces the display-only draft of this turn
+                c.execute("UPDATE conversation_turns SET draft_cart=NULL WHERE id=%s", (tid,))
             c.execute("UPDATE conversations SET updated_at=%s WHERE id=%s", (now(), cid))
     except Exception as exc:
         with connection() as c:

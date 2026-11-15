@@ -681,8 +681,14 @@ def test_scoping_other_buyer_other_agent_and_same_buyer_approver(planned, actor,
 
 
 def test_conversation_meal_plan_copy_is_labelled_but_goes_stale_after_a_later_revision(
-    internal_planned, buyer, service
+    internal_planned, buyer, service, monkeypatch
 ):
+    # About the stored copy, not the cart: with auto-prepare a fully matched saved recipe plan is
+    # prepared (and so locked) after the first turn, which blocks the re-match this test performs
+    # (Q-126: whether edits to a locked recipe basket become new revisions).
+    from aimo.config import settings
+
+    monkeypatch.setattr(settings(), "cart_auto_prepare", False)
     plan, _ = internal_planned
     pid = plan["recipe_plan_id"]
 

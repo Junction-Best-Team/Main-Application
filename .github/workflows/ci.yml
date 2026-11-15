@@ -2,6 +2,8 @@ name: CI
 
 # Validate PRs before merging. Protected main pushes build releases without repeating CI.
 # Keep the existing check names for repository rules; skip only unrelated jobs.
+# The release PR (develop into main) runs the backend job with the FULL test suite; PRs into
+# develop run the core subset in tests/pr-tests.sh.
 
 on:
   pull_request:
@@ -24,6 +26,7 @@ jobs:
       backend: ${{ steps.changes.outputs.backend }}
       frontend: ${{ steps.changes.outputs.frontend }}
       terraform: ${{ steps.changes.outputs.changed }}
+      full: ${{ steps.changes.outputs.full }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -38,15 +41,17 @@ jobs:
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           PROMOTE_DEVELOP: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
-          # Protected develop already required contribution CI; promotion does not repeat it.
+          # Protected develop already required contribution CI, so promotion repeats only the backend,
+          # and runs it with the full test suite (full=true): the release PR is the one place where
+          # every test must pass. Frontend and Terraform are not repeated.
           if [[ "$PROMOTE_DEVELOP" == true ]]; then
-            printf 'backend=false\nfrontend=false\nchanged=false\n' >> "$GITHUB_OUTPUT"
+            printf 'backend=true\nfrontend=false\nchanged=false\nfull=true\n' >> "$GITHUB_OUTPUT"
             exit 0
           fi
           if [[ "$EVENT_NAME" == pull_request ]]; then
             range="$PR_BASE...$PR_HEAD"
           else
-            printf 'backend=true\nfrontend=true\nchanged=true\n' >> "$GITHUB_OUTPUT"
+            printf 'backend=true\nfrontend=true\nchanged=true\nfull=true\n' >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # Fail closed on diff errors; include both sides of renames and deleted files.
@@ -64,7 +69,7 @@ jobs:
               *) backend=true; frontend=true ;;
             esac
           done < "$RUNNER_TEMP/ci-paths"
-          printf 'backend=%s\nfrontend=%s\nchanged=%s\n' "$backend" "$frontend" "$terraform" >> "$GITHUB_OUTPUT"
+          printf 'backend=%s\nfrontend=%s\nchanged=%s\nfull=false\n' "$backend" "$frontend" "$terraform" >> "$GITHUB_OUTPUT"
 
   terraform:
     name: Terraform
@@ -77,7 +82,7 @@ jobs:
     needs: components
     if: needs.components.outputs.backend == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -107,8 +112,8 @@ jobs:
       - uses: ./.github/actions/python-env
       - name: Lint Python
         run: .venv/bin/ruff check src tests scripts
-      - name: Test core app flows (full suite on manual runs)
-        run: tests/pr-tests.sh ${{ github.event_name == 'workflow_dispatch' && '--full' || '' }}
+      - name: Test core app flows (the full suite for the release PR and manual runs)
+        run: tests/pr-tests.sh ${{ needs.components.outputs.full == 'true' && '--full' || '' }}
       - name: Black-box sweep of the buyer-facing API (sign-in, CSRF, conversations, purchases)
         run: tests/ci.sh --skip-unit
 

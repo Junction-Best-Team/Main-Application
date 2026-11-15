@@ -14,7 +14,7 @@ import {
   type ChatAttachment,
 } from "../model/attachments";
 const composerActionClassName =
-  "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-status-fresh-green text-deep-ocean-navy transition-colors hover:enabled:bg-tertiary-fixed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container disabled:cursor-not-allowed disabled:opacity-50";
+  "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary transition-colors hover:enabled:bg-deep-ocean-navy focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container disabled:cursor-not-allowed disabled:opacity-50";
 
 type Props = {
   appearance?: "chat" | "home";
@@ -58,7 +58,13 @@ export function ChatComposer({
   function handleComposerKeyDown(
     event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) {
-    if (event.key !== "Enter" || !(event.ctrlKey || event.metaKey)) return;
+    // Enter sends; Shift+Enter keeps a new line. Ignore Enter that confirms IME input.
+    if (
+      event.key !== "Enter" ||
+      event.shiftKey ||
+      event.nativeEvent.isComposing
+    )
+      return;
     event.preventDefault();
     if (!hasDraft || disabled || reading) return;
     event.currentTarget.form?.requestSubmit();
@@ -140,6 +146,11 @@ export function ChatComposer({
       {fileError && (
         <p role="alert" className="text-body-sm text-error">
           {fileError}
+        </p>
+      )}
+      {busy && !home && (
+        <p className="px-space-sm text-label-sm text-secondary" role="status">
+          Press Escape to cancel
         </p>
       )}
       {(dragging || reading) && (

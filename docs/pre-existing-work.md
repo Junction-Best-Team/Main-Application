@@ -18,6 +18,10 @@ Add any starter code or earlier prototypes separately. Describe which parts exis
 
 ## Reused code, data, models, and assets
 
+On 2026-11-15, Codex matched the shared voice/send composer actions to the
+owner's supplied robot color reference, reusing the existing `#005670` teal,
+white icon and navy hover tokens. No image asset or dependency was added.
+
 The voice entry button uses an SVG waveform authored during the event on
 2026-11-14 from the owner's circular waveform reference image. It adds no asset
 or icon dependency and retains the composer introduced by merged PR #162.

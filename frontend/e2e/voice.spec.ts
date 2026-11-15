@@ -27,6 +27,7 @@ const blank: Conversation = {
   cart_editable: false,
   messages: [],
   purchases: [],
+  cart_editable: false,
   busy: false,
 };
 

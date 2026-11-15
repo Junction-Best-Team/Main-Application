@@ -27,6 +27,7 @@ const blankConversation: Conversation = {
   cart_editable: false,
   messages: [],
   purchases: [],
+  cart_editable: false,
   busy: false,
 };
 const proposal: Proposal = {
@@ -773,9 +774,7 @@ test("a lost message response reuses its idempotency key after refresh", async (
   expect(keys[1]).toBe(keys[0]);
 });
 
-test("Ctrl+Enter submits the composer when a draft is ready", async ({
-  page,
-}) => {
+test("Enter submits the composer when a draft is ready", async ({ page }) => {
   await mockSession(page);
   await page.route(`**/api/conversations/${conversationId}`, (route) =>
     route.fulfill({ json: blankConversation }),
@@ -803,7 +802,7 @@ test("Ctrl+Enter submits the composer when a draft is ready", async ({
   await page.goto(`/conversations/${conversationId}`);
   const composer = page.getByLabel("Continue the conversation");
   await composer.fill("Carbonara for 200");
-  await composer.press("Control+Enter");
+  await composer.press("Enter");
   await expect(page.getByText("Got it — what delivery date?")).toBeVisible();
   expect(posted).toBe(true);
 });
@@ -2075,7 +2074,7 @@ for (const width of [1440, 320]) {
       page.getByRole("button", { name: "Start voice mode" }),
     ).toHaveCount(0);
     await input.fill("Milk and eggs for Monday.");
-    await input.press("Enter");
+    await input.press("Shift+Enter");
     await expect(input).toHaveValue("Milk and eggs for Monday.\n");
     await input.fill(requestText);
     await expect(page).toHaveURL(/\/$/);
@@ -2084,11 +2083,72 @@ for (const width of [1440, 320]) {
       new RegExp(`/conversations/${conversationId}$`),
     );
     await expect(page.getByText("What quantities do you need?")).toBeVisible();
+    // The sent request must not linger as a draft in the chat composer.
+    await expect(page.getByLabel("Continue the conversation")).toHaveValue("");
+    await expect(page.getByText("restock.txt", { exact: true })).toHaveCount(0);
     await page.reload();
     await expect(page.getByText("What quantities do you need?")).toBeVisible();
+    await expect(page.getByLabel("Continue the conversation")).toHaveValue("");
     expect(messages).toEqual([requestText]);
   });
 }
+
+test("home hands a failed first message back to the chat composer", async ({
+  page,
+}) => {
+  await mockSession(page);
+  await page.route("**/api/conversations", (route) =>
+    route.fulfill({ json: blankConversation }),
+  );
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: blankConversation }),
+  );
+  await page.route(`**/api/conversations/${conversationId}/messages`, (route) =>
+    route.fulfill({
+      status: 503,
+      json: {
+        error: { code: "UNAVAILABLE", message: "Try again shortly." },
+      },
+    }),
+  );
+  await page.goto("/");
+  await page
+    .getByLabel("Your meal or purchasing request")
+    .fill("Restock milk for Monday");
+  await page.getByRole("button", { name: "Send Order Request" }).click();
+  await expect(page).toHaveURL(new RegExp(`/conversations/${conversationId}$`));
+  await expect(page.getByRole("alert").first()).toContainText(
+    "Try again shortly.",
+  );
+  await expect(page.getByLabel("Continue the conversation")).toHaveValue(
+    "Restock milk for Monday",
+  );
+});
+
+test("home composer sends on Enter and keeps Shift+Enter as a new line", async ({
+  page,
+}) => {
+  await mockSession(page);
+  const posted: string[] = [];
+  await page.route("**/api/conversations", async (route) => {
+    posted.push(route.request().method());
+    await route.fulfill({
+      status: 503,
+      json: { error: { code: "UNAVAILABLE", message: "Try again shortly." } },
+    });
+  });
+  await page.goto("/");
+  const input = page.getByLabel("Your meal or purchasing request");
+  await input.fill("Restock milk");
+  await input.press("Shift+Enter");
+  await input.pressSequentially("for Monday");
+  await expect(input).toHaveValue("Restock milk\nfor Monday");
+  expect(posted).toHaveLength(0);
+  await input.press("Enter");
+  await expect(page.getByRole("alert")).toContainText("Try again shortly.");
+  await expect(input).toHaveValue("Restock milk\nfor Monday");
+  expect(posted).toHaveLength(1);
+});
 
 test("home retains the draft and creation key after a failed start", async ({
   page,

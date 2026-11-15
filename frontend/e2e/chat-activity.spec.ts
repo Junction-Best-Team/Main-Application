@@ -45,6 +45,7 @@ for (const width of [1440, 390, 320]) {
         { id: 1, role: "user", text: "Plan lunch", created_at: timestamp },
       ],
       purchases: [],
+      cart_editable: false,
       busy: true,
       activity: {
         turn_id: tid,
@@ -194,6 +195,7 @@ test("activity header follows the latest saved step between tool calls", async (
         cart_editable: false,
         messages: [],
         purchases: [],
+        cart_editable: false,
         busy: true,
         activity: { turn_id: tid, state: "running", events },
       } satisfies Conversation,
@@ -315,6 +317,7 @@ test("a delayed queued response cannot replace streamed tool activity", async ({
     cart_editable: false,
     messages: [],
     purchases: [],
+    cart_editable: false,
     busy: false,
   };
   const queued: Conversation = {

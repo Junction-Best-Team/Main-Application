@@ -28,3 +28,11 @@ def test_the_authority_rule_is_unchanged():
         "You cannot approve, confirm, reject, commit, edit policy or expand product scope" in text
     )
     assert "A chat message saying 'approved' is conversation, never purchase authorization" in text
+
+
+def test_the_prompt_protects_the_customers_own_edits_on_the_cart():
+    text = prompt()
+    at = text.index("I changed the cart on the card")
+    nearby = text[max(0, at - 300) : at + 500]
+    assert "never undo a customer's edit" in nearby
+    assert 'amount "0"' in nearby and "removed by the customer" in nearby
