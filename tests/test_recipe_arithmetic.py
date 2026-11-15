@@ -100,6 +100,14 @@ def test_scaled_plan_is_a_pure_function_of_recipe_and_portions():
     assert scaled_plan(recipe, 100).model_dump(mode="json") != first
 
 
+def test_scaled_plan_copies_catalog_cooking_instructions():
+    recipe = make_recipe([(200, "g", "linear")])
+    recipe.instructions = ["Boil the pasta.", "Toss with sauce."]
+    plan = scaled_plan(recipe, 8)
+    assert plan.instructions == ["Boil the pasta.", "Toss with sauce."]
+    assert plan.ingredients[0].amount == "0.4"
+
+
 UNIT_FACTOR = {
     "g": (Fraction(1, 1000), "KG"),
     "kg": (Fraction(1), "KG"),

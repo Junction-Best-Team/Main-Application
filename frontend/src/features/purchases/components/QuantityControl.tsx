@@ -1,12 +1,15 @@
 import { Icon } from "../../../shared/components/DesignPrimitives";
 import { CART_EDIT, EDIT_COPY, parseQuantity } from "../model/cartEdit";
 
-const stepButton =
-  "flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-outline-variant bg-surface-pure p-0 text-primary disabled:cursor-not-allowed disabled:opacity-40";
+// A thin caret above and one below the number. They are invisible until the row is hovered or a
+// control inside it has the keyboard focus, and faint all the time on touch screens (no hover).
+const caret =
+  "flex h-4 w-10 cursor-pointer items-center justify-center rounded border-0 bg-transparent p-0 text-secondary opacity-0 transition-opacity group-hover/qty:opacity-100 focus-visible:opacity-100 group-focus-within/qty:opacity-100 [@media(hover:none)]:opacity-40 disabled:cursor-not-allowed disabled:opacity-0 [@media(hover:none)]:disabled:opacity-20";
 
 /**
- * The number of packs of one product: a number input with minus and plus. Typing is never blocked;
- * the caller debounces the save. Keyboard: arrow keys change the number, Enter saves at once.
+ * The number of packs of one product. The number is a real spinbutton (role, name "Quantity of
+ * <product>", min 0, max 100000, arrow keys, Enter saves, click it and type); the carets above and
+ * below are decoration with their own buttons. Typing is never blocked; the caller debounces the save.
  */
 export function QuantityControl({
   name,
@@ -22,7 +25,7 @@ export function QuantityControl({
   name: string;
   /** What the input shows (typed text, or the server's number). */
   text: string;
-  /** The server's number, the fallback for minus and plus when the text is not a number. */
+  /** The server's number, the fallback for the carets when the text is not a number. */
   server: number;
   disabled: boolean;
   invalid: boolean;
@@ -35,15 +38,15 @@ export function QuantityControl({
   const value = parseQuantity(text);
   const current = value ?? server;
   return (
-    <span className="inline-flex items-center gap-1">
+    <span className="group/qty inline-flex flex-col items-center">
       <button
         type="button"
-        aria-label={EDIT_COPY.decrease(name)}
-        disabled={disabled || current <= CART_EDIT.min}
-        onClick={() => onText(String(Math.max(CART_EDIT.min, current - 1)))}
-        className={stepButton}
+        aria-label={EDIT_COPY.increase(name)}
+        disabled={disabled || current >= CART_EDIT.max}
+        onClick={() => onText(String(Math.min(CART_EDIT.max, current + 1)))}
+        className={caret}
       >
-        <Icon name="remove" />
+        <Icon name="keyboard_arrow_up" />
       </button>
       <input
         type="number"
@@ -64,16 +67,16 @@ export function QuantityControl({
           }
         }}
         onBlur={onLeave}
-        className={`h-9 w-16 rounded-lg border bg-surface-pure px-1 text-center font-mono text-body-sm text-primary disabled:cursor-not-allowed disabled:opacity-60 ${invalid ? "border-error" : "border-outline-variant"}`}
+        className={`h-7 w-14 rounded-md border bg-transparent px-1 text-center font-mono text-body-sm text-primary [appearance:textfield] focus:bg-surface-container-low focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${invalid ? "border-error" : "border-transparent focus:border-outline-variant"}`}
       />
       <button
         type="button"
-        aria-label={EDIT_COPY.increase(name)}
-        disabled={disabled || current >= CART_EDIT.max}
-        onClick={() => onText(String(Math.min(CART_EDIT.max, current + 1)))}
-        className={stepButton}
+        aria-label={EDIT_COPY.decrease(name)}
+        disabled={disabled || current <= CART_EDIT.min}
+        onClick={() => onText(String(Math.max(CART_EDIT.min, current - 1)))}
+        className={caret}
       >
-        <Icon name="add" />
+        <Icon name="keyboard_arrow_down" />
       </button>
     </span>
   );

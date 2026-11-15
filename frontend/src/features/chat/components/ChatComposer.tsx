@@ -101,8 +101,7 @@ export function ChatComposer({
   } else if (retryBaselineRef.current === null) {
     retryBaselineRef.current = signature;
   }
-  const showRetry =
-    retryEligible && retryBaselineRef.current === signature;
+  const showRetry = retryEligible && retryBaselineRef.current === signature;
   function handleComposerKeyDown(
     event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) {

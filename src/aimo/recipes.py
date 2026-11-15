@@ -169,6 +169,7 @@ def scaled_plan(recipe, portions):
         portions=portions,
         ingredients=ingredients,
         base_servings=recipe.base_servings,
+        instructions=list(recipe.instructions),
         notes=[
             "Recipe quantities are estimates for customer review. All source ingredients remain required."
         ],

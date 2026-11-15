@@ -33,7 +33,11 @@ export function DisabledConfirm({
       >
         {CART_COPY.button}
       </button>
-      <p id={reasonId} className="m-0 text-label-sm text-on-surface-variant">
+      <p
+        id={reasonId}
+        data-testid="card-reason"
+        className="m-0 text-label-sm text-on-surface-variant"
+      >
         {reason}
       </p>
     </div>

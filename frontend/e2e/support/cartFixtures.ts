@@ -74,6 +74,14 @@ export type CartWorld = {
   outcome:
     "ready_to_commit" | "approval_required" | "denied" | "needs_resolution";
   expired: boolean;
+  /** A product whose line cannot be converted into packs: no number, a QUANTITY_UNRESOLVED check, needs_resolution. */
+  unresolved: string | null;
+  /** The proposal's own totals when they must NOT follow from the lines (the browser must not recompute VAT). */
+  totals: { net: string; tax: string; gross: string } | null;
+  /** The supplier order cut-off carried by the lines' commercial evidence (shown as Cut-off on the Details tab). */
+  cutoff: string | null;
+  /** Other display names for some products (id -> name), to test names that differ only by pack size. */
+  names: Record<string, string> | null;
   /** Serve the conversation snapshot on the SSE stream too (reconnects every 300 ms) so a state change shows at once. */
   stream: boolean;
   /** Items without a product or quantity, listed by the conversation as `cart_not_included` (reason no_product / no_quantity). */
@@ -101,6 +109,10 @@ export const newCart = (over: Partial<CartWorld> = {}): CartWorld => ({
   view: "prepared",
   outcome: "ready_to_commit",
   expired: false,
+  unresolved: null,
+  totals: null,
+  cutoff: null,
+  names: null,
   stream: false,
   unmatched: [],
   renew: true,
@@ -124,12 +136,12 @@ export function proposalOf(w: CartWorld): Proposal {
     const net = gross / 1.14;
     return {
       product_id: p.id,
-      name: p.name,
+      name: w.names?.[p.id] ?? p.name,
       quantity: {
         requested_amount: String(q * p.amountPerPack),
         requested_unit: p.unit,
         sales_unit: p.salesUnit,
-        sales_quantity: String(q),
+        sales_quantity: w.unresolved === p.id ? null : String(q),
         proposed_amount: String(q * p.amountPerPack),
         excess: "0",
         status: "known" as const,
@@ -143,7 +155,12 @@ export function proposalOf(w: CartWorld): Proposal {
       deposits_gross: "0",
       deposit_lines: [],
       product_evidence: {},
-      commercial_evidence: {},
+      commercial_evidence: {
+        tax_rate: "14",
+        ...(w.cutoff
+          ? { source: { availability: { closingTime: w.cutoff } } }
+          : {}),
+      },
     };
   });
   const gross = lines.reduce((sum, l) => sum + Number(l.gross), 0);
@@ -154,22 +171,39 @@ export function proposalOf(w: CartWorld): Proposal {
     revision: w.revision,
     current_revision: w.revision,
     committed_revision: w.orderPlaced ? w.revision : null,
-    policy_outcome: w.outcome,
+    policy_outcome: w.unresolved ? "needs_resolution" : w.outcome,
+    reasons: w.unresolved
+      ? [
+          {
+            code: "QUANTITY_UNRESOLVED",
+            message:
+              "This product has no pack size in its data; pick a product that does or ask for a number of packs.",
+            product_id: w.unresolved,
+            severity: "unresolved" as const,
+          },
+        ]
+      : [],
     expires_at: w.expired ? "2020-01-01T00:00:00Z" : baseProposal.expires_at,
-    approval_status: w.orderPlaced ? "approved" : "not_required",
+    approval_status: w.orderPlaced
+      ? "approved"
+      : w.outcome === "approval_required"
+        ? "pending"
+        : "not_required",
     order_status: w.orderPlaced ? "accepted_mock" : "not_placed",
     order_id: w.orderPlaced ? ids.sourceOrder : null,
-    approval_id: null,
-    approval_url: null,
+    approval_id:
+      w.outcome === "approval_required" ? baseProposal.approval_id : null,
+    approval_url:
+      w.outcome === "approval_required" ? baseProposal.approval_url : null,
     next_action: { type: w.orderPlaced ? "complete" : "commit" },
-    can_decide: false,
+    can_decide: w.outcome === "approval_required" && !w.orderPlaced,
     request: { ...baseProposal.request, delivery_date: "2026-11-17" },
     snapshot: {
       ...baseProposal.snapshot,
       lines,
-      gross_total: money(gross),
-      net_total: money(net),
-      tax_total: money(gross - net),
+      gross_total: w.totals ? w.totals.gross : money(gross),
+      net_total: w.totals ? w.totals.net : money(net),
+      tax_total: w.totals ? w.totals.tax : money(gross - net),
     },
   };
 }

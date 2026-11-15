@@ -70,7 +70,7 @@ test("a prepared basket is the finished order: no preparing text, the exact tota
 }) => {
   await open(page, { view: "prepared" });
   await expect(card(page).getByText("Preparing your order…")).toHaveCount(0);
-  await expect(card(page)).toContainText("Total estimated");
+  await expect(card(page)).toContainText("Total");
   await expect(card(page)).toContainText(/136[.,]00/);
 });
 
@@ -169,9 +169,9 @@ test("the button is reachable on a phone without opening anything", async ({
 
 const content = (page: Page, view: CartWorld["view"]) =>
   view === "prepared"
-    ? card(page).getByText("Total estimated")
+    ? card(page).getByTestId("card-total-row")
     : view === "empty"
-      ? card(page).getByText(/Your cart is empty/)
+      ? card(page).getByText("Empty", { exact: true })
       : card(page).getByRole("list").first();
 
 for (const vp of VIEWPORTS) {
@@ -202,13 +202,14 @@ for (const vp of VIEWPORTS) {
     ).toBeVisible();
     await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
     world.view = "prepared"; // the basket is prepared
-    await expect(card(page).getByText("Total estimated")).toBeVisible();
+    await expect(card(page).getByTestId("card-total-row")).toBeVisible();
     await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
     world.qty = { ...world.qty, pasta: 6 }; // and changes
     world.revision += 1;
-    await expect(card(page)).toContainText("Revision 2");
+    await card(page).getByRole("tab", { name: "Details" }).click();
+    await expect(card(page)).toContainText("2 · created");
     await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
-    await expect(card(page).getByText("Total estimated")).toBeVisible();
+    await expect(card(page).getByTestId("card-total-row")).toBeVisible();
     expect(
       await page.evaluate(() => localStorage.getItem("aimo.cart.open")),
     ).not.toBe("0"); // nothing stored a closed card behind the customer's back
@@ -220,20 +221,30 @@ test("the card closes only when the customer closes it, and the choice is rememb
 }) => {
   const world = await open(page, { view: "draft" });
   await toggle(page).click();
+  // The page clock is paused in these specs, so the shell's slide animation needs ticks to finish.
+  await page.waitForTimeout(250); // let React mount before ticking the paused clock
+  await page.clock.runFor(1000);
   await expect(toggle(page)).toHaveAccessibleName("Expand cart");
   await expect(card(page).getByRole("list")).toHaveCount(0);
   world.view = "prepared"; // the basket arrives: still closed, the customer closed it
   // Collapsed, the whole card (purchase button included) is behind the corner cart button.
   await expect(confirmButton(page)).toHaveCount(0);
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
-  await expect(card(page).getByText("Total estimated")).toBeHidden();
+  await expect(card(page).getByTestId("card-total-row")).toBeHidden();
   await page.reload();
+  await page.waitForTimeout(250); // let React mount before ticking the paused clock
+  await page.clock.runFor(1000);
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
   await toggle(page).click();
+  // The page clock is paused in these specs, so the shell's slide animation needs ticks to finish.
+  await page.waitForTimeout(250); // let React mount before ticking the paused clock
+  await page.clock.runFor(1000);
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
   await page.reload();
+  await page.waitForTimeout(250); // let React mount before ticking the paused clock
+  await page.clock.runFor(1000);
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
-  await expect(card(page).getByText("Total estimated")).toBeVisible();
+  await expect(card(page).getByTestId("card-total-row")).toBeVisible();
 });
 
 test("a closed card with blocked site storage still opens and works", async ({
@@ -249,8 +260,14 @@ test("a closed card with blocked site storage still opens and works", async ({
   await open(page, { view: "draft" });
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
   await toggle(page).click();
+  // The page clock is paused in these specs, so the shell's slide animation needs ticks to finish.
+  await page.waitForTimeout(250); // let React mount before ticking the paused clock
+  await page.clock.runFor(1000);
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
   await toggle(page).click();
+  // The page clock is paused in these specs, so the shell's slide animation needs ticks to finish.
+  await page.waitForTimeout(250); // let React mount before ticking the paused clock
+  await page.clock.runFor(1000);
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
 });
 
@@ -262,19 +279,19 @@ const unobtainium = {
   unit: "kg",
   reason: "no_product" as const,
 };
-const notIncluded = (page: Page) =>
-  card(page).getByRole("region", { name: "Not included" });
+const notIncluded = (page: Page) => card(page).getByTestId("card-left-out");
 
 test("the prepared card lists the items the basket leaves out, in plain words, and keeps listing them after a reload", async ({
   page,
 }) => {
   await open(page, { view: "prepared", unmatched: [unobtainium] });
-  await expect(notIncluded(page)).toContainText("Unobtainium · no product yet");
   await expect(notIncluded(page)).toContainText(
-    "These items will not be ordered.",
+    "Left out: Unobtainium (no product yet)",
   );
   await page.reload();
-  await expect(notIncluded(page)).toContainText("Unobtainium · no product yet");
+  await expect(notIncluded(page)).toContainText(
+    "Left out: Unobtainium (no product yet)",
+  );
 });
 
 test("an item without a quantity says only the quantity is missing", async ({
@@ -286,7 +303,7 @@ test("an item without a quantity says only the quantity is missing", async ({
       { name: "Basil", amount: null, unit: "bunch", reason: "no_quantity" },
     ],
   });
-  await expect(notIncluded(page)).toContainText("Basil · quantity needed");
+  await expect(notIncluded(page)).toContainText("Basil (quantity needed)");
 });
 
 test("nothing is left out: no Not included block on the prepared card", async ({
@@ -313,13 +330,9 @@ test("a line the customer removed is listed as removed once its ghost has faded,
   expect(world.qty.pasta).toBe(0);
   await page.clock.runFor(15_600);
   await expect(card(page).locator('[data-testid="ghost-line"]')).toHaveCount(0);
-  await expect(notIncluded(page)).toContainText(
-    "Spaghetti 5 kg · removed by you",
-  );
+  await expect(notIncluded(page)).toContainText("Spaghetti (removed by you)");
   await page.reload();
-  await expect(notIncluded(page)).toContainText(
-    "Spaghetti 5 kg · removed by you",
-  );
+  await expect(notIncluded(page)).toContainText("Spaghetti (removed by you)");
   await expect(
     card(page).getByRole("spinbutton", { name: /Spaghetti/ }),
   ).toHaveCount(0);
@@ -334,5 +347,5 @@ test("a conversation without the field (an older server) shows the card as befor
     unmatched: [unobtainium],
   });
   await expect(notIncluded(page)).toHaveCount(0);
-  await expect(card(page).getByText("Total estimated")).toBeVisible();
+  await expect(card(page).getByTestId("card-total-row")).toBeVisible();
 });
