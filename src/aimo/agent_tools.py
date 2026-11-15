@@ -11,6 +11,7 @@ from pydantic import ConfigDict, Field, TypeAdapter, ValidationError, model_vali
 
 from aimo import memory
 from aimo.basket_errors import mismatch_problem, required_basket
+from aimo.catalog import per_sales_for
 from aimo.chat_schemas import AgentTurn, MealPlan
 from aimo.config import settings
 from aimo.db import Problem, fingerprint
