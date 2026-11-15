@@ -51,7 +51,11 @@ export type QueuedMessage = {
 
 /** How long the update stream may stay down before the reconnect notice shows. */
 const RECONNECT_NOTICE_MS = 5_000;
-export function useChat(conversationId?: string) {
+export function useChat(
+  conversationId?: string,
+  // Home finishes its expand animation before the chat page replaces it.
+  { beforeNavigate }: { beforeNavigate?: () => Promise<void> } = {},
+) {
   const { session, setSession } = useAuth();
   const navigate = useNavigate();
   const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -96,7 +100,9 @@ export function useChat(conversationId?: string) {
       setConversation(data);
       if (loadedConversation.current !== conversationId) {
         loadedConversation.current = conversationId;
-        if (data.retry_message && !sendingRef.current) {
+        // Text-only running turns also carry retry metadata. Restore it only
+        // after the turn stops, never into the next-message composer.
+        if (data.retry_message && !data.busy && !sendingRef.current) {
           setText(data.retry_message.text);
           setAttachments(data.retry_message.attachments ?? []);
         }
@@ -262,7 +268,12 @@ export function useChat(conversationId?: string) {
         activeConversation.current = id;
         setConversation(created);
         createKey.current = crypto.randomUUID();
-        navigate(`/conversations/${id}`, { replace: true });
+        const createdId = id;
+        const open = () =>
+          navigate(`/conversations/${createdId}`, { replace: true });
+        // From Home, open the chat once the expand animation ends; the message is sent meanwhile.
+        if (beforeNavigate) void beforeNavigate().then(open, open);
+        else open();
       }
       const storageKey = `aimo-pending-${session.buyer_id}-${id}`;
       let key: string = crypto.randomUUID();
@@ -442,6 +453,7 @@ export function useChat(conversationId?: string) {
     reconnecting,
     messageViewport,
     send,
+    cancel,
     busy,
     queue,
     queuePaused,

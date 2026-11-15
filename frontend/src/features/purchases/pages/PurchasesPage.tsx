@@ -41,7 +41,6 @@ export function PurchasesPage() {
     loading,
     error,
     nextOffset,
-    refresh,
     showMore,
     cancel,
     cancelling,
@@ -121,15 +120,6 @@ export function PurchasesPage() {
           <h1 className="m-0 font-headline text-headline-md tracking-normal text-primary md:text-headline-lg-mobile">
             Past Orders
           </h1>
-          <button
-            type="button"
-            className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-space-sm self-start rounded-md border border-outline-variant bg-surface-pure px-space-md py-3 font-label text-label-md text-primary hover:bg-surface-container-low disabled:cursor-wait disabled:opacity-60"
-            onClick={refresh}
-            disabled={loading}
-          >
-            <Icon name="refresh" className="text-base" />
-            Refresh purchases
-          </button>
         </div>
       </section>
 
@@ -244,6 +234,7 @@ export function PurchasesPage() {
           ))}
           <OrdersList
             items={shown}
+            loading={loading && shown.length === 0}
             expanded={expanded}
             toggle={toggle}
             known={placedTarget}
@@ -251,7 +242,7 @@ export function PurchasesPage() {
             notices={notices}
             onCancel={cancel}
           />
-          {loading && (
+          {loading && shown.length > 0 && (
             <p
               role="status"
               className="m-0 py-space-lg text-center text-secondary"

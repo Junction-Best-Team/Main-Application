@@ -18,6 +18,17 @@ import {
 const composerActionClassName =
   "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary transition-colors hover:enabled:bg-deep-ocean-navy focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container disabled:cursor-not-allowed disabled:opacity-50";
 
+function draftSignature(text: string, attachments: ChatAttachment[]) {
+  return JSON.stringify({
+    text,
+    attachments: attachments.map((file) => ({
+      name: file.name,
+      media_type: file.media_type,
+      data: file.data,
+    })),
+  });
+}
+
 type Props = {
   appearance?: "chat" | "home";
   conversationId?: string;
@@ -33,6 +44,8 @@ type Props = {
   queuePaused?: boolean;
   onRemoveQueued?: (id: string) => void;
   onSendQueued?: (id: string) => void;
+  /** Same cancel path as Escape while a turn is in flight. */
+  onCancel?: () => void;
 };
 export function ChatComposer({
   appearance = "chat",
@@ -48,10 +61,11 @@ export function ChatComposer({
   queuePaused,
   onRemoveQueued,
   onSendQueued,
+  onCancel,
 }: Props) {
   const home = appearance === "home";
   const voice = useVoiceMode();
-  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   // Keep the caret in the composer: on arrival, after sending and after queue
   // actions. Touch screens skip the mount focus so the keyboard does not pop up.
   const focusInput = () => inputRef.current?.focus({ preventScroll: true });
@@ -70,6 +84,8 @@ export function ChatComposer({
   const [fileError, setFileError] = useState("");
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
+  // Snapshot of the restored interrupt/fail draft. Editing leaves Retry for Send.
+  const retryBaselineRef = useRef<string | null>(null);
   const canQueue = Boolean(queue && conversationId);
   // The input stays enabled while Aimo answers so focus never leaves it; only
   // sending is held back when there is no queue to put the message in.
@@ -77,6 +93,16 @@ export function ChatComposer({
   const sendBlocked = Boolean(busy) && !canQueue;
   // One action at a time: send while there is a draft or attachment, otherwise voice.
   const hasDraft = Boolean(text.trim()) || attachments.length > 0;
+  // Home has no Cancel/Retry chip row; the round slot still swaps to Retry.
+  const retryEligible = Boolean(error) && hasDraft && !busy;
+  const signature = draftSignature(text, attachments);
+  if (!retryEligible) {
+    retryBaselineRef.current = null;
+  } else if (retryBaselineRef.current === null) {
+    retryBaselineRef.current = signature;
+  }
+  const showRetry =
+    retryEligible && retryBaselineRef.current === signature;
   function handleComposerKeyDown(
     event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) {
@@ -106,13 +132,7 @@ export function ChatComposer({
       setReading(false);
     }
   }
-  const sendLabel = busy
-    ? canQueue
-      ? "Queue message"
-      : "Working…"
-    : error && (text || attachments.length)
-      ? "Retry request"
-      : "Send Order Request";
+  const sendLabel = "Send Order Request";
   return (
     <form
       onSubmit={(event) => {
@@ -229,13 +249,6 @@ export function ChatComposer({
           {fileError}
         </p>
       )}
-      {busy && !home && (
-        <p className="px-space-sm text-label-sm text-secondary" role="status">
-          {canQueue
-            ? "Press Escape to cancel · Enter queues your next message"
-            : "Press Escape to cancel"}
-        </p>
-      )}
       {(dragging || reading) && (
         <p className="px-space-sm text-label-sm text-secondary" role="status">
           {dragging ? "Drop files here" : "Reading files…"}
@@ -244,8 +257,8 @@ export function ChatComposer({
       <div
         className={
           home
-            ? "flex w-full min-w-0 flex-col"
-            : "flex w-full min-w-0 items-center gap-space-sm"
+            ? "flex min-h-0 w-full min-w-0 flex-1 flex-col"
+            : "flex w-full min-w-0 items-end gap-space-sm"
         }
       >
         <label htmlFor="purchase-message" className="sr-only">
@@ -253,45 +266,76 @@ export function ChatComposer({
             ? "Continue the conversation"
             : "Your meal or purchasing request"}
         </label>
-        {home ? (
-          <textarea
-            ref={(element) => {
-              inputRef.current = element;
-            }}
-            id="purchase-message"
-            value={text}
-            onChange={(event) => onTextChange(event.target.value)}
-            onKeyDown={handleComposerKeyDown}
-            maxLength={4000}
-            placeholder="Tell Aimo what you need…"
-            className="focus:outline-none focus-visible:outline-none"
-            disabled={disabled}
-            rows={2}
-          />
-        ) : (
-          <input
-            ref={(element) => {
-              inputRef.current = element;
-            }}
-            id="purchase-message"
-            type="text"
-            value={text}
-            onChange={(event) => onTextChange(event.target.value)}
-            onKeyDown={handleComposerKeyDown}
-            maxLength={4000}
-            placeholder={MOCK.request.composerPlaceholder}
-            disabled={disabled}
-            className="h-11 min-w-0 flex-1 rounded-lg bg-transparent p-space-sm font-body text-body-md text-on-surface placeholder:text-outline focus:outline-none focus-visible:outline-none"
-          />
-        )}
+        <textarea
+          ref={inputRef}
+          id="purchase-message"
+          value={text}
+          onChange={(event) => onTextChange(event.target.value)}
+          onKeyDown={handleComposerKeyDown}
+          maxLength={4000}
+          placeholder={
+            home ? "Tell Aimo what you need…" : MOCK.request.composerPlaceholder
+          }
+          className={
+            home
+              ? "focus:outline-none focus-visible:outline-none"
+              : "min-h-11 min-w-0 flex-1 resize-none rounded-lg bg-transparent p-space-sm font-body text-body-md text-on-surface placeholder:text-outline focus:outline-none focus-visible:outline-none"
+          }
+          disabled={disabled}
+          rows={2}
+        />
         <div
           className={
             home
               ? "home-composer-actions w-full"
-              : "flex shrink-0 items-center gap-space-xs"
+              : "flex shrink-0 items-center gap-space-xs pb-0.5"
           }
         >
-          {hasDraft ? (
+          {!home && busy ? (
+            <button
+              type="button"
+              aria-label="Stop"
+              title="Stop"
+              onClick={() => onCancel?.()}
+              disabled={!onCancel}
+              className={composerActionClassName}
+            >
+              <svg
+                aria-hidden="true"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <rect x="6" y="6" width="12" height="12" rx="1.5" />
+              </svg>
+            </button>
+          ) : showRetry ? (
+            <button
+              type="submit"
+              aria-label="Retry"
+              title="Retry"
+              disabled={reading}
+              className={composerActionClassName}
+            >
+              <svg
+                aria-hidden="true"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M4.5 12a7.5 7.5 0 0 1 12.7-5.4L19 9" />
+                <path d="M19.5 4v5h-5" />
+                <path d="M19.5 12a7.5 7.5 0 0 1-12.7 5.4L5 15" />
+                <path d="M4.5 20v-5h5" />
+              </svg>
+            </button>
+          ) : hasDraft ? (
             <button
               type="submit"
               aria-label={sendLabel}

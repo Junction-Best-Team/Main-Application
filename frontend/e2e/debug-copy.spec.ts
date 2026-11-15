@@ -218,8 +218,8 @@ test("debug mode also covers a failed retry and a failed conversation load", asy
   await failSends(page);
   await sendTyped(page);
   await expect(copy(page)).toBeVisible();
-  // The draft stays; Retry request fails again and the link is still there.
-  await page.getByRole("button", { name: "Retry request" }).click();
+  // The draft stays; Retry fails again and the link is still there.
+  await page.getByRole("button", { name: "Retry" }).click();
   await expect(page.getByRole("alert").first()).toContainText(SENTENCE);
   await copy(page).click();
   expect((await copied(page))[0]).toContain("method: POST");

@@ -9,6 +9,7 @@ import { getPurchaseStatus } from "../model/purchaseStatus";
 import { usePurchaseDetail } from "../hooks/usePurchaseDetail";
 import { useCartEdit } from "../hooks/useCartEdit";
 import { useCartOpen } from "../hooks/useCartOpen";
+import { CartShell } from "./CartShell";
 import { CardLogCopy } from "./CardLogCopy";
 import {
   CartNotIncludedList,
@@ -168,41 +169,15 @@ export function OverviewPanel({
     ["expired", "rejected", "superseded", "policy_changed"].includes(
       getPurchaseStatus(p),
     );
-  return (
-    <aside
-      id="overview"
-      aria-label="Overview"
-      aria-busy={working || undefined}
-      className={`${drawer ? "fixed inset-x-3 bottom-4 z-30 max-h-[70dvh] lg:sticky lg:inset-x-auto lg:bottom-auto lg:top-0 lg:z-auto lg:max-h-full lg:w-80 lg:shrink-0 xl:w-96" : "w-full"} flex min-w-0 flex-col overflow-y-auto rounded-xl border border-border-subtle bg-surface-pure p-space-md shadow-level-3 lg:shadow-sm ${working ? "opacity-70" : ""}`}
-    >
-      <div className="flex items-center justify-between gap-space-sm border-b border-border-subtle pb-space-sm">
-        <h2 className="m-0 font-headline text-headline-sm font-bold text-primary">
-          Your order
-        </h2>
-        <span className="flex items-center gap-space-sm">
-          <CardLogCopy />
-          <span className="font-label text-label-sm text-secondary">
-            {p
-              ? `${p.snapshot.lines.length} items staged`
-              : draft
-                ? `${draft.ingredients.length} draft ingredients`
-                : error
-                  ? "Basket unavailable"
-                  : "Loading basket…"}
-          </span>
-          {drawer && (
-            <button
-              type="button"
-              aria-label={open ? "Collapse cart" : "Expand cart"}
-              aria-expanded={open}
-              onClick={toggleOpen}
-              className="flex h-9 w-9 items-center justify-center rounded-lg border-0 bg-transparent p-0 text-secondary"
-            >
-              <Icon name={open ? "keyboard_arrow_down" : "keyboard_arrow_up"} />
-            </button>
-          )}
-        </span>
-      </div>
+  const summary = p
+    ? `${p.snapshot.lines.length} items staged`
+    : draft
+      ? `${draft.ingredients.length} draft ingredients`
+      : error
+        ? "Basket unavailable"
+        : "Loading basket…";
+  const content = (
+    <>
       <ErrorMessage message={error} debug={errorDebug} />
       <div className="flex flex-col gap-space-sm pt-space-sm">
         {!p && draft ? (
@@ -328,6 +303,50 @@ export function OverviewPanel({
           />
         )}
       </div>
+    </>
+  );
+  if (drawer)
+    return (
+      <CartShell
+        id="overview"
+        label="Overview"
+        title="Your order"
+        open={open}
+        onToggle={toggleOpen}
+        busy={working}
+        count={p ? p.snapshot.lines.length : draft?.ingredients.length}
+        headerExtra={
+          <>
+            <CardLogCopy />
+            <span className="font-label text-label-sm text-secondary">
+              {summary}
+            </span>
+          </>
+        }
+      >
+        {content}
+      </CartShell>
+    );
+  // Outside the chat (purchase review page): a plain, always-open panel.
+  return (
+    <aside
+      id="overview"
+      aria-label="Overview"
+      aria-busy={working || undefined}
+      className={`flex w-full min-w-0 flex-col overflow-y-auto rounded-xl border border-border-subtle bg-surface-pure p-space-md shadow-level-3 lg:shadow-sm ${working ? "opacity-70" : ""}`}
+    >
+      <div className="flex items-center justify-between gap-space-sm border-b border-border-subtle pb-space-sm">
+        <h2 className="m-0 font-headline text-headline-sm font-bold text-primary">
+          Your order
+        </h2>
+        <span className="flex items-center gap-space-sm">
+          <CardLogCopy />
+          <span className="font-label text-label-sm text-secondary">
+            {summary}
+          </span>
+        </span>
+      </div>
+      {content}
     </aside>
   );
 }

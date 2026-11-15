@@ -1,15 +1,28 @@
+import { useState } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import { Link } from "react-router-dom";
 import { cadenceLabel, formatDate } from "../../schedules/model/scheduleStatus";
 import { useStandingOrders } from "../hooks/useStandingOrders";
+import { hasNavigated } from "../../../shared/lib/navigationState";
+import { SHEET_SPRING } from "../../../shared/lib/springs";
 
 // The compact strip under the chat box on Home: the next runs of the customer's real standing
 // orders (GET /api/schedules). Every order a standing order places is a mock order.
-export function StandingOrdersCard() {
+// Arriving from another page, it waits below the screen until its data is in (and `hold` is
+// off), then slides up on an Apple-style spring. On a refresh it is simply there.
+export function StandingOrdersCard({ hold = false }: { hold?: boolean }) {
   const { schedules, loading, error } = useStandingOrders(3);
   const shown = schedules.slice(0, 3);
+  const [slide] = useState(hasNavigated);
+  const reduced = useReducedMotion();
+  const below = typeof window === "undefined" ? 1000 : window.innerHeight;
+  const waiting = hold || loading;
   return (
-    <section
+    <motion.section
       className="home-schedule"
+      initial={slide && !reduced ? { y: below } : false}
+      animate={{ y: slide && waiting && !reduced ? below : 0 }}
+      transition={SHEET_SPRING}
       aria-labelledby="home-schedule"
       aria-describedby="home-demo-note"
     >
@@ -43,6 +56,6 @@ export function StandingOrdersCard() {
           ))}
         </ul>
       )}
-    </section>
+    </motion.section>
   );
 }

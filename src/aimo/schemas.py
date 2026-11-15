@@ -14,6 +14,8 @@ from pydantic import (
     model_validator,
 )
 
+from aimo.units import catalog_unit
+
 # MEA-013 (owner Q-67): a meal plan, a saved recipe and a purchase request hold at most 100
 # ingredients/lines. The supplier's own per-request limit is 1000 product ids; the lookup keeps it
 # (SUP-007 splits larger lookups into batches), so it is deliberately not tied to the 100.
@@ -94,6 +96,11 @@ class Contribution(Model):
     amount: Amount
     unit: str = Field(min_length=1, max_length=12)
 
+    @field_validator("unit")
+    @classmethod
+    def catalog_code(cls, value):
+        return catalog_unit(value)
+
 
 class LineRequest(Model):
     product_id: str = Field(min_length=1, max_length=40)
@@ -110,6 +117,11 @@ class LineRequest(Model):
         max_length=MAX_BASKET_LINES,
         description="Free-form baskets: the ingredients this line serves; amounts add up to it.",
     )
+
+    @field_validator("unit")
+    @classmethod
+    def catalog_code(cls, value):
+        return catalog_unit(value)
 
     @model_validator(mode="after")
     def contributions_add_up(self):

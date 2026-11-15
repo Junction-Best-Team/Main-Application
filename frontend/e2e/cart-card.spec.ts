@@ -6,7 +6,8 @@ import { newCart, openCart, type CartWorld } from "./support/cartFixtures";
 // order", the moment before it exists says "Preparing your order…", and only a true note is kept
 // (items that are not matched); (2) the card is open by default, stays open when items are added or
 // the basket changes, and closes only when the customer closes it (remembered in this browser);
-// (3) the purchase button is always on the card: green with items, grey with a reason otherwise.
+// (3) the purchase button is always on the open card: green with items, grey with a reason
+// otherwise. Collapsed, the whole card becomes a cart button in the screen's top-right corner.
 // Mocked API with typed fixtures; the conversation changes through the SSE stream like a real turn.
 
 const card = (page: Page) =>
@@ -222,7 +223,8 @@ test("the card closes only when the customer closes it, and the choice is rememb
   await expect(toggle(page)).toHaveAccessibleName("Expand cart");
   await expect(card(page).getByRole("list")).toHaveCount(0);
   world.view = "prepared"; // the basket arrives: still closed, the customer closed it
-  await expect(confirmButton(page)).toBeVisible();
+  // Collapsed, the whole card (purchase button included) is behind the corner cart button.
+  await expect(confirmButton(page)).toHaveCount(0);
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
   await expect(card(page).getByText("Total estimated")).toBeHidden();
   await page.reload();

@@ -312,7 +312,7 @@ test("interrupted activity stops moving and never marks an unfinished tool done"
     "Searching recipes · Interrupted",
   );
   await expect(
-    page.getByRole("button", { name: "Retry request" }),
+    page.getByRole("button", { name: "Retry" }),
   ).toBeEnabled();
 });
 

@@ -1,3 +1,6 @@
+import { KitchenPattern } from "../../../shared/components/KitchenPattern";
+import { motion } from "motion/react";
+import { SkeletonLine } from "../../../shared/components/SkeletonSwap";
 import { Link, useParams } from "react-router-dom";
 import type { ScheduleDetail } from "../../../shared/api/types";
 import { Icon } from "../../../shared/components/DesignPrimitives";
@@ -39,7 +42,7 @@ function StopNotice({ s }: { s: ScheduleDetail }) {
   return (
     <div
       role="note"
-      className="flex flex-col gap-space-sm rounded-xl bg-amber-100 p-space-lg text-amber-900"
+      className="flex flex-col gap-space-sm rounded-xl bg-amber-100 p-space-lg text-amber-900 dark:bg-amber-900/40 dark:text-amber-100"
     >
       <p className="m-0 font-label text-label-lg">
         This standing order stopped and needs your attention.
@@ -79,25 +82,29 @@ export function ScheduleDetailPage() {
     apply,
   } = useSchedule(scheduleId);
 
+  if (!s && loading && !error) return <ScheduleDetailSkeleton />;
   if (!s)
     return (
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-space-md px-margin-sm py-space-lg md:px-margin">
+      <main className="isolate mx-auto flex w-full max-w-6xl flex-col gap-space-md px-margin-sm py-space-lg md:px-margin">
+        <KitchenPattern seed={4} />
         <Link to="/schedules" className={linkClass}>
           <Icon name="arrow_back" className="text-[16px]" />
           All standing orders
         </Link>
         <ErrorMessage message={error} />
-        {loading && !error && (
-          <p role="status" className="m-0 text-secondary">
-            Loading standing order…
-          </p>
-        )}
       </main>
     );
 
   const eur = s.currency ?? "EUR";
   return (
-    <main>
+    <motion.main
+      className="isolate"
+      // Fades in over the skeleton's place once the standing order has loaded.
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3, ease: "easeOut" }}
+    >
+      <KitchenPattern seed={4} />
       <section className="border-b border-border-subtle bg-surface-pure px-margin-sm py-space-lg md:px-margin md:py-space-xl">
         <div className="mx-auto flex max-w-6xl flex-col gap-space-md">
           <Link to="/schedules" className={linkClass}>
@@ -182,6 +189,98 @@ export function ScheduleDetailPage() {
             loadingMore={olderLoading}
             onShowOlder={() => void showOlderRuns()}
           />
+        </section>
+      </div>
+    </motion.main>
+  );
+}
+
+/** The details page's layout with placeholder lines while the standing order loads. */
+function ScheduleDetailSkeleton() {
+  return (
+    <main className="isolate">
+      <KitchenPattern seed={4} />
+      <p role="status" className="sr-only">
+        Loading standing order…
+      </p>
+      <section
+        aria-hidden="true"
+        className="border-b border-border-subtle bg-surface-pure px-margin-sm py-space-lg md:px-margin md:py-space-xl"
+      >
+        <div className="mx-auto flex max-w-6xl flex-col gap-space-md">
+          <Link to="/schedules" className={linkClass}>
+            <Icon name="arrow_back" className="text-[16px]" />
+            All standing orders
+          </Link>
+          <div className="flex flex-col justify-between gap-space-md md:flex-row md:items-start">
+            <div className="flex min-w-0 flex-1 flex-col gap-space-xs">
+              <SkeletonLine height="h-8 md:h-11" bar="h-7" width="w-1/2" />
+              <div className="flex items-center gap-space-sm">
+                <SkeletonLine
+                  height="h-[26px]"
+                  bar="h-[26px] rounded-full"
+                  width="w-20"
+                />
+                <SkeletonLine height="h-6" width="w-32" />
+              </div>
+            </div>
+            <div className="flex gap-space-sm">
+              <SkeletonLine height="h-[34px]" bar="h-[34px]" width="w-20" />
+              <SkeletonLine height="h-[34px]" bar="h-[34px]" width="w-20" />
+            </div>
+          </div>
+        </div>
+      </section>
+      <div
+        aria-hidden="true"
+        className="mx-auto flex w-full max-w-6xl flex-col gap-space-lg px-margin-sm py-space-lg md:px-margin"
+      >
+        <div className="grid grid-cols-1 gap-space-lg lg:grid-cols-2">
+          <section className={card}>
+            <SkeletonLine
+              height="h-7"
+              bar="h-5"
+              width="w-24"
+              className="mb-space-md"
+            />
+            <div className="grid grid-cols-1 gap-space-md sm:grid-cols-2">
+              {Array.from({ length: 7 }, (_, n) => (
+                <div key={n} className="flex flex-col gap-0.5">
+                  <SkeletonLine height="h-3.5" bar="h-2.5" width="w-16" />
+                  <SkeletonLine
+                    height="h-6"
+                    width={n % 2 ? "w-1/2" : "w-2/3"}
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
+          <section className={card}>
+            <SkeletonLine
+              height="h-7"
+              bar="h-5"
+              width="w-32"
+              className="mb-space-md"
+            />
+            <div className="flex flex-col gap-space-sm">
+              {[0, 1, 2].map((n) => (
+                <SkeletonLine key={n} height="h-12" bar="h-10" />
+              ))}
+            </div>
+          </section>
+        </div>
+        <section className={card}>
+          <SkeletonLine
+            height="h-7"
+            bar="h-5"
+            width="w-28"
+            className="mb-space-md"
+          />
+          <div className="flex flex-col gap-space-sm">
+            {[0, 1].map((n) => (
+              <SkeletonLine key={n} height="h-16" bar="h-14" />
+            ))}
+          </div>
         </section>
       </div>
     </main>
