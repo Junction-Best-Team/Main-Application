@@ -69,9 +69,17 @@ export function ConversationTranscript({
                 {message.meal_plan && (
                   <MealPlanCard
                     plan={message.meal_plan}
-                    compact={conversation.purchases.some(
-                      (p) => p.proposal_id === message.proposal_id,
-                    )}
+                    onOpenBasket={
+                      message.proposal_id &&
+                      onReviewBasket &&
+                      conversation.purchases.some(
+                        (p) =>
+                          p.proposal_id === message.proposal_id &&
+                          p.order_status !== "accepted_mock",
+                      )
+                        ? () => onReviewBasket(message.proposal_id!)
+                        : undefined
+                    }
                   />
                 )}
                 {message.proposal_id && (

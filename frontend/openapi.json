@@ -4351,6 +4351,14 @@
             "maxItems": 20,
             "title": "Notes"
           },
+          "instructions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Instructions"
+          },
           "recipe_plan_id": {
             "anyOf": [
               {

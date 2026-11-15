@@ -1265,6 +1265,8 @@ export interface components {
             ingredients: components["schemas"]["Ingredient"][];
             /** Notes */
             notes?: string[];
+            /** Instructions */
+            instructions?: string[];
             /** Recipe Plan Id */
             recipe_plan_id?: string | null;
             /** Recipe Plan Revision */
