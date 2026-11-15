@@ -207,8 +207,11 @@ class ConversationSummary(Model):
 
 
 class ChatActivityEvent(Model):
-    sequence: int = Field(ge=1, le=600)
-    kind: Literal["started", "tool_started", "tool_completed", "tool_failed", "complete", "error"]
+    sequence: int = Field(ge=1, le=640)
+    kind: Literal[
+        "started", "thinking", "tool_started", "tool_completed", "tool_failed", "reviewing",
+        "complete", "error",
+    ]
     label: str = Field(min_length=1, max_length=80)
 
 

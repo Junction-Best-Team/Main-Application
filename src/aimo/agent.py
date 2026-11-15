@@ -221,7 +221,10 @@ def memory_message(loaded):
 class AgentProgress:
     turn_id: str
     sequence: int
-    kind: Literal["started", "tool_started", "tool_completed", "tool_failed", "complete", "error"]
+    kind: Literal[
+        "started", "thinking", "tool_started", "tool_completed", "tool_failed", "reviewing",
+        "complete", "error",
+    ]
     tool: str | None = None
     error_code: str | None = None
     draft: DraftCart | None = None
@@ -407,6 +410,7 @@ def run_turn(
             for round_number in range(1, cfg.llm_max_tool_rounds + 1):
                 check_deadline(deadline)
                 live()
+                progress.emit("thinking")
                 with log_context(round=round_number, model=cfg.llm_model):
                     reply = provider.complete(history, session.definitions, deadline)
                 history.append(reply.message())
@@ -416,6 +420,8 @@ def run_turn(
                             "LLM_RESPONSE_INVALID", "The assistant returned no message.", 502
                         )
                     # LLM -> user: unsupported narrative is replaced; trusted state is kept.
+                    if guard.mode != "off":
+                        progress.emit("reviewing")
                     narrative = guard.review_output(session, reply.content.strip(), tool_log)
                     if guard.prepare_refused and not session.proposal:
                         narrative += "\n\n" + PREPARE_NOTICE

@@ -17,6 +17,7 @@ from aimo.agent_tools import ToolSession
 from aimo.chat_schemas import MealPlan
 from aimo.db import Problem, fingerprint
 from aimo.fixtures import fixture_facts
+from aimo.guardrails import Guardrails
 from aimo.schemas import ProposalResponse
 
 
@@ -581,6 +582,44 @@ def test_error_limit_stops_inside_a_batch_before_later_tool_calls(monkeypatch, c
     assert events[-1].error_code == "TOOL_ERROR_LIMIT"
     assert [e.sequence for e in events] == list(range(1, len(events) + 1))
     assert all(e.tool is None for e in events)
+
+
+def test_progress_shows_thinking_each_round_and_reviewing_only_when_guarded(
+    monkeypatch, config, identity
+):
+    def kinds(events):
+        return [(e.kind, e.tool) for e in events]
+
+    scripted(monkeypatch, [reply(call("get_product", {"product_id": "1"})), reply(text="Hi")])
+    events = []
+    agent.run_turn(identity, HISTORY, FakeService(identity), on_progress=events.append)
+    # Guardrails are off in tests, so no reply review is shown.
+    assert kinds(events) == [
+        ("started", None),
+        ("thinking", None),
+        ("tool_started", "get_product"),
+        ("tool_completed", "get_product"),
+        ("thinking", None),
+        ("complete", None),
+    ]
+
+    class Reviewed(Guardrails):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.mode = "shadow"
+
+        def screen_input(self):
+            return None
+
+        def review_output(self, session, narrative, tool_log):
+            return narrative
+
+    monkeypatch.setattr(agent, "Guardrails", Reviewed)
+    scripted(monkeypatch, [reply(text="Hi")])
+    events = []
+    agent.run_turn(identity, HISTORY, FakeService(identity), on_progress=events.append)
+    assert [e.kind for e in events] == ["started", "thinking", "reviewing", "complete"]
+    assert [e.sequence for e in events] == [1, 2, 3, 4]
 
 
 def test_failed_tools_are_logged_without_progress_observer(monkeypatch, config, identity, caplog):

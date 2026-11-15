@@ -32,6 +32,7 @@ def test_real_worker_wires_observer_and_keeps_every_fast_tool_event(buyer, servi
     def runner(actor, history, shared, *, on_progress, ensure_live=None):
         progress = Progress(actor["_turn_id"], on_progress)
         progress.emit("started")
+        progress.emit("thinking")
         for tool in ("search_recipes", "get_recipe", "search_products", "get_product"):
             progress.emit("tool_started", tool)
             live = conversations.detail(buyer, cid)
@@ -40,6 +41,8 @@ def test_real_worker_wires_observer_and_keeps_every_fast_tool_event(buyer, servi
         # Unknown/model-supplied names and error details must never reach the browser.
         progress.emit("tool_started", "private-unknown-tool-name")
         progress.emit("tool_failed", "private-unknown-tool-name", "PRIVATE_ERROR_DETAIL")
+        progress.emit("thinking")
+        progress.emit("reviewing")
         progress.emit("complete")
         return AgentTurn(text="What date?")
 
@@ -48,10 +51,13 @@ def test_real_worker_wires_observer_and_keeps_every_fast_tool_event(buyer, servi
     result = conversations.detail(buyer, cid)
     events = result["activity"]["events"]
     assert result["activity"]["state"] == "complete" and not result["busy"]
-    assert [e["sequence"] for e in events] == list(range(1, 13))
-    assert events[1]["label"] == "Searching recipes"
-    assert events[5]["label"] == "Searching products"
-    assert events[-2] == {"sequence": 11, "kind": "tool_failed", "label": "Using a tool"}
+    assert [e["sequence"] for e in events] == list(range(1, 16))
+    assert [e["label"] for e in events[:3]] == [
+        "Checking your request", "Thinking", "Searching recipes"
+    ]
+    assert events[6]["label"] == "Searching products"
+    assert events[-4] == {"sequence": 12, "kind": "tool_failed", "label": "Using a tool"}
+    assert [e["label"] for e in events[-3:-1]] == ["Thinking", "Reviewing the reply"]
     assert "PRIVATE" not in json.dumps(events) and "private-unknown" not in json.dumps(events)
     close_pools()
     assert conversations.detail(buyer, cid) == result
@@ -128,6 +134,8 @@ def test_activity_is_scoped_and_in_the_authenticated_sse_snapshot(buyer, service
         signed(client)
         response = client.get(f"/api/conversations/{cid}/events")
     assert response.status_code == 200
+    # Streams end by design, so the browser is told to reconnect after one second.
+    assert response.text.startswith("retry: 1000\n\n")
     data = json.loads(response.text.split("data: ")[1].split("\n")[0])
     assert data["busy"] and data["activity"]["events"][0]["label"] == "Searching recipes"
     assert response.headers["x-accel-buffering"] == "no"

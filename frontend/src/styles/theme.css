@@ -191,23 +191,35 @@
 }
 
 /* Indeterminate activity: no fabricated percentage or completion time. */
-@keyframes activity-sweep {
-  from {
-    transform: translateX(-100%);
+@keyframes activity-dot {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8);
   }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes activity-spin {
   to {
-    transform: translateX(400%);
+    transform: rotate(360deg);
   }
 }
 
 @layer components {
-  .activity-sweep {
-    animation: activity-sweep 1.6s ease-in-out infinite;
+  .activity-dot {
+    animation: activity-dot 1.6s ease-in-out infinite;
+  }
+  .activity-spin {
+    animation: activity-spin 1s linear infinite;
   }
   @media (prefers-reduced-motion: reduce) {
-    .activity-sweep {
+    .activity-dot,
+    .activity-spin {
       animation: none;
-      transform: translateX(100%);
     }
   }
 }

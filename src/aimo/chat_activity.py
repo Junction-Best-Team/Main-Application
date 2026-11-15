@@ -31,12 +31,15 @@ def record_progress(turn, progress):
     """Append only ordered events from a live attempt; stale callbacks cannot publish.
 
     The agent's Progress observer catches storage failures so display metadata cannot
-    change purchasing outcomes. 600 covers 24 rounds * 12 tools * 2 events, plus lifecycle.
+    change purchasing outcomes. 640 covers 24 rounds * (12 tools * 2 events + thinking),
+    plus lifecycle.
     """
     if str(progress.turn_id) != str(turn["id"]):
         return
     label = {
         "started": "Checking your request",
+        "thinking": "Thinking",
+        "reviewing": "Reviewing the reply",
         "complete": "Finishing the response",
         "error": "Response interrupted",
     }.get(progress.kind, TOOL_LABELS.get(progress.tool, "Using a tool"))
@@ -49,7 +52,7 @@ def record_progress(turn, progress):
             """UPDATE conversation_turns SET progress=progress || %s::jsonb,
             draft_cart=CASE WHEN %s THEN %s::jsonb ELSE draft_cart END
             WHERE id=%s AND attempt=%s AND state='running' AND lease_until>%s
-            AND jsonb_array_length(progress)<600
+            AND jsonb_array_length(progress)<640
             AND COALESCE((progress->-1->>'sequence')::int,0)<%s""",
             (js([item.model_dump()]), update_draft,
              js(progress.draft.model_dump(mode="json")) if progress.draft else None,

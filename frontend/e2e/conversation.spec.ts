@@ -483,7 +483,42 @@ test("SSE disconnect shows reconnect chrome", async ({ page }) => {
   );
 
   await page.goto(`/conversations/${conversationId}`);
+  const notice = page.getByText("Reconnecting to updates", { exact: false });
+  // A brief drop is normal; only a stream that stays down shows the notice.
+  await page.waitForTimeout(2_000);
+  await expect(notice).toHaveCount(0);
+  await expect(notice).toBeVisible({ timeout: 8_000 });
+});
+
+test("routine stream reconnects never show the reconnect notice", async ({
+  page,
+}) => {
+  await mockBuyerSession(page);
+  const saved = structuredClone(blankConversation);
+  await page.route("**/api/conversations?*", (route) =>
+    route.fulfill({
+      json: {
+        items: [summary(conversationId, saved.title)],
+        next_offset: null,
+      },
+    }),
+  );
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: saved }),
+  );
+  let connections = 0;
+  // Like the server's 25-second cycle, sped up: each stream sends a snapshot and ends.
+  await page.route(`**/api/conversations/${conversationId}/events`, (route) => {
+    connections++;
+    return route.fulfill({
+      contentType: "text/event-stream",
+      body: `retry: 300\n\nevent: conversation\ndata: ${JSON.stringify(saved)}\n\n`,
+    });
+  });
+
+  await page.goto(`/conversations/${conversationId}`);
+  await expect.poll(() => connections, { timeout: 20_000 }).toBeGreaterThan(15);
   await expect(
     page.getByText("Reconnecting to updates", { exact: false }),
-  ).toBeVisible();
+  ).toHaveCount(0);
 });
