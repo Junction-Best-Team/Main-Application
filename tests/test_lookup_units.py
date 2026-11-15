@@ -194,3 +194,19 @@ def test_a_malformed_batch_envelope_is_a_schema_problem(monkeypatch):
     with pytest.raises(Problem) as caught:
         ValioClient().lookup("c", ids(250), DELIVERY)
     assert caught.value.code == "UPSTREAM_SCHEMA_INVALID"
+
+
+# ---- live round 1: CUTOFF_PASSED said nothing about WHICH date and cutoff -----------------------
+
+
+def test_a_passed_cutoff_names_the_delivery_date_and_the_cutoff_time():
+    facts = deepcopy(fixture_facts()[0])
+
+    def past(raw):
+        raw["availability"]["products"][0]["closingTime"] = "2020-01-01T10:00:00+02:00"
+
+    evidence = evidence_for(facts, past)
+    reason = next(r for r in evidence["reasons"] if r["code"] == "CUTOFF_PASSED")
+    delivery = date.today() + timedelta(days=2)
+    assert delivery.isoformat() in reason["message"] and "2020-01-01 10:00" in reason["message"]
+    assert "approval cannot repair it" in reason["message"]

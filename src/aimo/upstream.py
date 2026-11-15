@@ -363,7 +363,9 @@ def validate_lookup(
                 if cutoff <= current:
                     add(
                         "CUTOFF_PASSED",
-                        "Supplier order cutoff has passed; approval cannot repair it.",
+                        f"Supplier order cutoff for delivery on {delivery.isoformat()} passed at "
+                        f"{cutoff.astimezone(HELSINKI).strftime('%Y-%m-%d %H:%M')} Helsinki time; "
+                        "approval cannot repair it. Choose a later delivery date.",
                     )
                 out["expires_at"] = min(cutoff, timestamp(out["expires_at"])).isoformat()
                 amount = D(line["availableAmount"])
