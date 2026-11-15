@@ -64,28 +64,6 @@
   margin-top: 0.75rem;
 }
 
-.home-send {
-  display: inline-flex;
-  width: 2.75rem;
-  height: 2.75rem;
-  align-items: center;
-  justify-content: center;
-}
-
-.home-send {
-  border-radius: 50%;
-  background: var(--color-status-fresh-green);
-  color: var(--color-deep-ocean-navy);
-}
-
-.home-send:hover:not(:disabled) {
-  background: var(--color-tertiary-fixed);
-}
-
-.home-send:disabled {
-  opacity: 0.55;
-}
-
 .home-schedule {
   margin-top: 2rem;
   padding: 1.25rem 1.5rem 1.5rem;
