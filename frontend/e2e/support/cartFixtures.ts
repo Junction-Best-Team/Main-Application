@@ -77,7 +77,7 @@ export type CartWorld = {
   /** Purchasing checks to carry on the prepared basket (instead of the QUANTITY_UNRESOLVED derived from `unresolved`). */
   reasons: Proposal["reasons"] | null;
   /** The proposal-level `reason_classes` (code -> blocker | exception | warning | expired), when the server sends it. */
-  reasonClasses: Record<string, string> | null;
+  reasonClasses: NonNullable<Proposal["reason_classes"]> | null;
   /** A product whose line cannot be converted into packs: no number, a QUANTITY_UNRESOLVED check, needs_resolution. */
   unresolved: string | null;
   /** The proposal's own totals when they must NOT follow from the lines (the browser must not recompute VAT). */

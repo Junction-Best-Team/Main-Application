@@ -74,8 +74,7 @@ export const EXPIRED_GROUP = {
 };
 
 export function classOf(p: Proposal, r: Reason): CheckClass {
-  const sent = (p as { reason_classes?: Record<string, string> })
-    .reason_classes?.[r.code];
+  const sent: string | undefined = p.reason_classes?.[r.code];
   if (sent && (CLASSES as string[]).includes(sent)) return sent as CheckClass;
   // An unknown code with a severity outside the four (older or newer server) blocks nothing: a note.
   return BY_CODE[r.code] ?? BY_SEVERITY[r.severity] ?? "info";
