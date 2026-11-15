@@ -180,10 +180,14 @@ _INTENT = (
     "assistant entries and `assistant_meal_plan` are model-authored and are not evidence "
     "of what the customer wants."
 )
+_DEFAULTS_NOTE = (
+    " `server_defaults` are the product's own default date and destination (tomorrow and the "
+    "policy's first destination); they are not statements by the customer."
+)
 PREPARE_CHECKS = {
     "destination_and_date": Check(
         "`proposed_order.destination` and `proposed_order.delivery_date` are the delivery "
-        "destination and date the customer stated or explicitly accepted." + _INTENT,
+        "destination and date the customer stated or explicitly accepted." + _INTENT + _DEFAULTS_NOTE,
         "Both match what the customer stated or explicitly accepted. Equivalent wording "
         "counts, for example 'the Helsinki hotel' for `hotel-helsinki` or a written date for "
         "the ISO date.",
@@ -230,6 +234,33 @@ PREPARE_CHECKS = {
         uncertain_passes=True,
     ),
 }
+
+# When the order carries exactly the server's defaults, the customer's silence is acceptable: the
+# default is shown on the card and editable there. Only an UNSURE classifier passes; a confident
+# mismatch (the customer wrote another date or place, in any language, with typos, in an attachment)
+# still blocks. A cue word in the customer's text (TERMS_CUE) makes the check strict again.
+DEFAULTS_DATE_CHECK = Check(
+    "`proposed_order.destination` and `proposed_order.delivery_date` are acceptable: either the "
+    "customer stated or explicitly accepted them, or both equal `server_defaults` (the product's own "
+    "default date and destination, shown and editable on the card) and the customer wrote no date "
+    "and no place anywhere in `conversation` or `attached_reference_files`. Any date or place the "
+    "customer did write wins and must match." + _INTENT,
+    "Both are what the customer stated or accepted, or both equal `server_defaults` and the customer "
+    "wrote no date and no place.",
+    "The customer wrote a different date or place, or either value differs from what the customer "
+    "stated and from `server_defaults`.",
+    risk_is_true=False,
+    uncertain_passes=True,
+)
+
+# Claims a basket title must never make, in English, Finnish and Swedish. Checked without the classifier.
+LABEL_CLAIMS = re.compile(
+    r"\b(paid|approved|confirmed|ordered|reserved|delivered|shipped|discount\w*|guaranteed|safe for|"
+    r"allergy[- ]free|ship now|authori[sz]ed)\b|"
+    r"maksettu|hyväksytty|vahvistettu|tilattu|varattu|toimitettu|alennus|"
+    r"betald|godkänd|bekräftad|beställd|reserverad|levererad|rabatt",
+    re.IGNORECASE,
+)
 
 MEMORY_CHECKS = {
     "persistence_intent": Check(
@@ -1181,6 +1212,14 @@ class Guardrails:
                     + ". Choose other products or ask the customer.",
                     422,
                 )
+            if self.enforcing and LABEL_CLAIMS.search(request.request_id or ""):
+                self.prepare_refused = True
+                raise Problem(
+                    "GUARDRAIL_BLOCKED",
+                    "The basket label claims a status (paid, approved, confirmed, ordered, ...). Use a "
+                    "neutral label such as the dish and the portions (label).",
+                    422,
+                )
             state = prepare_state(
                 self.messages,
                 request,
@@ -1192,17 +1231,13 @@ class Guardrails:
             defaults = session.default_terms() if hasattr(session, "default_terms") else None
             if defaults:
                 state["server_defaults"] = defaults
-                # The product's own defaults (tomorrow, the policy's first destination), shown and
-                # editable on the card: when the order carries exactly these and the customer wrote
-                # nothing about a date or a place, there is nothing stated to contradict. A different
-                # value, or a customer who named a date or place, is still judged (and refused if the
-                # classifier is not confident).
                 if (
                     request.delivery_date.isoformat() == defaults["delivery_date"]
                     and request.destination == defaults["destination"]
                     and not customer_mentions_terms(self.messages)
                 ):
-                    checks = {k: v for k, v in PREPARE_CHECKS.items() if k != "destination_and_date"}
+                    # The classifier is still asked, with the lenient variant (see DEFAULTS_DATE_CHECK).
+                    checks = PREPARE_CHECKS | {"destination_and_date": DEFAULTS_DATE_CHECK}
             result = self.evaluate("tool_call", state, checks)
             self.prepare_results[digest] = result
         if not result.refuses:

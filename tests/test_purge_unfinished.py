@@ -165,7 +165,9 @@ def test_a_chat_message_keeps_its_text_after_the_purge(service, buyer, actor, re
     assert count("conversation_messages", "WHERE proposal_id IS NOT NULL") == 1
     workflow.purge_unfinished_proposals(PERIOD, as_of=now() + LATE)
     assert count("conversation_messages", "WHERE proposal_id IS NOT NULL") == 0
-    assert count("conversation_messages", "WHERE text = 'Review this basket.'") == 1
+    # The server appends one fixed sentence pointing to Confirm purchase when a basket exists and the
+    # reply lacks it; the reply's own text is what must survive the purge.
+    assert count("conversation_messages", "WHERE text LIKE 'Review this basket.%%'") == 1
 
 
 def test_the_restricted_runtime_role_cannot_run_the_purge_the_owner_does(
