@@ -68,8 +68,9 @@ def test_reads_overlap_but_merge_and_reply_in_model_order(monkeypatch, config, i
         if m["role"] == "tool"
     ]
     assert outputs == ["pasta", "eggs"]
-    assert [e.kind for e in events[:5]] == [
+    assert [e.kind for e in events[:6]] == [
         "started",
+        "thinking",
         "tool_started",
         "tool_started",
         "tool_completed",

@@ -46,7 +46,7 @@ function activitySteps(activity: Activity | undefined, busy: boolean): Step[] {
       );
       if (current)
         current.status =
-            event.kind === "tool_completed" ? "complete" : "failed";
+          event.kind === "tool_completed" ? "complete" : "failed";
     } else if (event.kind === "complete") {
       finishStage("complete");
     } else if (event.kind === "error") {
