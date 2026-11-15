@@ -58,7 +58,13 @@ export function ChatComposer({
   function handleComposerKeyDown(
     event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) {
-    if (event.key !== "Enter" || !(event.ctrlKey || event.metaKey)) return;
+    // Enter sends; Shift+Enter keeps a new line. Ignore Enter that confirms IME input.
+    if (
+      event.key !== "Enter" ||
+      event.shiftKey ||
+      event.nativeEvent.isComposing
+    )
+      return;
     event.preventDefault();
     if (!hasDraft || disabled || reading) return;
     event.currentTarget.form?.requestSubmit();
