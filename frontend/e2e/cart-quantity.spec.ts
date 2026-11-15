@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { ids, problem } from "./support/schedulerFixtures";
 import {
   BACON,
   EGGS,
@@ -17,8 +18,12 @@ import {
 
 const overview = (page: Page) =>
   page.getByRole("complementary", { name: "Overview" });
+// The number input; the minus and plus buttons have longer names ("Decrease quantity of ...").
 const qty = (page: Page, name: string) =>
-  overview(page).getByLabel(`Quantity of ${name}`);
+  overview(page).getByRole("spinbutton", {
+    name: `Quantity of ${name}`,
+    exact: true,
+  });
 const row = (page: Page, id: string) =>
   overview(page).locator(`[data-testid="cart-line"][data-product-id="${id}"]`);
 const ghost = (page: Page, id: string) =>
@@ -270,6 +275,14 @@ const failures = [
     server: "This key already identifies another request.",
     shown:
       "That change was already sent with other settings. Change the number again.",
+  },
+  {
+    code: "BASKET_ALREADY_ORDERED",
+    status: 409,
+    server:
+      "This order was already placed. Start a new request for another order.",
+    shown:
+      "This order was already placed. Start a new request for another order.",
   },
   {
     code: "INTERNAL",
@@ -530,6 +543,77 @@ test("a ghost survives the card reloading the basket after another edit", async 
   await expect(overview(page)).toContainText("Revision 3");
   await expect(ghost(page, "pasta")).toHaveAttribute("data-state", "ghost");
   await expect(qty(page, EGGS.name)).toHaveValue("2");
+});
+
+// --- server reasons: the order is placed, the basket changed under the customer's feet ------------
+
+test("once the order is placed the card has no number controls, no date or destination and no Confirm purchase", async ({
+  page,
+}) => {
+  await open(
+    page,
+    newCart({
+      orderPlaced: true,
+      editable: false,
+      reason: "This order was already placed.",
+    }),
+  );
+  await expect(overview(page).getByLabel(/^Quantity of /)).toHaveCount(0);
+  await expect(overview(page).getByLabel("Delivery date")).toHaveCount(0);
+  await expect(
+    overview(page).getByRole("button", { name: "Confirm purchase" }),
+  ).toHaveCount(0);
+  await expect(overview(page)).toContainText("4 BAG");
+});
+
+test("changing the delivery date of an order that was placed meanwhile shows the server's message", async ({
+  page,
+}) => {
+  const world = await open(page);
+  await page.route(
+    `**/api/conversations/${ids.conversation}/prepare-from-cart`,
+    (route) =>
+      problem(
+        route,
+        409,
+        "BASKET_ALREADY_ORDERED",
+        "This order was already placed. Start a new request for another order.",
+        { order_id: ids.sourceOrder },
+      ),
+  );
+  await overview(page).getByLabel("Delivery date").fill("2026-11-20");
+  await overview(page)
+    .getByRole("button", { name: "Update delivery details" })
+    .click();
+  await expect(overview(page).getByRole("alert")).toHaveText(
+    "This order was already placed. Start a new request for another order.",
+  );
+  expect(world.puts).toHaveLength(0);
+});
+
+test("Confirm purchase answered with REQUEST_REVISED shows the server's sentence and reloads the basket", async ({
+  page,
+}) => {
+  const world = await open(page);
+  await page.route(`**/api/purchases/${ids.proposal}/confirm`, (route) => {
+    world.revision += 1; // the basket changed under the customer
+    return problem(
+      route,
+      409,
+      "REQUEST_REVISED",
+      "The basket changed while you were confirming. Review it and confirm again.",
+    );
+  });
+  await overview(page)
+    .getByRole("button", { name: "Confirm purchase" })
+    .click();
+  await expect(overview(page).getByRole("alert")).toHaveText(
+    "The basket changed while you were confirming. Review it and confirm again.",
+  );
+  await expect(overview(page)).toContainText("Revision 2");
+  await expect(
+    overview(page).getByRole("button", { name: "Confirm purchase" }),
+  ).toBeEnabled();
 });
 
 test("on a phone the controls fit the card and nothing scrolls sideways", async ({

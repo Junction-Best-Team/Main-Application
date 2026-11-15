@@ -16,13 +16,13 @@ The right-hand card is always in a chat. Wording lives in one file, `frontend/sr
   card shows the new revision. While a turn runs the card is dimmed (`aria-busy`) and the button greyed.
   A stale press comes back as `revised` and the existing sentence "Terms changed during verification. Review the new
   revision and confirm again." is shown with the new revision.
-- **The route is a PROPOSED contract**, not in the generated schema yet: `frontend/src/features/purchases/api/cartApi.ts`
-  has the hand-written types (request `delivery_date`, `destination`, `request_id`; answer `{proposal, not_included}`).
-  Replace them with the generated ones when the backend lands (`npm run types`). One request id per press, reused on a
-  retry (`hooks/usePrepareFromCart.ts`).
+- **The routes use the generated contract** (a7, `p3/cart-purchase-button`): `src/features/purchases/api/cartApi.ts` has no hand-written
+  types any more (`CartPurchaseRequest`, `CartPurchaseResponse`, `CartEditRequest` from `schema.ts`). One request id per press,
+  reused on a retry (`hooks/usePrepareFromCart.ts`).
+- **Pack counts** are edited on the card with number controls and a 15 second ghost for a line set to 0: see `docs/cart-quantity.md`.
 - On a phone the empty/draft card sits below the chat in the page flow, never over the composer.
 
-Specs: `frontend/e2e/cart-purchase.spec.ts` (mocked API, local runs).
+Specs: `frontend/e2e/cart-purchase.spec.ts` and `frontend/e2e/cart-quantity.spec.ts` (mocked API, local runs).
 
 ## Handoff (6c, end of session)
 
@@ -34,6 +34,7 @@ card remembered in localStorage (`hooks/useCartOpen.ts`); newest non-cancelled b
 (they only render while `flow.canConfirm`).
 
 Not done:
+
 - **Quantity controls and the 15 s ghost line** (taken over by junction-b4 on `p3/cart-quantity-ui`). Hook in `OverviewPanel.tsx`
   at the lines list (`Items`), inside the block rendered only when `conversationId` is set (same place as `DeliveryDetails`);
   the proposed `PUT /api/conversations/{id}/cart` body is `{request_id, lines:[{product_id, sales_quantity}]}` (a7 may change it);

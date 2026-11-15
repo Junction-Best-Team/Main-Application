@@ -8,6 +8,7 @@ import { Badge } from "../../../shared/components/Badge";
 import { getPurchaseStatus } from "../model/purchaseStatus";
 import { usePurchaseDetail } from "../hooks/usePurchaseDetail";
 import { useCartOpen } from "../hooks/useCartOpen";
+import { CartLines } from "./CartLines";
 import { DeliveryDetails } from "./DeliveryDetails";
 import { NotIncluded } from "./NotIncluded";
 import { PurchaseDecisionPanel } from "./PurchaseDecisionPanel";
@@ -123,6 +124,7 @@ export function OverviewPanel({
   conversationId,
   cart = null,
   working = false,
+  cartEdit,
   onPrepared,
 }: {
   flow: ReturnType<typeof usePurchaseDetail>;
@@ -134,6 +136,8 @@ export function OverviewPanel({
   cart?: DraftCart | null;
   /** The assistant is working on this conversation: the card is dimmed and cannot be confirmed. */
   working?: boolean;
+  /** From the conversation (`cart_editable`, `cart_edit_reason`): whether pack counts can be edited and why not. */
+  cartEdit?: { editable: boolean; reason: string | null };
   onPrepared?: (proposal: Proposal) => void;
 }) {
   const { p, error } = flow;
@@ -202,7 +206,21 @@ export function OverviewPanel({
               <span className="font-label text-label-sm text-secondary">
                 Revision {p.revision} / v{p.policy_version}
               </span>
-              <Items p={p} />
+              {conversationId &&
+              flow.canConfirm &&
+              cartEdit &&
+              (cartEdit.editable || cartEdit.reason) ? (
+                <CartLines
+                  p={p}
+                  conversationId={conversationId}
+                  editable={cartEdit.editable}
+                  reason={cartEdit.reason}
+                  working={working}
+                  onUpdated={onPrepared}
+                />
+              ) : (
+                <Items p={p} />
+              )}
               {!p.order_id && <Substitutions p={p} />}
             </div>
             <div className={closed ? "opacity-60" : ""}>

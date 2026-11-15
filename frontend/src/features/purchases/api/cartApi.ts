@@ -1,26 +1,13 @@
 import { api } from "../../../shared/api/client";
-import type { Proposal } from "../../../shared/api/types";
+import type { components } from "../../../shared/api/schema";
 
-// PROPOSED CONTRACT (from the backend owner, branch p3/cart-purchase-button, not merged): the route is not
-// in the generated schema yet, so the types are written by hand. Replace them with the generated ones
-// when it lands. Policy problems (past date, foreign destination, ceiling, stock, price) are not errors:
-// they come back as a normal proposal with `policy_outcome` and `reasons`.
-export type PrepareFromCartBody = {
-  delivery_date: string; // YYYY-MM-DD
-  destination: string; // 1..120 characters
-  /** One per button press, reused on a retry of the same press (8..120 characters). */
-  request_id: string;
-};
-export type NotIncluded = {
-  name: string;
-  amount: string | null;
-  unit: string;
-  reason: "no_product" | "no_quantity";
-};
-export type PrepareFromCartResult = {
-  proposal: Proposal;
-  not_included: NotIncluded[];
-};
+// The generated contract (a7, p3/cart-purchase-button): the customer's own cart routes.
+// Policy problems (past date, foreign destination, ceiling, stock, price) are not errors: they come
+// back as a normal proposal with `policy_outcome` and `reasons`.
+export type PrepareFromCartBody = components["schemas"]["CartPurchaseRequest"];
+export type NotIncluded = components["schemas"]["CartNotIncluded"];
+export type PrepareFromCartResult =
+  components["schemas"]["CartPurchaseResponse"];
 export const prepareFromCart = (
   csrfToken: string,
   conversationId: string,
@@ -34,3 +21,17 @@ export const prepareFromCart = (
       body: JSON.stringify(body),
     },
   );
+
+// PUT /api/conversations/{id}/cart: the customer edits the pack count of products already in the cart.
+export type CartEditBody = components["schemas"]["CartEditRequest"];
+export type CartEditResult = components["schemas"]["CartPurchaseResponse"];
+export const editCart = (
+  csrfToken: string,
+  conversationId: string,
+  body: CartEditBody,
+) =>
+  api<CartEditResult>(`/api/conversations/${conversationId}/cart`, {
+    method: "PUT",
+    headers: { "X-CSRF-Token": csrfToken },
+    body: JSON.stringify(body),
+  });

@@ -70,6 +70,14 @@ export function StagedOverview({
       conversationId={conversation?.id}
       cart={draft ?? null}
       working={conversation?.busy}
+      cartEdit={
+        conversation
+          ? {
+              editable: Boolean(conversation.cart_editable),
+              reason: conversation.cart_edit_reason ?? null,
+            }
+          : undefined
+      }
       onPrepared={onPrepared}
     />
   ) : (
