@@ -380,3 +380,11 @@ with Claude Code during the event.
 Supplier test fixtures reuse the existing authored `FixtureClient` responses, now in
 `tests/supplier_fixture.py`. They are installed only by pytest and the explicit offline
 API harness, and are excluded from application images. Production pricing has no fixture fallback.
+
+## README product screenshots — 2026-11-15
+
+Captured the existing deployed Aimo home and standing-orders screens at the owner's
+request for the README. The screens show synthetic demo-account data and mock
+ordering; no customer message, supplier lookup or order was submitted during capture.
+The images reuse the application's existing UI and home background, attributed above.
+No new external asset or dependency was introduced.
