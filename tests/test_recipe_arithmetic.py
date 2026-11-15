@@ -153,7 +153,7 @@ def test_property_every_amount_equals_the_exact_fraction_or_is_unresolved():
             nulls += 1
         else:
             assert Fraction(Decimal(item.amount)) == expected, (quantity_, unit, base, portions)
-            assert item.reason == "Match a suitable catalog product."
+            assert item.reason is None and item.status == "proposed"
         checked += 1
     assert checked == 1500 and 0 < nulls < checked  # both branches were exercised
 
@@ -162,7 +162,7 @@ def test_non_terminating_results_are_rounded_up_never_down():
     # MEA-012: 100 g / 3 servings * 1 portion = 0.0333... KG becomes 0.0334 (ceiling, not half-up).
     item = one(100, "g", 3, 1)
     assert item.amount == "0.0334" and item.unit == "KG"
-    assert item.reason == "Match a suitable catalog product."
+    assert item.reason is None and item.status == "proposed"
     # Base 6 / 200 portions: 150 g is exact (5 KG) and untouched; 200 g is 100/3 KG, rounded up.
     assert one(150, "g", 6, 200).amount == "5"
     assert one(200, "g", 6, 200).amount == "6.6667"
@@ -223,7 +223,7 @@ def test_non_linear_scaling_is_never_guessed(scaling):
 
 def test_missing_quantity_is_unresolved_with_a_reason():
     item = one(None, "toTaste", 4, 200, scaling="fixed")
-    assert item.amount is None and "unspecified" in item.reason
+    assert item.amount is None and "no verified quantity" in item.reason
 
 
 def test_one_hundred_ingredients_scale_and_more_are_refused():
@@ -263,7 +263,7 @@ def test_scaled_plan_callers_keep_saved_recipe_and_labelled_draft_paths_separate
         (
             "recipes.py",
             "scaled_plan(Recipe.model_validate(detail['recipe']), request.portions)",
-        )
+        ),
     ]
     source = (SRC / "recipes.py").read_text()
     # `detail` is get_recipe(): the immutable recipe_versions row, never a recipe_plans row.
@@ -709,18 +709,22 @@ def test_reviewed_correction_of_a_count_to_a_weight_is_accepted_only_through_imp
 # --- MEA-007: matched or unresolved ----------------------------------------------------------------
 
 
-def test_unmatched_plan_reports_every_ingredient_unresolved_with_a_reason():
+def test_scaled_plan_separates_pending_product_selection_from_blocked_quantity():
     plan = scaled_plan(make_recipe([(200, "g", "linear"), (1, "tbsp", "damped")]), 200)
-    assert [i.status for i in plan.ingredients] == ["unresolved", "unresolved"]
-    assert all(i.reason for i in plan.ingredients)
+    assert [i.status for i in plan.ingredients] == ["proposed", "unresolved"]
+    assert plan.ingredients[0].amount == "10" and plan.ingredients[0].reason is None
+    assert plan.ingredients[1].amount is None and plan.ingredients[1].reason
 
 
 def assert_each_ingredient_is_matched_or_unresolved(plan):
     for item in plan["ingredients"]:
-        assert item["status"] in {"matched", "unresolved"}  # never the free-form 'proposed'
+        assert item["status"] in {"proposed", "matched", "unresolved"}
         if item["status"] == "matched":
             assert item["reason"] is None and item["product_id"] and item["conversion"]
             assert item["conversion"]["sales_quantity"]
+        elif item["status"] == "proposed":
+            assert item["amount"] and item["reason"] is None
+            assert not item["product_id"] and item["conversion"] is None
         else:
             assert item["reason"] and not item["product_id"] and item["conversion"] is None
 

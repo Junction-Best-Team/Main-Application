@@ -1148,18 +1148,21 @@ test(`recipe plan keeps unresolved ingredients visible beside matched packs`, as
   ).toHaveCount(1);
   await expect(plan.getByText("Salt", { exact: true })).toBeVisible();
   await expect(
-    plan.getByText("Quantity unresolved", { exact: true }),
+    plan.getByText("Quantity needs verification", { exact: true }),
   ).toBeVisible();
   await expect(
-    plan.getByText("Quantity unresolved tsp", { exact: true }),
+    plan.getByText("Quantity needs verification tsp", { exact: true }),
   ).toHaveCount(0);
   await expect(
-    plan.getByText("Recipe quantity is unspecified", { exact: false }),
+    plan.getByText("Quantity needs verification before purchasing.", {
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(plan.getByText("Buy 7 ST", { exact: false })).toBeVisible();
   await expect(plan.getByText("Excess: 1 KG", { exact: false })).toBeVisible();
   await expect(plan.getByText("Buy 4 ST", { exact: true })).toBeVisible();
   await expect(plan.getByText("Excess: 0", { exact: false })).toHaveCount(0);
+  await plan.getByText("Recipe source", { exact: true }).click();
   await expect(plan.getByText("UniTools", { exact: false })).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Review basket and purchasing checks" }),
@@ -1640,11 +1643,11 @@ for (const width of [1440, 390, 320]) {
     if (width < 1024)
       await draft.getByRole("button", { name: "Expand draft cart" }).click();
     await expect(
-      draft.getByText("Product to match", { exact: true }),
+      draft.getByText("No product selected yet", { exact: true }),
     ).toHaveCount(2);
     await expect(
       draft.getByText("Price not checked", { exact: true }),
-    ).toHaveCount(2);
+    ).toHaveCount(0);
     await expect(
       draft.getByRole("button", {
         name: /Confirm purchase|Approve & Push to Dispatch/,
@@ -1685,9 +1688,9 @@ for (const width of [1440, 390, 320]) {
     ).toBeVisible();
     await expect(
       draft.getByText("Price not checked", { exact: true }),
-    ).toHaveCount(1);
+    ).toHaveCount(0);
     await expect(
-      draft.getByText("Quantity needed", { exact: true }),
+      draft.getByText("Quantity needs verification", { exact: true }),
     ).toBeVisible();
     expect(
       await page.evaluate(
@@ -2138,3 +2141,151 @@ test("home retains the draft and creation key after a failed start", async ({
   expect(keys).toHaveLength(2);
   expect(keys[0]).toBe(keys[1]);
 });
+
+for (const width of [1440, 390]) {
+  test(`saved recipe separates missing quantities from pending products at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await mockSession(page);
+    await page.route(`**/api/conversations/${conversationId}`, (route) =>
+      route.fulfill({
+        json: {
+          ...blankConversation,
+          messages: [
+            {
+              id: 1,
+              role: "assistant",
+              text: "Recipe quantities are estimates for customer review. Unresolved ingredients: Minced beef, Tomato paste, Nutmeg, Onion, carrot, celery.",
+              created_at: timestamp,
+              meal_plan: {
+                title: "Lasagne alla bolognese",
+                portions: 200,
+                recipe_plan_id: "288c227d-bad7-4eb5-93cd-be6158153d7c",
+                recipe_plan_revision: 1,
+                attribution: "UniTools — theunitools.com / CC BY-SA 4.0",
+                notes: [
+                  "Recipe quantities are estimates for customer review. All source ingredients remain required.",
+                  "Recipe quantities are estimates for customer review.",
+                  "Assumes 200 main-course portions.",
+                ],
+                ingredients: [
+                  // Historical plans must not expose the old internal instruction either.
+                  {
+                    name: "Minced beef",
+                    amount: "12.5",
+                    unit: "KG",
+                    status: "unresolved",
+                    reason: "Match a suitable catalog product.",
+                  },
+                  {
+                    name: "Tomato paste",
+                    amount: null,
+                    unit: "tbsp",
+                    status: "unresolved",
+                    reason:
+                      "Recipe unit needs an ingredient-specific conversion to mass, volume or count.",
+                  },
+                  {
+                    name: "Nutmeg",
+                    amount: null,
+                    unit: "g",
+                    status: "unresolved",
+                    reason:
+                      "This ingredient needs a reviewed scaling rule for the requested portions.",
+                  },
+                  {
+                    name: "Onion, carrot, celery",
+                    amount: "7.5",
+                    unit: "KG",
+                    status: "unresolved",
+                    form: "unspecified",
+                    reason: "Match a suitable catalog product.",
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      }),
+    );
+    await page.goto(`/conversations/${conversationId}`);
+    const plan = page.getByRole("region", { name: "Proposed meal plan" });
+    await expect(page.getByRole("log")).toContainText(
+      "4 of 4 ingredients have no selected product yet.",
+    );
+    await expect(page.getByRole("log")).not.toContainText(
+      "Unresolved ingredients:",
+    );
+    await expect(
+      plan.getByText("Saved recipe · quantities are estimates", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(plan.getByText("12.5 KG", { exact: true })).toBeVisible();
+    await expect(
+      plan.getByText("Quantity needs verification", { exact: true }),
+    ).toHaveCount(2);
+    await expect(
+      plan.getByText(
+        "The required ingredient form needs verification before purchasing.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(
+      plan.getByText("Match a suitable catalog product.", { exact: true }),
+    ).toHaveCount(0);
+    if (width < 600) {
+      const name = await plan
+        .getByText("Tomato paste", { exact: true })
+        .boundingBox();
+      const quantity = await plan
+        .getByText("Quantity needs verification", { exact: true })
+        .first()
+        .boundingBox();
+      expect(name && quantity && quantity.y >= name.y + name.height).toBe(true);
+    }
+    await expect(
+      plan.getByText("Saved recipe plan", { exact: true }),
+    ).toHaveCount(0);
+    await expect(plan).not.toContainText(
+      "All source ingredients remain required.",
+    );
+    await expect(plan).not.toContainText(
+      "Recipe quantities are estimates for customer review.",
+    );
+    await expect(plan).not.toContainText(
+      "Verified quantities and purchasing checks appear in the basket.",
+    );
+    await expect(
+      plan.getByText("Assumes 200 main-course portions.", { exact: true }),
+    ).toBeVisible();
+    const credit = plan.getByText("UniTools — theunitools.com / CC BY-SA 4.0", {
+      exact: true,
+    });
+    await expect(credit).not.toBeVisible();
+    const source = plan.getByText("Recipe source", { exact: true });
+    await source.press("Enter");
+    await expect(credit).toBeVisible();
+    await source.click();
+    await expect(credit).not.toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: /Confirm purchase|Approve & Push to Dispatch/,
+      }),
+    ).toHaveCount(0);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: testInfo.outputPath(`recipe-review-${width}.png`),
+      fullPage: true,
+    });
+    await page.reload();
+    await expect(
+      plan.getByText("Quantity needs verification", { exact: true }),
+    ).toHaveCount(2);
+  });
+}

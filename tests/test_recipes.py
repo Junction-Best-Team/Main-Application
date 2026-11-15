@@ -1205,3 +1205,62 @@ def test_partial_recipe_reference_fails_closed(actor, service, request_data):
     with pytest.raises(Problem) as error:
         service.prepare_order(actor, PrepareRequest(**request_data, recipe_plan_revision=1))
     assert error.value.code == "RECIPE_PLAN_REQUIRED"
+
+
+def test_retry_reloads_latest_matching_progress_after_provider_timeout(
+    tmp_path, buyer, service, meal_products
+):
+    from aimo import conversations
+    from aimo.chat_schemas import AgentTurn, ConversationCreate, MessageRequest
+
+    *_, versions = import_fixture(tmp_path)
+    cid = conversations.create(buyer, ConversationCreate(idempotency_key=str(uuid4())))["id"]
+    body = MessageRequest(text="Ingredients for 200 portions", idempotency_key=str(uuid4()))
+    saved = {}
+
+    def interrupted(actor, history, shared):
+        assert not any("persisted recipe matching progress" in m["content"] for m in history)
+        session = ToolSession(actor, shared)
+        plan = session.invoke("scale_recipe", json.dumps(dict(versions[0], portions=200)))[
+            "meal_plan"
+        ]
+        session.invoke("get_product", json.dumps({"product_id": "recipe-spaghetti"}))
+        saved.update(
+            session.invoke(
+                "match_ingredient",
+                json.dumps(
+                    {
+                        "plan_id": plan["recipe_plan_id"],
+                        "revision": plan["recipe_plan_revision"],
+                        "ingredient_id": "spaghetti",
+                        "product_id": "recipe-spaghetti",
+                    }
+                ),
+            )["meal_plan"]
+        )
+        raise Problem("LLM_TIMEOUT", "Authored provider timeout", 504)
+
+    with pytest.raises(Problem) as error:
+        conversations.message(buyer, cid, body, service, interrupted)
+    assert error.value.code == "LLM_TIMEOUT"
+    failed = conversations.detail(buyer, cid)
+    assert failed["retry_message"] and failed["messages"][-1]["notice"] == "provider_unavailable"
+
+    def resume(actor, history, shared):
+        hint = next(
+            m["content"] for m in history if "persisted recipe matching progress" in m["content"]
+        )
+        assert f"plan_id={saved['recipe_plan_id']}, revision=2" in hint
+        assert "could not reach the assistant" not in str(history)
+        current = shared.get_recipe_plan(actor, PlanReference(plan_id=saved["recipe_plan_id"]))
+        assert current["recipe_plan_revision"] == 2
+        assert current["ingredients"][0]["product_id"] == "recipe-spaghetti"
+        return AgentTurn(text="Resumed saved product selection.", meal_plan=current)
+
+    recovered = conversations.message(buyer, cid, body, service, resume)
+    assert len(recovered["messages"]) == 2 and recovered["retry_message"] is None
+    assert recovered["messages"][-1]["meal_plan"]["recipe_plan_revision"] == 2
+    with connection() as c:
+        assert c.execute("SELECT count(*) AS n FROM recipe_plans").fetchone()["n"] == 1
+        assert c.execute("SELECT count(*) AS n FROM recipe_plan_revisions").fetchone()["n"] == 2
+        assert c.execute("SELECT count(*) AS n FROM orders").fetchone()["n"] == 0

@@ -149,6 +149,28 @@ free-form `publish_meal_plan` or prepared without its reference. Enabling recipe
 tools is additive: direct product requests retain the ordinary publish/prepare
 workflow without a recipe reference.
 
+Known scaled quantities with reviewed forms start as `proposed`: a missing product
+selection is separate from an unresolved quantity or form. Customer cards describe
+those actual blockers without asking the customer to match products or calculate
+weights. The trusted reply summarizes pending product selections by count.
+Historical cards also hide the old internal “Match a suitable catalog product” text.
+The transcript rephrases the exact old server-generated unresolved-ingredient list
+as a product-selection count when it matches the stored plan; persisted messages
+and surrounding narrative are preserved.
+Recipe cards omit duplicate generic estimate/required-ingredient notes and keep
+the complete source/license credit in an expandable “Recipe source” disclosure.
+Recipe-specific assumptions and actual ingredient blockers stay visible.
+
+The runner requires inspection after three consecutive product searches and a
+persisted match after three candidate reads on a pending saved plan. It refuses
+further discovery when every remaining ingredient lacks a quantity or reviewed
+form; catalog search cannot repair those facts. Valid ingredients can still be
+matched while another ingredient is blocked. These checkpoints preserve all
+existing evidence and preparation checks. A retry includes the current turn's
+persisted recipe-plan ID/revision so the assistant reloads its latest matches,
+including progress saved before a provider timeout. Provider-failure notices and
+exact retry keys retain their existing behavior.
+
 This has a cross-turn enforcement limit: the server does not recognize that a new
 free-form plan names the same dish as an earlier unresolved saved recipe. Such a
 basket can be prepared without source-recipe coverage or recipe-specific quantity

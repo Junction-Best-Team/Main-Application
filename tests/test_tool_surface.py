@@ -620,8 +620,8 @@ def test_tct005_recipe_tool_results_carry_units_basis_and_attribution(actor, ser
     plan = call(session, "scale_recipe", reference | {"portions": 200})["meal_plan"]
     assert plan["recipe_version"] and plan["attribution"] and plan["base_servings"]
     assert plan["ingredients"] and all(i["unit"] and i["amount"] for i in plan["ingredients"])
-    assert {i["status"] for i in plan["ingredients"]} == {"unresolved"}
-    assert all(i["reason"] for i in plan["ingredients"])  # unresolved says why, no invented unit
+    assert {i["status"] for i in plan["ingredients"]} == {"proposed"}
+    assert all(i["reason"] is None and not i["product_id"] for i in plan["ingredients"])
 
     for item in plan["ingredients"]:
         call(session, "get_product", {"product_id": "recipe-" + item["ingredient_id"]})

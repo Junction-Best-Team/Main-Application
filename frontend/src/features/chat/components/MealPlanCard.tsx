@@ -1,4 +1,27 @@
 import type { MealPlan } from "../../../shared/api/types";
+
+const boilerplateNotes = new Set([
+  "Recipe quantities are estimates for customer review. All source ingredients remain required.",
+  "Recipe quantities are estimates for customer review.",
+  "Recipe quantities are estimates.",
+]);
+
+function ingredientIssue(ingredient: MealPlan["ingredients"][number]) {
+  if (ingredient.amount == null)
+    return "Quantity needs verification before purchasing.";
+  if (ingredient.status !== "unresolved") return null;
+  if (ingredient.form === "unspecified")
+    return "The required ingredient form needs verification before purchasing.";
+  // Older saved conversations contain an internal task rather than a customer explanation.
+  if (ingredient.reason === "Match a suitable catalog product.") return null;
+  if (
+    ingredient.reason ===
+    "No current reviewed evidence that this product fits the ingredient and form."
+  )
+    return "A suitable product has not been verified for this ingredient.";
+  return ingredient.reason;
+}
+
 export function MealPlanCard({ plan }: { plan: MealPlan }) {
   return (
     <section
@@ -9,19 +32,30 @@ export function MealPlanCard({ plan }: { plan: MealPlan }) {
       <p>{plan.portions} portions</p>
       <p className="text-body-sm text-secondary">
         {plan.recipe_plan_id
-          ? "Saved recipe plan"
+          ? "Saved recipe · quantities are estimates"
           : "Free-form plan — recipe completeness not checked."}
       </p>
+      {plan.ingredients.some((ingredient) => !ingredient.product_id) && (
+        <p className="text-body-sm text-secondary">
+          Product selection and purchasing checks are not complete.
+        </p>
+      )}
       <ul>
         {plan.ingredients.map((ingredient, i) => (
           <li key={i}>
             <span>{ingredient.name}</span>
-            <strong>
+            <strong
+              className={
+                ingredient.amount == null ? "col-span-2 text-left!" : undefined
+              }
+            >
               {ingredient.amount == null
-                ? "Quantity unresolved"
+                ? "Quantity needs verification"
                 : `${ingredient.amount} ${ingredient.unit}`}
             </strong>
-            {ingredient.status === "unresolved" && <p>{ingredient.reason}</p>}
+            {ingredientIssue(ingredient) && (
+              <p>{ingredientIssue(ingredient)}</p>
+            )}
             {ingredient.product_id && <p>Product: {ingredient.product_id}</p>}
             {ingredient.conversion?.sales_quantity && (
               <p>
@@ -35,17 +69,18 @@ export function MealPlanCard({ plan }: { plan: MealPlan }) {
         ))}
       </ul>
       {plan.attribution && (
-        <p className="text-body-sm text-secondary">{plan.attribution}</p>
+        <details className="text-body-sm text-secondary">
+          <summary className="cursor-pointer">Recipe source</summary>
+          <p className="mt-2">{plan.attribution}</p>
+        </details>
       )}
-      {(plan.notes ?? []).map((note, i) => (
-        <p className="text-body-sm text-secondary" key={i}>
-          {note}
-        </p>
-      ))}
-      <p className="text-body-sm text-secondary">
-        Recipe quantities are a proposal. Verified quantities and purchasing
-        checks appear in the basket.
-      </p>
+      {(plan.notes ?? [])
+        .filter((note) => !boilerplateNotes.has(note.trim()))
+        .map((note, i) => (
+          <p className="text-body-sm text-secondary" key={i}>
+            {note}
+          </p>
+        ))}
     </section>
   );
 }
