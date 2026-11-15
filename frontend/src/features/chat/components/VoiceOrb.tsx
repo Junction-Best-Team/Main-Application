@@ -64,7 +64,8 @@ export function VoiceOrb() {
         <span aria-hidden="true" className="voice-orb-layer voice-orb-mist" />
         <span aria-hidden="true" className="voice-orb-layer voice-orb-glint" />
       </button>
-      <p role="status" className="voice-orb-status">
+      {/* Just the nebula on screen; the phase stays readable to screen readers. */}
+      <p role="status" className="sr-only">
         {label}
       </p>
       {state.error ? (
@@ -72,9 +73,7 @@ export function VoiceOrb() {
           {state.error}
         </p>
       ) : (
-        state.phase === "connecting" && (
-          <p className="voice-orb-note">{disclosure}</p>
-        )
+        state.phase === "connecting" && <p className="sr-only">{disclosure}</p>
       )}
     </section>
   );

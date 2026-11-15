@@ -1,7 +1,7 @@
 /* Voice mode: a floating nebula centred above the composer. */
 .voice-orb-dock {
   position: absolute;
-  bottom: calc(100% + 1.25rem);
+  bottom: calc(100% + 1rem);
   left: 50%;
   z-index: 30;
   display: flex;
@@ -23,8 +23,8 @@
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  width: 5.5rem;
-  height: 5.5rem;
+  width: 4rem;
+  height: 4rem;
   flex-shrink: 0;
   padding: 0;
   border: 0;
@@ -155,33 +155,16 @@
   animation-play-state: paused;
 }
 
-.voice-orb-status,
-.voice-orb-error,
-.voice-orb-note {
+.voice-orb-error {
   margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-error);
   max-width: 100%;
   border-radius: 0.75rem;
   padding: 0.25rem 0.75rem;
   text-align: center;
   background: color-mix(in srgb, var(--color-surface-pure) 85%, transparent);
   backdrop-filter: blur(10px);
-}
-
-.voice-orb-status {
-  font-family: var(--font-label, inherit);
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--color-primary);
-}
-
-.voice-orb-error {
-  font-size: 0.875rem;
-  color: var(--color-error);
-}
-
-.voice-orb-note {
-  font-size: 0.75rem;
-  color: var(--color-secondary);
 }
 
 @keyframes voice-orb-spin {

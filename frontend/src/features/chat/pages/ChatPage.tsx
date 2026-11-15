@@ -190,7 +190,7 @@ export function ChatPage() {
                 check the latest state.
               </p>
             )}
-            {voiceOpen && <div aria-hidden="true" className="h-36 shrink-0" />}
+            {voiceOpen && <div aria-hidden="true" className="h-24 shrink-0" />}
           </div>
 
           <ChatComposer
