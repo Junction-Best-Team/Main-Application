@@ -37,3 +37,23 @@ No existing policy, identity, approval or order is rewritten by this migration.
 Stale saves return 409 and preserve the draft until an explicit reload. Unchanged
 saves create no version. Changed policy invalidates pending confirmations; baskets
 need fresh review and confirmation. This feature does not deploy or migrate a cluster.
+
+## Demo policy data (Q-134 a)
+
+Only data changed; no rule in `approval_policy.py` did. `aimo seed` now lists every non-withdrawn
+product of the active catalogue in `approved_product_ids` (there is no "all products" form) and sets
+`overbuy` to `allowed`; with no catalogue yet it keeps the old single product `464306`, and it still
+never overwrites an existing policy. Buyers that were seeded earlier (demo-hotel and the tester buyers)
+get the same change from `scripts/widen_buyer_policy.py`: report by default, `--apply` writes one new
+policy version, the old rules are saved to a JSON file first, `--rollback FILE` appends them again.
+Re-run it after a catalogue sync to add new products. `provision_tester.py` copies demo-hotel's current
+policy, so tester buyers made afterwards inherit it.
+
+What this loosens: a product that is not on the old one-product list no longer makes the customer
+approve a "substitution", and a pack larger than the need (rounding up to whole packs) no longer needs
+an overbuy approval. What stays: a line the agent declares as a substitution still needs approval,
+a product outside the catalogue or withdrawn is still refused, the spending caps and the customer's
+own confirmation are unchanged, and the agent cannot edit the policy (the scope is not writable
+through the settings API). The scope is a list, so it grows stale when the catalogue gains products
+until the script is re-run, and it makes the policy JSON large (about 17,500 ids on the full catalogue).
+

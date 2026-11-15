@@ -57,7 +57,7 @@ uv run aimo configure                 # creates ignored .env with random private
 # If .env already exists, preserve it and add missing settings from .env.example.
 docker compose up -d --wait db
 uv run aimo migrate                   # explicit, versioned schema setup
-uv run aimo seed                      # inserts missing demo settings only; never overwrites
+uv run aimo seed                      # inserts missing demo settings only; never overwrites (scope = active catalogue, so ingest first for the wide scope)
 npm ci --prefix frontend
 npm run build --prefix frontend
 ```
