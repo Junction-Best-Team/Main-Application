@@ -1,5 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
-import { newCart, openCart, type CartWorld } from "./support/cartFixtures";
+import {
+  newCart,
+  openCart,
+  proposalOf,
+  type CartWorld,
+} from "./support/cartFixtures";
+import { ids, json, problem } from "./support/schedulerFixtures";
 import type { Proposal } from "../src/shared/api/types";
 
 // SPEC (written before the build). The Checks tab groups the purchasing checks by what the customer can do:
@@ -151,21 +157,45 @@ test("a denied order with no listed reason still says it cannot be ordered", asy
   );
 });
 
-test("an expired approval has an Expired group with a Refresh button that asks for the basket again", async ({
+test("an expired approval has an Expired group; Refresh asks the server to prepare the basket again", async ({
   page,
 }) => {
-  const requests: string[] = [];
-  page.on("request", (r) => {
-    if (/\/api\/purchases\/[^/]+$/.test(new URL(r.url()).pathname))
-      requests.push(r.url());
-  });
-  await open(page, { expired: true, reasons: [] });
+  const bodies: Record<string, unknown>[] = [];
+  const csrf: (string | undefined)[] = [];
+  const world = await open(page, { expired: true, reasons: [] });
+  await page.route(
+    `**/api/conversations/${ids.conversation}/refresh-basket`,
+    (route) => {
+      bodies.push(route.request().postDataJSON());
+      csrf.push(route.request().headers()["x-csrf-token"]);
+      world.expired = false; // the fresh basket is not expired
+      return json(route, { proposal: proposalOf(world), not_included: [] });
+    },
+  );
   const expired = group(page, "Expired");
   await expect(expired).toBeVisible();
   await expect(expired).toContainText("This approval expired.");
-  const before = requests.length;
   await expired.getByRole("button", { name: "Refresh" }).click();
-  await expect.poll(() => requests.length).toBeGreaterThan(before);
+  await expect(group(page, "Expired")).toHaveCount(0);
+  expect(bodies).toEqual([{ request_id: expect.stringMatching(/^.{8,120}$/) }]);
+  expect(csrf).toEqual(["test-csrf"]);
+});
+
+test("a refused refresh shows the server's message in the group and Refresh works again", async ({
+  page,
+}) => {
+  await open(page, { expired: true, reasons: [] });
+  await page.route(
+    `**/api/conversations/${ids.conversation}/refresh-basket`,
+    (route) =>
+      problem(route, 409, "BASKET_NOT_EXPIRED", "This basket has not expired."),
+  );
+  const expired = group(page, "Expired");
+  await expired.getByRole("button", { name: "Refresh" }).click();
+  await expect(expired.getByRole("alert")).toHaveText(
+    "This basket has not expired.",
+  );
+  await expect(expired.getByRole("button", { name: "Refresh" })).toBeEnabled();
 });
 
 test("a live basket has no Expired group and no Refresh button", async ({

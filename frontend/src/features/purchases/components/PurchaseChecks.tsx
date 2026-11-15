@@ -21,9 +21,13 @@ const groupClass =
 export function PurchaseChecks({
   p,
   onRefresh,
+  refreshing = false,
+  refreshError = "",
 }: {
   p: Proposal;
   onRefresh?: () => void | Promise<void>;
+  refreshing?: boolean;
+  refreshError?: string;
 }) {
   const status = getPurchaseStatus(p);
   const groups = groupChecks(p);
@@ -79,9 +83,18 @@ export function PurchaseChecks({
             {EXPIRED_GROUP.heading}
           </h4>
           <p className="m-0 text-body-sm">{EXPIRED_GROUP.text}</p>
+          {refreshError && (
+            <p
+              role="alert"
+              className="m-0 rounded-lg bg-error-container p-space-sm text-body-sm text-on-error-container"
+            >
+              {refreshError}
+            </p>
+          )}
           {onRefresh && (
             <button
               type="button"
+              disabled={refreshing}
               onClick={() => void onRefresh()}
               className="self-start cursor-pointer rounded-lg border border-outline-variant bg-surface-pure px-space-md py-2 font-label text-label-md text-primary hover:bg-surface-container-high"
             >
