@@ -442,6 +442,7 @@ export function useChat(conversationId?: string) {
     reconnecting,
     messageViewport,
     send,
+    cancel,
     busy,
     queue,
     queuePaused,

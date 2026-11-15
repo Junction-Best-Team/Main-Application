@@ -30,6 +30,7 @@ export function ChatPage() {
     reconnecting,
     messageViewport,
     send,
+    cancel,
     busy,
     queue,
     queuePaused,
@@ -103,7 +104,13 @@ export function ChatPage() {
                 </p>
               </div>
             )}
-            <ConversationTranscript conversation={conversation} busy={busy} />
+            <ConversationTranscript
+              conversation={conversation}
+              busy={busy}
+              onReviewBasket={(proposalId) =>
+                setSelection({ conversationId, proposalId })
+              }
+            />
 
             {Boolean(conversation?.purchases.length) && (
               <section
@@ -176,6 +183,7 @@ export function ChatPage() {
             queuePaused={queuePaused}
             onRemoveQueued={removeQueued}
             onSendQueued={sendQueued}
+            onCancel={() => void cancel()}
           />
         </div>
       </div>

@@ -1144,6 +1144,7 @@ test("unfinished server turns restore the request and retry key on another brows
   await expect(page.getByRole("alert")).toHaveText(
     "The response was interrupted. Retry this request to continue.",
   );
+  await expect(page.getByText("Your draft is ready to send again.")).toBeVisible();
   await page.getByRole("button", { name: "Retry request" }).click();
   await expect(page.getByText("Your saved request resumed.")).toBeVisible();
   expect(payload).toEqual(retry);
@@ -1205,6 +1206,7 @@ test("an interrupted turn arriving through SSE restores the persisted retry acti
   await expect(page.getByRole("alert")).toHaveText(
     "The response was interrupted. Retry this request to continue.",
   );
+  await expect(page.getByText("Your draft is ready to send again.")).toBeVisible();
   await page.getByRole("button", { name: "Retry request" }).click();
   await expect(page.getByText("The interrupted turn resumed.")).toBeVisible();
   expect(payload).toEqual(retry);
@@ -2297,6 +2299,75 @@ test("home composer sends on Enter and keeps Shift+Enter as a new line", async (
   await expect(page.getByRole("alert")).toContainText("Try again shortly.");
   await expect(input).toHaveValue("Restock milk\nfor Monday");
   expect(posted).toHaveLength(1);
+});
+
+test("open conversation composer sends on Enter and keeps Shift+Enter as a new line", async ({
+  page,
+}) => {
+  await mockSession(page);
+  const posted: string[] = [];
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: blankConversation }),
+  );
+  await page.route(
+    `**/api/conversations/${conversationId}/messages`,
+    async (route) => {
+      posted.push(route.request().postDataJSON().text);
+      await route.fulfill({
+        status: 503,
+        json: { error: { code: "UNAVAILABLE", message: "Try again shortly." } },
+      });
+    },
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  const input = page.getByLabel("Continue the conversation");
+  await expect(input).toHaveJSProperty("tagName", "TEXTAREA");
+  await input.fill("Restock milk");
+  await input.press("Shift+Enter");
+  await input.pressSequentially("for Monday");
+  await expect(input).toHaveValue("Restock milk\nfor Monday");
+  expect(posted).toHaveLength(0);
+  await input.press("Enter");
+  await expect(page.getByRole("alert")).toContainText("Try again shortly.");
+  await expect(input).toHaveValue("Restock milk\nfor Monday");
+  expect(posted).toEqual(["Restock milk\nfor Monday"]);
+});
+
+test("proposal message offers Review basket handoff into Overview", async ({
+  page,
+}) => {
+  await mockSession(page);
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({
+      json: {
+        ...blankConversation,
+        purchases: [proposal],
+        messages: [
+          {
+            id: 1,
+            role: "assistant",
+            text: "Please review your basket.",
+            created_at: timestamp,
+            proposal_id: proposalId,
+          },
+        ],
+      },
+    }),
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  const handoff = page.getByRole("button", {
+    name: "Review basket to confirm",
+  });
+  await expect(handoff).toBeVisible();
+  await expect(
+    page.getByText("Sending chat never places an order."),
+  ).toBeVisible();
+  await handoff.click();
+  const overview = page.getByRole("complementary", { name: "Overview" });
+  await expect(overview).toContainText("1 items staged");
+  await expect(
+    overview.getByRole("button", { name: "Confirm purchase" }),
+  ).toBeVisible();
 });
 
 test("home retains the draft and creation key after a failed start", async ({

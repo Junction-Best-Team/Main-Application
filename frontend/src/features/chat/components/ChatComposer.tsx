@@ -33,6 +33,8 @@ type Props = {
   queuePaused?: boolean;
   onRemoveQueued?: (id: string) => void;
   onSendQueued?: (id: string) => void;
+  /** Same cancel path as Escape while a turn is in flight. */
+  onCancel?: () => void;
 };
 export function ChatComposer({
   appearance = "chat",
@@ -48,10 +50,11 @@ export function ChatComposer({
   queuePaused,
   onRemoveQueued,
   onSendQueued,
+  onCancel,
 }: Props) {
   const home = appearance === "home";
   const voice = useVoiceMode();
-  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   // Keep the caret in the composer: on arrival, after sending and after queue
   // actions. Touch screens skip the mount focus so the keyboard does not pop up.
   const focusInput = () => inputRef.current?.focus({ preventScroll: true });
@@ -77,6 +80,7 @@ export function ChatComposer({
   const sendBlocked = Boolean(busy) && !canQueue;
   // One action at a time: send while there is a draft or attachment, otherwise voice.
   const hasDraft = Boolean(text.trim()) || attachments.length > 0;
+  const canRetry = Boolean(error) && hasDraft && !busy;
   function handleComposerKeyDown(
     event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) {
@@ -110,7 +114,7 @@ export function ChatComposer({
     ? canQueue
       ? "Queue message"
       : "Working…"
-    : error && (text || attachments.length)
+    : canRetry
       ? "Retry request"
       : "Send Order Request";
   return (
@@ -230,11 +234,35 @@ export function ChatComposer({
         </p>
       )}
       {busy && !home && (
-        <p className="px-space-sm text-label-sm text-secondary" role="status">
-          {canQueue
-            ? "Press Escape to cancel · Enter queues your next message"
-            : "Press Escape to cancel"}
-        </p>
+        <div className="flex flex-wrap items-center gap-space-sm px-space-sm">
+          <button
+            type="button"
+            onClick={() => onCancel?.()}
+            disabled={!onCancel}
+            className="rounded-lg bg-surface-pure px-space-md py-space-xs font-label text-label-md font-bold text-primary shadow-sm transition-colors hover:enabled:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <p className="text-label-sm text-secondary" role="status">
+            {canQueue
+              ? "Press Escape to cancel · Enter queues your next message"
+              : "Press Escape to cancel"}
+          </p>
+        </div>
+      )}
+      {canRetry && !home && (
+        <div className="flex flex-wrap items-center gap-space-sm px-space-sm">
+          <button
+            type="submit"
+            disabled={reading}
+            className="rounded-lg bg-primary-container px-space-md py-space-xs font-label text-label-md font-bold text-on-primary transition-colors hover:enabled:bg-deep-ocean-navy focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-container disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Retry request
+          </button>
+          <p className="text-label-sm text-secondary" role="status">
+            Your draft is ready to send again.
+          </p>
+        </div>
       )}
       {(dragging || reading) && (
         <p className="px-space-sm text-label-sm text-secondary" role="status">
@@ -245,7 +273,7 @@ export function ChatComposer({
         className={
           home
             ? "flex w-full min-w-0 flex-col"
-            : "flex w-full min-w-0 items-center gap-space-sm"
+            : "flex w-full min-w-0 items-end gap-space-sm"
         }
       >
         <label htmlFor="purchase-message" className="sr-only">
@@ -253,45 +281,32 @@ export function ChatComposer({
             ? "Continue the conversation"
             : "Your meal or purchasing request"}
         </label>
-        {home ? (
-          <textarea
-            ref={(element) => {
-              inputRef.current = element;
-            }}
-            id="purchase-message"
-            value={text}
-            onChange={(event) => onTextChange(event.target.value)}
-            onKeyDown={handleComposerKeyDown}
-            maxLength={4000}
-            placeholder="Tell Aimo what you need…"
-            className="focus:outline-none focus-visible:outline-none"
-            disabled={disabled}
-            rows={2}
-          />
-        ) : (
-          <input
-            ref={(element) => {
-              inputRef.current = element;
-            }}
-            id="purchase-message"
-            type="text"
-            value={text}
-            onChange={(event) => onTextChange(event.target.value)}
-            onKeyDown={handleComposerKeyDown}
-            maxLength={4000}
-            placeholder={MOCK.request.composerPlaceholder}
-            disabled={disabled}
-            className="h-11 min-w-0 flex-1 rounded-lg bg-transparent p-space-sm font-body text-body-md text-on-surface placeholder:text-outline focus:outline-none focus-visible:outline-none"
-          />
-        )}
+        <textarea
+          ref={inputRef}
+          id="purchase-message"
+          value={text}
+          onChange={(event) => onTextChange(event.target.value)}
+          onKeyDown={handleComposerKeyDown}
+          maxLength={4000}
+          placeholder={
+            home ? "Tell Aimo what you need…" : MOCK.request.composerPlaceholder
+          }
+          className={
+            home
+              ? "focus:outline-none focus-visible:outline-none"
+              : "min-h-11 min-w-0 flex-1 resize-none rounded-lg bg-transparent p-space-sm font-body text-body-md text-on-surface placeholder:text-outline focus:outline-none focus-visible:outline-none"
+          }
+          disabled={disabled}
+          rows={2}
+        />
         <div
           className={
             home
               ? "home-composer-actions w-full"
-              : "flex shrink-0 items-center gap-space-xs"
+              : "flex shrink-0 items-center gap-space-xs pb-0.5"
           }
         >
-          {hasDraft ? (
+          {hasDraft && !(canRetry && !home) ? (
             <button
               type="submit"
               aria-label={sendLabel}
@@ -313,7 +328,7 @@ export function ChatComposer({
                 <path d="M12 20V4m-7 7 7-7 7 7" />
               </svg>
             </button>
-          ) : (
+          ) : !hasDraft ? (
             <button
               type="button"
               aria-label="Start voice mode"
@@ -336,7 +351,7 @@ export function ChatComposer({
                 <path d="M4 10v4M8 5v14M12 8v8M16 3v18M20 9v6" />
               </svg>
             </button>
-          )}
+          ) : null}
         </div>
       </div>
     </form>
