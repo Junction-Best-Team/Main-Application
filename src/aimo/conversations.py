@@ -25,6 +25,16 @@ RECIPE_LOCKED_REASON = (
 )
 
 
+CONFIRM_POINTER = "Confirm purchase"
+OPEN_POINTER = (
+    "Review the exact basket on the card and press Confirm purchase; nothing is ordered until you do."
+)
+BLOCKED_POINTER = (
+    "The basket is on the card but needs attention first; its Confirm purchase button becomes "
+    "available once the reasons shown there are resolved."
+)
+
+
 def cart_edit_state(messages, ordered=frozenset()):
     """(editable, reason) for the number controls on the card, from the latest stored plan.
     `ordered`: ids of baskets that have an order; the cart is closed when its latest basket is one."""
@@ -617,9 +627,20 @@ def execute_turn(turn, service, runner=None):
                     }
                 )
         if result.proposal_id:
-            service.get_proposal(
+            view = service.get_proposal(
                 actor, result.proposal_id
             )  # Never link another buyer/agent's proposal.
+            if CONFIRM_POINTER not in result.text and not view.get("order_id"):
+                # One fixed sentence whenever a basket exists after the turn (also a blocked one, or one
+                # the server made after the model's reply): where it is and what presses the order.
+                blocked = view.get("policy_outcome") in ("denied", "needs_resolution")
+                result = result.model_copy(
+                    update={
+                        "text": (
+                            result.text + "\n\n" + (BLOCKED_POINTER if blocked else OPEN_POINTER)
+                        )[:20000]
+                    }
+                )
         if result.image is None:
             # Preserve an uploaded image after interruption, including basket recovery.
             with connection() as c:
