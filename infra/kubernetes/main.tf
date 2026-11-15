@@ -43,6 +43,10 @@ resource "kubernetes_secret_v1" "runtime" {
     DATABASE_URL            = var.database_url
     APPROVAL_SESSION_SECRET = var.session_secret
   })
+  # Releases synchronize the supplier key into both runtime Secrets.
+  lifecycle {
+    ignore_changes = [data["VALIO_AIMO_API_KEY"]]
+  }
 }
 
 resource "kubernetes_secret_v1" "database_ca" {
@@ -97,7 +101,7 @@ resource "kubernetes_secret_v1" "worker" {
   })
   # Releases own only these fields; Terraform retains all other Secret settings.
   lifecycle {
-    ignore_changes = [data["LLM_API_KEY"], data["LLM_PROVIDER"], data["GUARDRAIL_PROVIDER"], data["LLM_BASE_URL"], data["LLM_MODEL"], data["GEMINI_API_KEY"], data["CLOUDINARY_URL"]]
+    ignore_changes = [data["LLM_API_KEY"], data["LLM_PROVIDER"], data["GUARDRAIL_PROVIDER"], data["LLM_BASE_URL"], data["LLM_MODEL"], data["GEMINI_API_KEY"], data["CLOUDINARY_URL"], data["VALIO_AIMO_API_KEY"]]
   }
 }
 

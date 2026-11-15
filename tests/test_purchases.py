@@ -8,12 +8,12 @@ from copy import deepcopy
 from datetime import date, timedelta
 
 import pytest
+from supplier_fixture import FixtureClient
 
 from aimo import purchases
 from aimo.db import Problem, connection, js
 from aimo.purchases import MAX_MATERIALS, build_snapshot, context, material_fingerprint
 from aimo.schemas import PrepareRequest
-from aimo.upstream import FixtureClient
 
 
 def req(request_data, lines, **patch):

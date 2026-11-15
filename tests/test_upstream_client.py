@@ -11,12 +11,13 @@ from decimal import Decimal
 
 import httpx
 import pytest
+from supplier_fixture import FixtureClient
 
 from aimo import upstream
 from aimo.config import Settings
 from aimo.db import Problem, now
 from aimo.fixtures import fixture_facts
-from aimo.upstream import FixtureClient, ValioClient, validate_lookup
+from aimo.upstream import ValioClient, validate_lookup
 
 KEY = "unit-test-key-not-a-real-credential"
 
@@ -352,3 +353,32 @@ def test_price_validity_end_caps_the_proposal_expiry(monkeypatch):
     result = check(mutate)["464306"]
     assert result["reasons"] == []
     assert result["expires_at"].startswith(last_day)
+
+
+def test_default_client_queries_both_official_supplier_endpoints(monkeypatch):
+    from supplier_fixture import runtime_client
+
+    cfg = Settings(_env_file=None, upstream_mode="live", valio_aimo_api_key=KEY)
+    monkeypatch.setattr(upstream, "settings", lambda: cfg)
+    seen = []
+
+    def handle(request):
+        seen.append(request)
+        return httpx.Response(200, json={"products": []})
+
+    real = httpx.Client
+    monkeypatch.setattr(
+        upstream.httpx, "Client",
+        lambda **kw: real(transport=httpx.MockTransport(handle), **kw),
+    )
+    result = runtime_client().lookup("123", ["460510"], date(2026, 11, 16))
+    assert result["mode"] == "live"
+    assert [str(r.url) for r in seen] == [
+        "https://junction26.valioaimo.fi/api/price",
+        "https://junction26.valioaimo.fi/api/availability",
+    ]
+    for request in seen:
+        assert request.headers["x-api-key"] == KEY
+        assert json.loads(request.content) == {
+            "customer": "123", "products": ["460510"], "requestedDate": "2026-11-16",
+        }

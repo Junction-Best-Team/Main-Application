@@ -376,3 +376,7 @@ skeleton crossfade and rolling price are our own implementations of effects show
 motion.dev (whose versions are Motion+ and were not used). The dark palette is derived from
 the existing `ui/DESIGN.md` tokens; the kitchen-tool outlines are authored SVG paths. Written
 with Claude Code during the event.
+
+Supplier test fixtures reuse the existing authored `FixtureClient` responses, now in
+`tests/supplier_fixture.py`. They are installed only by pytest and the explicit offline
+API harness, and are excluded from application images. Production pricing has no fixture fallback.

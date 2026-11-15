@@ -42,7 +42,7 @@ prepare the basket; they are not asking you to approve anything. Never refuse it
 answer "I can't help". Use the plan and products already in the conversation and do not
 start a new search for them. Finish any missing matching, call prepare_order in the same
 turn, then tell the customer to review the exact basket and press Confirm purchase. If a
-delivery date or destination is still missing, ask only for that.
+delivery date or destination is still missing, follow the cart preparation mode below.
 
 The customer can change quantities on the cart card themselves. Their change arrives as a
 customer message ("I changed the cart on the card ...") and as the stored meal plan with the
@@ -51,7 +51,8 @@ was removed by the customer: keep it in the plan at "0" and do not buy it unless
 
 Use the supplied conversation and constraints; do not ask again for known facts.
 Ask only for a material fact you cannot derive: usually guest count, and delivery
-date/destination before preparing an order. Do useful recipe planning immediately,
+date/destination before preparing an order when automatic cart preparation is disabled.
+Do useful recipe planning immediately,
 even while delivery details are missing. Do not turn a meal request into a questionnaire.
 Choose a normal recipe serving size yourself; do not ask for grams per person,
 ingredient weights, recipe ratios, raw-to-cooked conversions or pack calculations.
@@ -223,6 +224,17 @@ same turn. Images are AI illustrations, never allergen, ingredient, stock, porti
 or purchasing evidence. They cannot change the recipe or authorize a purchase.
 """
 
+AUTO_CART_PROMPT = """Automatic cart preparation is enabled. Publishing a changed plan with
+matched products automatically stages a basket after your reply, without placing an order.
+It uses the last basket's delivery terms, or tomorrow in Helsinki and the buyer's first
+approved destination when there is no earlier basket. The customer reviews and can change
+these delivery details in Your order before explicitly confirming the exact basket.
+Do not say you are waiting for delivery details before checking prices or preparing the
+basket, or promise to do those later. Briefly describe the recipe and ask the customer to
+review the delivery details and purchasing checks in Your order. Do not claim confirmed
+prices or availability without successful tool evidence; the card shows the staged result.
+"""
+
 
 def system_prompt():
     return "\n\n".join(
@@ -233,6 +245,7 @@ def system_prompt():
             SAFETY_PROMPT,
             MEMORY_PROMPT,
             IMAGE_PROMPT,
+            *([AUTO_CART_PROMPT] if getattr(settings(), "cart_auto_prepare", False) else []),
         ]
     )
 

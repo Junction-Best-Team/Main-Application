@@ -13,13 +13,13 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from supplier_fixture import FixtureClient
 
 from aimo.catalog import normalize, quantity
 from aimo.fixtures import fixture_facts
 from aimo.purchases import money
 from aimo.schemas import PrepareRequest, ProposalResponse
 from aimo.service import Service
-from aimo.upstream import FixtureClient
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "aimo"
 

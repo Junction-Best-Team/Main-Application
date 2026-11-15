@@ -61,8 +61,8 @@ for index in "${!components[@]}"; do
     # Track before mutation so an ambiguous API timeout still triggers restoration.
     changed+=("$index")
     kubectl -n "$NAMESPACE" set image "deployment/aimo-$component" "$component=${images[$index]}"
-  elif [[ ( "$component" == worker || "$component" == api ) && "${LLM_REFRESHED:-false}" == true ]]; then
-    # API now reads the shared Google key to mint voice tokens; rotate both consumers.
+  elif [[ ( "$component" == worker || "$component" == api ) && ( "${LLM_REFRESHED:-false}" == true || "${SUPPLIER_REFRESHED:-false}" == true ) ]]; then
+    # Both processes consume provider/supplier configuration from their startup environment.
     kubectl -n "$NAMESPACE" rollout restart "deployment/aimo-$component"
   fi
 done
