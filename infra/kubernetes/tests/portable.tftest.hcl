@@ -33,12 +33,20 @@ run "safe_initial_plan" {
   }
   assert {
     condition     = kubernetes_config_map_v1.runtime.data.SECURE_COOKIES == "true" && kubernetes_config_map_v1.runtime.data.UPSTREAM_MODE == "live"
-    error_message = "Use secure cookies and live supplier data by default; fixture is an explicit opt-in."
+    error_message = "Use secure cookies and live supplier data."
   }
   assert {
     condition     = kubernetes_deployment_v1.apps["api"].spec[0].template[0].spec[0].security_context[0].run_as_non_root && kubernetes_deployment_v1.apps["api"].spec[0].template[0].spec[0].container[0].security_context[0].run_as_non_root
     error_message = "The container must not override the pod's non-root requirement; restricted admission rejects an explicit false value."
   }
+}
+
+run "reject_fixture_supplier" {
+  command = plan
+  variables {
+    upstream_mode = "fixture"
+  }
+  expect_failures = [var.upstream_mode]
 }
 
 run "restricted_setup_plan" {

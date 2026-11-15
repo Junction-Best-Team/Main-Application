@@ -16,6 +16,7 @@ from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
+from supplier_fixture import FixtureClient
 
 from aimo.chat_schemas import Ingredient, MealPlan
 from aimo.db import Problem
@@ -23,7 +24,7 @@ from aimo.recipe_schemas import Recipe
 from aimo.recipes import scaled_plan
 from aimo.schemas import LookupRequest, PrepareRequest, PurchaseRequest
 from aimo.service import Service
-from aimo.upstream import FixtureClient, ValioClient
+from aimo.upstream import ValioClient
 
 
 def recipe(count=1, quantity=100, unit="g", base_servings=1):

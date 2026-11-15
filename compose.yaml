@@ -19,7 +19,7 @@ services:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
       APPROVAL_SESSION_SECRET: ${APPROVAL_SESSION_SECRET:-}
       SECURE_COOKIES: ${SECURE_COOKIES:-false}
-      UPSTREAM_MODE: ${UPSTREAM_MODE:-fixture}
+      UPSTREAM_MODE: ${UPSTREAM_MODE:-live}
       VALIO_AIMO_API_KEY: ${VALIO_AIMO_API_KEY:-}
       EMBEDDING_BACKEND: ${EMBEDDING_BACKEND:-google}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
@@ -37,7 +37,7 @@ services:
     build: {context: ., target: worker}
     environment:
       DATABASE_URL: postgresql://aimo:aimo@db:5432/aimo
-      UPSTREAM_MODE: ${UPSTREAM_MODE:-fixture}
+      UPSTREAM_MODE: ${UPSTREAM_MODE:-live}
       VALIO_AIMO_API_KEY: ${VALIO_AIMO_API_KEY:-}
       EMBEDDING_BACKEND: ${EMBEDDING_BACKEND:-google}
       LLM_PROVIDER: ${LLM_PROVIDER:-google}

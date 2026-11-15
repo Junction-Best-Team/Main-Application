@@ -86,11 +86,18 @@ fi
 
 export SECURE_COOKIES=false PUBLIC_BASE_URL="$BASE" DEMO_BASE_URL="$BASE" LLM_API_KEY="" GEMINI_API_KEY=""
 
+UVICORN_APP=aimo.api:app
+UVICORN_ARGS=()
+if [ "$LIVE" = 0 ]; then
+  UVICORN_APP=fixture_app:app
+  UVICORN_ARGS=(--app-dir tests)
+fi
+
 step "Start server on ${BASE}"
 if [ "${CI_COVERAGE:-0}" = 1 ]; then
-  COVERAGE_FILE=.coverage/sweep uv run coverage run -m uvicorn aimo.api:app --host 127.0.0.1 --port "$PORT" --log-level warning &
+  COVERAGE_FILE=.coverage/sweep uv run coverage run -m uvicorn "$UVICORN_APP" ${UVICORN_ARGS[@]+"${UVICORN_ARGS[@]}"} --host 127.0.0.1 --port "$PORT" --log-level warning &
 else
-  uv run uvicorn aimo.api:app --host 127.0.0.1 --port "$PORT" --log-level warning &
+  uv run uvicorn "$UVICORN_APP" ${UVICORN_ARGS[@]+"${UVICORN_ARGS[@]}"} --host 127.0.0.1 --port "$PORT" --log-level warning &
 fi
 SERVER=$!
 # Coverage data is written when the server exits, so wait for it (harmless without coverage).

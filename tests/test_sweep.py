@@ -9,6 +9,7 @@ from pathlib import Path
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from supplier_fixture import FixtureClient
 from sweep.check_live import check_live
 from sweep.run_sweep import Sweep
 
@@ -16,7 +17,6 @@ from aimo import upstream
 from aimo.api import create_app
 from aimo.config import settings
 from aimo.db import Problem
-from aimo.upstream import FixtureClient
 
 DELIVERY = date.today() + timedelta(days=2)
 

@@ -86,12 +86,9 @@ Shared setup is `tests/conftest.py`. It forces a database whose name ends in `_t
 
 ### 2.6 Upstream mode choice (`tests/test_upstream_mode.py`)
 
-| Test | Scenario | Asserts | Catches |
-| --- | --- | --- | --- |
-| `test_auto_without_key_falls_back_to_labelled_fixtures` | mode `auto`, no key | effective mode `fixture`, client is `FixtureClient` | Silent use of live API without a key |
-| `test_auto_with_key_uses_live_client` | mode `auto`, a made-up key | mode `live`, client is `ValioClient` | Key being ignored. No network call is made |
-| `test_explicit_fixture_ignores_a_configured_key` | mode `fixture` with a key | fixture client | Accidentally hitting the live API in tests |
-| `test_explicit_live_without_key_fails_closed` | mode `live`, no key | Calling the client raises `UPSTREAM_CREDENTIALS_MISSING` | Falling back to fixture data when live was demanded |
+The shipped client always selects Valio for `live` and legacy `auto`, with or without
+credentials. Missing credentials fail closed; explicit fixture configuration fails
+application startup. The test harness installs authored responses separately.
 
 ### 2.7 HTTP, security and interfaces (`tests/test_http.py`)
 
@@ -216,7 +213,7 @@ Each item is traced to code I read.
 | Sweep `message CSRF enforced` | Checks CSRF rejection only; missing-provider behavior is covered by backend tests |
 | `test_workflow.py::test_stock_change_blocks_old_revision` | Asserts only the new revision's outcome and no approval id. Does not check the old approval or that commit is blocked |
 | `test_workflow.py::test_competing_decisions_and_commit` | Result depends on thread timing. Assertions allow several valid orderings; it would catch only a flagrant contradiction |
-| `test_upstream_mode.py::test_auto_with_key_uses_live_client`, `test_explicit_fixture_ignores_a_configured_key` | Check only class type; no behaviour |
+| `test_upstream_mode.py::test_application_always_selects_live_supplier` | Check only class type; no behaviour |
 | `test_http.py::test_historical_approval_links_current_autonomous_revision` | Repeats most of `test_workflow.py::test_changed_price_creates_revision_and_invalidates_approval`; the new part is the "no approval needed at revision 2" case |
 | `tests/test_evidence.py::test_gross_boundary` | Fine as a boundary test, but the same rows are all `spend`; nothing else about the limit rule is varied |
 | Commit and retry flow | Checked in `test_autonomous_and_idempotent_after_restart`, `test_shared_purchasing_operations_and_both_commit_outcomes`, `test_conversations.py` and `test_agent_integration.py`. Overlap is deliberate (different layers), but a failure will show in many places |
@@ -333,7 +330,11 @@ STRICT XFAIL (45), all gaps:
 
 #### test_upstream_default.py (JNP3-SUP-005) - 8 passed, 1 xfailed
 
-Fixture mode only when asked for or when no key exists; live otherwise. Passing: the Terraform default for `upstream_mode` is not `fixture`; code and `.env.example` default to `auto`; `auto` without a key logs a FIXTURE warning and labels every result `fixture`; with a key and no mode the client is live; explicit `fixture` gives the fixture client; `live` without a key fails closed with `UPSTREAM_CREDENTIALS_MISSING`; an unknown mode is rejected; a local run (`SECURE_COOKIES=false`) without a key still starts and serves `/health/live`. Catches a silent fall-back to invented prices. The Terraform test only checks the default is not "fixture"; it does not prove the deployment is live.
+Application defaults and `.env.example` select live; `auto` is a live compatibility alias.
+Missing credentials fail API startup and worker readiness locally and when hosted.
+Fixture mode is refused by application entry points; Terraform accepts only live.
+The configured supplier URL must be `https://junction26.valioaimo.fi`. Tests install
+fixtures from their own harness and never need the private key.
 
 STRICT XFAIL (1): a hosted deployment (`SECURE_COOKIES=true`, no supplier key) must fail at startup (owner decisions Q-01 and Q-55); today the app starts, because the startup guard is not built (person 1, issue #73).
 

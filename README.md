@@ -80,7 +80,7 @@ Google is the default for embeddings and shortlist ranking. Existing installatio
 
 Imports use Gemini Embedding 2 through the private `GEMINI_API_KEY`; uncached documents consume Google quota/credits. Subsequent imports reuse unchanged text embeddings. Publication is atomic: failures leave the old generation active. Updated snapshots require an explicitly verified `--expected-count` and `--expected-sha256`. There is no import on requests or startup. `aimo ingest` always builds a new generation, while `aimo sync-catalog` skips a snapshot whose hash, embedding profile, import profile and complete row count already match the active catalog. Only one ingestion run (either command) can hold the database lock at a time. Imports retain withdrawal markers for explicit purchase denial while excluding withdrawn products from discovery. Publication retains the active and previous generation's product/vector rows by default (`CATALOG_GENERATIONS_TO_KEEP=2`). Generation metadata, reusable embedding cache and immutable purchase snapshots remain. Semantic retrieval ranks the filtered active generation exactly, avoiding filtered approximate-index recall loss at this MVP catalog size.
 
-For a quick authored-fixture catalog, use `uv run aimo fixture-catalog` instead of `ingest`. Set `EMBEDDING_BACKEND=fixture` in `.env` only when you also want deterministic fake embeddings; ingestion and serving must use the same setting. The default uses the real model, including for a small fixture catalog. `UPSTREAM_MODE=fixture` is independent: commercial prices/stock remain invented unless explicitly switched to `live` with private credentials. There is no silent live-to-fixture fallback.
+For a quick authored-fixture catalog, use `uv run aimo fixture-catalog` instead of `ingest`. Set `EMBEDDING_BACKEND=fixture` in `.env` only when you also want deterministic fake embeddings; ingestion and serving must use the same setting. The default uses the real model, including for a small fixture catalog. The application always obtains commercial prices/stock from Valio; the authored supplier responses live only in the test harness. A fixture catalog does not provide prices.
 
 Run `docker compose --profile app up --build` after setup, then open [chat purchasing](http://localhost:8000/). Username: **buyer**. Read the generated `DEMO_BUYER_PASSWORD` privately from `.env`. Configure `GEMINI_API_KEY` privately for chat, semantic checks and search. The default chat model is `gemini-4-carbon`; `LLM_PROVIDER=google`, `GUARDRAIL_PROVIDER=google` and `EMBEDDING_BACKEND=google` select the native Google adapters. The browser never receives provider/API keys. `SECURE_COOKIES=false` is for localhost HTTP only. Hosted deployments require HTTPS and `SECURE_COOKIES=true`. See [operational logging](docs/logging.md) for request/turn correlation, safe error diagnostics, model settings and existing-deployment overrides.
 
@@ -88,15 +88,22 @@ For frontend development, run `npm run dev --prefix frontend` and temporarily se
 
 ## Valio API key and upstream modes
 
-`UPSTREAM_MODE` selects where price and availability come from:
+The application uses the real supplier at `https://junction26.valioaimo.fi`:
+`POST /api/price` and `POST /api/availability`, authenticated by the private
+`VALIO_AIMO_API_KEY`. Search the catalog first, then query only shortlisted products.
 
-| Value | Behaviour |
-| --- | --- |
-| `auto` (default) | Live Valio API when `VALIO_AIMO_API_KEY` is set, otherwise **authored fixtures** with a logged warning. |
-| `live` | Live only; fails closed (`UPSTREAM_CREDENTIALS_MISSING`) without a key. |
-| `fixture` | Invented fixtures only (used by the pytest suite). |
+`UPSTREAM_MODE=live` is the default. Legacy `auto` means live as well; neither falls
+back to invented prices. API startup and worker readiness fail without the key or
+with a different supplier URL. `fixture` is refused by application entry points.
 
-**The key exists and team members have it.** Ask a teammate and put it in your own gitignored `.env` as `VALIO_AIMO_API_KEY` (never commit or print it). Without it everything still runs on fixtures, but nothing from that run is live data: `GET /health/ready` reports `upstream_mode`, and every lookup response carries `mode: live|fixture`.
+**The key exists and team members have it.** Put it in your gitignored `.env` as
+`VALIO_AIMO_API_KEY` (never commit or print it). `GET /health/ready` reports the
+supplier mode. Historical fixture evidence remains labelled.
+
+CI stays offline through `tests/supplier_fixture.py` and the explicit
+`tests/fixture_app.py` API harness, which are excluded from application images.
+For a dedicated fixture database, use `UPSTREAM_MODE=fixture uv run uvicorn
+--app-dir tests fixture_app:app`; `tests/ci.sh` configures that harness automatically.
 
 **Open decision for the full product:** how a distributor supplies this key. Options: an admin UI where the distributor enters it (stored server-side, never sent to browsers), or deployment configuration as today (an environment variable or Kubernetes Secret). The MVP uses the environment variable. This must be resolved before production; see `docs/brief.md` section 12.
 
@@ -108,7 +115,7 @@ uv run python scripts/demo.py
 uv run python scripts/demo.py --conversation <uuid> --message "Delivery 2026-11-16, hotel-helsinki, no dietary restrictions, budget EUR 1000"
 ```
 
-The CLI authenticates as the buyer and starts chat. Complete recipe clarification, inspect the actual product quantities and commercial evidence, then explicitly click **Confirm purchase** inside the product. Chat text never confirms anything. Prices/stock are invented when `UPSTREAM_MODE=fixture`; the optional live supplier connector still does not place orders.
+The CLI authenticates as the buyer and starts chat. Complete recipe clarification, inspect the actual product quantities and commercial evidence, then explicitly click **Confirm purchase** inside the product. Chat text never confirms anything. Supplier prices/stock are live; the supplier connector does not place orders.
 
 `/` is chat, `/conversations/{id}` is addressable chat, `/purchases` preserves purchase history, and `/purchases/{proposal_id}` reviews current terms. Legacy `/approvals/{approval_id}` remains an authenticated exact historical snapshot; superseded terms link explicitly to the current revision. `/approvals` redirects to purchases.
 
