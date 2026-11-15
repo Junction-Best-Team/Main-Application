@@ -38,6 +38,7 @@ from aimo.config import settings
 @pytest.fixture(autouse=True)
 def stop_control_on(monkeypatch):
     monkeypatch.setattr(settings(), "agent_stop_control", True)
+    monkeypatch.setattr(settings(), "agent_phases", False)  # phases layer on top (test_agent_phases.py)
 
 
 def guidance(session, texts):

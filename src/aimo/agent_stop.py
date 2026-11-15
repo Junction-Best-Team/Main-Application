@@ -158,3 +158,39 @@ CONTINUE_NOTICE = (
     "now with the existing plan, or ask for the one missing fact (delivery date or destination)."
 )
 MIN_SECONDS_TO_CONTINUE = 15
+
+
+# --- phases (docs/agent-phases.md): derived each round, never stored ---------------------------------------
+CARD_EDIT = re.compile(r"^\s*I changed the cart on the card", re.IGNORECASE)
+
+
+def is_card_edit(customer_texts):
+    """The customer edited the card: the line the cart routes write as the customer's own message."""
+    texts = [t for t in customer_texts if t]
+    return bool(texts and CARD_EDIT.search(texts[-1]))
+
+
+# Tools hidden in a phase (the finish phase is computed: everything but the allowed few). Hidden tools are
+# also refused if called, naming the phase and the tools that are available. Nothing here removes the
+# customer's confirmation: no phase has a confirm, approve or commit tool, and prepare_order only prepares.
+_MATCH_TOOLS = frozenset({"match_ingredient", "match_ingredients"})
+PHASE_HIDDEN = {
+    # get_recipe_plan stays visible early: a saved recipe plan of this conversation is reloaded with it.
+    # Price and substitution reads stay visible too: advice and status questions need them.
+    "understand": _MATCH_TOOLS | {"prepare_order"},
+    "recipe": _MATCH_TOOLS | {"prepare_order"},
+    "match": frozenset({"scale_recipe", "draft_recipe", "prepare_order"}),
+    "prepare": _MATCH_TOOLS
+    | {"get_recipe_plan", "scale_recipe", "draft_recipe", "search_recipes", "get_recipe"},
+    "advice": frozenset({"prepare_order", "publish_meal_plan"}),
+    "open": frozenset(),
+}
+PHASE_ONE_QUESTION = (
+    "Ask at most ONE plain question, and only when a named dish has no recipe you can find or the guest "
+    "count cannot be assumed; otherwise do not ask."
+)
+CONTINUE_PHASE_NOTICE = (
+    "Server notice, not from the customer: the basket is not prepared yet. Call prepare_order now with "
+    "the existing plan. The delivery date and destination are never asked: they default to tomorrow and "
+    "the policy's destination, and the customer edits them on the card."
+)

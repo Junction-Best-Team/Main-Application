@@ -331,6 +331,9 @@ class ToolSession:
         self.called_before = set()
         self.called_now = set()
         self.stats = {"tool_calls": 0, "repeated_calls": 0, "calls_after_prepare": 0}
+        self.phase_refusals = 0  # after two refusals the phase restrictions widen for the turn
+        self.enforce_phases = False  # the turn runner switches it on; direct callers and read-only
+        # child sessions of parallel reads are not restricted (the parent decided before dispatch)
         # Optional semantic review; deterministic checks here and in Service always apply.
         self.guard = guard
         self.preparation_key = "chat-" + fingerprint({"turn": identity["_turn_id"]})
@@ -664,7 +667,65 @@ class ToolSession:
             tool.schema(name) for name, tool in self.registry.items()
             if not (self.needs_recipe_plan and name in CATALOG_TOOLS)
             and not (name == "draft_recipe" and self.draft_basis is not None)
+            and name not in self.hidden_tools()
         ]
+
+    @property
+    def phases_on(self):
+        config = settings()
+        return config.agent_stop_control and config.agent_phases
+
+    @property
+    def phase(self):
+        """understand, recipe, match, prepare, finish, advice or open: DERIVED from what the session
+        holds every round (never stored). Advice wins when unsure; an unchanged plan from an earlier
+        turn with no request is "open" (nothing hidden)."""
+        texts = self.customer_texts
+        if self.prepared_digest is not None and self.proposal:
+            return "finish"
+        if agent_stop.advice_only(texts):
+            return "advice"
+        if not self.plan:
+            return "recipe" if self.recipe_discovery_started else "understand"
+        if not self.plan_complete:
+            return "match"
+        changed = self.restored is None or self.plan != self.restored
+        if changed or agent_stop.wants_to_buy(texts) or agent_stop.is_card_edit(texts):
+            return "prepare"
+        return "open"
+
+    def hidden_tools(self):
+        """The tools the model does not see this round (none when phases are off or widened)."""
+        if not self.enforce_phases or not self.phases_on or self.phase_refusals >= 2:
+            return frozenset()
+        phase = self.phase
+        if phase != "finish":
+            return agent_stop.PHASE_HIDDEN.get(phase, frozenset())
+        blocked = self.proposal and self.proposal.get("policy_outcome") in (
+            "denied",
+            "needs_resolution",
+        )
+        named = {
+            name
+            for name, pattern in agent_stop.OPTIONAL_AFTER_PREPARE.items()
+            if self.customer_texts and pattern.search(self.customer_texts[-1])
+        }
+        keep = {"get_proposal", "get_order"} | named | ({"get_purchase_policy"} if blocked else set())
+        return frozenset(set(self.registry) - keep)
+
+    def phase_refusal(self, name):
+        """None, or the Problem that refuses a tool hidden in this phase (it names the way forward)."""
+        if name not in self.hidden_tools():
+            return None
+        self.phase_refusals += 1
+        phase = self.phase
+        available = sorted(set(self.registry) - set(self.hidden_tools()))
+        return Problem(
+            "TOOL_NOT_ALLOWED",
+            f"This step is {phase.upper()}: {name} is not available now. Available tools: "
+            f"{', '.join(available) or 'none; reply to the customer'}. No purchase was made.",
+            422,
+        )
 
     @property
     def needs_recipe_plan(self):
@@ -719,7 +780,7 @@ class ToolSession:
         self.called_before.discard(key)
         self.called_now.discard(key)
 
-    def discipline(self, name, arguments):
+    def discipline(self, name, arguments, parallel=False):
         """None, or the Problem that refuses this call (never executed). Counts every call."""
         if name not in self.registry or not settings().agent_stop_control:
             return None
@@ -745,6 +806,12 @@ class ToolSession:
                     "Confirm purchase.",
                     422,
                 )
+        # Reads run in child sessions that are not restricted themselves: the parent decides here. Every
+        # other call is checked in invoke, after its arguments were validated.
+        phase_problem = self.phase_refusal(name) if parallel and self.enforce_phases else None
+        if phase_problem is not None:
+            self.called_now.add(key)
+            return phase_problem
         if key in self.called_before and name not in agent_stop.REPEATABLE:
             return Problem(
                 "TOOL_REPEATED",
@@ -755,9 +822,64 @@ class ToolSession:
         self.called_now.add(key)
         return None
 
+    def phase_guidance(self):
+        """One line per phase, owned by the server (docs/agent-phases.md)."""
+        phase = self.phase
+        head = f"Phase: {phase.upper()}. "
+        if phase == "understand":
+            return head + (
+                "Classify the message: advice (answer directly, no basket), a shopping request (find "
+                "the recipe or the products now), a card edit or a status question. "
+                + agent_stop.PHASE_ONE_QUESTION
+            )
+        if phase == "recipe":
+            return head + (
+                "Recipe discovery has run. Publish the quantity plan now using scale_recipe for a "
+                "complete saved recipe or draft_recipe for a labelled estimate. Catalog tools become "
+                "available after the plan is published."
+            )
+        if phase == "match":
+            left = [
+                i.name
+                for i in self.plan.ingredients
+                if not i.product_id or (self.plan.recipe_plan_id and i.status != "matched")
+            ]
+            return head + (
+                f"The published plan has {len(left)} unmatched ingredients. Search them together in one tool-call reply "
+                "(the top three candidates already include inspected product details), then save the "
+                "matches in ONE call: publish_meal_plan with the exact existing quantities for a "
+                "free-form plan, match_ingredients for a saved recipe. Do not research alternatives "
+                "for a suitable selection. When every ingredient is matched, the basket comes next."
+            )
+        if phase == "prepare":
+            return head + (
+                "The plan is complete. Call prepare_order now with the existing plan, in this turn. "
+                "The delivery date and destination are never asked: use tomorrow's date and the first "
+                "destination of the policy (get_purchase_policy) unless the customer named others; the "
+                "customer edits them on the card. Do not ask for them and do not stop at the plan."
+            )
+        if phase == "finish":
+            if self.proposal and self.proposal.get("policy_outcome") in ("denied", "needs_resolution"):
+                return head + (
+                    "The basket is prepared but blocked. Explain the blocker in 2 to 4 sentences and the "
+                    "next step; get_purchase_policy is allowed for that. Never say purchased."
+                )
+            return head + (
+                "Reply in 2 to 4 sentences: what was prepared, what is not included, and the next step: "
+                "review the exact basket and press Confirm purchase. Never say purchased or ordered; "
+                "do not call more tools."
+            )
+        if phase == "advice":
+            return head + (
+                "The customer asked for advice only: answer directly; do not prepare a basket or check out."
+            )
+        return head + "Answer the customer; call a tool only if it is needed."
+
     def execution_guidance(self, remaining):
         """Server-owned workflow state; candidate discovery never selects a product."""
         clock = f"Turn time remaining: {max(0, int(remaining))} seconds. "
+        if self.phases_on:
+            return clock + self.phase_guidance()
         if settings().agent_stop_control and not self.needs_recipe_plan:
             stop = self.stop_guidance()
             if stop:
@@ -835,6 +957,8 @@ class ToolSession:
                 "Remove the NUL (\\u0000) control character from the arguments and call again.",
                 422,
             )
+        if self.enforce_phases and (refusal := self.phase_refusal(name)) is not None:
+            raise refusal  # after the arguments checked out: invalid arguments are still reported first
         if self.needs_recipe_plan and name in CATALOG_TOOLS:
             raise Problem(
                 "MEAL_PLAN_REQUIRED",

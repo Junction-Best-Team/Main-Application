@@ -56,7 +56,9 @@ def executions(session, calls, deadline, live, progress, *, max_errors, round_nu
                 check_deadline(deadline)
                 live()
                 name = call.function.name
-                refusal = session.discipline(name, call.function.arguments)
+                refusal = session.discipline(
+                    name, call.function.arguments, parallel=name in PARALLEL_READS
+                )
                 if refusal is not None:  # never executed: the model reads the plain reason
                     jobs.append((call, None, refusal))
                     continue

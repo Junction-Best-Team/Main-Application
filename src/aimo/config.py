@@ -94,6 +94,9 @@ class Settings(BaseSettings):
     # Server-owned stop control for the agent loop (docs/agent-stop-control.md): completion
     # guidance, optional-tool discipline after a basket, one bounded continuation, end reasons.
     agent_stop_control: bool = True
+    # Server-owned phases (understand, recipe, match, prepare, finish; docs/agent-phases.md): each round's
+    # phase is derived and decides the visible tools and the guidance. Needs agent_stop_control.
+    agent_phases: bool = True
 
 
 @lru_cache

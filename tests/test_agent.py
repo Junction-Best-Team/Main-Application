@@ -1161,6 +1161,8 @@ def test_q44_model_sees_the_details_in_the_tool_error(monkeypatch, config, ident
             reply(call("publish_meal_plan", expanded)),
             reply(call("prepare_order", purchase())),
             reply(text="Retrying with pasta 20.5 KG."),
+            # no plan-only mode: the model stopped without a basket, so the server continues once
+            reply(text="I will retry with the corrected amounts."),
         ],
     )
     agent.run_turn(identity, HISTORY, FakeService(identity))

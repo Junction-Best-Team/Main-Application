@@ -15,6 +15,7 @@ from aimo.agent_reads import executions
 from aimo.agent_recovery import partial_notice, progress_status
 from aimo.agent_stop import (
     CONTINUE_NOTICE,
+    CONTINUE_PHASE_NOTICE,
     MIN_SECONDS_TO_CONTINUE,
     asks_for_delivery_details,
     wants_to_buy,
@@ -242,8 +243,29 @@ prices or availability without successful tool evidence; the card shows the stag
 """
 
 
+# With the server-owned phases (docs/agent-phases.md) delivery details are never asked: they default
+# and the customer edits them on the card, so the paragraph that sent the model to ask is replaced.
+OLD_ASK_PARAGRAPH = """Ask only for a material fact you cannot derive: usually guest count, and delivery
+date/destination before preparing an order. Do useful recipe planning immediately,
+even while delivery details are missing. Do not turn a meal request into a questionnaire.
+"""
+PHASED_ASK_PARAGRAPH = """Ask at most ONE plain question, and only when a named dish has no recipe you can
+find or the guest count cannot be assumed. The delivery date and destination are never asked: they default
+to tomorrow and the policy's destination, and the customer edits them on the card. Do useful recipe
+planning immediately and do not turn a meal request into a questionnaire. Every shopping request ends in
+the same turn with the card holding all ingredients and the basket prepared; advice does not.
+"""
+
+
+def phases_on():
+    from aimo.config import settings as application_settings
+
+    config = application_settings()
+    return config.agent_stop_control and config.agent_phases
+
+
 def system_prompt():
-    return "\n\n".join(
+    text = "\n\n".join(
         [
             BASE_PROMPT,
             ORDINARY_PURCHASE_PROMPT,
@@ -254,6 +276,9 @@ def system_prompt():
             *([AUTO_CART_PROMPT] if getattr(settings(), "cart_auto_prepare", False) else []),
         ]
     )
+    if phases_on():
+        text = text.replace(OLD_ASK_PARAGRAPH, PHASED_ASK_PARAGRAPH, 1)
+    return text
 
 
 def memory_message(loaded):
@@ -419,6 +444,7 @@ def run_turn(
 
     session = ToolSession(identity, service, constraints=constraints)
     session.customer_texts = [m["content"] for m in messages if m["role"] == "user"]
+    session.enforce_phases = True  # the phase decides the visible tools (when phases are on)
     if stored_plan:
         session.restore_plan(stored_plan)  # fails closed; see ToolSession.restore_plan
     today = datetime.now(ZoneInfo("Europe/Helsinki")).date().isoformat()
@@ -448,6 +474,7 @@ def run_turn(
     guard = None
     continued = False
     rounds = 0
+    phase_path = []
 
     def end(reason):
         # One line per turn: why it ended and how much work it took (no arguments, no content).
@@ -456,6 +483,7 @@ def run_turn(
             stop_reason=reason,
             continued_once=continued,
             rounds=rounds,
+            **({"phase_path": phase_path} if phase_path else {}),
             **session.stats,
         )
 
@@ -508,7 +536,10 @@ def run_turn(
                 history[0]["content"] = execution_instructions + (
                     "\n" + session.execution_guidance(check_deadline(deadline))
                 )
-                with log_context(round=round_number, model=cfg.llm_model):
+                phase = session.phase if phases_on() else None
+                if phase:
+                    phase_path.append(phase)
+                with log_context(round=round_number, model=cfg.llm_model, **({"phase": phase} if phase else {})):
                     reply = provider.complete(history, session.definitions, deadline)
                 history.append(reply.message())
                 if not reply.tool_calls:
@@ -523,8 +554,12 @@ def run_turn(
                         and stop_control_on()
                         and session.prepared_digest is None
                         and session.plan_complete
-                        and wants_to_buy(session.customer_texts)
-                        and not asks_for_delivery_details(reply.content)
+                        and (
+                            session.phase == "prepare"  # phases: no plan-only mode, defaults exist
+                            if phases_on()
+                            else wants_to_buy(session.customer_texts)
+                            and not asks_for_delivery_details(reply.content)
+                        )
                         and round_number < cfg.llm_max_tool_rounds
                         and deadline - time.monotonic() >= MIN_SECONDS_TO_CONTINUE
                         and (
@@ -537,7 +572,12 @@ def run_turn(
                         and not guard.prepare_refused
                     ):
                         continued = True
-                        history.append({"role": "user", "content": CONTINUE_NOTICE})
+                        history.append(
+                            {
+                                "role": "user",
+                                "content": CONTINUE_PHASE_NOTICE if phases_on() else CONTINUE_NOTICE,
+                            }
+                        )
                         continue
                     # LLM -> user: unsupported narrative is replaced; trusted state is kept.
                     if guard.mode != "off":
