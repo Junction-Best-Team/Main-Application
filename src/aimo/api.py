@@ -50,7 +50,13 @@ from aimo.memory_schemas import (
     MemorySearch,
     MemoryUpdate,
 )
-from aimo.observability import RequestLoggingMiddleware, configure_logging, event
+from aimo.observability import (
+    RequestLoggingMiddleware,
+    configure_logging,
+    event,
+    failure,
+    observe_async_errors,
+)
 from aimo.order_schemas import CancellationResponse, OrdersResponse
 from aimo.request_limits import MessageBodyLimitMiddleware
 from aimo.schedule_schemas import (
@@ -90,13 +96,22 @@ def create_app(service=None):
 
     @asynccontextmanager
     async def lifespan(app):
+        import asyncio
+        import logging
+
         import anyio
 
-        configure_logging()
-        upstream.check_supplier_startup()  # a hosted deployment must not start without the key
+        configure_logging("api")
+        event("api.starting")
+        try:
+            upstream.check_supplier_startup()  # a hosted deployment must not start without the key
+        except Exception as exc:
+            event("api.startup_failed", level=logging.ERROR, **failure(exc))
+            raise
         event("api.started", upstream_mode=upstream.effective_mode())
         try:
-            yield
+            with observe_async_errors(asyncio.get_running_loop()):
+                yield
         finally:
             await anyio.to_thread.run_sync(close_pools)
             event("api.stopped")
@@ -554,7 +569,8 @@ def create_app(service=None):
                     data = await anyio.to_thread.run_sync(
                         conversations.detail, current, conversation_id
                     )
-                except Problem:
+                except Problem as exc:
+                    event("chat.stream_interrupted", conversation_id=str(conversation_id), **failure(exc))
                     yield "event: expired\ndata: {}\n\n"
                     return
                 value = json.dumps(jsonable_encoder(data), separators=(",", ":"))

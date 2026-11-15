@@ -134,6 +134,18 @@ export function ChatPage() {
               busy={busy}
               stopped={stopped}
               onEditMessage={editMessage}
+              onContinue={
+                !text.trim() && !attachments.length
+                  ? () => {
+                      setText(
+                        "Continue matching the remaining ingredients in my saved recipe plan.",
+                      );
+                      document
+                        .querySelector<HTMLTextAreaElement>("#purchase-message")
+                        ?.focus();
+                    }
+                  : undefined
+              }
               onReviewBasket={(proposalId) =>
                 setSelection({ conversationId, proposalId })
               }

@@ -207,10 +207,19 @@ def test_only_api_cli_and_worker_import_a_server_framework():
 def test_worker_listens_on_one_health_only_server():
     """The worker's only listener is its probe: /health/live and /health/ready, 404 otherwise."""
     tree = parse("worker.py")
+    server_names = {"ThreadingHTTPServer"} | {
+        n.name
+        for n in ast.walk(tree)
+        if isinstance(n, ast.ClassDef)
+        and any(ast.unparse(base) == "ThreadingHTTPServer" for base in n.bases)
+    }
     servers = [
-        n for n in ast.walk(tree) if isinstance(n, ast.Call) and "HTTPServer" in ast.unparse(n.func)
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Call) and ast.unparse(n.func) in server_names
     ]
-    assert [ast.unparse(s.func) for s in servers] == ["ThreadingHTTPServer"]
+    assert len(servers) == 1
+    assert [ast.unparse(a) for a in servers[0].args] == ["('0.0.0.0', 8001)", "Health"]
     paths = sorted({s for s in string_constants(tree) if s.startswith("/")})
     assert paths == ["/health/live", "/health/ready"], paths
     assert "invoke" not in (SRC / "worker.py").read_text()

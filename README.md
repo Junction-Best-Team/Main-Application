@@ -81,5 +81,5 @@ Start a task branch from the latest `origin/develop`; preserve teammates' change
 - [Architecture and agent harness](docs/architecture.md) · [Guardrails](docs/guardrails.md)
 - [Supplier reliability and carbon comparisons](docs/supplier-metrics.md)
 - [Recipes](docs/recipes.md) · [Attachments](docs/attachments.md) · [Voice](docs/voice.md) · [Memory](docs/memory.md)
-- [Frontend development](frontend/README.md) · [Deployment and operations](infra/README.md)
+- [Frontend development](frontend/README.md) · [Deployment and operations](infra/README.md) · [Runtime diagnostics](docs/observability.md)
 - [Preparation, reused work and third-party attribution](docs/pre-existing-work.md)

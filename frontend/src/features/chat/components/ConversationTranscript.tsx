@@ -28,6 +28,7 @@ export function ConversationTranscript({
   stopped = false,
   onReviewBasket,
   onEditMessage,
+  onContinue,
 }: {
   conversation: Conversation | null;
   busy: boolean;
@@ -37,11 +38,17 @@ export function ConversationTranscript({
   onReviewBasket?: (proposalId: string) => void;
   /** Replace a user message, truncate later turns, and regenerate. */
   onEditMessage?: (messageId: number, text: string) => Promise<void> | void;
+  onContinue?: () => void;
 }) {
   const [editingId, setEditingId] = useState<number | null>(null);
   useEffect(() => {
     if (busy) setEditingId(null);
   }, [busy]);
+  const plan = conversation?.messages.at(-1)?.meal_plan;
+  const unmatched = plan?.ingredients.some(
+    (item) =>
+      !item.product_id || (plan.recipe_plan_id && item.status !== "matched"),
+  );
   return (
     <div
       role="log"
@@ -120,6 +127,8 @@ export function ConversationTranscript({
         activity={conversation?.activity}
         busy={busy}
         stopped={stopped}
+        onContinue={unmatched ? onContinue : undefined}
+        unmatched={Boolean(unmatched)}
       />
     </div>
   );

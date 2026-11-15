@@ -8,8 +8,9 @@ from test_cart_auto_prepare import auto, baskets, data  # noqa: F401
 from test_draft_cart_purchase import MATCH, call, chat, plan, say, tool_reply  # noqa: F401
 
 from aimo import request_brief
-from aimo.db import connection
+from aimo.db import Problem, connection
 from aimo.google_chat import GoogleChatProvider
+from aimo.guardrails import Guardrails
 
 
 def brief(**changes):
@@ -202,6 +203,34 @@ def test_a_background_failure_explains_recovery_and_preserves_the_draft(auto, mo
     assert "couldn’t finish checking the basket" in d["messages"][-1]["text"]
     assert "private diagnostic" not in d["messages"][-1]["text"]
     assert remembered(auto).budget_gross == 1000
+
+
+@pytest.mark.parametrize("existing_basket", [False, True])
+def test_repeated_summary_refusal_finishes_with_clarification_and_preserves_history(
+    auto, monkeypatch, existing_basket
+):
+    previous = build(auto) if existing_basket else None
+    previous_brief = remembered(auto)
+
+    def unverified(*args, **kwargs):
+        raise Problem("REQUEST_BRIEF_UNVERIFIED", "Clarify the request.", 422)
+
+    monkeypatch.setattr(Guardrails, "check_request_brief", unverified)
+    result = auto.turn(
+        "Make it for 50 people.",
+        tool_reply(call("record_request", brief(portions=50))),
+        tool_reply(call("record_request", brief(portions=50))),
+    )
+    assert not result["busy"] and not result["retry_message"]
+    assert "one message" in result["messages"][-1]["text"]
+    assert remembered(auto) == previous_brief
+    assert result["purchases"] == (previous["purchases"] if previous else [])
+    with connection() as c:
+        assert c.execute("SELECT count(*) AS n FROM orders").fetchone()["n"] == 0
+        assert c.execute(
+            "SELECT state FROM conversation_turns WHERE conversation_id=%s "
+            "ORDER BY created_at DESC LIMIT 1", (auto.turn.cid,),
+        ).fetchone()["state"] == "complete"
 
 
 def test_request_writes_are_fenced_to_the_author_buyer_and_running_attempt(auto, buyer):

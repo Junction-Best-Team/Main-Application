@@ -15,6 +15,7 @@ from zipfile import ZipFile
 from pydantic import Field, model_validator
 
 from aimo.db import Problem
+from aimo.observability import event, failure, operation
 from aimo.schemas import Model
 
 MAX_FILE_BYTES = 2 * 1024 * 1024
@@ -184,6 +185,7 @@ def _prepare(item):
     return data | {"size": len(raw)}
 
 
+@operation("attachment.prepare")
 def prepare(item):
     # Parse hostile compressed documents outside the API process with CPU, memory and wall bounds.
     try:
@@ -196,7 +198,10 @@ def prepare(item):
             env=os.environ | {"OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1"},
         )
         output = json.loads(result.stdout) if result.returncode == 0 else {}
-    except (subprocess.TimeoutExpired, ValueError):
+        if result.returncode:
+            event("attachment.parser_failed", return_code=result.returncode)
+    except (subprocess.TimeoutExpired, ValueError) as exc:
+        event("attachment.parser_failed", **failure(exc))
         output = {}
     if not output.get("file"):
         raise Problem(

@@ -5,7 +5,7 @@ authority and run in every mode. **Semantic checks** (Gemini Decision 1) add a
 probabilistic opinion at five boundaries. A model "allow" never grants permission,
 skips validation or replaces the customer's confirmation.
 
-Code: `src/aimo/guardrails.py` (policy `guard-2026-11-14.7`), wired in
+Code: `src/aimo/guardrails.py` (policy `guard-2026-11-15.3`), wired in
 `agent.py`, `agent_tools.py` and `conversations.py`.
 
 ## What is deterministic
@@ -30,6 +30,7 @@ provider occurs. The retained Jev adapter requires explicit
 | --- | --- | --- | --- |
 | User → LLM | Once per turn: latest customer message plus up to four earlier customer messages (multi-turn attacks) | `manipulation` (override rules, impersonation, secrets, chat purchasing authority, steering the classifier); `in_scope` | Blocked → server reply, no model call. Out of scope → short redirect. Uncertain → the turn runs but cannot prepare a basket. Unavailable → turn fails with `GUARDRAIL_UNAVAILABLE` (retryable). |
 | Tool → LLM | Catalog text in search/product/proposal results, batched once per model reply and cached by exact text | Does the text contain instructions aimed at an assistant/reviewer? | Flagged or unchecked text is withheld from the model, and that product cannot be prepared. |
+| LLM → tool (request summary) | Before `record_request`, including preference updates. Complete customer messages and the previous/proposed summaries, plus a bounded transcript with assistant replies labelled model-authored | `faithful_request`: keep the customer's requirements and choices. Assistant questions can explain short answers such as “beef” or “standard”; suggestions alone cannot change requirements or authorize purchases. A chosen dish and portions suffice to calculate ingredients | Blocked/uncertain/unavailable → no summary write. One correction is allowed; a second refusal ends the turn with a request to restate the dish/products, quantities and dietary needs in one message, before another model call or later tools in that batch. Existing history stays available. |
 | LLM → tool | Before a new `prepare_order` only, after the deterministic checks. The current text of every selected product is screened first, because one reply can fetch new descriptions and prepare before that reply's tool results are screened | Destination/date, budget, lactose/milk-free requirements and items match what the **customer** said (assistant text and the model's meal plan are labelled as not evidence); the displayed basket label (`request_id`) is neutral | Blocked/uncertain/unavailable → no preparation; the model is told to ask the customer. Same arguments reuse the verdict, so retrying cannot fish for an allow. |
 | LLM → tool (memory) | Before each `manage_memory` write. State: the persisted customer messages, the immediately preceding assistant reply (marked model-authored), the proposed change and, for update/delete, the current item. No catalog, supplier or recipe text | `persistence_intent` (the latest customer message asks to keep, change or forget it for the future), `matches_request`, `scope` (shared vs personal is clear), `no_authority` (no credentials, payment data or purchasing authority) | Any failure, uncertainty, unavailability or an unpassed input screen → no write; the assistant is told to ask the customer. |
 | LLM → user | Everything the model wrote for display, the reply **and** the meal plan (title, ingredient names, notes), against trusted records (proposal, receipt, tool outcomes, product and commercial evidence). Text is never clipped into review: oversized output counts as uncertain | Unsupported purchase status, prices/stock, dietary safety, disclosure | The reply is replaced by a server-authored fallback and the plan is withheld. The proposal, its link and the trusted status notice are kept. Under enforcement a plan is also withheld when the turn ends before review (provider failure, step or error limit). |
@@ -87,7 +88,7 @@ Thresholds are on the risk probability: ≤ 0.2 passes, ≥ 0.8 fails, and anyth
 between is uncertain. They are **provisional** and enforced by default: re-select
 them from the labelled live evaluation, and switch to `shadow` if false blocks appear.
 
-Each check logs one line on `aimo.guardrails`: turn ID, boundary, mode, verdict,
+Each check logs a `guardrail.decision` JSON event on `aimo.operations`: turn ID, boundary, mode, verdict,
 policy version, served model, latency, error category, failed/uncertain question
 names and probabilities. Conversation text and keys are never logged.
 

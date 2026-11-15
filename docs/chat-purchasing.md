@@ -92,10 +92,17 @@ show on the order card and receipt, not in the chat. Code: `order_notice.py`, `c
 ## Bounded parallel reads and interrupted planning
 
 The harness executes independent catalog/product/policy/recipe reads from one model
-response in groups of at most four. Each read owns isolated caches; successful results
+response in groups of at most four. A response may contain up to 100 calls, with at
+most 12 calls outside that read-only allowlist; a turn may execute up to 256 calls
+within its existing deadline. Oversized batches are rejected whole before execution.
+Each read owns isolated caches; successful results
 are applied in model order. Plan changes, matching, supplier lookups, memory changes,
 images and basket preparation remain ordered barriers. Cancellation/reclaim fences
 cache updates; late reads cannot publish progress or change the live session.
+Provider diagnostics record finish reasons, call counts and fixed validation categories,
+never response text or tool arguments. A reviewed partial response displays as paused,
+stops the local message queue, and offers to draft a continuation for unmatched
+ingredients. Sending it resumes the saved plan through the ordinary authenticated chat.
 
 Product search defaults to three candidates and inspects the first three with the
 existing catalog reader. These include the same bounded, screened evidence as

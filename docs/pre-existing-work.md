@@ -2,6 +2,13 @@
 
 Maintain this log for the final submission. It records provenance and timing; the official submission platform and challenge rules determine the disclosures required.
 
+## Runtime diagnostics — 2026-11-15
+
+Extended the existing structured logger, service instrumentation and portable Google
+client with runtime correlation and safe failure metadata. Verification reuses authored
+HTTP, worker, supplier and image fixtures; no new external logging service, dependency
+or live provider call was introduced.
+
 ## Prepared before the event
 
 | Material | Date | Source or author | Prepared beforehand | Built during the event |
@@ -17,6 +24,13 @@ Add any starter code or earlier prototypes separately. Describe which parts exis
 | Valio Aimo implementation plan and diagrams | 2026-11-14 | Team-provided research brief and discussions with AI assistants; Codex checked challenge/API documentation, schema and catalog records, and reviewed [PR #1](https://github.com/Junction-Best-Team/Main-Application/pull/1) at `5a14b3fde3448ec2674d8711bbba676d6c6a1667` | Documentation and read-only catalog analysis only. Covers seeded customer rules, four-outcome policy/workflow modules, read-only policy discovery, shared schemas/evidence, a React/TypeScript/Vite approval inbox served by FastAPI, mission-driven approval without chat, concurrent commit enforcement, normal audit history, ingestion/search, and existing-cluster hosting. Both allergen-group overlaps were checked locally. PR #1 live-API findings are attributed reports, not independently repeated calls in this plan. Outbound notifications, policy editing, hash chaining and direct in-agent approval remain deferred. No application implementation or deployment. The original plan remains in Git history; [the brief](brief.md) now describes the current product. |
 
 ## Reused code, data, models, and assets
+
+## Interrupted product matching — 2026-11-15
+
+Reused the existing bounded read executor, saved-plan recovery and chat composer.
+Added authored provider and browser fixtures for larger batches and partial progress;
+they use synthetic responses and make no live supplier or ordering calls. No external
+assets or dependencies were added.
 
 The supplier comparison feature reuses Valio's already imported delivery-reliability
 and carbon-footprint datasets. It adds read-only product enrichment, not an importer
@@ -399,3 +413,10 @@ request for the README. The screens show synthetic demo-account data and mock
 ordering; no customer message, supplier lookup or order was submitted during capture.
 The images reuse the application's existing UI and home background, attributed above.
 No new external asset or dependency was introduced.
+
+## Request-summary clarification context — 2026-11-15
+
+Reused the existing labelled conversation projection, semantic request review and
+typed agent loop. Added assistant-question context and bounded refusal recovery.
+Regression dialogues and provider replies are authored fixtures. Classifier checks
+use synthetic dialogues only; no supplier requests or orders are involved.

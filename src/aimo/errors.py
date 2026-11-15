@@ -14,7 +14,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
 
 from aimo.db import Problem
-from aimo.observability import event
+from aimo.observability import event, validation_metadata
 from aimo.schemas import ErrorResponse
 
 # Stable codes for the statuses the framework and our routes use; others derive from the phrase.
@@ -100,6 +100,7 @@ def install(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def validation_handler(request: Request, exc: RequestValidationError):
+        event("http.validation_failed", status=422, **validation_metadata(exc))
         # type/loc/msg only: never the submitted `input` (a password, or the whole body for a
         # missing field) or `ctx` (which can carry the parser's error text).
         errors = [
@@ -113,6 +114,7 @@ def install(app: FastAPI) -> None:
 
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+        event("http.rejected", status=exc.status_code, error_code=status_code_name(exc.status_code))
         headers = getattr(exc, "headers", None)
         if exc.status_code in (204, 304) or exc.status_code < 200:  # no body allowed
             return Response(status_code=exc.status_code, headers=headers)
@@ -126,7 +128,11 @@ def install(app: FastAPI) -> None:
     async def unhandled_handler(request: Request, exc: Exception):
         # Served by Starlette's outermost middleware, which still re-raises so the request logger
         # and the server record it; the body carries nothing about the exception.
-        return JSONResponse(envelope("INTERNAL_ERROR", MESSAGES[500]), status_code=500)
+        request_id = getattr(request.state, "request_id", None)
+        return JSONResponse(
+            envelope("INTERNAL_ERROR", MESSAGES[500]), status_code=500,
+            headers={"X-Request-ID": request_id} if request_id else None,
+        )
 
     schema = {"model": ErrorResponse}
     app.router.responses = {

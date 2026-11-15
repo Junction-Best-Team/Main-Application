@@ -66,8 +66,10 @@ atexit.register(close_pools)
 @contextmanager
 def connection():
     started = time.monotonic()
+    acquired = None
     try:
         with pool().connection() as conn:
+            acquired = time.monotonic()
             yield conn
     except (PoolTimeout, TooManyRequests) as exc:
         event(
@@ -75,6 +77,7 @@ def connection():
             level=logging.WARNING,
             error_code="DATABASE_BUSY",
             error_type=type(exc).__name__,
+            duration_ms=elapsed(started),
         )
         raise Problem(
             "DATABASE_BUSY", "Database capacity is temporarily unavailable; retry later.", 503
@@ -85,13 +88,16 @@ def connection():
             level=logging.WARNING,
             duration_ms=elapsed(started),
             sqlstate=exc.sqlstate,
+            phase="acquire" if acquired is None else "transaction",
             **failure(exc),
         )
         raise
     finally:
         duration = elapsed(started)
         if duration >= 1000:
-            event("database.slow_connection", level=logging.WARNING, duration_ms=duration)
+            event("database.slow_connection", level=logging.WARNING, duration_ms=duration,
+                  acquisition_ms=round((acquired - started) * 1000, 2) if acquired else None,
+                  transaction_ms=elapsed(acquired) if acquired else None)
 
 
 class Problem(Exception):
