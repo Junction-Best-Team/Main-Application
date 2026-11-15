@@ -778,6 +778,41 @@ test("a lost message response reuses its idempotency key after refresh", async (
   expect(keys[1]).toBe(keys[0]);
 });
 
+test("Ctrl+Enter submits the composer when a draft is ready", async ({
+  page,
+}) => {
+  await mockSession(page);
+  await page.route(`**/api/conversations/${conversationId}`, (route) =>
+    route.fulfill({ json: blankConversation }),
+  );
+  let posted = false;
+  await page.route(
+    `**/api/conversations/${conversationId}/messages`,
+    async (route) => {
+      posted = true;
+      await route.fulfill({
+        json: {
+          ...blankConversation,
+          messages: [
+            {
+              id: 1,
+              role: "assistant",
+              text: "Got it — what delivery date?",
+              created_at: timestamp,
+            },
+          ],
+        },
+      });
+    },
+  );
+  await page.goto(`/conversations/${conversationId}`);
+  const composer = page.getByLabel("Continue the conversation");
+  await composer.fill("Carbonara for 200");
+  await composer.press("Control+Enter");
+  await expect(page.getByText("Got it — what delivery date?")).toBeVisible();
+  expect(posted).toBe(true);
+});
+
 test("purchase deep links survive sign-in and confirmation requires an explicit click", async ({
   page,
 }) => {
