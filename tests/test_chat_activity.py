@@ -69,6 +69,30 @@ def test_real_worker_wires_observer_and_keeps_every_fast_tool_event(buyer, servi
     assert next_turn["activity"]["events"] == []
 
 
+@pytest.mark.parametrize("code", ["TOOL_ERROR_LIMIT", "TOOL_ROUND_LIMIT", "REQUEST_BRIEF_UNVERIFIED"])
+def test_terminal_error_code_remains_an_interruption_after_sanitization(
+    buyer, service, monkeypatch, caplog, code
+):
+    cid, _ = queue(buyer)
+
+    def runner(actor, history, shared, *, on_progress, **kwargs):
+        progress = Progress(actor["_turn_id"], on_progress)
+        progress.emit("complete", error_code=code)
+        return AgentTurn(text="Progress is saved; please continue.")
+
+    monkeypatch.setattr(agent, "run_turn", runner)
+    with caplog.at_level("INFO", logger="aimo.operations"):
+        assert run_once(service)
+    activity = conversations.detail(buyer, cid)["activity"]
+    assert activity["state"] == "complete"
+    assert activity["events"] == [
+        {"sequence": 1, "kind": "error", "label": "Response interrupted"}
+    ]
+    assert code not in json.dumps(activity)
+    rows = [json.loads(r.message) for r in caplog.records if r.name == "aimo.operations"]
+    assert next(r for r in rows if r["event"] == "chat.persisted")["partial"] is True
+
+
 def test_expired_replaced_and_out_of_order_progress_cannot_publish(buyer, service):
     cid, _ = queue(buyer)
     old = conversations.claim_turn(cid)

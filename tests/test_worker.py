@@ -50,6 +50,25 @@ def test_killed_worker_reclaimed_and_old_attempt_cannot_publish(buyer, service):
     assert conversations.detail(buyer, cid)["messages"][-1]["text"] == "current"
 
 
+def test_long_turn_keeps_its_lease_until_persistence_headroom_expires(buyer, service, monkeypatch):
+    cid, _ = queued(buyer)
+    started = now()
+    monkeypatch.setattr(conversations, "now", lambda: started)
+    old = conversations.claim_turn()
+    assert old["lease_until"] == started + timedelta(seconds=420)
+    for elapsed in (241, 361, 419):
+        monkeypatch.setattr(conversations, "now", lambda: started + timedelta(seconds=elapsed))
+        assert conversations.claim_turn() is None
+    monkeypatch.setattr(conversations, "now", lambda: started + timedelta(seconds=421))
+    new = conversations.claim_turn()
+    assert new["attempt"] != old["attempt"]
+    with pytest.raises(Problem) as error:
+        conversations.execute_turn(old, service, lambda *args: AgentTurn(text="stale"))
+    assert error.value.code == "TURN_REPLACED"
+    conversations.execute_turn(new, service, lambda *args: AgentTurn(text="current"))
+    assert conversations.detail(buyer, cid)["messages"][-1]["text"] == "current"
+
+
 def test_revoked_customer_job_fails_without_calling_provider(buyer, service):
     queued(buyer)
     with connection() as c:

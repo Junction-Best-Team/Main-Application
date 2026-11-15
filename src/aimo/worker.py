@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Event, Thread
 
 from aimo import conversations, scheduler
+from aimo.agent_limits import WORKER_HEALTH_SECONDS
 from aimo.config import settings
 from aimo.db import close_pools, connection, now
 from aimo.observability import configure_logging, event, failure, operation
@@ -104,7 +105,7 @@ def main():
 
     class Health(BaseHTTPRequestHandler):
         def do_GET(self):
-            fresh = time.monotonic() - state["progress"] < 270
+            fresh = time.monotonic() - state["progress"] < WORKER_HEALTH_SECONDS
             healthy = fresh and (self.path == "/health/live" or state["ready"])
             code = (
                 (200 if healthy else 503) if self.path in ("/health/live", "/health/ready") else 404

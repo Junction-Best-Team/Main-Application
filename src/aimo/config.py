@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from aimo.agent_limits import MAX_TOOL_ROUNDS, MAX_TURN_SECONDS
 from aimo.model_spec import EMBEDDING_MODEL
 
 
@@ -87,11 +88,11 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://openrouter.ai/api/v1"
     llm_model: str = "gemini-4-carbon"
     llm_timeout_seconds: float = Field(default=45, gt=0, le=60)
-    # Leave at least a minute for final persistence before the 240-second worker lease.
-    llm_turn_timeout_seconds: float = Field(default=180, gt=0, le=180)
+    # The worker lease leaves at least a minute for final persistence.
+    llm_turn_timeout_seconds: float = Field(default=MAX_TURN_SECONDS, gt=0, le=MAX_TURN_SECONDS)
     llm_reasoning_effort: Literal["", "low", "medium", "high"] = "low"
     llm_max_completion_tokens: int = Field(default=8192, ge=1024, le=32768)
-    llm_max_tool_rounds: int = Field(default=20, ge=1, le=24)
+    llm_max_tool_rounds: int = Field(default=MAX_TOOL_ROUNDS, ge=1, le=MAX_TOOL_ROUNDS)
     # Semantic guardrails (Gemini Decision 1 with GEMINI_API_KEY): enforce, shadow
     # (record only) or off. Deterministic purchasing controls always apply. See docs/guardrails.md.
     guardrail_mode: Literal["off", "shadow", "enforce"] = "enforce"

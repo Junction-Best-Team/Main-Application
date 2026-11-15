@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
-from aimo.agent_limits import MAX_TOOL_CALLS_PER_TURN
+from aimo.agent_limits import MAX_TOOL_CALLS_PER_TURN, MAX_TURN_SECONDS
 from aimo.agent_provider import chat_provider, check_deadline, encode
 from aimo.agent_reads import executions
 from aimo.agent_recovery import partial_notice, progress_status
@@ -499,9 +499,9 @@ def run_turn(
     validate_context(identity, messages)
     cfg = settings()
     if budget_seconds is None:
-        budget_seconds = getattr(cfg, "llm_turn_timeout_seconds", 180)
-    if not 0 < budget_seconds <= 180:
-        raise ValueError("Agent time budget must be positive and at most 180 seconds")
+        budget_seconds = getattr(cfg, "llm_turn_timeout_seconds", MAX_TURN_SECONDS)
+    if not 0 < budget_seconds <= MAX_TURN_SECONDS:
+        raise ValueError(f"Agent time budget must be positive and at most {MAX_TURN_SECONDS} seconds")
     progress = Progress(identity["_turn_id"], on_progress)
 
     def live():
