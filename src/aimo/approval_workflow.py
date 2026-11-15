@@ -115,6 +115,32 @@ def evaluation_changed(revision, evaluated):
     return any(revision[key] != evaluated[key] for key in evaluated)
 
 
+# Most serious first. The card reads one class per reason code (Q-134 d); it never decides anything.
+CLASS_RANK = {"blocker": 0, "expired": 1, "exception": 2, "warning": 3}
+SEVERITY_CLASS = {
+    "denied": "blocker",
+    "unresolved": "blocker",
+    "exception": "exception",
+    "warning": "warning",
+}
+
+
+def reason_classes(reasons, status):
+    """Each reason code present, mapped to blocker, exception, warning or expired.
+
+    Derived from the severities approval_policy already sets. A passed cutoff reads as expired once
+    the basket itself is expired (a fresh preparation is the only way out); every other unresolved or
+    denied reason is a blocker. A code that appears with several severities keeps the most serious."""
+    classes = {}
+    for reason in reasons:
+        kind = SEVERITY_CLASS[reason["severity"]]
+        if reason["code"] == "CUTOFF_PASSED" and status == "expired":
+            kind = "expired"
+        if reason["code"] not in classes or CLASS_RANK[kind] < CLASS_RANK[classes[reason["code"]]]:
+            classes[reason["code"]] = kind
+    return classes
+
+
 def render(
     c, p, r, a, identity, *, auth_context=None, purchasing_agent=None, history=None, cancelled=None
 ):
@@ -235,6 +261,7 @@ def render(
         "order_status": "accepted_mock" if committed else "not_placed",
         "fulfilment": fulfilment,
         "reasons": r["reasons"],
+        "reason_classes": reason_classes(r["reasons"], status),
         "expires_at": r["expires_at"],
         "next_action": action,
         "approval_id": str(a["id"]) if a else None,
@@ -255,6 +282,11 @@ def render(
             ).fetchall()
         ],
     }
+
+
+def is_expired(c, identity, pid):
+    """True if the proposal's current revision renders as expired (read inside the caller's transaction)."""
+    return render(c, *proposal(c, pid, identity), identity)["approval_status"] == "expired"
 
 
 def get_proposal(identity, pid, revision=None):

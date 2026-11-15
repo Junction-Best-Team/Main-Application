@@ -396,4 +396,8 @@ def validate_lookup(
         except (KeyError, TypeError, ValueError, InvalidOperation, OverflowError):
             add("DELIVERY_UNRESOLVED", "Delivery schedule, units or cutoff is incomplete.")
         result[pid] = out
+    for out in result.values():
+        out["stock_verified"] = out["available_sales_quantity"] is not None and not any(
+            r["severity"] in ("unresolved", "denied") for r in out["reasons"]
+        )
     return result

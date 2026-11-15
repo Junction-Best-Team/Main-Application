@@ -294,7 +294,9 @@ def test_search_inspects_shortlist_once_and_keeps_candidates_unselected(identity
     assert all(p["match_is_suitability_proof"] is False for p in first["products"])
     assert session.invoke("search_products", '{"query":"carbonara"}') == first
     session.invoke("get_product", '{"product_id":"pasta"}')
-    assert len(service.calls) == 3
+    # three inspected products; the one policy read is the buyer's approved scope (in_scope)
+    assert [c[0] for c in service.calls].count("product") == 3
+    assert [c[0] for c in service.calls].count("policy") == 1
     assert session.plan is None and session.proposal is None
 
 

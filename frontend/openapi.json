@@ -1600,6 +1600,77 @@
         }
       }
     },
+    "/api/conversations/{conversation_id}/refresh-basket": {
+      "post": {
+        "summary": "Conversation Refresh Basket",
+        "description": "Prepare an expired basket again from the cart: fresh supplier price and stock, the same\ndate and destination, the customer's own pack counts. 409 BASKET_NOT_EXPIRED otherwise.\nNothing is ordered: the customer still confirms the new revision.",
+        "operationId": "conversation_refresh_basket_api_conversations__conversation_id__refresh_basket_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CartRefreshRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartPurchaseResponse"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Error. Every error body is an ErrorResponse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error. Every error body is an ErrorResponse.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/conversations/{conversation_id}/cart": {
       "put": {
         "summary": "Conversation Edit Cart",
@@ -3086,6 +3157,24 @@
           "not_included"
         ],
         "title": "CartPurchaseResponse"
+      },
+      "CartRefreshRequest": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 8,
+            "title": "Request Id",
+            "description": "Idempotency key: one per button press, reused when the press is retried."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "request_id"
+        ],
+        "title": "CartRefreshRequest",
+        "description": "Prepare an EXPIRED basket again from the cart, for the same date and destination (a button)."
       },
       "ChatActivity": {
         "properties": {
@@ -5487,6 +5576,20 @@
             "type": "array",
             "title": "Reasons"
           },
+          "reason_classes": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "blocker",
+                "exception",
+                "warning",
+                "expired"
+              ]
+            },
+            "type": "object",
+            "title": "Reason Classes",
+            "description": "One class per reason code present. blocker: data or the request must change (unresolved or denied). exception: the customer's own confirmation can cover it. warning: shown, blocks nothing. expired: the supplier cutoff has passed and the basket is expired, so it can only be prepared again. Derived for display; it never changes whether a basket can be confirmed."
+          },
           "expires_at": {
             "type": "string",
             "format": "date-time",
@@ -6217,6 +6320,20 @@
             },
             "type": "array",
             "title": "Reasons"
+          },
+          "reason_classes": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "blocker",
+                "exception",
+                "warning",
+                "expired"
+              ]
+            },
+            "type": "object",
+            "title": "Reason Classes",
+            "description": "One class per reason code present. blocker: data or the request must change (unresolved or denied). exception: the customer's own confirmation can cover it. warning: shown, blocks nothing. expired: the supplier cutoff has passed and the basket is expired, so it can only be prepared again. Derived for display; it never changes whether a basket can be confirmed."
           },
           "expires_at": {
             "type": "string",

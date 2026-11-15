@@ -12,6 +12,7 @@ from pydantic import ConfigDict, Field, TypeAdapter, ValidationError, model_vali
 
 from aimo import agent_stop, memory, request_brief
 from aimo.basket_errors import mismatch_problem, required_basket
+from aimo.catalog import per_sales_for
 from aimo.chat_schemas import AgentTurn, MealPlan
 from aimo.config import settings
 from aimo.db import Problem, fingerprint
@@ -232,6 +233,15 @@ class MealPlanResult(Model):
 class InspectedCandidate(ProductResponse):
     score: float
     match_is_suitability_proof: Literal[False]
+    pack_size_units: list[Literal["L", "KG"]] = Field(
+        default_factory=list,
+        description="Which of L and KG this product's data converts to packs. Empty: ask for the "
+        "number of packs (the sales unit) or prefer another product.",
+    )
+    in_scope: bool | None = Field(
+        default=None,
+        description="Inside the buyer's approved product scope (None: no scope configured).",
+    )
 
 
 class InspectedSearchResponse(SearchResponse):
@@ -1251,11 +1261,33 @@ class ToolSession:
         for index, candidate in enumerate(result["products"]):
             if index < 3:
                 details = self.product(ProductRequest(product_id=candidate["id"]))
-                candidate = details | {"score": candidate["score"], "match_is_suitability_proof": False}
+                candidate = details | {
+                    "score": candidate["score"],
+                    "match_is_suitability_proof": False,
+                    "pack_size_units": self.pack_size_units(details),
+                    "in_scope": self.in_scope(details["id"]),
+                }
             products.append(candidate)
         result = result | {"products": products}
         self.search_results[key] = result
         return result
+
+    @staticmethod
+    def pack_size_units(details):
+        """Which of L and KG convert to packs from this product's own data (no guessing)."""
+        if details.get("conflicts") or not (details.get("units") or {}).get(details["sales_unit"]):
+            return []
+        return [
+            unit
+            for unit in ("L", "KG")
+            if per_sales_for(details, unit)[0] and not per_sales_for(details, unit)[2]
+        ]
+
+    def in_scope(self, product_id):
+        if "scope" not in self.__dict__:
+            rules = self.policy(None)["rules"]
+            self.scope = rules.get("approved_product_ids")
+        return None if self.scope is None else product_id in self.scope
 
     def product(self, request):
         if request.product_id in self.products:
