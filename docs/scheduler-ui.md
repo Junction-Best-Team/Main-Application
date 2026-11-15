@@ -1,6 +1,6 @@
 # Scheduler UI (standing orders)
 
-Frontend for the standing-order (scheduler) backend: a customer turns a past order into a recurring one, sees what happened on each run, and can pause, resume, cancel, edit or restart it. Branch `p3/scheduler-ui`, frontend files only. Every order the scheduler places is a mock order ("Accepted by demo order service"). Status: built and checked against mocked API routes; not run against a live backend. The backend routes live on other branches (`p3/scheduler-design`, `p3/scheduler-orders`) and may still change.
+Frontend for the standing-order (scheduler) backend: a customer turns a past order into a recurring one, sees what happened on each run, and can pause, resume, cancel, edit or restart it. Every order the scheduler places is a mock order ("Accepted by demo order service"). The backend contract is documented in [standing orders](scheduler.md). Browser tests use mocked API routes; they do not establish live backend behavior.
 
 ## Screens and routes
 
@@ -33,7 +33,3 @@ Unload window, delivery hub / dock / lockbox, editing products or quantities of 
 ## What the specs mock
 
 Playwright specs intercept `/api/**` with `page.route` and use typed fixtures made up for the tests (`e2e/support/schedulerFixtures.ts`, `proposalFixture.ts`, `scheduleEditorMock.ts`); the shapes come from the generated schema, the values are invented. They prove behaviour against authored responses, not the live backend, supplier or provider. Specs: `schedules.spec.ts`, `schedule-create.spec.ts`, `schedule-edit.spec.ts`, `orders.spec.ts`, `home-schedules.spec.ts`, `system-message.spec.ts`, `schedule-nav.spec.ts`, and the updated `chat.spec.ts`.
-
-## Open items
-
-Optional schedule name (`title`, 1 to 80 characters), structured `details` on errors, and `?status=` on `GET /api/schedules` are agreed with the backend but not in the generated types yet; the UI adds them after the backend lands. Regenerate `openapi.json` and `schema.ts` when the backend branch is rebased.

@@ -26,3 +26,6 @@ Body `{request_id, lines:[{product_id, sales_quantity}]}`: whole sales units (pa
 
 ## After an order
 When the conversation's current cart (its latest stored plan) already has an order, `prepare-from-cart` and `PUT /cart` return `409 BASKET_ALREADY_ORDERED` (details.order_id), the automatic prepare does nothing for that plan, and `cart_editable` is false with "This order was already placed." A new plan (a new customer request) starts a new cart. The original press can still be replayed and returns its basket.
+
+## Items left out, after a reload (`cart_not_included`)
+`GET /api/conversations/{id}` carries `cart_not_included: [{name, amount, unit, reason: no_product | no_quantity | removed}]`: what the CURRENT basket leaves out, computed on every read from the latest stored plan (nothing is stored separately, no migration). It is empty without an open basket (none yet, cancelled, or with an order), when a newer plan was stored after the basket, for a saved recipe cart (it must be fully matched) and for an unreadable plan. The route and the PUT still return the same list in their answers.

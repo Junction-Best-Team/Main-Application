@@ -432,3 +432,79 @@ test("model stages show as one ticking line that expands to every step", async (
   ]);
   await expect(steps.locator(".activity-spin")).toHaveCount(1);
 });
+for (const width of [1440, 390]) {
+  test(`parallel calls retain individual completion states at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.route("**/api/session", (route) =>
+      route.fulfill({
+        json: {
+          username: "buyer",
+          buyer_id: "demo-hotel",
+          csrf_token: "test-csrf",
+        },
+      }),
+    );
+    await page.route("**/api/conversations?*", (route) =>
+      route.fulfill({ json: { items: [], next_offset: null } }),
+    );
+    const snapshot: Conversation = {
+      id: cid,
+      title: "Parallel reads",
+      cart_editable: false,
+      created_at: timestamp,
+      updated_at: timestamp,
+      messages: [
+        { id: 1, role: "user", text: "Plan lunch", created_at: timestamp },
+      ],
+      purchases: [],
+      busy: false,
+      activity: {
+        turn_id: tid,
+        state: "complete",
+        events: [
+          { sequence: 1, kind: "started", label: "Checking your request" },
+          { sequence: 2, kind: "tool_started", label: "Searching products" },
+          {
+            sequence: 3,
+            kind: "tool_started",
+            label: "Checking purchasing rules",
+          },
+          { sequence: 4, kind: "tool_started", label: "Searching products" },
+          { sequence: 5, kind: "tool_completed", label: "Searching products" },
+          {
+            sequence: 6,
+            kind: "tool_failed",
+            label: "Checking purchasing rules",
+          },
+          { sequence: 7, kind: "tool_completed", label: "Searching products" },
+          { sequence: 8, kind: "complete", label: "Finishing the response" },
+        ],
+      },
+    };
+    await page.route(`**/api/conversations/${cid}`, (route) =>
+      route.fulfill({ json: snapshot }),
+    );
+    await page.route(`**/api/conversations/${cid}/events`, (route) =>
+      route.fulfill({
+        contentType: "text/event-stream",
+        body: `event: conversation\ndata: ${JSON.stringify(snapshot)}\n\n`,
+      }),
+    );
+    await page.goto(`/conversations/${cid}`);
+    const activity = page.getByRole("region", { name: "Aimo activity" });
+    await activity.getByRole("button", { name: /Show 4 steps/ }).click();
+    const steps = activity.getByRole("listitem");
+    await expect(steps).toHaveCount(4);
+    await expect(steps.nth(1)).toContainText("Searching products · Done");
+    await expect(steps.nth(2)).toContainText(
+      "Checking purchasing rules · Couldn't finish",
+    );
+    await expect(steps.nth(3)).toContainText("Searching products · Done");
+    await expect(activity).not.toContainText("Interrupted");
+    await page.screenshot({
+      path: testInfo.outputPath(`parallel-${width}.png`),
+    });
+  });
+}

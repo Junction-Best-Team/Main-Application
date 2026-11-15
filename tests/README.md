@@ -1,6 +1,6 @@
 # Tests and CI procedure
 
-One command runs the checks locally. GitHub Actions (`.github/workflows/ci.yml`) selects backend lint/pytest/strict API sweep and frontend builds by changed paths on PRs into `develop` or `main`; frontend-only and documentation-only changes skip unrelated jobs, while manual runs check everything, including the full pytest suite. PRs run the small, explicit core-flow selection in `tests/pr-tests.sh` with fail-fast; exhaustive edge-case tests remain in the repository. Release PRs from this repository’s protected `develop` to `main` run the backend job again with the full pytest suite (`tests/pr-tests.sh --full`) but skip the frontend and infrastructure passes; source-branch validation and the CI gate remain. Merged pushes do not repeat these checks; the `CI gate` job waits for every applicable check. For a plain-language explanation of each test, see [TEST-GUIDE.md](TEST-GUIDE.md).
+One command runs the checks locally. GitHub Actions (`.github/workflows/ci.yml`) selects backend lint/pytest/strict API sweep and frontend builds by changed paths on PRs into `develop` or `main`; frontend-only and documentation-only changes skip unrelated jobs, while manual runs check everything, including the full pytest suite. PRs run the small, explicit core-flow selection in `tests/pr-tests.sh` with fail-fast; exhaustive edge-case tests remain in the repository. Release PRs from this repository’s protected `develop` to `main` reuse the contribution checks without repeating the application or infrastructure suites; source-branch validation and the CI gate remain. Merged pushes do not repeat these checks; the `CI gate` job waits for every applicable check. For a plain-language explanation of each test, see [TEST-GUIDE.md](TEST-GUIDE.md).
 
 ```sh
 tests/pr-tests.sh                   # quick PR regressions (existing test DB + .venv required)
@@ -18,7 +18,7 @@ Needs Docker (PostgreSQL + pgvector, started by the script) and `uv`. The script
 | Layer | What it is | Needs | CI job in `ci.yml` | Local only |
 | --- | --- | --- | --- | :-: |
 | `ruff check src tests scripts` | Lint | nothing | Python lint and tests | |
-| `tests/pr-tests.sh` | Core app integration regressions against real PostgreSQL; the release PR (`develop` to `main`) and manual CI use `--full` | pgvector DB | Python lint and tests | |
+| `tests/pr-tests.sh` | Core app integration regressions against real PostgreSQL; manual CI uses `--full` | pgvector DB | Python lint and tests | |
 | Frontend `npm run build` | TypeScript check and production build | Node | Frontend types and build | |
 | `tests/sweep/run_sweep.py` | Black-box sweep of the buyer-facing API (sign-in, CSRF/Origin, conversations, purchases, approvals) against a running server; no LLM | server + DB | Python lint and tests | `--live` too |
 | `scripts/demo.py` | Demo helper rewritten for the chat product in PR #15 (not re-run here) | running server | | yes |
@@ -74,7 +74,7 @@ A check that cannot run is reported as `SKIP` with its reason, never as a pass. 
 
 ## Frontend: no UI tests in CI
 
-The UI in the repository is an old mockup, so CI only type-checks and builds it (job "Frontend types and build"). The Playwright specs a teammate wrote for the chat UI (`frontend/e2e/`, with `tests/browser_revision_fixture.py`) are left untouched and can be run by hand (`npm run test --prefix frontend`, see `README.md`); no CI job runs them, and `tests/ci.sh` has no browser option. When the real UI design is added, decide then how to test it (component tests with Vitest were tried and measured 82.6% of `main.tsx` lines; the idea was dropped with the browser job, see `docs/history/2026-11-14-mvp.md`).
+CI type-checks and builds the production React app (job "Frontend types and build"). Run Playwright locally with `npm run test --prefix frontend` for authored route fixtures, or `npm run test:integration --prefix frontend` against the fixture backend/database. See [frontend testing](../frontend/docs/testing.md). Browser tests do not run in CI, and `tests/ci.sh` has no browser option.
 
 ## Feature coverage
 

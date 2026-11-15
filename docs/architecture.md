@@ -127,7 +127,7 @@ sequenceDiagram
         Runner->>LLM: Instructions, context and allowed tool schemas
         LLM-->>Runner: Tool calls or final reply
         opt Model requests tools
-            loop Execute requested calls sequentially
+            loop Execute read groups concurrently, state changes in order
                 Runner->>Tools: Validate tool name and typed arguments
                 opt New prepare_order call
                     Tools->>Tools: Check inspected products and exact plan / basket
@@ -149,9 +149,15 @@ sequenceDiagram
 ```
 
 The default cooperative budget is 90 seconds and 20 model rounds; four cumulative tool
-errors stop the loop. Up to 12 calls in one model response execute serially. Oversized history
-fails explicitly instead of silently dropping earlier requirements. Tools have their own I/O
-timeouts; the budget cannot interrupt a synchronous tool already running.
+errors stop the loop. Up to 12 calls in one model response are processed in request order;
+independent catalog, product, policy and recipe reads run in groups of at most four, in
+isolated sessions. Cache updates and progress are applied in model order; state changes
+and supplier calls remain ordered barriers. Search inspects three candidates and caches
+their full facts within the turn. Oversized history fails explicitly instead of silently
+dropping earlier requirements. A timed-out/cancelled parallel read cannot update the live
+session; its underlying I/O may finish in the isolated child. Ordered tools keep their own
+I/O timeouts. Reviewed partial plans survive later provider failure, and saved recipe
+facts/evidence blockers end discovery with an explanation. See [harness recovery](chat-purchasing.md#bounded-parallel-reads-and-interrupted-planning).
 
 | Tool group | Allowed operations |
 | --- | --- |
