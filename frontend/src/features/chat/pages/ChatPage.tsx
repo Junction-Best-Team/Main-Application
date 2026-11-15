@@ -65,12 +65,13 @@ export function ChatPage() {
             </div>
           </div>
 
+          {/* Contain absolute screen-reader labels within the scrolling history. */}
           <div
             ref={messageViewport}
             role="region"
             aria-label="Conversation history"
             tabIndex={0}
-            className="flex min-h-0 flex-1 flex-col gap-space-lg overflow-y-auto overscroll-contain p-space-md md:p-space-lg"
+            className="relative flex min-h-0 flex-1 flex-col gap-space-lg overflow-y-auto overscroll-contain p-space-md md:p-space-lg"
           >
             <p className="shrink-0 text-label-sm text-secondary">
               Demo ordering only. No real supplier orders or stock reservations.
