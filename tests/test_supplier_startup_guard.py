@@ -1,12 +1,4 @@
-"""JNP3-SUP-005 (owner Q-01, Q-74): a hosted deployment must not start on a missing supplier key.
-
-Hosted means `SECURE_COOKIES=true` (HTTPS), the marker the repo already uses. The check applies only
-to the `live` and `auto` supplier modes: a deployment that sets `UPSTREAM_MODE=fixture` explicitly
-(the deployed app today) starts without a key, and so does every local run (SECURE_COOKIES=false).
-It runs at startup (API lifespan, worker `check_readiness`), NOT at import: `scripts/export_schema.py`
-and the generated-types job import `aimo.api` with default settings. Each test sets the environment
-itself, because conftest forces SECURE_COOKIES=false and UPSTREAM_MODE=fixture.
-"""
+"""API and worker must reject missing credentials and test-only supplier mode."""
 
 import os
 import re
@@ -16,13 +8,20 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from supplier_fixture import runtime_startup_check
 
+from aimo import upstream
 from aimo.api import create_app
 from aimo.config import settings
 from aimo.worker import check_readiness
 
 ROOT = Path(__file__).resolve().parents[1]
 KEY = "synthetic-supplier-key-never-real"
+
+
+@pytest.fixture(autouse=True)
+def production_startup_guard(monkeypatch):
+    monkeypatch.setattr(upstream, "check_supplier_startup", runtime_startup_check)
 
 
 @pytest.fixture
@@ -50,8 +49,7 @@ def test_hosted_live_or_auto_without_a_key_fails_the_api_at_startup(env):
         with pytest.raises(RuntimeError) as error:
             start_api()
         message = str(error.value)
-        assert "VALIO_AIMO_API_KEY" in message and "UPSTREAM_MODE" in message
-        assert mode in message and "fixture" in message  # says how to fix it
+        assert "VALIO_AIMO_API_KEY" in message and "no fixture fallback" in message
 
 
 def test_hosted_live_or_auto_without_a_key_fails_the_worker_readiness_check(env):
@@ -64,12 +62,10 @@ def test_hosted_live_or_auto_without_a_key_fails_the_worker_readiness_check(env)
 @pytest.mark.parametrize(
     "cookies,mode,key",
     [
-        ("true", "fixture", ""),  # the deployed app: explicitly fixture, no key
         ("true", "live", KEY),
         ("true", "auto", KEY),
-        ("false", "auto", ""),  # local default: labelled fixtures
-        ("false", "live", ""),  # local live without a key still starts (fails closed on lookup)
-        ("false", "fixture", ""),
+        ("false", "live", KEY),
+        ("false", "auto", KEY),
     ],
 )
 def test_every_other_configuration_still_starts(env, cookies, mode, key):
@@ -113,8 +109,8 @@ def test_terraform_deployment_passes_the_mode_and_the_key_to_the_api_and_the_wor
     variables = (ROOT / "infra/kubernetes/variables.tf").read_text()
     assert 'SECURE_COOKIES            = "true"' in main  # a hosted deployment...
     assert "UPSTREAM_MODE             = var.upstream_mode" in main
-    # ...may choose fixture explicitly, which the guard accepts without a key
-    assert 'contains(["fixture", "live"], var.upstream_mode)' in variables
+    # ...rejects fixture configuration at provisioning as well as at startup.
+    assert 'var.upstream_mode == "live"' in variables
     # the API secret carries every runtime secret except the worker-only ones; the worker's list
     # names the supplier key: so `live` has the key in both processes
     api_secret = re.search(r'resource "kubernetes_secret_v1" "runtime".*?\n}\n', main, re.S).group(
@@ -126,15 +122,53 @@ def test_terraform_deployment_passes_the_mode_and_the_key_to_the_api_and_the_wor
     assert '"VALIO_AIMO_API_KEY"' in worker_secret.group(0)
 
 
-def test_compose_runs_locally_with_fixture_and_without_secure_cookies():
+def test_compose_runs_locally_with_live_supplier_and_without_secure_cookies():
     compose = (ROOT / "compose.yaml").read_text()
-    assert "UPSTREAM_MODE: ${UPSTREAM_MODE:-fixture}" in compose
+    assert "UPSTREAM_MODE: ${UPSTREAM_MODE:-live}" in compose
     assert "SECURE_COOKIES: ${SECURE_COOKIES:-false}" in compose
 
 
 def test_the_template_manifest_takes_its_mode_from_the_config_map():
     """deploy/kubernetes.yaml sets neither SECURE_COOKIES nor UPSTREAM_MODE: both come from the
-    `aimo-config` ConfigMap, so that ConfigMap must say UPSTREAM_MODE=fixture or carry the key."""
+    `aimo-config` ConfigMap, so that ConfigMap must select live and carry the key."""
     manifest = (ROOT / "deploy/kubernetes.yaml").read_text()
     assert "UPSTREAM_MODE" not in manifest and "SECURE_COOKIES" not in manifest
     assert "configMapRef: {name: aimo-config}" in manifest
+
+
+@pytest.mark.parametrize("cookies", ["true", "false"])
+@pytest.mark.parametrize("mode", ["live", "auto", "fixture"])
+def test_api_and_worker_refuse_missing_key_in_every_configuration(env, cookies, mode):
+    env(cookies, mode, "")
+    for start in (start_api, check_readiness):
+        with pytest.raises(RuntimeError, match="VALIO_AIMO_API_KEY"):
+            start()
+
+
+def test_api_and_worker_refuse_explicit_fixture_even_with_a_key(env):
+    env("false", "fixture", KEY)
+    for start in (start_api, check_readiness):
+        with pytest.raises(RuntimeError, match="test-only"):
+            start()
+
+
+@pytest.mark.parametrize("mode,reason", [("fixture", "test-only"), ("auto", "VALIO_AIMO_API_KEY")])
+def test_plain_application_process_has_no_fixture_supplier(mode, reason):
+    code = """
+import sys
+from aimo import upstream
+assert 'supplier_fixture' not in sys.modules
+assert not hasattr(upstream, 'FixtureClient')
+assert upstream.client().mode == 'live'
+upstream.check_supplier_startup()
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=ROOT,
+        env={**os.environ, "UPSTREAM_MODE": mode, "VALIO_AIMO_API_KEY": "",
+             "PYTHONPATH": str(ROOT / "src")},
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode != 0
+    assert reason in result.stderr
+    assert "AssertionError" not in result.stderr

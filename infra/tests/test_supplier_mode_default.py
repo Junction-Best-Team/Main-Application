@@ -1,4 +1,4 @@
-"""SUP-005 (owner Q-01, Q-55): a deployment's supplier mode defaults to live; fixture is an opt-in.
+"""SUP-005 (owner Q-01, Q-55): deployments use live suppliers; fixtures are test-only.
 
 Static checks of the Terraform inputs, the portable plan test and the runbook, so they run without
 Terraform. The Terraform plan test itself (portable.tftest.hcl) is not run by this file.
@@ -22,10 +22,10 @@ class SupplierModeDefaultTest(unittest.TestCase):
     def test_terraform_default_is_live(self):
         self.assertRegex(variable_block("upstream_mode"), r'default\s*=\s*"live"')
 
-    def test_fixture_and_live_stay_the_only_allowed_values(self):
+    def test_only_live_is_allowed(self):
         block = variable_block("upstream_mode")
-        self.assertIn('contains(["fixture", "live"], var.upstream_mode)', block)
-        self.assertIn("opt-in", block)  # the message says fixture is an explicit opt-in
+        self.assertIn('var.upstream_mode == "live"', block)
+        self.assertIn("test harness", block)
 
     def test_portable_plan_test_expects_live_by_default(self):
         text = (INFRA / "kubernetes" / "tests" / "portable.tftest.hcl").read_text()

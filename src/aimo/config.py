@@ -18,7 +18,8 @@ class Settings(BaseSettings):
     secure_cookies: bool = True
     # The interactive docs and the OpenAPI document are for local development only (Q-72).
     api_docs_enabled: bool = False
-    upstream_mode: Literal["auto", "fixture", "live"] = "auto"
+    # `auto` is a legacy live alias; `fixture` is accepted only by the test harness.
+    upstream_mode: Literal["auto", "fixture", "live"] = "live"
     valio_aimo_base_url: str = "https://junction26.valioaimo.fi"
     valio_aimo_api_key: str = ""
     # SUP-007: ids per price/availability request; the supplier accepts 1 to 1000.

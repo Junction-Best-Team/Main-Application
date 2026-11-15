@@ -3,6 +3,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
+from supplier_fixture import FixtureClient
 
 from aimo.approval_policy import evaluate_purchase
 from aimo.catalog import normalize, quantity, requirement_reasons
@@ -11,7 +12,7 @@ from aimo.fixtures import fixture_facts
 from aimo.ingest import publish
 from aimo.schemas import Requirements, SearchRequest
 from aimo.search import search_products
-from aimo.upstream import FixtureClient, validate_lookup
+from aimo.upstream import validate_lookup
 
 
 @pytest.mark.parametrize(

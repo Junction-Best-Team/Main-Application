@@ -69,7 +69,8 @@ activity persistence and attempt fencing are covered by `tests/test_chat_activit
 ## Live fixture integration
 
 ```sh
-# Start the fixture backend and its matching test database first (root README).
+# Start the explicit tests/fixture_app.py backend and matching test database first
+# (root README); aimo serve requires live supplier credentials.
 BASE_URL=http://localhost:8000 npm run test:integration
 ```
 

@@ -479,7 +479,7 @@ Resolve early:
 - Can missing deposit IDs be priced, and what other charges belong in the total?
 - Are unit/code mappings or corrections available for ambiguous/conflicting catalog facts?
 - How should variable weight and uncertain Terminal fulfillment be represented if included later?
-- **How does a distributor supply the Valio API key in the full product?** Either an admin UI (the distributor enters it; stored server-side and encrypted, never reaching a browser, with rotation and a "test connection" button) or deployment configuration (environment variable or Kubernetes Secret, as in the MVP). Decide before production. Meanwhile the key exists, teammates have it, and without it the app uses labelled fixtures (`UPSTREAM_MODE=auto`).
+- **How does a distributor supply the Valio API key in the full product?** Either an admin UI (the distributor enters it; stored server-side and encrypted, never reaching a browser, with rotation and a "test connection" button) or deployment configuration (environment variable or Kubernetes Secret, as in the MVP). Decide before production. The key exists and teammates have it. The app requires it and uses the real supplier only; missing credentials fail startup. Authored supplier fixtures are confined to the test harness.
 - Which cluster/database resources are available, and what are the actual submission requirements?
 
 Sources:

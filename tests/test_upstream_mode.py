@@ -1,9 +1,12 @@
+"""The shipped supplier client never selects authored pricing; no network calls."""
+
 import pytest
+from supplier_fixture import runtime_client, runtime_effective_mode, runtime_startup_check
 
 from aimo import upstream
 from aimo.config import Settings
 from aimo.db import Problem
-from aimo.upstream import FixtureClient, ValioClient
+from aimo.upstream import ValioClient
 
 
 def use(monkeypatch, **values):
@@ -11,28 +14,20 @@ def use(monkeypatch, **values):
     monkeypatch.setattr(upstream, "settings", lambda: cfg)
 
 
-def test_auto_without_key_falls_back_to_labelled_fixtures(monkeypatch):
-    use(monkeypatch, upstream_mode="auto", valio_aimo_api_key="")
-    assert upstream.effective_mode() == "fixture"
-    assert isinstance(upstream.client(), FixtureClient)
-    assert upstream.client().mode == "fixture"
+@pytest.mark.parametrize("mode", ["live", "auto"])
+@pytest.mark.parametrize("key", ["", "   ", "not-a-real-key"])
+def test_application_always_selects_live_supplier(monkeypatch, mode, key):
+    use(monkeypatch, upstream_mode=mode, valio_aimo_api_key=key)
+    assert runtime_effective_mode() == "live"
+    assert isinstance(runtime_client(), ValioClient)
+    if not key.strip():
+        with pytest.raises(Problem) as error:
+            runtime_client().post("/api/price", {})
+        assert error.value.code == "UPSTREAM_CREDENTIALS_MISSING"
 
 
-def test_auto_with_key_uses_live_client(monkeypatch):
-    use(monkeypatch, upstream_mode="auto", valio_aimo_api_key="not-a-real-key")
-    assert upstream.effective_mode() == "live"
-    assert isinstance(upstream.client(), ValioClient)
-
-
-def test_explicit_fixture_ignores_a_configured_key(monkeypatch):
+def test_explicit_fixture_is_refused_by_application_startup(monkeypatch):
     use(monkeypatch, upstream_mode="fixture", valio_aimo_api_key="not-a-real-key")
-    assert upstream.effective_mode() == "fixture"
-    assert isinstance(upstream.client(), FixtureClient)
-
-
-def test_explicit_live_without_key_fails_closed(monkeypatch):
-    use(monkeypatch, upstream_mode="live", valio_aimo_api_key="")
-    assert upstream.effective_mode() == "live"
-    with pytest.raises(Problem) as error:
-        upstream.client().post("/api/price", {})
-    assert error.value.code == "UPSTREAM_CREDENTIALS_MISSING"
+    assert isinstance(runtime_client(), ValioClient)
+    with pytest.raises(RuntimeError, match="fixture is test-only"):
+        runtime_startup_check()

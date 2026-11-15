@@ -17,6 +17,7 @@ from uuid import uuid4
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from supplier_fixture import FixtureClient
 
 from aimo import agent as internal
 from aimo import fixtures
@@ -25,7 +26,6 @@ from aimo.config import settings
 from aimo.db import fingerprint
 from aimo.ingest import publish
 from aimo.service import Service
-from aimo.upstream import FixtureClient
 from aimo.worker import run_once
 
 NAMES = ["pasta", "eggs", "pork", "cheese", "pepper"]
