@@ -67,3 +67,5 @@ it within their amount limit; it needs no entry in the approver's `exceptions`. 
 (mock) keeps the reason and `approved_exceptions`. `QUANTITY_UNRESOLVED`, `TOTAL_UNRESOLVED`,
 `CUTOFF_PASSED` and every other supplier check still block.
 
+Not built: a receipt or order-summary view that prints "stock not confirmed by the supplier". The Checks tab shows it before confirming; afterwards only the order record carries it (reasons and `approved_exceptions`).
+
