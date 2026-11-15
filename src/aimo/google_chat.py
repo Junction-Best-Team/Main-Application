@@ -16,6 +16,7 @@ from aimo.agent_provider import (
     AssistantReply,
     check_deadline,
     encode,
+    response_rejected,
 )
 from aimo.attachments import image_context_bytes, model_text
 from aimo.db import Problem
@@ -134,11 +135,24 @@ class GoogleChatProvider:
                 code, "Google could not complete the assistant request. Retry later.", 503
             ) from None
         check_deadline(deadline)
-        usage = result.get("usageMetadata", {})
+        data = result if isinstance(result, dict) else {}
+        usage = data.get("usageMetadata", {})
         usage = usage if isinstance(usage, dict) else {}
+        candidates = data.get("candidates")
+        candidate = candidates[0] if isinstance(candidates, list) and candidates else {}
+        candidate = candidate if isinstance(candidate, dict) else {}
+        content = candidate.get("content")
+        parts = content.get("parts") if isinstance(content, dict) else None
+        finish = candidate.get("finishReason")
         event(
             "llm.result",
             model=self.config.llm_model,
+            finish_reason=finish if finish in (
+                "STOP", "MAX_TOKENS", "SAFETY", "RECITATION", "OTHER", "BLOCKLIST",
+                "PROHIBITED_CONTENT", "SPII", "MALFORMED_FUNCTION_CALL", "UNEXPECTED_TOOL_CALL", None,
+            ) else "other",
+            tool_call_count=sum(isinstance(p, dict) and "functionCall" in p for p in parts)
+            if isinstance(parts, list) else None,
             usage={
                 k: usage[k]
                 for k in ("promptTokenCount", "candidatesTokenCount", "totalTokenCount")
@@ -149,9 +163,11 @@ class GoogleChatProvider:
 
     @staticmethod
     def parse(result):
+        category = "shape"
         try:
             candidate = result["candidates"][0]
             if candidate.get("finishReason") != "STOP":
+                category = "incomplete"
                 raise ValueError("Incomplete response")
             parts = candidate["content"]["parts"]
             text, calls = [], []
@@ -160,6 +176,7 @@ class GoogleChatProvider:
                     call = part["functionCall"]
                     arguments = call.get("args", {})
                     if not isinstance(arguments, dict):
+                        category = "arguments"
                         raise ValueError("Invalid arguments")
                     calls.append(
                         {
@@ -171,13 +188,16 @@ class GoogleChatProvider:
                 elif "text" in part and not part.get("thought"):
                     text.append(part["text"])
                 elif not part.get("thought"):
+                    category = "modality"
                     raise ValueError("Unexpected modality")
             if not text and not calls:
+                category = "empty"
                 raise ValueError("Empty response")
             return AssistantReply(
                 content="".join(text) or None, tool_calls=calls, google_parts=parts
             )
-        except (KeyError, IndexError, TypeError, ValueError, AttributeError, ValidationError):
+        except (KeyError, IndexError, TypeError, ValueError, AttributeError, ValidationError) as exc:
+            response_rejected(exc, category)
             raise Problem(
                 "LLM_RESPONSE_INVALID",
                 "Google returned an invalid or incomplete response. Retry later.",

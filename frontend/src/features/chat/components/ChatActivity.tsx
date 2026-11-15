@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { Conversation } from "../../../shared/api/types";
+import { isPartialActivity } from "../model/activity";
 import { Icon } from "../../../shared/components/DesignPrimitives";
 
 type Activity = NonNullable<Conversation["activity"]>;
@@ -112,11 +113,15 @@ export function ChatActivity({
   activity,
   busy,
   stopped = false,
+  onContinue,
+  unmatched = false,
 }: {
   activity: Conversation["activity"];
   busy: boolean;
   /** The customer stopped this turn: a calm "Stopped", not an error. */
   stopped?: boolean;
+  onContinue?: () => void;
+  unmatched?: boolean;
 }) {
   const listId = useId();
   const listRef = useRef<HTMLOListElement>(null);
@@ -142,6 +147,7 @@ export function ChatActivity({
     if (busy && open && list) list.scrollTop = list.scrollHeight;
   }, [busy, open, stepCount]);
   const failed = !busy && current?.state === "failed";
+  const partial = !busy && isPartialActivity(current);
   const wasStopped = failed && stopped;
   if (!busy && !steps.length && !wasStopped) return null;
   const last = current?.events?.at(-1);
@@ -161,7 +167,9 @@ export function ChatActivity({
       ? "Stopped"
       : failed
         ? "Response interrupted"
-        : "Finished";
+        : partial
+          ? "Paused — progress saved"
+          : "Finished";
 
   const header = (
     <>
@@ -172,7 +180,7 @@ export function ChatActivity({
           name={
             wasStopped
               ? "stop_circle"
-              : failed
+              : failed || partial
                 ? "error_outline"
                 : "check_circle"
           }
@@ -213,6 +221,20 @@ export function ChatActivity({
       ) : (
         <div className="flex items-center gap-space-sm py-space-xs text-body-sm text-secondary">
           {header}
+        </div>
+      )}
+      {partial && unmatched && (
+        <div className="py-space-xs text-body-sm text-secondary">
+          <p>Recipe saved; product matching is unfinished.</p>
+          {onContinue && (
+            <button
+              type="button"
+              onClick={onContinue}
+              className="rounded-md py-space-xs text-wholesale-teal underline focus-visible:outline-2 focus-visible:outline-wholesale-teal"
+            >
+              Continue matching
+            </button>
+          )}
         </div>
       )}
       {open && steps.length > 0 && (

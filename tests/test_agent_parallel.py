@@ -398,3 +398,38 @@ def test_duplicate_reads_share_work_and_keep_log_context(identity, caplog):
     invoked = [r for r in rows if r["event"] == "tool.call.started"]
     assert len(invoked) == 1 and invoked[0]["round"] == 3
     assert "private-provider-key" not in caplog.text
+
+
+@pytest.mark.parametrize("count", [13, 22, 100])
+def test_large_read_batch_returns_every_result_once(monkeypatch, config, identity, count):
+    service = FakeService(identity)
+    ids = [f"p{i}" for i in range(count)]
+    seen = scripted(monkeypatch, [
+        reply(*[call("get_product", {"product_id": pid}) for pid in ids]),
+        reply(text="Done."),
+    ])
+    service.get_product = lambda _, pid: product(pid)
+    result = agent.run_turn(identity, HISTORY, service)
+    assert result.text == "Done."
+    outputs = [m for m in seen[-1]["messages"] if m["role"] == "tool"]
+    assert [json.loads(m["content"])["result"]["id"] for m in outputs] == ids
+    assert len({m["tool_call_id"] for m in outputs}) == count
+
+
+def test_turn_tool_limit_rejects_whole_batch_and_preserves_plan(monkeypatch, config, identity):
+    service = FakeService(identity)
+    reads = []
+    service.get_product = lambda _, pid: reads.append(pid) or product(pid)
+    scripted(monkeypatch, [
+        reply(call("publish_meal_plan", meal(False))),
+        *[reply(*[call("get_product", {"product_id": f"p{batch}-{i}"}) for i in range(100)]) for batch in range(3)],
+    ])
+    progress = []
+    result = agent.run_turn(identity, HISTORY, service, on_progress=progress.append)
+    # Two complete batches execute. None of the third batch executes, even partly.
+    assert len(reads) == 200
+    assert result.meal_plan is not None and result.proposal_id is None
+    assert "progress is saved" in result.text
+    assert [e.kind for e in progress[-2:]] == ["error", "complete"]
+    assert progress[-2].error_code == "LLM_TOOL_CALL_LIMIT"
+    assert len(progress) < 600

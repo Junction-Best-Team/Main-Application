@@ -94,8 +94,8 @@ for (const width of [1440, 390, 320]) {
       path: testInfo.outputPath(`latest-step-${width}.png`),
     });
     await expect(
-      page.getByRole("button", { name: "Start voice mode" }),
-    ).toBeDisabled();
+      page.getByRole("button", { name: "Stop", exact: true }),
+    ).toBeEnabled();
     // The composer stays enabled while Aimo works so messages can be queued.
     await expect(page.getByLabel("Continue the conversation")).toBeEnabled();
     await expect(activity.locator(".activity-dot").first()).toHaveCSS(
@@ -522,5 +522,159 @@ for (const width of [1440, 390]) {
     await page.screenshot({
       path: testInfo.outputPath(`parallel-${width}.png`),
     });
+  });
+}
+
+for (const width of [1440, 320]) {
+  test(`saved partial result pauses and drafts continuation at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.route("**/api/session", (route) =>
+      route.fulfill({
+        json: {
+          username: "buyer",
+          buyer_id: "demo-hotel",
+          csrf_token: "test-csrf",
+        },
+      }),
+    );
+    await page.route("**/api/conversations?*", (route) =>
+      route.fulfill({ json: { items: [], next_offset: null } }),
+    );
+    const snapshot: Conversation = {
+      id: cid,
+      title: "Italian lunch",
+      created_at: timestamp,
+      updated_at: timestamp,
+      cart_editable: false,
+      purchases: [],
+      busy: false,
+      messages: [
+        {
+          id: 1,
+          role: "assistant",
+          text: "Your reviewed recipe progress is saved.",
+          created_at: timestamp,
+          meal_plan: {
+            title: "Lasagna estimate",
+            portions: 40,
+            notes: [],
+            ingredients: [
+              {
+                name: "Lasagna sheets",
+                amount: "4",
+                unit: "KG",
+                status: "proposed",
+              },
+            ],
+          },
+        },
+      ],
+      activity: {
+        turn_id: tid,
+        state: "complete",
+        events: [
+          ...initialEvents,
+          { sequence: 3, kind: "error", label: "Response interrupted" },
+          { sequence: 4, kind: "complete", label: "Finishing the response" },
+        ],
+      },
+    };
+    let running = width === 1440;
+    let publish: () => void = () => {};
+    const streamReady = new Promise<void>((resolve) => {
+      publish = resolve;
+    });
+    await page.route(`**/api/conversations/${cid}`, (route) =>
+      route.fulfill({
+        json: running
+          ? {
+              ...snapshot,
+              busy: true,
+              activity: {
+                turn_id: tid,
+                state: "running",
+                events: initialEvents,
+              },
+            }
+          : snapshot,
+      }),
+    );
+    await page.route(`**/api/conversations/${cid}/events`, async (route) => {
+      await streamReady;
+      await route.fulfill({
+        contentType: "text/event-stream",
+        body: `event: conversation\ndata: ${JSON.stringify(snapshot)}\n\n`,
+      });
+    });
+    if (!running) publish();
+    let posts = 0;
+    await page.route(`**/api/conversations/${cid}/messages`, async (route) => {
+      posts++;
+      const request = route.request();
+      expect(request.headers()["x-csrf-token"]).toBe("test-csrf");
+      expect(request.postDataJSON().text).toBe(
+        "Continue matching the remaining ingredients in my saved recipe plan.",
+      );
+      expect(request.postDataJSON().idempotency_key).toBeTruthy();
+      await route.fulfill({
+        json: {
+          ...snapshot,
+          busy: true,
+          activity: { turn_id: "new-turn", state: "queued", events: [] },
+        },
+      });
+    });
+    await page.goto(`/conversations/${cid}`);
+    if (running) {
+      await page.locator("#purchase-message").fill("Queued follow-up");
+      await page.locator("#purchase-message").press("Enter");
+      await expect(
+        page.getByRole("list", { name: "Queued messages" }),
+      ).toContainText("Queued follow-up");
+      running = false;
+      publish();
+      await expect(
+        page.getByRole("button", {
+          name: "Send queued message: Queued follow-up",
+          exact: true,
+        }),
+      ).toBeVisible();
+      expect(posts).toBe(0);
+    }
+    const activity = page.getByRole("region", { name: "Aimo activity" });
+    await expect(activity.getByRole("status")).toHaveText(
+      "Paused — progress saved",
+    );
+    await expect(activity).toContainText(
+      "Recipe saved; product matching is unfinished.",
+    );
+    await page.reload();
+    await expect(activity.getByRole("status")).toHaveText(
+      "Paused — progress saved",
+    );
+    const composer = page.locator("#purchase-message");
+    await composer.fill("Keep my unsent draft");
+    await expect(
+      activity.getByRole("button", { name: "Continue matching" }),
+    ).toHaveCount(0);
+    await expect(composer).toHaveValue("Keep my unsent draft");
+    await composer.fill("");
+    await activity.getByRole("button", { name: "Continue matching" }).click();
+    await expect(composer).toBeFocused();
+    await expect(composer).toHaveValue(
+      "Continue matching the remaining ingredients in my saved recipe plan.",
+    );
+    expect(posts).toBe(0); // Drafting is not sending or confirming a purchase.
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page
+      .getByRole("button", { name: "Send Order Request", exact: true })
+      .click();
+    await expect.poll(() => posts).toBe(1);
   });
 }

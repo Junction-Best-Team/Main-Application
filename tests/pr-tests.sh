@@ -13,6 +13,8 @@ exec .venv/bin/pytest -q -x --durations=5 \
   tests/test_worker.py \
   tests/test_agent_integration.py \
   tests/test_agent_parallel.py \
+  tests/test_google_providers.py \
+  tests/test_agent.py::test_openai_compatible_large_read_batch_keeps_every_call \
   tests/test_agent_recipe_planning.py \
   tests/test_agent_recovery_integration.py \
   tests/test_request_brief.py \
