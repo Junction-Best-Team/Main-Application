@@ -325,3 +325,5 @@ Sidebar divider follow-up (2026-11-15): reused the existing shell and border tok
 no new dependencies, assets or external material.
 
 Requests nesting fix (2026-11-15): reused the existing app shell, conversation navigation/pagination and authored browser fixtures. No new dependencies, assets or external material.
+
+Past Orders header (2026-11-15): implemented the owner's revised in-chat mockup using existing typography, spacing, icons and order-history fixtures. No generated bitmap, external material or new dependency is shipped.
