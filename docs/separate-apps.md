@@ -31,7 +31,7 @@ The worker claims one turn at a time with `FOR UPDATE SKIP LOCKED`, resolves the
 recorded active customer and the privileged internal-agent mapping, and runs the
 existing bounded agent/tool loop. SSE delivers persisted replies and proposals.
 
-Jobs survive API/worker restarts. A 420-second lease allows a killed worker's job
+Jobs survive API/worker restarts. A 660-second lease allows a killed worker's job
 to be reclaimed. A unique attempt fences stale replies; preparation keeps its
 existing stable per-turn idempotency key. After three interrupted claims, or a
 provider/application error, the UI offers an explicit retry of the same message.

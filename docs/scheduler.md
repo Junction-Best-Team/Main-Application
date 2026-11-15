@@ -30,7 +30,7 @@ Routes (session cookie, same-origin and CSRF on every POST; all writes need the 
 `worker.work_once`: a waiting chat turn first, otherwise one step of one run (`scheduler.run_due_schedules`).
 The due-date scan is throttled to `SCHEDULER_PASS_INTERVAL_SECONDS` (30). Runs start from
 `SCHEDULER_RUN_AFTER_HOUR` (06, Helsinki) on the scheduled date. One step per iteration keeps the worker
-inside its 450 s health limit. A failing scheduler is logged (`scheduler.iteration_failed`) and never stops chat.
+inside its 690 s health limit. A failing scheduler is logged (`scheduler.iteration_failed`) and never stops chat.
 
 `due` -> prepare as the buyer's internal agent, compare with the agreed terms (price within the line's
 range, or a usable accepted substitute within range, closest price wins; total within the ceiling;

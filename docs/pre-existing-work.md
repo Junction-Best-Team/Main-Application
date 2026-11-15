@@ -427,3 +427,9 @@ Reused the existing labelled conversation projection, semantic request review an
 typed agent loop. Added assistant-question context and bounded refusal recovery.
 Regression dialogues and provider replies are authored fixtures. Classifier checks
 use synthetic dialogues only; no supplier requests or orders are involved.
+
+## Ten-minute chat budget — 2026-11-15
+
+Reused PR #286’s shared execution limits, worker fencing and deployment timing.
+Extended the existing authored provider/clock regressions for 600 seconds and
+80 rounds; no external assets, model calls or supplier orders are involved.

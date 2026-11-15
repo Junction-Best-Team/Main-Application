@@ -76,9 +76,9 @@ and collect logs before pod replacement if historical investigation is needed.
 New defaults select `gemini-4-carbon` through the native Google API, with
 `LLM_REASONING_EFFORT=low`, `LLM_MAX_COMPLETION_TOKENS=8192` and
 `LLM_TIMEOUT_SECONDS=45` bounds each chat-model request. The overall turn budget is
-`LLM_TURN_TIMEOUT_SECONDS=360` (configurable up to 360 seconds), including tool
-execution and semantic checks. This stays below the 420-second worker lease and
-shutdown grace period, and the 450-second health freshness limit. Catalog reads
+`LLM_TURN_TIMEOUT_SECONDS=600` (configurable up to 600 seconds), including tool
+execution and semantic checks. This stays below the 660-second worker lease and
+shutdown grace period, and the 690-second health freshness limit. Catalog reads
 run in groups of up to four; supplier calls and plan/purchase mutations stay ordered.
 Once recipe discovery runs, catalog tools wait for a published quantity plan.
 Each model round receives the remaining time and current matching stage, so it
