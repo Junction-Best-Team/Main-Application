@@ -42,6 +42,8 @@ class MealPlan(Model):
     portions: int = Field(ge=1, le=10000)
     ingredients: list[Ingredient] = Field(min_length=1, max_length=MAX_BASKET_LINES)
     notes: list[str] = Field(default_factory=list, max_length=20)
+    # Catalog cooking steps for display only (untrusted recipe text, not policy).
+    instructions: list[str] = Field(default_factory=list, max_length=100)
     recipe_plan_id: str | None = None
     recipe_plan_revision: int | None = None
     recipe_id: str | None = None

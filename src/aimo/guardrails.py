@@ -852,7 +852,7 @@ def memory_state(messages, change, current):
     }
 
 
-PLAN_SHOWN = ("title", "portions", "attribution", "notes")
+PLAN_SHOWN = ("title", "portions", "attribution", "notes", "instructions")
 INGREDIENT_SHOWN = (
     "name",
     "amount",

@@ -1,71 +1,73 @@
+import { useState } from "react";
 import type { MealPlan } from "../../../shared/api/types";
+import { Icon } from "../../../shared/components/DesignPrimitives";
+import { mealPlanHasCookingSteps } from "../model/recipePdf";
+import { RecipeOverlay } from "./RecipeOverlay";
+
+/** Compact recipe-as-message; overlay only when catalog cooking steps exist. */
 export function MealPlanCard({
   plan,
-  compact = false,
+  onOpenBasket,
 }: {
   plan: MealPlan;
-  compact?: boolean;
+  onOpenBasket?: () => void;
 }) {
-  const details = (
-    <>
-      <ul>
-        {plan.ingredients.map((ingredient, i) => (
-          <li key={i}>
-            <span>{ingredient.name}</span>
-            <strong>
-              {ingredient.amount == null
-                ? "Quantity unresolved"
-                : `${ingredient.amount} ${ingredient.unit}`}
-            </strong>
-            {ingredient.status === "unresolved" && <p>{ingredient.reason}</p>}
-            {ingredient.product_id && <p>Product: {ingredient.product_id}</p>}
-            {ingredient.conversion?.sales_quantity && (
-              <p>
-                Buy {String(ingredient.conversion.sales_quantity)}{" "}
-                {String(ingredient.conversion.sales_unit)}
-                {Number(ingredient.conversion.excess) > 0 &&
-                  ` · Excess: ${ingredient.conversion.excess} ${ingredient.unit}`}
-              </p>
-            )}
-          </li>
-        ))}
-      </ul>
-      {plan.attribution && (
-        <p className="text-body-sm text-secondary">{plan.attribution}</p>
-      )}
-      {(plan.notes ?? []).map((note, i) => (
-        <p className="text-body-sm text-secondary" key={i}>
-          {note}
-        </p>
-      ))}
-      <p className="text-body-sm text-secondary">
-        Recipe quantities are a proposal. Verified quantities and purchasing
-        checks appear in the basket.
-      </p>
-    </>
-  );
+  const [open, setOpen] = useState(false);
+  const expandable = mealPlanHasCookingSteps(plan);
+
   return (
-    <section
-      className="meal-plan mt-4 max-w-[660px] rounded-lg border border-border-subtle bg-surface-pure p-4 text-on-surface md:p-5 [&_h2]:text-headline-sm [&_ul]:my-4 [&_ul]:list-none [&_ul]:p-0 [&_li]:grid [&_li]:grid-cols-[minmax(0,1fr)_auto] [&_li]:gap-x-4 [&_li]:gap-y-1 [&_li]:border-b [&_li]:border-border-subtle [&_li]:py-3 [&_li]:text-body-sm [&_li>strong]:text-right [&_li>strong]:font-label [&_li>p]:col-span-2 [&_li>p]:m-0 [&_li>p]:text-secondary [&>p:last-child]:mb-0"
-      aria-label="Proposed meal plan"
-    >
-      <h2>{plan.title}</h2>
-      <p>{plan.portions} portions</p>
-      <p className="text-body-sm text-secondary">
-        {plan.recipe_plan_id
-          ? "Saved recipe plan"
-          : "Free-form plan — recipe completeness not checked."}
-      </p>
-      {compact ? (
-        <details className="mt-space-sm">
-          <summary className="cursor-pointer font-label text-label-md text-primary">
-            Recipe quantities and assumptions
-          </summary>
-          {details}
-        </details>
+    <>
+      {expandable ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="meal-plan mt-4 flex w-full max-w-[660px] cursor-pointer items-start gap-space-sm rounded-lg border border-border-subtle bg-surface-pure p-4 text-left text-on-surface transition-colors hover:bg-surface-container-low md:p-5"
+          aria-label={`Open recipe ${plan.title}`}
+        >
+          <Icon
+            name="menu_book"
+            className="mt-0.5 text-[22px] text-wholesale-teal"
+          />
+          <span className="min-w-0 flex-1">
+            <span className="block font-headline text-headline-sm text-primary">
+              {plan.title}
+            </span>
+            <span className="mt-1 block text-body-sm text-secondary">
+              {plan.portions} portions · Tap for ingredients and steps
+            </span>
+          </span>
+          <Icon name="chevron_right" className="mt-1 text-[20px] text-secondary" />
+        </button>
       ) : (
-        details
+        <section
+          className="meal-plan mt-4 max-w-[660px] rounded-lg border border-border-subtle bg-surface-pure p-4 text-on-surface md:p-5"
+          aria-label="Proposed meal plan"
+        >
+          <h2 className="font-headline text-headline-sm text-primary">
+            {plan.title}
+          </h2>
+          <p className="m-0 text-body-sm text-secondary">
+            {plan.portions} portions
+            {plan.recipe_id
+              ? " · Recipe quantities are in the basket"
+              : " · Free-form plan — open the basket for ingredients"}
+          </p>
+        </section>
       )}
-    </section>
+      {open && expandable && (
+        <RecipeOverlay
+          plan={plan}
+          onClose={() => setOpen(false)}
+          onOpenBasket={
+            onOpenBasket
+              ? () => {
+                  setOpen(false);
+                  onOpenBasket();
+                }
+              : undefined
+          }
+        />
+      )}
+    </>
   );
 }

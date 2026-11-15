@@ -724,14 +724,14 @@ test("request starts a meal conversation and keeps messages through refresh", as
     page.getByRole("list", { name: "Proposed items" }),
   ).toContainText("SKU pasta");
   const recipe = page.getByRole("region", { name: "Proposed meal plan" });
-  await expect(recipe.getByText("20 KG", { exact: true })).not.toBeVisible();
-  await recipe
-    .getByText("Recipe quantities and assumptions", { exact: true })
-    .click();
-  await expect(recipe.getByText("20 KG", { exact: true })).toBeVisible();
-  await recipe
-    .getByText("Recipe quantities and assumptions", { exact: true })
-    .click();
+  await expect(recipe.getByText("20 KG", { exact: true })).toHaveCount(0);
+  await expect(recipe.getByText("Spaghetti", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: /Open recipe/ }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Review basket to confirm" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("complementary", { name: "Overview" }),
   ).toBeVisible();
@@ -1341,7 +1341,7 @@ test("an interrupted turn arriving through SSE restores the persisted retry acti
   expect(payload).toEqual(retry);
 });
 
-test(`recipe plan keeps unresolved ingredients visible beside matched packs`, async ({
+test(`free-form recipe plan stays compact without chat ingredient dump`, async ({
   page,
 }) => {
   await mockSession(page);
@@ -1402,26 +1402,15 @@ test(`recipe plan keeps unresolved ingredients visible beside matched packs`, as
   );
   await page.goto(`/conversations/${conversationId}`);
   const plan = page.getByRole("region", { name: "Proposed meal plan" });
+  await expect(plan.getByRole("heading", { name: "Carbonara" })).toBeVisible();
+  await expect(plan.getByText("200 portions", { exact: false })).toBeVisible();
+  await expect(plan.getByText("open the basket for ingredients")).toBeVisible();
+  await expect(plan.getByText("Salt", { exact: true })).toHaveCount(0);
+  await expect(plan.getByText("Buy 7 ST", { exact: false })).toHaveCount(0);
   await expect(
-    plan.getByText("Free-form plan — recipe completeness not checked.", {
-      exact: true,
-    }),
-  ).toHaveCount(1);
-  await expect(plan.getByText("Salt", { exact: true })).toBeVisible();
-  await expect(
-    plan.getByText("Quantity unresolved", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    plan.getByText("Quantity unresolved tsp", { exact: true }),
+    page.getByRole("button", { name: /Open recipe/ }),
   ).toHaveCount(0);
-  await expect(
-    plan.getByText("Recipe quantity is unspecified", { exact: false }),
-  ).toBeVisible();
-  await expect(plan.getByText("Buy 7 ST", { exact: false })).toBeVisible();
-  await expect(plan.getByText("Excess: 1 KG", { exact: false })).toBeVisible();
-  await expect(plan.getByText("Buy 4 ST", { exact: true })).toBeVisible();
-  await expect(plan.getByText("Excess: 0", { exact: false })).toHaveCount(0);
-  await expect(plan.getByText("UniTools", { exact: false })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Carbonara" })).toHaveCount(0);
   await expect(
     page.getByRole("link", { name: "Review basket and purchasing checks" }),
   ).toHaveCount(0);
